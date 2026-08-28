@@ -1,18 +1,32 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { DatabaseProvider } from "@/db/provider";
+import { ThemeProvider } from "@/ui/theme";
 
-SplashScreen.preventAutoHideAsync();
+import "../global.css";
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+/**
+ * Racine de l'application.
+ *
+ * L'ordre compte : `GestureHandlerRootView` enveloppe tout ce qui touche aux
+ * gestes (feuilles basses, glissement pour supprimer) et exige un `flex: 1`
+ * explicite, sinon l'arbre se réduit à zéro pixel de haut. Le thème vient avant
+ * la base pour que l'écran d'erreur de migration soit lui aussi habillé.
+ */
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <StatusBar style="auto" />
+          <DatabaseProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </DatabaseProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

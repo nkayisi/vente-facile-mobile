@@ -1,56 +1,106 @@
-# Welcome to your Expo app 👋
+# Vente Facile, application marchand
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Back-office marchand sur Android et iOS, **utilisable sans réseau**.
 
-## Get started
+C'est la condition d'usage en RDC : une boutique peut passer plusieurs jours
+sans connexion, et le point de vente doit continuer d'encaisser, d'imprimer et
+de tenir sa caisse. Tout ce qui est écrit hors ligne part ensuite au serveur par
+le même chemin métier que le back-office web, jamais par un chemin parallèle.
 
-1. Install dependencies
+## Socle
 
-   ```bash
-   npm install
-   ```
+| | |
+| --- | --- |
+| Expo SDK | 57 (React Native 0.86, nouvelle architecture) |
+| Navigation | expo-router, routes typées |
+| Base locale | expo-sqlite + Drizzle ORM |
+| Style | NativeWind, jetons partagés avec le web |
+| Règles métier | `@vente-facile/core`, le même paquet que le back-office |
 
-2. Start the app
+**expo-sqlite plutôt que WatermelonDB** : WatermelonDB n'a plus été publié
+depuis juillet 2025 et sa dernière version est antérieure à trois versions de
+React Native. Pour la colonne vertébrale du hors-ligne, un paquet maintenu en
+phase avec le SDK vaut mieux qu'un paquet éprouvé mais figé. Le coût est faible :
+l'architecture de synchronisation n'utilisait de toute façon pas son
+`synchronize()`, seulement son schéma et ses observables, remplacés par les
+migrations Drizzle et `useLiveQuery`.
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Démarrer
 
 ```bash
-npm run reset-project
+pnpm install
+pnpm start                 # serveur de développement
+pnpm android               # sur un appareil ou un émulateur
+pnpm type-check
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+`pnpm` est obligatoire, avec `node-linker=hoisted` (déjà dans `.npmrc`) :
+l'autolinking natif de React Native parcourt `node_modules` à plat et ne suit
+pas les liens symboliques.
 
-### Other setup steps
+Les dossiers `ios/` et `android/` ne sont pas versionnés : ils se régénèrent par
+`npx expo prebuild --clean`.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Base locale
 
-## Learn more
+```bash
+pnpm db:generate           # apres toute modification de src/db/schema/
+pnpm db:studio             # inspecter la base
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Les migrations sont **embarquées dans le bundle** (`drizzle/migrations.js`, via
+`babel-plugin-inline-import`) : rien à lire sur le disque, donc rien qui puisse
+manquer sur un appareil hors ligne. Elles s'appliquent au démarrage dans
+`src/db/provider.tsx`, et une migration en échec affiche un écran explicite
+plutôt que de laisser l'application démarrer sur une base à moitié transformée.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Trois familles de tables, déclarées et alignées sur le serveur :
 
-## Join the community
+| Famille | Écriture locale | Synchronisation |
+| --- | --- | --- |
+| `pulled` | interdite | tirée du serveur |
+| `writable` | autorisée | poussée par le journal d'opérations |
+| `local` | autorisée | jamais synchronisée |
 
-Join our community of developers creating universal apps.
+L'ancienne application laissait cet alignement implicite et il avait divergé :
+elle poussait des catégories que le serveur jetait en silence, tout en les
+marquant « synchronisées ».
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Profils de compilation
+
+`app.config.ts` calcule le nom, l'identifiant natif et l'URL d'API depuis
+`EAS_BUILD_PROFILE`, pour que les trois variantes cohabitent sur un même
+terminal :
+
+| Profil | Nom affiché | Identifiant |
+| --- | --- | --- |
+| `development` | VF (dev) | `com.ventefacile.app.dev` |
+| `preview` | VF (préprod) | `com.ventefacile.app.preview` |
+| `production` | Vente Facile | `com.ventefacile.app` |
+
+Le profil `preview` produit un **APK** et non un AAB : on l'installe à la main
+sur un POS, sans passer par le Play Store.
+
+## Conventions
+
+- **Aucun écran n'importe `react-native` pour du style.** Texte, bouton, carte
+  et couleur passent par `src/ui/`. C'est ce qui tient les jetons, les cibles
+  tactiles et le thème à un seul endroit.
+- **Aucune variante `dark:`.** Les composants lisent `bg-card`,
+  `text-muted-foreground` ; `ThemeProvider` décide ce que ces noms valent.
+- **Aucune couleur en dur.** `<Icon color="mutedForeground" />`, jamais
+  `#6b7280` : une couleur écrite en dur reste claire en thème sombre.
+- **Les montants s'écrivent en entier**, jamais abrégés. Quand la place manque,
+  c'est la taille du texte qui cède. Règle portée par `@vente-facile/core`.
+- **Les décimales voyagent en chaîne de caractères**, jamais en `number` : un
+  panier en francs congolais à sept chiffres perd ses unités en virgule
+  flottante.
+- **Cibles tactiles** : 44 points partout, 56 au point de vente.
+- Libellés d'interface et commentaires métier **en français**, identifiants en
+  anglais. Pas de tiret cadratin.
+
+## État
+
+Lot 0 livré : socle, thème clair et sombre, design system de base, base locale
+migrée, profils de compilation. Les écrans arrivent aux lots suivants ; l'écran
+d'accueil actuel est une planche de vérification et disparaît au lot 1.
