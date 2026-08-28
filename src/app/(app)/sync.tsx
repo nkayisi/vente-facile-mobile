@@ -9,10 +9,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
+import { router } from "expo-router";
+
 import { ApiError } from "@/api/errors";
 import { labelFor } from "@/features/sync/labels";
-import { pullAll, readAllStates, type PullProgress } from "@/sync";
+import {
+  countByState,
+  pullAll,
+  pushAll,
+  readAllStates,
+  type OutboxState,
+  type PullProgress,
+} from "@/sync";
+import { useSession } from "@/session/provider";
 import type { SyncStateRow } from "@/db/schema";
+import { creerVenteDeTest } from "@/features/sync/vente-de-test";
 import {
   Badge,
   Banner,
@@ -38,12 +49,17 @@ function formatDate(value: Date | null): string {
 export default function Sync() {
   const [progress, setProgress] = useState<PullProgress | null>(null);
   const [states, setStates] = useState<SyncStateRow[]>([]);
+  const [outbox, setOutbox] = useState<Record<OutboxState, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
 
+  const { snapshot } = useSession();
+
   const refresh = useCallback(async () => {
     setStates(await readAllStates());
+    setOutbox(await countByState());
   }, []);
 
   useEffect(() => {
@@ -57,9 +73,14 @@ export default function Sync() {
     if (busy) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     abort.current = new AbortController();
 
     try {
+      // On ENVOIE d'abord. Ce que le terminal porte est la seule chose que le
+      // serveur ne connaît pas ; le tirage qui suit en rapporte le résultat
+      // autoritatif.
+      await pushAll(snapshot?.device?.id);
       await pullAll({
         signal: abort.current.signal,
         onProgress: setProgress,
@@ -103,6 +124,12 @@ export default function Sync() {
         </View>
       ) : null}
 
+      {notice ? (
+        <View className="mb-4">
+          <Banner tone="info" title={notice} />
+        </View>
+      ) : null}
+
       {progress ? (
         <Card className="mb-4">
           <Text variant="label">{labelFor(progress.table)}</Text>
@@ -126,6 +153,30 @@ export default function Sync() {
         </Card>
       ) : null}
 
+      {outbox && outbox.quarantined > 0 ? (
+        <View className="mb-4">
+          <Banner
+            tone="destructive"
+            title={`${outbox.quarantined} opération(s) refusée(s)`}
+            message="Elles ne repartiront pas d'elles-mêmes."
+            action={{
+              label: "Voir et corriger",
+              onPress: () => router.push("/(app)/operations"),
+            }}
+          />
+        </View>
+      ) : null}
+
+      {outbox && outbox.pending > 0 ? (
+        <View className="mb-4">
+          <Banner
+            tone="warning"
+            title={`${outbox.pending} opération(s) en attente`}
+            message="Elles partiront à la prochaine synchronisation."
+          />
+        </View>
+      ) : null}
+
       <View className="mb-5">
         <Button
           fullWidth
@@ -137,6 +188,22 @@ export default function Sync() {
           {busy ? "Synchronisation en cours" : "Synchroniser maintenant"}
         </Button>
       </View>
+
+      {__DEV__ ? (
+        <View className="mb-5">
+          <Button
+            variant="outline"
+            fullWidth
+            leftIcon="flask-outline"
+            onPress={async () => {
+              setNotice(await creerVenteDeTest());
+              await refresh();
+            }}
+          >
+            Mettre une vente de test en file
+          </Button>
+        </View>
+      ) : null}
 
       {states.length > 0 ? (
         <Section title="État par table">
