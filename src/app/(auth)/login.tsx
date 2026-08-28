@@ -102,7 +102,9 @@ export default function Login() {
         <Input
           value={password}
           onChangeText={setPassword}
-          placeholder="••••••••"
+          // Des points en indication se lisent comme un mot de passe deja
+          // saisi : sur la capture, le champ semblait rempli alors qu il etait vide.
+          placeholder="Votre mot de passe"
           secureTextEntry={secret}
           autoCapitalize="none"
           textContentType="password"
