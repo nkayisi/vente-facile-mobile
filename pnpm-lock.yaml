@@ -27,8 +27,8 @@ importers:
         specifier: 2.0.2
         version: 2.0.2(@babel/runtime@7.29.7)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.3(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@vente-facile/core':
-        specifier: github:nkayisi/vente-facile-core#v0.1.0
-        version: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/49b559785399747999f76a4024683c62d2c6cf6b
+        specifier: github:nkayisi/vente-facile-core#v0.6.0
+        version: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/d61d74a45dcfc2103e7e167204488c0879fa9ee5
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(expo-sqlite@57.0.2(expo@57.0.18)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.3(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))
@@ -2210,9 +2210,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/49b559785399747999f76a4024683c62d2c6cf6b':
-    resolution: {tarball: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/49b559785399747999f76a4024683c62d2c6cf6b}
-    version: 0.1.0
+  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/d61d74a45dcfc2103e7e167204488c0879fa9ee5':
+    resolution: {tarball: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/d61d74a45dcfc2103e7e167204488c0879fa9ee5}
+    version: 0.6.0
 
   '@xmldom/xmldom@0.8.15':
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
@@ -7394,7 +7394,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 
@@ -7585,7 +7587,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
 
-  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/49b559785399747999f76a4024683c62d2c6cf6b': {}
+  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/d61d74a45dcfc2103e7e167204488c0879fa9ee5': {}
 
   '@xmldom/xmldom@0.8.15': {}
 

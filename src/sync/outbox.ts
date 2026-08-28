@@ -217,3 +217,46 @@ export async function discard(id: string): Promise<void> {
 export async function purgeDone(): Promise<void> {
   await db.delete(outboxOperations).where(eq(outboxOperations.state, "done"));
 }
+
+/**
+ * Opérations d'un type donné qui n'ont pas encore abouti.
+ *
+ * RÈGLE DU DÉPÔT : les tables tirées ne sont écrites que par le TIRAGE. Ce qui
+ * n'est pas encore confirmé par le serveur vit ici, et nulle part ailleurs.
+ *
+ * La tentation inverse est forte : écrire tout de suite la vente ou la session
+ * dans sa table, pour que l'écran l'affiche sans attendre. Mais le tirage
+ * n'efface jamais rien, il insère et met à jour. Une opération REFUSÉE
+ * laisserait donc sa ligne optimiste en place pour toujours : une session de
+ * caisse ouverte qui n'existe sur aucun serveur, et sur laquelle le terminal
+ * continuerait à vendre. En lisant le journal, l'oubli est automatique, puisque
+ * la mise en quarantaine sort l'opération de cette liste.
+ *
+ * `done` est exclu : l'opération a abouti, sa ligne authentique est arrivée par
+ * le tirage et c'est elle qui fait foi. `quarantined` et `blocked` aussi : rien
+ * n'en est advenu côté serveur, elles ne doivent donc rien afficher comme acquis.
+ */
+export async function enAttenteParType<T = unknown>(
+  kind: string
+): Promise<{ id: string; payload: T; occurredAt: Date }[]> {
+  const lignes = await db
+    .select({
+      id: outboxOperations.id,
+      payload: outboxOperations.payload,
+      occurredAt: outboxOperations.occurredAt,
+    })
+    .from(outboxOperations)
+    .where(
+      and(
+        eq(outboxOperations.kind, kind),
+        inArray(outboxOperations.state, ["pending", "inflight"])
+      )
+    )
+    .orderBy(asc(outboxOperations.seq));
+
+  return lignes.map((l) => ({
+    id: l.id,
+    payload: JSON.parse(l.payload) as T,
+    occurredAt: l.occurredAt,
+  }));
+}

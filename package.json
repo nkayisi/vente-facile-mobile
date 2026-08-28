@@ -9,7 +9,7 @@
     "@react-native-community/datetimepicker": "9.1.0",
     "@react-native-community/netinfo": "12.0.1",
     "@shopify/flash-list": "2.0.2",
-    "@vente-facile/core": "github:nkayisi/vente-facile-core#v0.1.0",
+    "@vente-facile/core": "github:nkayisi/vente-facile-core#v0.6.0",
     "drizzle-orm": "^0.45.2",
     "expo": "~57.0.18",
     "expo-application": "~57.0.2",

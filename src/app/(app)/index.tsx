@@ -9,10 +9,10 @@ import { View } from "react-native";
 import { router } from "expo-router";
 
 import { useSession } from "@/session/provider";
-import { Button, Card, CardHeader, Divider, ListItem, Screen, Section, Text } from "@/ui";
+import { Button, Card, CardHeader, Divider, Icon, ListItem, Pressable, Screen, Section, Text } from "@/ui";
 
 export default function Home() {
-  const { snapshot, logout, lock, refresh } = useSession();
+  const { snapshot, logout, lock, refresh, can } = useSession();
 
   const org = snapshot?.organization;
   const membership = snapshot?.membership;
@@ -25,6 +25,28 @@ export default function Home() {
           {snapshot?.user.full_name} · {membership?.role ?? "sans rôle"}
         </Text>
       </View>
+
+      {can("sales.create") ? (
+        <Pressable
+          onPress={() => router.push("/pos")}
+          haptic="selection"
+          className="mb-6 flex-row items-center gap-4 rounded-2xl bg-primary p-5 active:opacity-90"
+          accessibilityLabel="Ouvrir le comptoir"
+        >
+          <View className="h-12 w-12 items-center justify-center rounded-xl bg-primary-foreground/20">
+            <Icon name="cart-outline" size={26} color="primaryForeground" />
+          </View>
+          <View className="flex-1">
+            <Text variant="h4" className="text-primary-foreground">
+              Vendre
+            </Text>
+            <Text variant="bodySmall" className="text-primary-foreground/80">
+              Comptoir, scan, encaissement
+            </Text>
+          </View>
+          <Icon name="chevron-forward" size={20} color="primaryForeground" />
+        </Pressable>
+      ) : null}
 
       <Section title="Session hors ligne">
         <Card className="p-0 overflow-hidden">

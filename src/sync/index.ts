@@ -13,6 +13,7 @@ export {
   BATCH_SIZE,
   type OperationKind,
   type OutboxState,
+  enAttenteParType,
 } from "./outbox";
 export { readState, readAllStates, writeState, resetAllStates } from "./state";
 export { coerce } from "./coerce";

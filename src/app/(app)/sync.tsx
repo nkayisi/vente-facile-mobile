@@ -23,7 +23,6 @@ import {
 } from "@/sync";
 import { useSession } from "@/session/provider";
 import type { SyncStateRow } from "@/db/schema";
-import { creerVenteDeTest } from "@/features/sync/vente-de-test";
 import {
   Badge,
   Banner,
@@ -188,22 +187,6 @@ export default function Sync() {
           {busy ? "Synchronisation en cours" : "Synchroniser maintenant"}
         </Button>
       </View>
-
-      {__DEV__ ? (
-        <View className="mb-5">
-          <Button
-            variant="outline"
-            fullWidth
-            leftIcon="flask-outline"
-            onPress={async () => {
-              setNotice(await creerVenteDeTest());
-              await refresh();
-            }}
-          >
-            Mettre une vente de test en file
-          </Button>
-        </View>
-      ) : null}
 
       {states.length > 0 ? (
         <Section title="État par table">
