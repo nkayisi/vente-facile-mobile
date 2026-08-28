@@ -6,6 +6,7 @@
  * onglets adaptés au rôle arrivent avec les écrans métier.
  */
 import { View } from "react-native";
+import { router } from "expo-router";
 
 import { useSession } from "@/session/provider";
 import { Button, Card, CardHeader, Divider, ListItem, Screen, Section, Text } from "@/ui";
@@ -64,6 +65,13 @@ export default function Home() {
       </Section>
 
       <View className="gap-3">
+        <Button
+          fullWidth
+          leftIcon="cloud-download-outline"
+          onPress={() => router.push("/(app)/sync")}
+        >
+          Synchronisation
+        </Button>
         <Button variant="outline" fullWidth leftIcon="refresh" onPress={() => void refresh()}>
           Rafraîchir la session
         </Button>

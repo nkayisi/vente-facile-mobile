@@ -76,7 +76,8 @@
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "db:pull-schema": "node scripts/generate-schema.mjs"
   },
   "private": true
 }

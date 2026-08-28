@@ -12,3 +12,4 @@
  * tout en les marquant « synchronisées ».
  */
 export * from "./local";
+export * from "./pulled";

@@ -18,14 +18,28 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const syncState = sqliteTable("sync_state", {
   /** Nom de la table côté serveur : `products`, `stocks`, `customers`… */
   table: text("table").primaryKey(),
-  cursorUpdatedAt: text("cursor_updated_at"),
-  cursorId: text("cursor_id"),
+  /**
+   * Curseur d'écriture, tel que le serveur l'a rendu.
+   *
+   * Conservé OPAQUE. Il encode un couple `(updated_at, id)`, mais le décomposer
+   * ici figerait cette forme des deux côtés : le serveur ne pourrait plus la
+   * changer sans casser les clients déjà déployés.
+   */
+  cursor: text("cursor"),
+  /**
+   * Curseur des suppressions, distinct.
+   *
+   * Les mêler ferait sauter les unes ou les autres : une ligne modifiée puis
+   * supprimée avancerait le curseur au-delà de sa propre pierre tombale.
+   */
+  deletedCursor: text("deleted_cursor"),
   /** Vrai tant que le serveur annonce des pages restantes. */
   hasMore: integer("has_more", { mode: "boolean" }).notNull().default(false),
   /** Dernière fois que la table a été tirée JUSQU'AU BOUT. */
   lastFullSyncAt: integer("last_full_sync_at", { mode: "timestamp_ms" }),
   /** Dernière erreur rencontrée, conservée pour l'écran de synchronisation. */
   lastError: text("last_error"),
+  /** Lignes reçues au total, pour la progression du premier tirage. */
   rowCount: integer("row_count").notNull().default(0),
 });
 
