@@ -94,8 +94,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     setSnapshot(cached);
     setOrganizationId(cached.organization.id);
-    // Un terminal sans code n'a rien à verrouiller : on entre directement.
-    setStatus(pinSet ? "locked" : "ready");
+    // Un terminal enrôlé SANS code repasse par sa définition. Le laisser entrer
+    // lui donnerait une session de 30 jours et les ventes du jour sans aucun
+    // verrou, ce que le lot 1 s'interdit. Le cas se produit si l'application a
+    // été fermée entre l'enrôlement et la saisie du code.
+    setStatus(pinSet ? "locked" : "needs_pin");
   }, []);
 
   useEffect(() => {

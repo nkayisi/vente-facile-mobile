@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { DatabaseProvider } from "@/db/provider";
+import { SessionGate } from "@/session/gate";
 import { SessionProvider } from "@/session/provider";
 import { ThemeProvider } from "@/ui/theme";
 
@@ -33,6 +34,7 @@ export default function RootLayout() {
           <StatusBar style="auto" />
           <DatabaseProvider>
             <SessionProvider>
+              <SessionGate />
               <Stack screenOptions={{ headerShown: false }} />
             </SessionProvider>
           </DatabaseProvider>

@@ -29,6 +29,18 @@ export function PinDots({ length, filled }: { length: number; filled: number }) 
   );
 }
 
+/**
+ * Trois colonnes, imposées par la largeur du conteneur.
+ *
+ * Un `flex-wrap` libre en laissait passer quatre sur un écran large, et le
+ * pavé sortait en 1234 / 5678 / 90 : illisible, parce qu'un clavier
+ * téléphonique se compose de mémoire et non en lisant. La largeur est donc
+ * calculée, pas espérée.
+ */
+const KEY_SIZE = 72;
+const KEY_MARGIN = 8; // m-2 de chaque côté
+const PAD_WIDTH = (KEY_SIZE + KEY_MARGIN * 2) * 3;
+
 export function PinPad({
   onDigit,
   onBackspace,
@@ -39,7 +51,10 @@ export function PinPad({
   disabled?: boolean;
 }) {
   return (
-    <View className="flex-row flex-wrap justify-center">
+    <View
+      className="flex-row flex-wrap justify-center self-center"
+      style={{ width: PAD_WIDTH }}
+    >
       {KEYS.map((key, index) => {
         if (key === "") return <View key={index} className="m-2 h-[72px] w-[72px]" />;
 
