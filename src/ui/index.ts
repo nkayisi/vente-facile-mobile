@@ -14,6 +14,7 @@ export { Input, FormField, type InputProps } from "./input";
 export { Card, CardHeader, Section } from "./card";
 export { ListItem, type ListItemProps } from "./list-item";
 export { Divider } from "./divider";
+export { PinPad, PinDots } from "./pin-pad";
 export { Badge, type BadgeTone } from "./badge";
 export { Screen, type ScreenProps } from "./screen";
 export { Spinner, type SpinnerProps } from "./spinner";
