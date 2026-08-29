@@ -11,6 +11,7 @@
  * vingt-neuf autres ne fait pas de Paramètres une page spéciale, cela fait un
  * oubli visible.
  */
+import { ScrollView } from "react-native";
 import { Slot, router, usePathname } from "expo-router";
 
 import { AppBar, Screen, Segmented } from "@/ui";
@@ -43,7 +44,17 @@ export default function ParametresLayout() {
         valeur={courant}
         onChange={(v) => router.replace(ROUTES[v] as never)}
       />
-      <Slot />
+      {/* Le defilement vit ICI, pas dans les ecrans enfants : les trois onglets
+          doivent rester fixes pendant qu'on parcourt un formulaire long. Sans
+          cette zone defilante, le bouton « Enregistrer » etait hors d'atteinte -
+          defaut vu a l'usage, invisible en relisant le code. */}
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Slot />
+      </ScrollView>
     </Screen>
   );
 }

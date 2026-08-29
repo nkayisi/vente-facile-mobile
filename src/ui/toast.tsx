@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon, type IconName } from "./icon";
 import { Text } from "./text";
+/** Hauteur de la barre d'onglets Android, hors zone sûre. */
+const HAUTEUR_ONGLETS = 56;
 
 type TonToast = "succes" | "erreur" | "info";
 
@@ -62,7 +64,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         <View
           pointerEvents="none"
           className="absolute inset-x-0 z-50 px-4"
-          style={{ top: insets.top + 8 }}
+          /**
+           * EN BAS, au-dessus de la barre d'onglets.
+           *
+           * Un bandeau flottant en haut heurte forcément quelque chose : posé
+           * sur la barre, il masque le hamburger et l'avatar ; posé dessous, il
+           * masque le titre de la page. Les deux ont été essayés sur
+           * l'émulateur. En bas, il ne recouvre que du vide, il est près du
+           * pouce, et c'est la convention de la plateforme.
+           *
+           * `HAUTEUR_ONGLETS` est mesurée et non lue : `useBottomTabBarHeight`
+           * n'est disponible que SOUS le navigateur d'onglets, alors que ce
+           * fournisseur est monté au-dessus - il doit aussi servir les écrans
+           * plein écran du comptoir, qui n'ont pas de barre.
+           */
+          style={{ bottom: insets.bottom + HAUTEUR_ONGLETS + 12 }}
         >
           <View className={`flex-row items-center gap-2 rounded-xl border px-3 py-3 ${h.fond}`}>
             <Icon name={h.icone} size={18} color={h.couleur} />

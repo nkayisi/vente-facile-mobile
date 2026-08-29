@@ -115,6 +115,88 @@ export async function enrollDevice(
   return snapshot;
 }
 
+/** Types d'établissement, exactement ceux de l'assistant web. */
+export type TypeEtablissement =
+  | "boutique" | "supermarket" | "pharmacy" | "depot" | "restaurant" | "other";
+
+export interface SaisieCompte {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  password_confirm: string;
+}
+
+export interface SaisieEtablissement {
+  organization_name: string;
+  organization_phone: string;
+  business_type: TypeEtablissement;
+  currency: string;
+  country: string;
+}
+
+/** À quelle étape l'inscription a échoué. Ce n'est pas la même conséquence. */
+export type EtapeInscription = "creation" | "enrolement";
+
+export class EchecInscription extends Error {
+  constructor(
+    readonly etape: EtapeInscription,
+    readonly cause: unknown,
+    /** Renseigné quand l'établissement EXISTE déjà côté serveur. */
+    readonly organizationId?: string
+  ) {
+    super(etape === "creation" ? "Création impossible" : "Enrôlement impossible");
+    this.name = "EchecInscription";
+  }
+}
+
+/**
+ * Crée le compte, l'établissement, PUIS enrôle le terminal.
+ *
+ * **LES DEUX APPELS SONT ENCHAÎNÉS ICI, et c'est délibéré.** Les laisser à deux
+ * écrans exposerait au pire cas : l'application fermée entre les deux, on
+ * revient avec des JWT mais sans appareil, et le démarrage du fournisseur de
+ * session renvoie à `anonymous` puisqu'il exige un instantané. L'utilisateur
+ * aurait payé une inscription pour se retrouver devant l'écran de connexion.
+ *
+ * `Device.organization` est une clé étrangère non nulle et `/devices/enroll/`
+ * exige l'en-tête `X-Organization-ID` : l'enrôlement ne PEUT pas précéder la
+ * création. L'ordre n'est donc pas un choix.
+ *
+ * Si le second appel échoue, **on ne perd rien** : les jetons sont écrits et
+ * l'établissement existe. L'erreur porte son identifiant pour que l'écran
+ * propose de reprendre à l'enrôlement, sans recréer une seconde boutique.
+ */
+export async function registerAndEnroll(
+  compte: SaisieCompte,
+  etablissement: SaisieEtablissement
+): Promise<SessionSnapshot> {
+  let organizationId: string;
+  try {
+    const data = await request<{
+      access: string;
+      refresh: string;
+      organization: { id: string; name: string; slug: string };
+    }>("/auth/register-with-organization/", {
+      method: "POST",
+      body: { ...compte, ...etablissement },
+      auth: false,
+      org: false,
+    });
+    await writeTokens({ access: data.access, refresh: data.refresh });
+    organizationId = data.organization.id;
+  } catch (error) {
+    throw new EchecInscription("creation", error);
+  }
+
+  try {
+    return await enrollDevice(organizationId);
+  } catch (error) {
+    throw new EchecInscription("enrolement", error, organizationId);
+  }
+}
+
 /**
  * Rafraîchit l'identité mise en cache, sans bloquer.
  *

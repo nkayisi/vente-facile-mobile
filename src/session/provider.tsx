@@ -33,6 +33,9 @@ import {
 import {
   enrollDevice as enrollDeviceOp,
   loginWithPassword,
+  registerAndEnroll,
+  type SaisieCompte,
+  type SaisieEtablissement,
   logout as logoutOp,
   refreshSnapshot as refreshSnapshotOp,
   type OrganizationChoice,
@@ -50,6 +53,11 @@ interface SessionValue {
 
   login: (email: string, password: string) => Promise<OrganizationChoice[]>;
   chooseOrganization: (organizationId: string) => Promise<void>;
+  /** Inscription complète : compte, établissement, puis enrôlement du terminal. */
+  inscrire: (
+    compte: SaisieCompte,
+    etablissement: SaisieEtablissement
+  ) => Promise<void>;
   markUnlocked: () => void;
   lock: () => void;
   logout: () => Promise<void>;
@@ -139,6 +147,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus((await hasPin()) ? "ready" : "needs_pin");
   }, []);
 
+  /**
+   * Inscription. Le terminal est enrôlé dans la foulée par `registerAndEnroll`,
+   * et on n'arrive ici qu'une fois les DEUX appels passés : l'état de session
+   * ne bascule donc jamais sur une organisation sans appareil.
+   */
+  const inscrire = useCallback(
+    async (compte: SaisieCompte, etablissement: SaisieEtablissement) => {
+      const fresh = await registerAndEnroll(compte, etablissement);
+      setSnapshot(fresh);
+      setLostReason(null);
+      setStatus((await hasPin()) ? "ready" : "needs_pin");
+    },
+    []
+  );
+
   const markUnlocked = useCallback(() => setStatus("ready"), []);
 
   const lock = useCallback(() => {
@@ -178,6 +201,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       lostReason,
       login,
       chooseOrganization,
+      inscrire,
       markUnlocked,
       lock,
       logout,
@@ -185,7 +209,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       can,
       canAny,
     }),
-    [status, snapshot, lostReason, login, chooseOrganization, markUnlocked, lock, logout, refresh, can, canAny]
+    [status, snapshot, lostReason, login, chooseOrganization, inscrire, markUnlocked, lock, logout, refresh, can, canAny]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

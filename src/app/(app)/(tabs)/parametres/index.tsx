@@ -1,25 +1,140 @@
 /**
- * Paramètres, Infos générales.
+ * Paramètres, Infos générales. Miroir de `app/dashboard/settings/page.tsx`.
  *
- * Miroir de `app/dashboard/settings/page.tsx` : deux cartes, « Informations de
- * l'établissement » puis « Paramètres généraux » avec ses trois sous-sections.
+ * **LA LECTURE EST HORS LIGNE, L'ÉCRITURE EST EN LIGNE.** Les valeurs viennent
+ * des tables tirées (`organizations`, `organization_settings`), donc l'écran
+ * s'affiche complet sans réseau, démarrage à froid compris. Mais aucun `kind`
+ * de paramètres n'existe côté serveur - les neuf gestionnaires de poussée sont
+ * des actes métier - donc on ne peut pas mettre une modification en file. Le
+ * dire est plus honnête que le simuler : un réglage qu'on croirait enregistré
+ * et qui ne partirait jamais est pire qu'un bouton grisé.
  *
- * **La LECTURE vient des tables tirées** (`organizations`,
- * `organization_settings`), donc l'écran s'affiche entièrement HORS LIGNE, avec
- * les vraies valeurs. **L'ÉCRITURE est en ligne uniquement** : aucun `kind` de
- * paramètres n'existe côté serveur - les neuf handlers de poussée sont des
- * actes métier - et en fabriquer un est du travail backend. Le dire est plus
- * honnête que le simuler.
+ * Trois gardes, dans cet ordre de priorité :
+ *   1. hors ligne      -> bandeau, champs verrouillés, bouton désactivé
+ *   2. droits          -> bandeau ambre, comme le web
+ *   3. en ligne + rôle -> édition
+ *
+ * Après un enregistrement réussi : un TIRAGE CIBLÉ, jamais une écriture locale
+ * depuis la réponse. Le serveur fait autorité sans exception.
  */
+import { useEffect, useState } from "react";
 import { View } from "react-native";
+import { isAtLeastRole } from "@vente-facile/core";
 
+import { api } from "@/api/client";
+import { readableMessage } from "@/api/errors";
 import { useLecture } from "@/data/live";
 import { etablissement, parametresRecu } from "@/data/organisation";
-import { Card, CardHeader, Divider, ListItem, Section, Spinner, Text } from "@/ui";
+import { tirerTables } from "@/data/rafraichir";
+import { useEnLigne } from "@/data/reseau";
+import { useSession } from "@/session/provider";
+import {
+  Banner,
+  Button,
+  Card,
+  CardHeader,
+  FormField,
+  Input,
+  ListItem,
+  Screen,
+  Section,
+  Spinner,
+  Switch,
+  Text,
+  TuileChoix,
+  useToast,
+} from "@/ui";
+
+const TABLES = ["organizations", "organization_settings"];
 
 export default function InfosGenerales() {
-  const { donnees: etab, chargement } = useLecture(etablissement, { tables: ["organizations"] });
-  const { donnees: recu } = useLecture(parametresRecu, { tables: ["organization_settings"] });
+  const { snapshot } = useSession();
+  const enLigne = useEnLigne();
+  const toast = useToast();
+
+  const { donnees: etab, chargement } = useLecture(etablissement, { tables: TABLES });
+  const { donnees: recu } = useLecture(parametresRecu, { tables: TABLES });
+
+  const [form, setForm] = useState({
+    nom: "", telephone: "", email: "", adresse: "", ville: "", pays: "",
+    nif: "", rccm: "", idNat: "",
+  });
+  const [reglages, setReglages] = useState({
+    enTete: "", pied: "", largeurPapier: 58, seuil: "", points: false,
+  });
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  // On ne repose le formulaire que lorsque la source change : autrement une
+  // frappe serait écrasée par le rendu suivant.
+  useEffect(() => {
+    if (!etab) return;
+    setForm({
+      nom: etab.nom, telephone: etab.telephone ?? "", email: etab.email ?? "",
+      adresse: etab.adresse ?? "", ville: etab.ville ?? "", pays: etab.pays ?? "",
+      nif: etab.nif ?? "", rccm: etab.rccm ?? "", idNat: etab.idNat ?? "",
+    });
+  }, [etab?.id, etab?.nom, etab?.telephone, etab?.email, etab?.adresse, etab?.ville, etab?.pays, etab?.nif, etab?.rccm, etab?.idNat]);
+
+  useEffect(() => {
+    if (!recu) return;
+    setReglages({
+      enTete: recu.enTete ?? "", pied: recu.pied ?? "",
+      largeurPapier: recu.largeurPapier, points: recu.pointsSurRecu,
+      seuil: recu.seuilStockBas != null ? String(recu.seuilStockBas) : "",
+    });
+  }, [recu?.enTete, recu?.pied, recu?.largeurPapier, recu?.pointsSurRecu, recu?.seuilStockBas]);
+
+  const droits = isAtLeastRole(
+    snapshot?.membership
+      ? {
+          role: snapshot.membership.role ?? "cashier",
+          role_display: "",
+          permissions: snapshot.membership.permissions,
+          // `manageable_roles` ne sert qu'a l'ecran d'administration des membres,
+          // qui n'existe pas encore ici : `isAtLeastRole` ne lit que `role`.
+          manageable_roles: [],
+        }
+      : null,
+    "manager"
+  );
+  const modifiable = enLigne && droits;
+
+  async function enregistrer() {
+    if (!etab || envoi) return;
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await api.patch(`/organizations/${etab.id}/`, {
+        name: form.nom.trim(),
+        phone: form.telephone.trim(),
+        email: form.email.trim(),
+        address: form.adresse.trim(),
+        city: form.ville.trim(),
+        country: form.pays.trim(),
+        tax_id: form.nif.trim(),
+        rccm: form.rccm.trim(),
+        id_nat: form.idNat.trim(),
+      });
+      await api.post("/settings/organization-settings/", {
+        receipt_header: reglages.enTete,
+        receipt_footer: reglages.pied,
+        receipt_paper_width: reglages.largeurPapier,
+        show_loyalty_points_on_receipt: reglages.points,
+        low_stock_threshold: reglages.seuil === "" ? null : Number(reglages.seuil),
+      });
+      // Tirage ciblé : la vue se met à jour depuis le SERVEUR, jamais depuis
+      // ce qu'on vient d'envoyer.
+      await tirerTables(TABLES);
+      toast.succes("Paramètres enregistrés");
+    } catch (e) {
+      setErreur(
+        readableMessage((e as { body?: unknown })?.body, "L'enregistrement n'a pas abouti.")
+      );
+    } finally {
+      setEnvoi(false);
+    }
+  }
 
   if (chargement && !etab) {
     return (
@@ -31,63 +146,126 @@ export default function InfosGenerales() {
 
   return (
     <View className="gap-6 p-4">
+      {!enLigne ? (
+        <Banner
+          tone="warning"
+          title="Hors ligne"
+          message="Les paramètres se consultent, mais se modifient en ligne : le serveur doit les appliquer avant que vos autres terminaux les reçoivent."
+        />
+      ) : !droits ? (
+        <Banner
+          tone="warning"
+          title="Lecture seule"
+          message="Seuls les gérants et les administrateurs peuvent modifier ces informations."
+        />
+      ) : null}
+
+      {erreur ? <Banner tone="destructive" title="Échec" message={erreur} /> : null}
+
       <Section title="Informations de l'établissement">
-        <Card className="overflow-hidden p-0">
-          <ListItem title="Nom" value={etab?.nom ?? "—"} />
-          <Divider inset />
-          <ListItem
-            title="Type d'activité"
-            value={etab?.typeAffiche ?? "—"}
-            subtitle="Non modifiable après la création"
-          />
-          <Divider inset />
-          <ListItem title="Téléphone" value={etab?.telephone ?? "—"} />
-          <Divider inset />
-          <ListItem title="Email" value={etab?.email ?? "—"} />
-          <Divider inset />
-          <ListItem title="Adresse" value={etab?.adresse ?? "—"} />
-          <Divider inset />
-          <ListItem title="Ville" value={etab?.ville ?? "—"} />
-          <Divider inset />
-          <ListItem title="Pays" value={etab?.pays ?? "—"} />
-          <Divider inset />
-          <ListItem title="N° impôt (NIF)" value={etab?.nif ?? "—"} />
-          <Divider inset />
-          <ListItem title="RCCM" value={etab?.rccm ?? "—"} />
-          <Divider inset />
-          <ListItem title="ID National" value={etab?.idNat ?? "—"} />
+        <Card className="gap-4">
+          <FormField label="Nom de l'établissement" required>
+            <Input value={form.nom} onChangeText={(v) => setForm((f) => ({ ...f, nom: v }))}
+                   editable={modifiable} placeholder="Ex : Boutique Chez Nelson" />
+          </FormField>
+
+          {/* Non modifiable après la création, comme sur le web. */}
+          <ListItem title="Type d'activité" value={etab?.typeAffiche ?? "—"}
+                    subtitle="Non modifiable après la création" />
+
+          <FormField label="Téléphone" required>
+            <Input value={form.telephone} onChangeText={(v) => setForm((f) => ({ ...f, telephone: v }))}
+                   editable={modifiable} keyboardType="phone-pad" placeholder="Ex : +243 800 000 000" />
+          </FormField>
+          <FormField label="Email">
+            <Input value={form.email} onChangeText={(v) => setForm((f) => ({ ...f, email: v }))}
+                   editable={modifiable} keyboardType="email-address" autoCapitalize="none" />
+          </FormField>
+          <FormField label="Adresse">
+            <Input value={form.adresse} onChangeText={(v) => setForm((f) => ({ ...f, adresse: v }))}
+                   editable={modifiable} multiline numberOfLines={2}
+                   style={{ minHeight: 72, textAlignVertical: "top" }} />
+          </FormField>
+          <FormField label="Ville">
+            <Input value={form.ville} onChangeText={(v) => setForm((f) => ({ ...f, ville: v }))}
+                   editable={modifiable} placeholder="Ex : Kinshasa" />
+          </FormField>
+          <FormField label="Pays">
+            <Input value={form.pays} onChangeText={(v) => setForm((f) => ({ ...f, pays: v }))}
+                   editable={modifiable} />
+          </FormField>
+          <FormField label="N° impôt (NIF)">
+            <Input value={form.nif} onChangeText={(v) => setForm((f) => ({ ...f, nif: v }))}
+                   editable={modifiable} />
+          </FormField>
+          <FormField label="RCCM">
+            <Input value={form.rccm} onChangeText={(v) => setForm((f) => ({ ...f, rccm: v }))}
+                   editable={modifiable} />
+          </FormField>
+          <FormField label="ID National">
+            <Input value={form.idNat} onChangeText={(v) => setForm((f) => ({ ...f, idNat: v }))}
+                   editable={modifiable} />
+          </FormField>
         </Card>
       </Section>
 
       <Section title="Paramètres généraux">
-        <Card>
+        <Card className="gap-4">
           <CardHeader title="Reçus" subtitle="Ce qui s'imprime en tête et en pied de ticket" />
-          <Text variant="caption">En-tête</Text>
-          <Text variant="bodySmall">{recu?.enTete?.trim() || "Aucun"}</Text>
-          <Text variant="caption" className="mt-3">
-            Pied de page
-          </Text>
-          <Text variant="bodySmall">{recu?.pied?.trim() || "Aucun"}</Text>
-          <Text variant="caption" className="mt-3">
-            Largeur du papier du ticket
-          </Text>
-          <Text variant="bodySmall">{`${recu?.largeurPapier ?? 58} mm`}</Text>
+          <FormField label="En-tête du reçu">
+            <Input value={reglages.enTete} onChangeText={(v) => setReglages((r) => ({ ...r, enTete: v }))}
+                   editable={modifiable} multiline numberOfLines={3}
+                   style={{ minHeight: 88, textAlignVertical: "top" }} />
+          </FormField>
+          <FormField label="Pied de page du reçu">
+            <Input value={reglages.pied} onChangeText={(v) => setReglages((r) => ({ ...r, pied: v }))}
+                   editable={modifiable} multiline numberOfLines={3}
+                   style={{ minHeight: 88, textAlignVertical: "top" }} />
+          </FormField>
+          <View>
+            <Text variant="label" className="mb-2">Largeur du papier du ticket</Text>
+            <View className="flex-row gap-3">
+              <TuileChoix titre="58 mm" description="Ticket étroit"
+                          choisie={reglages.largeurPapier === 58}
+                          onPress={() => modifiable && setReglages((r) => ({ ...r, largeurPapier: 58 }))} />
+              <TuileChoix titre="80 mm" description="Ticket standard"
+                          choisie={reglages.largeurPapier === 80}
+                          onPress={() => modifiable && setReglages((r) => ({ ...r, largeurPapier: 80 }))} />
+            </View>
+          </View>
         </Card>
-        <Card className="mt-3">
+
+        <Card className="mt-3 gap-4">
           <CardHeader title="Notifications" />
-          <ListItem
-            title="Seuil d'alerte stock bas"
-            value={recu?.seuilStockBas != null ? String(recu.seuilStockBas) : "—"}
-          />
+          <FormField label="Seuil d'alerte stock bas">
+            <Input value={reglages.seuil} onChangeText={(v) => setReglages((r) => ({ ...r, seuil: v }))}
+                   editable={modifiable} keyboardType="number-pad" />
+          </FormField>
         </Card>
+
         <Card className="mt-3">
           <CardHeader title="Affichage sur les reçus" />
-          <ListItem
-            title="Afficher les points de fidélité sur les reçus"
-            value={recu?.pointsSurRecu ? "Oui" : "Non"}
+          <Switch
+            label="Afficher les points de fidélité sur les reçus"
+            valeur={reglages.points}
+            desactive={!modifiable}
+            onChange={(v) => setReglages((r) => ({ ...r, points: v }))}
           />
         </Card>
       </Section>
+
+      <Button fullWidth size="lg" leftIcon="Save" loading={envoi}
+              disabled={!modifiable}
+              onPress={() => void enregistrer()}>
+        Enregistrer
+      </Button>
+      {!modifiable ? (
+        <Text variant="caption" className="-mt-4 text-center">
+          {enLigne
+            ? "Réservé aux gérants et aux administrateurs."
+            : "Reconnectez-vous à Internet pour enregistrer."}
+        </Text>
+      ) : null}
     </View>
   );
 }

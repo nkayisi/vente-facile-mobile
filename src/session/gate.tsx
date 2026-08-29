@@ -40,10 +40,22 @@ export function SessionGate() {
     const current = `/${segments.join("/")}`;
 
     // `(app)` couvre toute une arborescence : une fois dedans, on laisse
-    // l'utilisateur naviguer librement. Les autres états visent un écran
-    // précis, et on n'y renvoie que si on n'y est pas déjà.
+    // l'utilisateur naviguer librement.
+    //
+    // `anonymous` couvre tout le groupe `(auth)`, et pas seulement l'écran de
+    // connexion. Sans cela l'ASSISTANT D'INSCRIPTION serait inatteignable : on
+    // y navigue depuis la connexion, la garde constate que le chemin n'est pas
+    // `/(auth)/login`, et renvoie aussitôt en arrière. Le défaut se voit à
+    // l'usage - l'écran clignote et revient - jamais en relisant la table.
+    //
+    // Les autres états visent un écran précis, et on n'y renvoie que si on n'y
+    // est pas déjà : `needs_pin` doit ramener au code, où qu'on aille.
     const alreadyThere =
-      status === "ready" ? segments[0] === "(app)" : current === target;
+      status === "ready"
+        ? segments[0] === "(app)"
+        : status === "anonymous"
+          ? segments[0] === "(auth)"
+          : current === target;
 
     if (!alreadyThere) router.replace(target as never);
   }, [status, segments, router]);

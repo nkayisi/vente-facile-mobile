@@ -12,7 +12,7 @@ import { router } from "expo-router";
 
 import { ApiError } from "@/api/errors";
 import { useSession } from "@/session/provider";
-import { Banner, Button, FormField, Input, Screen, Text } from "@/ui";
+import { Banner, Button, FormField, Input, Pressable, Screen, Text } from "@/ui";
 
 export default function Login() {
   const { login, chooseOrganization, status, lostReason } = useSession();
@@ -37,7 +37,11 @@ export default function Login() {
       const organizations = await login(email.trim().toLowerCase(), password);
 
       if (organizations.length === 0) {
-        setError("Aucun établissement n'est rattaché à ce compte.");
+        // Ce n'était qu'un message : le compte existait, mais l'écran ne
+        // proposait rien. On nomme la sortie.
+        setError(
+          "Aucun établissement n'est rattaché à ce compte. Créez votre boutique pour commencer."
+        );
         return;
       }
       // Une seule boutique : rien à demander. Au-delà, on demande, toujours.
@@ -132,6 +136,22 @@ export default function Login() {
       <Button fullWidth size="lg" loading={busy} onPress={submit}>
         Se connecter
       </Button>
+
+      {/* Le lien reste VISIBLE hors ligne : masquer enseigne mal. C'est l'écran
+          d'inscription qui explique pourquoi il faut du réseau, et il le dit. */}
+      <Pressable
+        onPress={() => router.push("/(auth)/inscription/compte")}
+        accessibilityRole="link"
+        accessibilityLabel="Créer ma boutique"
+        className="mt-4 items-center py-2"
+      >
+        <Text variant="bodySmall">
+          Pas encore de compte ?{" "}
+          <Text variant="bodySmall" className="font-sans-medium text-accent-foreground">
+            Créer ma boutique
+          </Text>
+        </Text>
+      </Pressable>
     </Screen>
   );
 }
