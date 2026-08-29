@@ -119,7 +119,27 @@ Le découpage complet (13 lots, 0 à 12) vient du plan approuvé
 `maintenant-dans-ce-projet-polished-seahorse.md`, à la racine du dépôt, et son
 suivi est tenu dans le `CLAUDE.md` racine, section 5.4.
 
-Prochain lot : **le lot 5, l'impression** (`src/printing/` est encore vide, alors
-que `@vente-facile/core` décrit déjà les documents en blocs). Il ferme le jalon
-pilote : à l'issue des lots 0 à 5, un caissier travaille toute la journée hors
-ligne et imprime.
+## Impression
+
+ESC/POS est le dénominateur commun des imprimantes thermiques, tous fabricants
+et tous transports confondus. On l'encode **une fois** (`render-escpos.ts`, via
+`@point-of-sale/receipt-printer-encoder`, un paquet sans code natif), puis on se
+contente d'**acheminer** les octets. Ajouter un transport ne touche aucun écran.
+
+| Transport | Matériel | Paquet |
+| --- | --- | --- |
+| `embedded` | imprimante intégrée d'un terminal (NYX, Sunmi…) | module Expo local, à porter |
+| `bluetooth` | Bluetooth classique (SPP), la majorité des 58 mm | `react-native-bluetooth-classic` |
+| `ble` | Bluetooth basse consommation, modèles récents | `react-native-ble-plx` |
+| `pdf` | repli universel, et envoi au client | `expo-print` + `expo-sharing` |
+
+Une seule mise en page (`render-text.ts`, 42 colonnes mesurées sur 58 mm), deux
+encodages : le ticket d'une imprimante Bluetooth et celui du terminal ne peuvent
+pas diverger.
+
+**Avant de toucher aux 42 colonnes** : imprimer la règle de calibration depuis
+l'écran Imprimante, la photographier, compter. Ne jamais déduire la largeur d'un
+calcul.
+
+Le lot 5 est en cours : restent le portage du module natif du terminal, les
+documents autres que le reçu de vente, et la calibration sur le POS physique.
