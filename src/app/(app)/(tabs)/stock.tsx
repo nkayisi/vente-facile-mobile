@@ -46,29 +46,20 @@ export default function Stock() {
   );
 
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader
         title="Gestion de stock"
         subtitle="Vue d'ensemble de vos entrepôts, niveaux de stock et mouvements"
         actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon="Activity"
-              disabled
-              onPress={() => {}}
-            >
-              Entrée de stock
-            </Button>
-            <Button size="sm" leftIcon="Plus" disabled onPress={() => {}}>
-              Nouvel entrepôt
-            </Button>
-          </>
+          // « Nouvel entrepôt » n'est PAS ici : une action se pose à côté de ce
+          // sur quoi elle agit. Elle vit dans la section « Entrepôts ».
+          <Button variant="outline" size="sm" leftIcon="Activity" disabled onPress={() => {}}>
+            Entrée de stock
+          </Button>
         }
       />
       <Text variant="caption" className="mt-1">
-        La saisie de mouvements et la création d'entrepôts arrivent au lot 7.
+        La saisie de mouvements arrive au lot 7.
       </Text>
 
       {/* Les six relevés, dans l'ordre EXACT du back-office. */}
@@ -111,8 +102,9 @@ export default function Stock() {
         <Text variant="h4" className="mb-3">
           Opérations
         </Text>
-        <View className="gap-3">
+        <View className="flex-row flex-wrap gap-3">
           <ActionTile
+            forme="grille"
             href="/stock"
             title="Niveaux de stock"
             description="Ce qui reste en rayon"
@@ -121,6 +113,7 @@ export default function Stock() {
             raison="Arrive au lot 7."
           />
           <ActionTile
+            forme="grille"
             href="/mouvements"
             title="Mouvements"
             description="Entrées et sorties"
@@ -128,6 +121,7 @@ export default function Stock() {
             accent="chart2"
           />
           <ActionTile
+            forme="grille"
             href="/stock"
             title="Transferts"
             description="D'un entrepôt à l'autre"
@@ -136,6 +130,7 @@ export default function Stock() {
             raison="Arrive au lot 7."
           />
           <ActionTile
+            forme="grille"
             href="/stock"
             title="Ajustements"
             description="Corriger un écart"
@@ -147,8 +142,14 @@ export default function Stock() {
       </View>
 
       <View className="mt-6">
-        <Text variant="h4" className="mb-3">
-          Entrepôts
+        <View className="mb-3 flex-row items-center justify-between gap-3">
+          <Text variant="h4">Entrepôts</Text>
+          <Button size="sm" leftIcon="Plus" disabled onPress={() => {}}>
+            Nouvel entrepôt
+          </Button>
+        </View>
+        <Text variant="caption" className="mb-3">
+          La création d'entrepôts arrive au lot 7.
         </Text>
         <View className="mb-3">
           <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Rechercher..." />

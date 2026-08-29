@@ -1,32 +1,35 @@
 /**
- * Les cinq emplacements de la barre d'onglets.
+ * Les cinq onglets du bas. FIXES, quel que soit le rôle.
  *
- * Le contenu des quatre premiers dépend du rôle ; le premier est l'action
- * d'accueil, celle qu'on atteint au pouce sans réfléchir. Le cinquième est
- * TOUJOURS « Plus », et « Plus » est la barre latérale du web à l'identique.
+ * C'est une révision de la première version, qui adaptait le jeu d'onglets au
+ * rôle : une barre qui change de contenu selon qui se connecte oblige à
+ * réapprendre l'application à chaque poste. Cinq emplacements toujours aux
+ * mêmes places se retiennent au pouce, et les entrées hors droits sont de
+ * toute façon signalées dans le tiroir.
  *
- * **Toutes les sections sont déclarées comme onglets, y compris celles qu'aucun
- * rôle ne montre.** C'est une correction au plan approuvé, qui annonçait « les
- * huit `Tabs.Screen` » : une route absente de la déclaration perd la barre
- * d'onglets quand on y entre depuis « Plus ». Celles hors du jeu du rôle
- * portent `href: null` : la route existe, elle n'a simplement pas de bouton.
+ * Le POS est au CENTRE, pas en tête : c'est l'action la plus fréquente de la
+ * journée, et le centre de la barre est le point le plus sûr du pouce.
+ *
+ * **Les onze sections du menu restent toutes déclarées comme écrans d'onglet**,
+ * avec `href: null` pour celles qui n'ont pas de bouton. Une route absente de
+ * la déclaration perdrait la barre d'onglets quand on y entre depuis le tiroir.
  */
-import type { Role } from "./menu";
+import type { IconName } from "@/ui";
 
-/** Onglet propre au mobile : le comptoir n'est pas une section du menu web. */
-export const ONGLET_VENDRE = "vendre";
-export const ONGLET_PLUS = "plus";
-
-export const TAB_SETS: Record<Role, readonly string[]> = {
-  cashier: [ONGLET_VENDRE, "ventes", "contacts", "caisse", ONGLET_PLUS],
-  stock_keeper: ["stock", "inventaire", "mouvements", "articles", ONGLET_PLUS],
-  manager: ["index", ONGLET_VENDRE, "ventes", "stock", ONGLET_PLUS],
-  owner: ["index", ONGLET_VENDRE, "ventes", "stock", ONGLET_PLUS],
-};
-
-/** Sans rôle connu, on ne montre que ce qui ne suppose aucun droit. */
-const SANS_ROLE: readonly string[] = ["index", ONGLET_PLUS];
-
-export function ongletsPourRole(role: Role | null | undefined): readonly string[] {
-  return role ? TAB_SETS[role] : SANS_ROLE;
+export interface Onglet {
+  /** Nom du fichier de route dans le groupe `(tabs)`. */
+  nom: string;
+  /** Étiquette de la barre. Courte : un bouton dispose d'un cinquième de la largeur. */
+  label: string;
+  icon: IconName;
 }
+
+export const ONGLETS: readonly Onglet[] = [
+  { nom: "index", label: "Accueil", icon: "LayoutDashboard" },
+  { nom: "caisse", label: "Caisse", icon: "Wallet" },
+  { nom: "vendre", label: "POS", icon: "ShoppingCart" },
+  { nom: "stock", label: "Stock", icon: "Boxes" },
+  { nom: "parametres", label: "Paramètres", icon: "Settings" },
+] as const;
+
+export const NOMS_ONGLETS: readonly string[] = ONGLETS.map((o) => o.nom);

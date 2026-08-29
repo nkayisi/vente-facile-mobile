@@ -98,15 +98,11 @@ export default function Comptoir() {
   const nbLignes = panier.etat.lignes.length;
 
   return (
-    <Screen>
+    // Le comptoir est un ONGLET : il n'a plus de bouton « quitter », on en
+    // sort en touchant un autre onglet. Et il ne consomme plus l'encoche, que
+    // la barre du haut prend déjà.
+    <Screen edges={[]}>
       <View className="flex-row items-center gap-2 pt-2">
-        <Pressable
-          onPress={() => router.back()}
-          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          accessibilityLabel="Quitter le comptoir"
-        >
-          <Icon name="ArrowLeft" size={24} />
-        </Pressable>
         <View className="flex-1">
           <Text variant="h4" numberOfLines={1}>
             {session.registerName}
@@ -332,7 +328,7 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
   }
 
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <View className="mt-4">
         <Text variant="h2">Ouvrir la caisse</Text>
         <Text variant="muted" className="mt-1">

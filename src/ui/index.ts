@@ -47,6 +47,7 @@ export {
 
 // --- Lot 5bis : la coquille et la parite de presentation ---
 export { AppBar } from "./app-bar";
+export { TopBar } from "./top-bar";
 export { PageHeader, type PageHeaderProps } from "./page-header";
 export { StatValue, statValueSize } from "./stat-value";
 export { StatStrip, StatStripItem, type StatTone } from "./stat-strip";

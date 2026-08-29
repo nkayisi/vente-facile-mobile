@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Profil() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Mon profil" subtitle="Gérez vos informations personnelles et votre sécurité" />
       <PasEncore icon="User" lot={11} quoi="la photo, les informations personnelles et le changement de mot de passe" />
     </Screen>

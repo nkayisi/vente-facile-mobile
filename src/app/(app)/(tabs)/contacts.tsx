@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Contacts() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Clients & Fournisseurs" subtitle="Gérez vos clients, fournisseurs et leurs informations" />
       <PasEncore icon="Users" lot={6} quoi="la fiche client, les règlements, avances et ajustements de solde, et les fournisseurs" />
     </Screen>

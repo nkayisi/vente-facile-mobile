@@ -32,7 +32,7 @@ export default function ParametresLayout() {
       : "index";
 
   return (
-    <Screen edges={["top"]} padded={false}>
+    <Screen edges={[]} padded={false}>
       <AppBar title="Paramètres" subtitle="Configuration de votre établissement" back={false} />
       <Segmented
         options={[

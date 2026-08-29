@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Abonnement() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Abonnement" subtitle="Gérez votre abonnement et consultez vos factures" />
       <PasEncore icon="Crown" lot={11} quoi="le plan en cours, les paiements et les factures" table="subscriptions" />
     </Screen>

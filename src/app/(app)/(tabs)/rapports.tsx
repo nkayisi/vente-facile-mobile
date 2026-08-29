@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Rapports() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Rapports & Statistiques" subtitle="Analysez les performances de votre entreprise" />
       <PasEncore icon="BarChart3" lot={10} quoi="les huit onglets de statistiques et le rapport de créances" />
     </Screen>

@@ -53,6 +53,16 @@ export interface PullPage {
   schema_version: number;
 }
 
+/** Réponse de la sonde `POST /sync/pull/changed/`. */
+export interface ChangedTables {
+  /** Noms des tables ayant du neuf depuis les curseurs envoyés. */
+  changed: string[];
+  /** Nombre total de tables au manifeste, pour information. */
+  tables: number;
+  server_time: string;
+  schema_version: number;
+}
+
 /** Ce que l'écran d'attente affiche pendant la première synchronisation. */
 export interface PullProgress {
   /** Table en cours. */

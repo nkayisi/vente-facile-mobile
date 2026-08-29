@@ -11,8 +11,14 @@ import { ApiError } from "@/api/errors";
 import { connection } from "@/db/client";
 
 import { deleteRows, replaceChildren, upsertRows } from "./ingest";
-import { readState, writeState } from "./state";
-import type { Manifest, PullPage, PullProgress, TableSpec } from "./types";
+import { readAllStates, readState, writeState } from "./state";
+import type {
+  ChangedTables,
+  Manifest,
+  PullPage,
+  PullProgress,
+  TableSpec,
+} from "./types";
 
 /** Le manifeste est demandé une fois par cycle, il ne change pas en cours de route. */
 export async function fetchManifest(withCounts = false): Promise<Manifest> {
@@ -113,18 +119,74 @@ export async function pullTable(
 }
 
 /**
- * Tire toutes les tables, dans l'ordre du manifeste.
+ * Demande au serveur QUELLES tables ont du neuf.
+ *
+ * Renvoie `null` si la sonde échoue : on retombe alors sur l'ancien
+ * comportement, tirer tout. Une sonde indisponible doit ralentir la
+ * synchronisation, jamais l'empêcher.
+ *
+ * La PRÉSENCE d'une clé dit au serveur « j'ai déjà tiré cette table en
+ * entier », sa valeur dit jusqu'où. Les deux comptent : une table vide se tire
+ * entièrement et rend un curseur nul, qu'il ne faut pas confondre avec « jamais
+ * tirée ». Une table restée à `hasMore` n'a PAS été tirée en entier, on ne
+ * l'annonce donc pas comme connue.
+ */
+async function fetchChangedTables(
+  signal?: AbortSignal
+): Promise<Set<string> | null> {
+  const states = await readAllStates();
+  const cursors: Record<string, string | null> = {};
+  const deletedCursors: Record<string, string | null> = {};
+
+  for (const state of states) {
+    if (!state.lastFullSyncAt || state.hasMore) continue;
+    cursors[state.table] = state.cursor ?? null;
+    deletedCursors[state.table] = state.deletedCursor ?? null;
+  }
+
+  if (Object.keys(cursors).length === 0) return null;
+
+  try {
+    const reponse = await api.post<ChangedTables>(
+      "/sync/pull/changed/",
+      { cursors, deleted_cursors: deletedCursors },
+      { signal }
+    );
+    return new Set(reponse.changed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tire les tables qui ont du neuf, dans l'ordre du manifeste.
  *
  * L'ordre porte du sens : l'organisation, les moyens de paiement, les produits
  * et les stocks d'abord, parce que le point de vente s'ouvre dès qu'ils sont
  * là. Le reste continue derrière.
+ *
+ * Une table sans changement est SAUTÉE, sans que son point de reprise bouge :
+ * une synchronisation qui ne trouve rien coûte désormais un aller-retour au
+ * lieu de trente-deux.
  */
 export async function pullAll(options: PullOptions = {}): Promise<{
   tables: number;
   rows: number;
   interrupted: boolean;
+  skipped: number;
 }> {
-  const manifest = await fetchManifest(true);
+  // Une sonde d'abord : sans elle, ce tirage parcourait les trente et une
+  // tables du manifeste, une requête séquentielle chacune, MÊME QUAND RIEN
+  // N'AVAIT CHANGÉ. Vingt et une réponses consécutives de 250 octets disant
+  // « rien de neuf », soit une dizaine de secondes d'attente pour zéro donnée
+  // sur un réseau à 300 ms de latence. `null` : sonde indisponible ou première
+  // synchronisation, on tire tout.
+  const changed = await fetchChangedTables(options.signal);
+
+  // Les décomptes coûtent 31 `COUNT` au serveur et ne servent qu'à chiffrer la
+  // progression de la PREMIÈRE synchronisation. Les redemander à chaque fois
+  // était pur gaspillage.
+  const manifest = await fetchManifest(changed === null);
   const expectedTotal = manifest.tables.reduce(
     (sum, t) => sum + (t.row_count ?? 0),
     0
@@ -132,10 +194,18 @@ export async function pullAll(options: PullOptions = {}): Promise<{
 
   let receivedTotal = 0;
   let done = 0;
+  let skipped = 0;
 
   for (const [index, spec] of manifest.tables.entries()) {
+    if (changed !== null && !changed.has(spec.name)) {
+      // Rien de neuf : on ne touche PAS au point de reprise. L'écrire ici
+      // ferait croire à un tirage qui n'a pas eu lieu.
+      skipped += 1;
+      continue;
+    }
+
     if (options.signal?.aborted) {
-      return { tables: done, rows: receivedTotal, interrupted: true };
+      return { tables: done, rows: receivedTotal, interrupted: true, skipped };
     }
 
     let received = 0;
@@ -162,5 +232,5 @@ export async function pullAll(options: PullOptions = {}): Promise<{
     done += 1;
   }
 
-  return { tables: done, rows: receivedTotal, interrupted: false };
+  return { tables: done, rows: receivedTotal, interrupted: false, skipped };
 }

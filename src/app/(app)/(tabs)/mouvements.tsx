@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Mouvements() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Mouvements de stock" subtitle="Historique des entrées et sorties de stock" />
       <PasEncore icon="ClipboardList" lot={7} quoi="le journal des entrées et sorties, et la saisie d'un mouvement" />
     </Screen>

@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Inventaire() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Inventaire" subtitle="Gérez vos sessions d'inventaire et comptages de stock" />
       <PasEncore icon="ClipboardList" lot={8} quoi="les sessions d'inventaire et la feuille de comptage" table="inventory_sessions" />
     </Screen>

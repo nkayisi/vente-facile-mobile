@@ -99,7 +99,7 @@ export default function Articles() {
   );
 
   return (
-    <Screen edges={["top"]} padded={false}>
+    <Screen edges={[]} padded={false}>
       <DataList
         donnees={articles}
         cle={(a) => a.id}

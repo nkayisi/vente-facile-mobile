@@ -62,7 +62,7 @@ export default function Ventes() {
   );
 
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Ventes" subtitle={dateDuJour()} />
 
       {can("sales.create") ? (
@@ -190,36 +190,32 @@ export default function Ventes() {
       <View className="mt-4 flex-row flex-wrap gap-3">
         <ActionTile
           href="/ventes"
-          compact
+          forme="grille"
           title="Paiements en attente"
-          description="Ce qui reste à encaisser"
           icon="Banknote"
           accent="primary"
           raison="Arrive au lot 6."
         />
         <ActionTile
           href="/ventes"
-          compact
+          forme="grille"
           title="Historique"
-          description="Toutes les ventes"
           icon="Receipt"
           accent="chart2"
           raison="Arrive au lot 6."
         />
         <ActionTile
           href="/ventes"
-          compact
+          forme="grille"
           title="Caisses"
-          description="Ouvrir et fermer une session"
           icon="Calculator"
           accent="chart3"
           raison="Arrive au lot 6."
         />
         <ActionTile
           href="/ventes"
-          compact
+          forme="grille"
           title="Devis"
-          description="Factures proforma"
           icon="FileText"
           accent="primary"
           raison="Arrive au lot 11."

@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function TableauDeBord() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Tableau de bord" />
       <PasEncore icon="LayoutDashboard" lot={9} quoi="les relevés du jour, les alertes et les graphiques" />
     </Screen>

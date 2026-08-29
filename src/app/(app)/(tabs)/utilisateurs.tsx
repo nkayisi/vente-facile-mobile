@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Utilisateurs() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Gestion des utilisateurs" subtitle="Gérez les membres de votre organisation et leurs rôles" />
       <PasEncore icon="UserCog" lot={10} quoi="les membres, les rôles et les permissions individuelles" />
     </Screen>

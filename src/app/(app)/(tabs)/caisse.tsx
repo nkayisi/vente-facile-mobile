@@ -9,7 +9,7 @@ import { PageHeader, PasEncore, Screen } from "@/ui";
 
 export default function Caisse() {
   return (
-    <Screen scroll>
+    <Screen scroll edges={[]}>
       <PageHeader title="Livre de caisse" subtitle="Suivi des entrées et sorties de caisse" />
       <PasEncore icon="Wallet" lot={9} quoi="les mouvements par devise, les dépenses et les rapports de caisse" />
     </Screen>

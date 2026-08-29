@@ -149,6 +149,9 @@ importers:
       react-native-bluetooth-classic:
         specifier: 1.73.0-rc.17
         version: 1.73.0-rc.17(react-native@0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.3(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))
+      react-native-drawer-layout:
+        specifier: ^4.2.10
+        version: 4.2.10(9ce91447ad25539e046e97343db1a3e0)
       react-native-gesture-handler:
         specifier: ~2.32.0
         version: 2.32.0(react-native@0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.3(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)

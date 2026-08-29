@@ -12,6 +12,11 @@
  * seulement réagissaient au clic »), et les rayons concentriques, tuile en
  * `rounded-xl` et pastille en `rounded-lg`.
  *
+ * **Deux formes.** `ligne` occupe la largeur : pastille à gauche, titre et
+ * description, chevron. `grille` en tient deux par rangée : pastille au-dessus
+ * du titre, description sous lui. La seconde est celle des concentrateurs, où
+ * l'on balaie des destinations plutôt qu'on ne lit des explications.
+ *
  * **Trois accents seulement**, pris sur des jetons existants. Le web en a cinq
  * (`purple`, `indigo`, `cyan`, `amber`, `orange`) mais aucun n'a de jeton chez
  * nous et aucun ne basculerait en sombre ; et cinq pastilles colorées sur un
@@ -25,6 +30,7 @@ import { Pressable } from "./pressable";
 import { Text } from "./text";
 
 export type AccentTuile = "primary" | "chart2" | "chart3";
+export type FormeTuile = "ligne" | "grille";
 
 const ACCENTS: Record<AccentTuile, { fond: string; jeton: "primary" | "chart2" | "chart3" }> = {
   primary: { fond: "bg-primary/10", jeton: "primary" },
@@ -38,57 +44,58 @@ export function ActionTile({
   description,
   icon,
   accent = "primary",
+  forme = "ligne",
   raison,
-  compact = false,
 }: {
   href: string;
   title: string;
-  description: string;
+  /** Omise en `grille` quand la destination se passe d'explication. */
+  description?: string;
   icon: IconName;
   accent?: AccentTuile;
+  forme?: FormeTuile;
   /** Présent : la tuile est grisée, non pressable, et dit pourquoi. */
   raison?: string;
-  /**
-   * Forme courte : pastille et libellé seuls, sans description ni chevron.
-   *
-   * C'est ce que le back-office rend dans le hub Ventes, où les quatre
-   * raccourcis tiennent en DEUX colonnes ; le hub Stock, lui, les met en pleine
-   * largeur avec leur description. Les deux formes existent donc sur le web, et
-   * la différence est voulue : Stock explique ce que fait chaque opération,
-   * Ventes se contente de nommer une destination connue.
-   */
-  compact?: boolean;
 }) {
   const a = ACCENTS[accent];
   const desactive = Boolean(raison);
+  const grille = forme === "grille";
+
+  const pastille = (
+    <View className={`h-9 w-9 items-center justify-center rounded-lg ${a.fond}`}>
+      <Icon name={icon} size={18} color={a.jeton} />
+    </View>
+  );
 
   return (
-    <View className={compact ? "min-w-0 flex-1 basis-[45%]" : undefined}>
+    <View className={grille ? "min-w-0 flex-1 basis-[45%]" : undefined}>
       <Pressable
         onPress={desactive ? undefined : () => router.push(href as never)}
         haptic={desactive ? "none" : "selection"}
         disabled={desactive}
         accessibilityRole="link"
-        accessibilityLabel={`${title}. ${description}`}
-        className={`flex-row items-center gap-3 rounded-xl border border-border bg-card ${
-          compact ? "p-3" : "p-3.5"
+        accessibilityLabel={[title, description, raison].filter(Boolean).join(". ")}
+        className={`rounded-xl border border-border bg-card p-3.5${
+          grille ? "" : " flex-row items-center gap-3"
         }${desactive ? " opacity-50" : ""}`}
         pressedClassName="active:opacity-90 active:scale-[0.98]"
       >
-        <View className={`h-9 w-9 items-center justify-center rounded-lg ${a.fond}`}>
-          <Icon name={icon} size={18} color={a.jeton} />
-        </View>
-        <View className="min-w-0 flex-1">
-          <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
+        {pastille}
+        <View className={grille ? "mt-2.5" : "min-w-0 flex-1"}>
+          <Text
+            variant="bodySmall"
+            numberOfLines={grille ? 2 : 1}
+            className="font-sans-medium"
+          >
             {title}
           </Text>
-          {compact ? null : (
-            <Text variant="caption" numberOfLines={1}>
+          {description ? (
+            <Text variant="caption" numberOfLines={grille ? 2 : 1}>
               {description}
             </Text>
-          )}
+          ) : null}
         </View>
-        {compact ? null : <Icon name="ChevronRight" size={16} color="mutedForeground" />}
+        {grille ? null : <Icon name="ChevronRight" size={16} color="mutedForeground" />}
       </Pressable>
       {raison ? (
         <Text variant="caption" className="mt-1 px-1">
