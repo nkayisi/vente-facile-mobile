@@ -12,10 +12,10 @@ const BANNER: Record<
   BannerTone,
   { box: string; icon: IconName; color: keyof Palette }
 > = {
-  info: { box: "bg-accent", icon: "information-circle", color: "accentForeground" },
-  success: { box: "bg-success/15", icon: "checkmark-circle", color: "success" },
-  warning: { box: "bg-warning/15", icon: "alert-circle", color: "warning" },
-  destructive: { box: "bg-destructive/15", icon: "close-circle", color: "destructive" },
+  info: { box: "bg-accent", icon: "Info", color: "accentForeground" },
+  success: { box: "bg-success/15", icon: "CheckCircle2", color: "success" },
+  warning: { box: "bg-warning/15", icon: "AlertTriangle", color: "warning" },
+  destructive: { box: "bg-destructive/15", icon: "XCircle", color: "destructive" },
 };
 
 /**
@@ -68,7 +68,7 @@ export function Banner({
  * qui remplit. « Aucun résultat » tout seul laisse l'utilisateur bloqué.
  */
 export function EmptyState({
-  icon = "file-tray-outline",
+  icon = "Inbox",
   title,
   message,
   action,
@@ -80,7 +80,11 @@ export function EmptyState({
 }) {
   return (
     <View className="flex-1 items-center justify-center px-8 py-12">
-      <Icon name={icon} size={44} color="mutedForeground" />
+      {/* Cercle `h-16 w-16` du back-office : c'est ce qui distingue un etat
+          vide DELIBERE d'un ecran qui n'a simplement rien charge. */}
+      <View className="h-16 w-16 items-center justify-center rounded-full bg-muted">
+        <Icon name={icon} size={32} color="mutedForeground" />
+      </View>
       <Text variant="h4" className="mt-4 text-center">
         {title}
       </Text>
@@ -110,7 +114,7 @@ export function ErrorState({
 }) {
   return (
     <View className="flex-1 items-center justify-center px-8 py-12">
-      <Icon name="warning-outline" size={44} color="destructive" />
+      <Icon name="AlertTriangle" size={44} color="destructive" />
       <Text variant="h4" className="mt-4 text-center">
         {title}
       </Text>
@@ -121,7 +125,7 @@ export function ErrorState({
       ) : null}
       {onRetry ? (
         <View className="mt-5">
-          <Button variant="outline" leftIcon="refresh" onPress={onRetry}>
+          <Button variant="outline" leftIcon="RefreshCw" onPress={onRetry}>
             Réessayer
           </Button>
         </View>

@@ -105,7 +105,7 @@ export default function Comptoir() {
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           accessibilityLabel="Quitter le comptoir"
         >
-          <Icon name="chevron-back" size={24} />
+          <Icon name="ArrowLeft" size={24} />
         </Pressable>
         <View className="flex-1">
           <Text variant="h4" numberOfLines={1}>
@@ -123,7 +123,7 @@ export default function Comptoir() {
             className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
             accessibilityLabel={`${paniersRanges} panier${paniersRanges > 1 ? "s" : ""} en attente`}
           >
-            <Icon name="pause-circle-outline" size={24} />
+            <Icon name="PauseCircle" size={24} />
             <View className="absolute right-1 top-1 h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1">
               <Text variant="caption" className="text-primary-foreground">
                 {paniersRanges}
@@ -136,7 +136,7 @@ export default function Comptoir() {
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           accessibilityLabel="Scanner un code-barres"
         >
-          <Icon name="barcode-outline" size={24} />
+          <Icon name="ion:barcode-outline" size={24} />
         </Pressable>
       </View>
 
@@ -145,7 +145,7 @@ export default function Comptoir() {
           value={terme}
           onChangeText={setTerme}
           placeholder="Nom, code ou référence"
-          leading={<Icon name="search-outline" size={18} color="mutedForeground" />}
+          leading={<Icon name="Search" size={18} color="mutedForeground" />}
           autoCorrect={false}
           returnKeyType="search"
         />
@@ -186,7 +186,7 @@ export default function Comptoir() {
         </View>
       ) : articles.length === 0 ? (
         <EmptyState
-          icon="cube-outline"
+          icon="Package"
           title={terme ? "Aucun article trouvé" : "Catalogue vide"}
           message={
             terme
@@ -323,7 +323,7 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
     return (
       <Screen>
         <EmptyState
-          icon="lock-closed-outline"
+          icon="Lock"
           title="Aucune caisse"
           message="Aucune caisse active n'est enregistrée pour cette organisation. Demandez au gérant d'en créer une, puis synchronisez."
         />
@@ -356,7 +356,7 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
                 {c.warehouseName ?? "Aucun entrepôt associé"}
               </Text>
             </View>
-            {choisie === c.id ? <Icon name="checkmark-circle" size={22} color="primary" /> : null}
+            {choisie === c.id ? <Icon name="CheckCircle2" size={22} color="primary" /> : null}
           </Pressable>
         ))}
       </View>

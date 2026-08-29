@@ -71,7 +71,7 @@ export function ListItem({
       {trailing}
       {chevron ? (
         <View className="ml-1.5">
-          <Icon name="chevron-forward" size={18} color="mutedForeground" />
+          <Icon name="ChevronRight" size={18} color="mutedForeground" />
         </View>
       ) : null}
     </View>

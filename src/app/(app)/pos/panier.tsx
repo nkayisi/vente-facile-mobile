@@ -64,7 +64,7 @@ export default function Panier() {
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           accessibilityLabel="Retour au comptoir"
         >
-          <Icon name="chevron-back" size={24} />
+          <Icon name="ArrowLeft" size={24} />
         </Pressable>
         <Text variant="h4" className="flex-1">
           Panier
@@ -85,7 +85,7 @@ export default function Panier() {
 
       {lignes.length === 0 ? (
         <EmptyState
-          icon="cart-outline"
+          icon="ShoppingCart"
           title="Panier vide"
           message="Choisissez des articles dans la grille du comptoir."
           action={{ label: "Retour au comptoir", onPress: () => router.back() }}
@@ -118,7 +118,7 @@ export default function Panier() {
               className="mt-1 flex-row items-center gap-1 py-2"
               accessibilityLabel="Remise sur le total"
             >
-              <Icon name={remiseOuverte ? "chevron-up" : "pricetag-outline"} size={15} color="mutedForeground" />
+              <Icon name={remiseOuverte ? "ChevronUp" : "Tag"} size={15} color="mutedForeground" />
               <Text variant="bodySmall" className="text-muted-foreground">
                 Remise sur le total
               </Text>
@@ -301,7 +301,7 @@ function LigneArticle({
         </Text>
       </View>
       <Text variant="body">{montant}</Text>
-      <Icon name="chevron-forward" size={16} color="mutedForeground" />
+      <Icon name="ChevronRight" size={16} color="mutedForeground" />
     </Pressable>
   );
 }

@@ -159,7 +159,7 @@ export default function Unlock() {
           <View className="mt-6 items-center">
             <Button
               variant="ghost"
-              leftIcon="finger-print"
+              leftIcon="ion:finger-print"
               onPress={tryBiometrics}
               disabled={delayMs > 0}
             >

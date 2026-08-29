@@ -187,7 +187,7 @@ export default function Encaissement() {
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           accessibilityLabel="Retour"
         >
-          <Icon name="chevron-back" size={24} />
+          <Icon name="ArrowLeft" size={24} />
         </Pressable>
         <Text variant="h4" className="flex-1">
           Encaisser
@@ -359,7 +359,7 @@ export default function Encaissement() {
             <Text variant="body" className={etat.client ? undefined : "text-muted-foreground"}>
               {etat.client?.name ?? "Aucun client (vente au comptant)"}
             </Text>
-            <Icon name="chevron-forward" size={16} color="mutedForeground" />
+            <Icon name="ChevronRight" size={16} color="mutedForeground" />
           </Pressable>
         </Rubrique>
       )}

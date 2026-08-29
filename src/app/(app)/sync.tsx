@@ -181,7 +181,7 @@ export default function Sync() {
           fullWidth
           size="lg"
           loading={busy}
-          leftIcon="cloud-download-outline"
+          leftIcon="CloudDownload"
           onPress={lancer}
         >
           {busy ? "Synchronisation en cours" : "Synchroniser maintenant"}

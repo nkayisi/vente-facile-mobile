@@ -38,7 +38,7 @@ export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, on
       accessibilityLabel={`${article.name}, ${prix}`}
     >
       <View className="flex-row items-start justify-between">
-        <Text variant="body" numberOfLines={2} className="flex-1 font-medium">
+        <Text variant="body" numberOfLines={2} className="flex-1 font-sans-medium">
           {article.name}
         </Text>
         {auPanier > 0 ? (
@@ -50,7 +50,7 @@ export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, on
         ) : null}
       </View>
 
-      <Text variant="bodyLarge" className="mt-2 font-semibold text-primary">
+      <Text variant="bodyLarge" className="mt-2 font-sans-semibold text-primary">
         {prix}
       </Text>
       {conditionnement && prixGros ? (
@@ -61,7 +61,7 @@ export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, on
 
       <View className="mt-2 flex-row items-center gap-1">
         <Icon
-          name={epuise ? "close-circle-outline" : "cube-outline"}
+          name={epuise ? "PackageX" : "Package"}
           size={13}
           color={epuise ? "destructive" : "mutedForeground"}
         />

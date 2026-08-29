@@ -63,7 +63,7 @@ export default function Termine() {
     <Screen>
       <View className="flex-1 items-center justify-center px-4">
         <View className="h-20 w-20 items-center justify-center rounded-full bg-success/15">
-          <Icon name="checkmark" size={40} color="success" />
+          <Icon name="Check" size={40} color="success" />
         </View>
 
         <Text variant="h2" className="mt-6 text-center">

@@ -44,3 +44,23 @@ export {
   type ColorToken,
   type Palette,
 } from "./tokens";
+
+// --- Lot 5bis : la coquille et la parite de presentation ---
+export { AppBar } from "./app-bar";
+export { PageHeader, type PageHeaderProps } from "./page-header";
+export { StatValue, statValueSize } from "./stat-value";
+export { StatStrip, StatStripItem, type StatTone } from "./stat-strip";
+export { ActionTile, type AccentTuile } from "./action-tile";
+export { Chip, ChipRow, BoutonFiltres } from "./chip";
+export { Segmented, type OptionSegment } from "./segmented";
+export { Switch } from "./switch";
+export { SearchInput, BarreRecherche } from "./search-input";
+export { Avatar, initiales } from "./avatar";
+export { ProgressBar } from "./progress";
+export { Sheet } from "./sheet";
+export { Dialog, AlertDialog } from "./dialog";
+export { ToastProvider, useToast } from "./toast";
+export { Fab } from "./fab";
+export { DataList, DataRow } from "./data-list";
+export { PasEncore } from "./pas-encore";
+export { IconBrute } from "./icon";

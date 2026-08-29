@@ -34,7 +34,7 @@ export default function Home() {
           accessibilityLabel="Ouvrir le comptoir"
         >
           <View className="h-12 w-12 items-center justify-center rounded-xl bg-primary-foreground/20">
-            <Icon name="cart-outline" size={26} color="primaryForeground" />
+            <Icon name="ShoppingCart" size={26} color="primaryForeground" />
           </View>
           <View className="flex-1">
             <Text variant="h4" className="text-primary-foreground">
@@ -44,7 +44,7 @@ export default function Home() {
               Comptoir, scan, encaissement
             </Text>
           </View>
-          <Icon name="chevron-forward" size={20} color="primaryForeground" />
+          <Icon name="ChevronRight" size={20} color="primaryForeground" />
         </Pressable>
       ) : null}
 
@@ -53,25 +53,25 @@ export default function Home() {
           <ListItem
             title="Terminal"
             value={snapshot?.device?.device_code ?? "—"}
-            icon="hardware-chip-outline"
+            icon="Cpu"
           />
           <Divider inset />
           <ListItem
             title="Droits chargés"
             value={String(membership?.permissions.length ?? 0)}
-            icon="key-outline"
+            icon="Key"
           />
           <Divider inset />
           <ListItem
             title="Devises"
             value={String(snapshot?.currencies.length ?? 0)}
-            icon="cash-outline"
+            icon="Banknote"
           />
           <Divider inset />
           <ListItem
             title="Entrepôts"
             value={String(membership?.assigned_warehouses.length ?? 0)}
-            icon="business-outline"
+            icon="Warehouse"
           />
         </Card>
       </Section>
@@ -89,7 +89,7 @@ export default function Home() {
       <View className="gap-3">
         <Button
           fullWidth
-          leftIcon="cloud-download-outline"
+          leftIcon="CloudDownload"
           onPress={() => router.push("/(app)/sync")}
         >
           Synchronisation
@@ -97,18 +97,18 @@ export default function Home() {
         <Button
           variant="outline"
           fullWidth
-          leftIcon="print-outline"
+          leftIcon="Printer"
           onPress={() => router.push("/(app)/imprimante")}
         >
           Imprimante
         </Button>
-        <Button variant="outline" fullWidth leftIcon="refresh" onPress={() => void refresh()}>
+        <Button variant="outline" fullWidth leftIcon="RefreshCw" onPress={() => void refresh()}>
           Rafraîchir la session
         </Button>
-        <Button variant="outline" fullWidth leftIcon="lock-closed-outline" onPress={lock}>
+        <Button variant="outline" fullWidth leftIcon="Lock" onPress={lock}>
           Verrouiller
         </Button>
-        <Button variant="destructive" fullWidth leftIcon="log-out-outline" onPress={() => void logout()}>
+        <Button variant="destructive" fullWidth leftIcon="LogOut" onPress={() => void logout()}>
           Se déconnecter
         </Button>
       </View>

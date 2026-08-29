@@ -24,18 +24,24 @@ export type TextVariant =
   | "muted"
   | "error";
 
+/**
+ * Chaque variante pose une FAMILLE (`font-sans-bold`), jamais une graisse
+ * (`font-bold`). Sur Android, une famille custom ne synthetise pas les
+ * graisses : `font-bold` sur Inter rendrait du regular, en silence. Un test
+ * interdit les classes de graisse dans tout `src/`.
+ */
 const VARIANTS: Record<TextVariant, string> = {
-  h1: "text-3xl font-bold text-foreground",
-  h2: "text-2xl font-bold text-foreground",
-  h3: "text-xl font-semibold text-foreground",
-  h4: "text-lg font-semibold text-foreground",
-  bodyLarge: "text-lg text-foreground",
-  body: "text-base text-foreground",
-  bodySmall: "text-sm text-foreground",
-  label: "text-sm font-medium text-foreground",
-  caption: "text-xs text-muted-foreground",
-  muted: "text-sm text-muted-foreground",
-  error: "text-sm text-destructive",
+  h1: "text-3xl font-sans-bold text-foreground",
+  h2: "text-2xl font-sans-bold text-foreground",
+  h3: "text-xl font-sans-semibold text-foreground",
+  h4: "text-lg font-sans-semibold text-foreground",
+  bodyLarge: "text-lg font-sans text-foreground",
+  body: "text-base font-sans text-foreground",
+  bodySmall: "text-sm font-sans text-foreground",
+  label: "text-sm font-sans-medium text-foreground",
+  caption: "text-xs font-sans text-muted-foreground",
+  muted: "text-sm font-sans text-muted-foreground",
+  error: "text-sm font-sans text-destructive",
 };
 
 export interface TextProps extends RNTextProps {

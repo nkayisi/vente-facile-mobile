@@ -148,7 +148,7 @@ export default function Imprimante() {
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           accessibilityLabel="Retour"
         >
-          <Icon name="chevron-back" size={24} />
+          <Icon name="ArrowLeft" size={24} />
         </Pressable>
         <Text variant="h4" className="flex-1">
           Imprimante
@@ -172,7 +172,7 @@ export default function Imprimante() {
                 onPress={() => void choisirTransport(t.id)}
                 trailing={
                   reglage.transport === t.id ? (
-                    <Icon name="checkmark-circle" size={22} color="primary" />
+                    <Icon name="CheckCircle2" size={22} color="primary" />
                   ) : undefined
                 }
               />
@@ -209,7 +209,7 @@ export default function Imprimante() {
                     onPress={() => void enregistrer({ adresse: a.adresse, nom: a.nom })}
                     trailing={
                       reglage.adresse === a.adresse ? (
-                        <Icon name="checkmark-circle" size={22} color="primary" />
+                        <Icon name="CheckCircle2" size={22} color="primary" />
                       ) : undefined
                     }
                   />
@@ -246,7 +246,7 @@ export default function Imprimante() {
             onPress={() => void enregistrer({ cut: !reglage.cut })}
             trailing={
               <Icon
-                name={reglage.cut ? "checkmark-circle" : "ellipse-outline"}
+                name={reglage.cut ? "CheckCircle2" : "ion:ellipse-outline"}
                 size={22}
                 color={reglage.cut ? "primary" : "mutedForeground"}
               />

@@ -82,7 +82,7 @@ export default function Operations() {
     return (
       <Screen>
         <EmptyState
-          icon="checkmark-circle-outline"
+          icon="CheckCircle2"
           title="Rien à corriger"
           message="Toutes vos opérations sont parties, ou attendent le réseau."
         />
@@ -128,7 +128,7 @@ export default function Operations() {
               <Button
                 variant="outline"
                 size="sm"
-                leftIcon="trash-outline"
+                leftIcon="Trash2"
                 onPress={() => abandonner(op)}
               >
                 Abandonner

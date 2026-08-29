@@ -128,7 +128,7 @@ export default function Attente() {
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           accessibilityLabel="Retour au comptoir"
         >
-          <Icon name="chevron-back" size={24} />
+          <Icon name="ArrowLeft" size={24} />
         </Pressable>
         <Text variant="h4" className="flex-1">
           Paniers en attente
@@ -147,7 +147,7 @@ export default function Attente() {
         </View>
       ) : paniers.length === 0 ? (
         <EmptyState
-          icon="pause-circle-outline"
+          icon="PauseCircle"
           title="Aucun panier en attente"
           message="Depuis le panier, « Mettre en attente » range la commande en cours pour servir le client suivant."
         />
@@ -187,7 +187,7 @@ export default function Attente() {
                 className="ml-2 h-11 w-11 items-center justify-center rounded-full active:bg-muted"
                 accessibilityLabel={`Supprimer le panier ${item.label}`}
               >
-                <Icon name="trash-outline" size={18} color="mutedForeground" />
+                <Icon name="Trash2" size={18} color="mutedForeground" />
               </Pressable>
             </Pressable>
           )}

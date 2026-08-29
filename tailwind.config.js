@@ -37,6 +37,24 @@ module.exports = {
           5: color("chart5"),
         },
       },
+      /**
+       * Inter, comme le back-office (`next/font/google`). Deux surfaces de la
+       * meme marque avec deux polices, c'est la premiere chose qu'on remarque
+       * en passant de l'une a l'autre.
+       *
+       * UNE FAMILLE PAR GRAISSE, et des noms qui n'entrent PAS en collision
+       * avec les utilitaires de graisse de Tailwind (`font-medium` reste un
+       * `fontWeight`). C'est obligatoire : sur Android, une famille custom NE
+       * SYNTHETISE PAS les graisses. Avec la seule Inter_400Regular chargee,
+       * `font-semibold` rendrait du regular, sans erreur ni avertissement, et
+       * tous les titres de l'application perdraient leur poids.
+       */
+      fontFamily: {
+        sans: ["Inter_400Regular"],
+        "sans-medium": ["Inter_500Medium"],
+        "sans-semibold": ["Inter_600SemiBold"],
+        "sans-bold": ["Inter_700Bold"],
+      },
       borderRadius: {
         sm: "4px",
         DEFAULT: "6px",

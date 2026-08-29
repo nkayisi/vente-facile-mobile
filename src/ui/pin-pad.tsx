@@ -72,7 +72,7 @@ export function PinPad({
             } ${disabled ? "opacity-40" : ""}`}
           >
             {isBack ? (
-              <Icon name="backspace-outline" size={24} color="mutedForeground" />
+              <Icon name="ion:backspace-outline" size={24} color="mutedForeground" />
             ) : (
               <Text variant="h3" numeric>
                 {key}

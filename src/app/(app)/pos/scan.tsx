@@ -89,7 +89,7 @@ export default function Scan() {
     return (
       <Screen>
         <View className="flex-1 items-center justify-center gap-4 px-6">
-          <Icon name="camera-outline" size={48} color="mutedForeground" />
+          <Icon name="ion:camera-outline" size={48} color="mutedForeground" />
           <Text variant="h3" className="text-center">
             Autoriser la caméra
           </Text>
@@ -129,7 +129,7 @@ export default function Scan() {
           className="h-11 w-11 items-center justify-center rounded-full bg-black/50"
           accessibilityLabel="Fermer le scanner"
         >
-          <Icon name="close" size={24} />
+          <Icon name="X" size={24} />
         </Pressable>
         <Text variant="body" className="text-white">
           Visez le code-barres

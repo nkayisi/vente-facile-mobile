@@ -183,7 +183,7 @@ export function SelecteurQuantite({
 
           {refus ? (
             <View className="mx-5 mt-3 flex-row items-start gap-2 rounded-xl bg-destructive/10 px-4 py-3">
-              <Icon name="alert-circle-outline" size={18} color="destructive" />
+              <Icon name="AlertCircle" size={18} color="destructive" />
               <Text variant="bodySmall" className="flex-1 text-destructive">
                 {refus}
               </Text>
@@ -312,7 +312,7 @@ function Clavier({
       ))}
       <Touche onPress={onVider} label="C" secondaire />
       <Touche onPress={() => onChiffre("0")} label="0" />
-      <Touche onPress={onEffacer} icone="backspace-outline" label="Effacer" secondaire />
+      <Touche onPress={onEffacer} icone="ion:backspace-outline" label="Effacer" secondaire />
     </View>
   );
 }
@@ -325,7 +325,7 @@ function Touche({
 }: {
   onPress: () => void;
   label: string;
-  icone?: "backspace-outline";
+  icone?: "ion:backspace-outline";
   secondaire?: boolean;
 }) {
   return (

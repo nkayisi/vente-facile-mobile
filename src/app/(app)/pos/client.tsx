@@ -43,7 +43,7 @@ export default function ChoixClient() {
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
           accessibilityLabel="Retour"
         >
-          <Icon name="chevron-back" size={24} />
+          <Icon name="ArrowLeft" size={24} />
         </Pressable>
         <Text variant="h4" className="flex-1">
           Client
@@ -55,7 +55,7 @@ export default function ChoixClient() {
           value={terme}
           onChangeText={setTerme}
           placeholder="Nom, téléphone ou code"
-          leading={<Icon name="search-outline" size={18} color="mutedForeground" />}
+          leading={<Icon name="Search" size={18} color="mutedForeground" />}
           autoCorrect={false}
         />
       </View>
@@ -64,7 +64,7 @@ export default function ChoixClient() {
         onPress={() => choisir(null)}
         className="mt-3 flex-row items-center gap-3 rounded-xl border border-border px-4 py-3 active:bg-muted"
       >
-        <Icon name="person-outline" size={18} color="mutedForeground" />
+        <Icon name="User" size={18} color="mutedForeground" />
         <Text variant="body" className="text-muted-foreground">
           Aucun client (vente au comptant)
         </Text>
@@ -72,7 +72,7 @@ export default function ChoixClient() {
 
       {clients.length === 0 ? (
         <EmptyState
-          icon="people-outline"
+          icon="Users"
           title={terme ? "Aucun client trouvé" : "Aucun client"}
           message={
             terme
@@ -100,7 +100,7 @@ export default function ChoixClient() {
                 </Text>
               </View>
               {item.allow_credit === false ? (
-                <Icon name="ban-outline" size={16} color="destructive" />
+                <Icon name="Ban" size={16} color="destructive" />
               ) : null}
             </Pressable>
           )}

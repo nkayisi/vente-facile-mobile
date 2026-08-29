@@ -76,7 +76,7 @@ export default function ChooseOrganization() {
             <ListItem
               title={org.name}
               subtitle={ROLE_LABELS[org.role] ?? org.role_display}
-              icon="storefront-outline"
+              icon="Store"
               onPress={() => choose(org.id)}
               chevron={busy !== org.id}
               trailing={busy === org.id ? <Spinner /> : undefined}
