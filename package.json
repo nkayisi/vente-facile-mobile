@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
     "@expo/vector-icons": "^15.1.1",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@hookform/resolvers": "^5.9.1",
@@ -41,6 +42,7 @@
     "expo-task-manager": "~57.0.14",
     "expo-updates": "~57.0.19",
     "expo-web-browser": "~57.0.2",
+    "lucide-react-native": "^1.35.0",
     "nativewind": "^4.2.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",

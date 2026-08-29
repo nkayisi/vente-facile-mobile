@@ -10,6 +10,14 @@ module.exports = {
   testMatch: ["<rootDir>/src/**/*.test.ts", "<rootDir>/src/**/*.test.tsx"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
+    // lucide ne publie que de l'ESM `.mjs` sous la condition `react-native`, que
+    // Metro sait charger mais que Jest refuse PAR L'EXTENSION, transformation
+    // autorisee ou non. On pointe donc les tests sur la construction CJS du meme
+    // paquet : meme source, meme tract, deux empaquetages.
+    "^lucide-react-native/icons/(.*)$":
+      "<rootDir>/node_modules/lucide-react-native/dist/cjs/icons/$1.js",
+    "^lucide-react-native$":
+      "<rootDir>/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
   },
   // Le `/` final serait une faute : `expo(nent)?` doit pouvoir matcher le
   // PREFIXE de `expo-modules-core`, dont le nom continue par un tiret. Avec un
