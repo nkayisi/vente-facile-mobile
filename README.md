@@ -109,7 +109,7 @@ Cinq lots livrés, du socle au comptoir :
 | 1 | Session : connexion, enrôlement, verrou par code, démarrage hors ligne, garde de navigation |
 | 2 | Schéma local complet (31 tables engendrées) et tirage par curseurs |
 | 3 | Journal d'opérations : file d'attente, verdict par opération, quarantaine |
-| 4 | Le comptoir : POS, sélecteur de quantité gros/détail, scan, encaissement, numérotation |
+| 4 | Le comptoir : POS, sélecteur de quantité gros/détail, scan, encaissement, numérotation, mise en attente de panier |
 
 Le détail de chaque lot est dans le message de son commit : motif, défauts de
 l'ancienne application évités, et vérification sur émulateur contre le vrai
@@ -117,8 +117,7 @@ backend.
 
 Le découpage complet (13 lots, 0 à 12) vient du plan approuvé
 `maintenant-dans-ce-projet-polished-seahorse.md`, à la racine du dépôt, et son
-suivi est tenu dans le `CLAUDE.md` racine, section 5.4. Une réserve sur le lot 4 :
-la **mise en attente de panier** n'est pas livrée.
+suivi est tenu dans le `CLAUDE.md` racine, section 5.4.
 
 Prochain lot : **le lot 5, l'impression** (`src/printing/` est encore vide, alors
 que `@vente-facile/core` décrit déjà les documents en blocs). Il ferme le jalon
