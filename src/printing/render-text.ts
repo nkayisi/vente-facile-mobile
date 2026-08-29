@@ -288,23 +288,35 @@ export function rendreTexte(blocks: Block[], options: OptionsRendu = {}): LigneI
  * Règle de calibration : à imprimer, à photographier, à compter.
  *
  * Elle porte une graduation par dizaine et une ligne pleine à la largeur
- * supposée. Si le « 4 » de la graduation tombe au bord du papier, la largeur
- * est bonne ; si la ligne pleine se replie, elle est trop grande. C'est la
- * seule façon honnête de fixer ces nombres : les déduire d'un calcul de points
- * par millimètre donne un résultat qui a l'air juste et ne l'est pas.
+ * supposée. Si le dernier « # » touche le bord, la largeur est bonne ; si la
+ * ligne se replie, elle est trop grande. C'est la seule façon honnête de fixer
+ * ces nombres : les déduire d'un calcul de points par millimètre donne un
+ * résultat qui a l'air juste et ne l'est pas.
+ *
+ * Elle est décrite en BLOCS, comme les vrais documents, et non en lignes déjà
+ * mises en page. C'est ce qui la fait passer par le chemin de production :
+ * une règle qui emprunterait une voie de traverse mesurerait autre chose que
+ * ce qui s'imprime.
  */
-export function regleDeCalibration(paperWidth: 58 | 80 = 58): LigneImprimee[] {
+export function regleDeCalibration(paperWidth: 58 | 80 = 58): Block[] {
   const largeur = colonnesPour(paperWidth);
   const graduation = Array.from({ length: largeur }, (_, i) =>
     (i + 1) % 10 === 0 ? String(((i + 1) / 10) % 10) : "."
   ).join("");
 
   return [
-    { text: `CALIBRATION ${paperWidth} mm`, align: "center", bold: true, size: SIZE_BODY },
-    { text: `taille ${SIZE_BODY}, ${largeur} colonnes`, align: "center", size: SIZE_BODY },
-    { text: graduation, size: SIZE_BODY },
-    { text: "#".repeat(largeur), size: SIZE_BODY },
-    { text: "Le dernier # doit toucher le bord.", size: SIZE_BODY },
-    { text: "", size: SIZE_BODY },
+    { kind: "text", text: `CALIBRATION ${paperWidth} mm`, role: "band", align: "center" },
+    {
+      kind: "text",
+      text: `taille ${SIZE_BODY}, ${largeur} colonnes`,
+      role: "label",
+      align: "center",
+    },
+    { kind: "space", size: "sm" },
+    { kind: "text", text: graduation, role: "body" },
+    { kind: "text", text: "#".repeat(largeur), role: "body" },
+    { kind: "space", size: "sm" },
+    { kind: "text", text: "Le dernier # doit toucher le bord.", role: "body" },
+    { kind: "space", size: "lg" },
   ];
 }

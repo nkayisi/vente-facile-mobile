@@ -144,8 +144,52 @@ export const parkedCarts = sqliteTable(
   (t) => [index("parked_session_idx").on(t.registerSessionId)]
 );
 
+/**
+ * Documents imprimables, gardés pour la réimpression.
+ *
+ * Ce n'est PAS une file d'attente au sens du journal d'opérations : l'impression
+ * ne se rejoue pas toute seule, elle se redemande. Un ticket qui n'est pas sorti
+ * parce que le rouleau était vide doit être réimprimé par un geste du caissier,
+ * jamais par un automate qui déciderait de le sortir dix minutes plus tard,
+ * alors que le client est parti.
+ *
+ * On range les DONNÉES du document, pas ses blocs ni ses octets : une
+ * réimpression les reconstruit avec la pastille DUPLICATA. Ranger le rendu
+ * figerait la mise en page du jour de la vente, et le duplicata cesserait de
+ * ressembler à l'original dès la première correction de gabarit.
+ *
+ * Le numéro, lui, ne bouge JAMAIS : il est alloué à l'émission, et c'est toute
+ * la raison de la série dense par appareil. Un client qui revient avec son
+ * ticket doit retrouver le même numéro sur le duplicata.
+ */
+export const printJobs = sqliteTable(
+  "print_jobs",
+  {
+    id: text("id").primaryKey(),
+    /** `sale`, `payment`, `cash_session`, `expense`… le type de document. */
+    kind: text("kind").notNull(),
+    /** Numéro définitif du document, tel qu'imprimé. */
+    documentNumber: text("document_number").notNull(),
+    /** Ce que le caissier lit dans la liste. */
+    label: text("label").notNull(),
+    /** Données du document, en JSON, telles que `core/receipt` les attend. */
+    data: text("data").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    /** Dernière impression réussie. Nul tant que rien n'est sorti. */
+    printedAt: integer("printed_at", { mode: "timestamp_ms" }),
+    /** Nombre d'impressions : au-delà de 1, ce sont des duplicata. */
+    printCount: integer("print_count").notNull().default(0),
+    /** Transport ayant servi la dernière fois, pour le dire au caissier. */
+    transport: text("transport"),
+  },
+  (t) => [index("print_jobs_created_idx").on(t.createdAt)]
+);
+
 export type SyncStateRow = typeof syncState.$inferSelect;
 export type LocalSetting = typeof localSettings.$inferSelect;
 export type OutboxOperation = typeof outboxOperations.$inferSelect;
 export type NewOutboxOperation = typeof outboxOperations.$inferInsert;
 export type ParkedCart = typeof parkedCarts.$inferSelect;
+export type PrintJob = typeof printJobs.$inferSelect;

@@ -1,13 +1,19 @@
 /**
  * Ce qu'un moyen d'impression doit savoir faire.
  *
- * Deux existent : l'imprimante thermique intégrée d'un terminal NYX, et le PDF
- * partagé, qui sert de repli sur iOS et sur tout Android sans imprimante.
+ * Quatre existent, et ils couvrent ce qu'un marchand a sous la main :
+ *
+ * | Transport   | Matériel visé                                              |
+ * | ----------- | ---------------------------------------------------------- |
+ * | `embedded`  | imprimante intégrée d'un terminal de caisse (NYX, Sunmi…)  |
+ * | `bluetooth` | Bluetooth CLASSIQUE (SPP), la majorité des 58 mm du marché |
+ * | `ble`       | Bluetooth basse consommation, les modèles plus récents      |
+ * | `pdf`       | repli universel : iOS, appareil sans imprimante, envoi      |
  *
  * L'interface est volontairement pauvre. Elle ne connaît ni PDF, ni colonnes,
- * ni octets : elle reçoit la DESCRIPTION du document, en blocs, et se débrouille.
- * C'est ce qui garantit qu'ajouter un troisième moyen (Bluetooth, réseau) ne
- * touchera aucun écran.
+ * ni octets : elle reçoit la DESCRIPTION du document, en blocs, et se
+ * débrouille. C'est ce qui a permis d'ajouter les deux transports sans fil sans
+ * toucher un seul écran, et ce qui permettra d'ajouter le réseau ou l'USB.
  */
 import type { Block } from "@vente-facile/core/receipt";
 
@@ -17,8 +23,10 @@ export interface ContexteImpression {
   nom: string;
 }
 
+export type TransportId = "embedded" | "bluetooth" | "ble" | "pdf";
+
 export interface PiloteImpression {
-  readonly id: "nyx" | "pdf";
+  readonly id: TransportId;
   /** Libellé de l'action, tel que le caissier le lit sur le bouton. */
   readonly action: string;
   /** Le matériel répond-il ? Jamais supposé : toujours demandé. */

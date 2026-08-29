@@ -18,6 +18,9 @@ import * as Crypto from "expo-crypto";
 
 import { buildSalePayload } from "@vente-facile/core/pos";
 
+import { enregistrerDocument } from "@/printing/jobs";
+import { donneesTicketVente } from "@/features/pos/ticket";
+
 import { moyensDePaiement, pointsDuClient, type MoyenPaiement } from "@/features/pos/donnees";
 import { prochaineReference } from "@/features/pos/numerotation";
 import { sessionOuverte, type SessionCaisse } from "@/features/pos/caisse";
@@ -133,6 +136,28 @@ export default function Encaissement() {
       });
 
       const monnaie = totaux.monnaie;
+
+      // Le document est rangé AVANT de vider le panier : après, il n'y a plus
+      // rien à décrire. Il est rangé, pas imprimé : l'écran suivant s'en
+      // charge, pour que le caissier voie la monnaie à rendre même si
+      // l'imprimante est en panne de papier.
+      const ticket = await enregistrerDocument({
+        kind: "sale",
+        documentNumber: reference,
+        label: etat.client?.name ?? `Vente ${reference}`,
+        donnees: donneesTicketVente({
+          reference,
+          date: new Date(),
+          etat,
+          totaux,
+          deviseFacture,
+          snapshot,
+          registerName: session.registerName,
+          restantDu: aCredit ? totaux.restantFacture : 0,
+          aCredit,
+        }),
+      });
+
       panier.envoyer({ type: "vider" });
       router.replace({
         pathname: "/pos/termine",
@@ -141,6 +166,7 @@ export default function Encaissement() {
           monnaie: String(monnaie),
           devise: deviseMonnaie,
           credit: aCredit ? "1" : "",
+          ticket,
         },
       });
     } catch (e) {

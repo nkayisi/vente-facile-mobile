@@ -54,7 +54,7 @@ function charger(): ModuleNyx | null {
 }
 
 export const piloteNyx: PiloteImpression = {
-  id: "nyx",
+  id: "embedded",
   action: "Imprimer le reçu",
 
   async disponible() {

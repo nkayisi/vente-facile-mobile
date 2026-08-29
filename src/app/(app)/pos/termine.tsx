@@ -8,21 +8,56 @@
  * La vente est en file, pas envoyée. On le dit sans dramatiser : c'est le
  * fonctionnement normal de l'application, pas une panne.
  */
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
-import { Button, Icon, Screen, Text } from "@/ui";
+import { Banner, Button, Icon, Screen, Text } from "@/ui";
 import { usePanier } from "@/features/pos/panier";
+import { imprimerDocument } from "@/printing/jobs";
 
 export default function Termine() {
-  const { reference, monnaie, devise, credit } = useLocalSearchParams<{
+  const { reference, monnaie, devise, credit, ticket } = useLocalSearchParams<{
     reference: string;
     monnaie: string;
     devise: string;
     credit: string;
+    ticket?: string;
   }>();
   const { argent } = usePanier();
   const aRendre = Number(monnaie) || 0;
+
+  const [impression, setImpression] = useState<"encours" | "faite" | "echec" | null>(null);
+  const [motif, setMotif] = useState<string | null>(null);
+  // Verrou synchrone : deux appuis rapprochés sortiraient deux tickets, dont le
+  // second marqué DUPLICATA pour rien.
+  const verrou = useRef(false);
+
+  const lancerImpression = useCallback(async () => {
+    if (!ticket || verrou.current) return;
+    verrou.current = true;
+    setImpression("encours");
+    setMotif(null);
+    try {
+      await imprimerDocument(ticket);
+      setImpression("faite");
+    } catch (e) {
+      // L'échec d'impression n'annule RIEN : la vente est en file, le stock est
+      // sorti, l'argent est au tiroir. On le dit sans dramatiser et on laisse
+      // réessayer, parce que la cause est presque toujours un rouleau vide.
+      setImpression("echec");
+      setMotif(e instanceof Error ? e.message : "L'impression a échoué.");
+    } finally {
+      verrou.current = false;
+    }
+  }, [ticket]);
+
+  // Le ticket part TOUT SEUL : au comptoir, un client attend son papier, et
+  // lui demander d'appuyer sur un bouton de plus est une seconde de trop à
+  // chaque vente de la journée.
+  useEffect(() => {
+    void lancerImpression();
+  }, [lancerImpression]);
 
   return (
     <Screen>
@@ -56,6 +91,29 @@ export default function Termine() {
       </View>
 
       <View className="mb-8 gap-3">
+        {impression === "echec" ? (
+          <Banner
+            tone="warning"
+            title="Ticket non imprimé"
+            message={`${motif ?? ""} La vente est enregistrée : vérifiez le papier, puis réimprimez.`}
+          />
+        ) : null}
+
+        {ticket ? (
+          <Button
+            variant={impression === "echec" ? "primary" : "secondary"}
+            onPress={() => void lancerImpression()}
+            disabled={impression === "encours"}
+            fullWidth
+          >
+            {impression === "encours"
+              ? "Impression…"
+              : impression === "faite"
+                ? "Réimprimer (duplicata)"
+                : "Imprimer le reçu"}
+          </Button>
+        ) : null}
+
         <Button onPress={() => router.replace("/pos")} fullWidth>
           Nouvelle vente
         </Button>

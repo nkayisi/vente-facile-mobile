@@ -94,6 +94,14 @@ export default function Home() {
         >
           Synchronisation
         </Button>
+        <Button
+          variant="outline"
+          fullWidth
+          leftIcon="print-outline"
+          onPress={() => router.push("/(app)/imprimante")}
+        >
+          Imprimante
+        </Button>
         <Button variant="outline" fullWidth leftIcon="refresh" onPress={() => void refresh()}>
           Rafraîchir la session
         </Button>

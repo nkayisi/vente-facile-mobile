@@ -70,6 +70,23 @@ const config: ExpoConfig = {
     // Le terminal porte des ventes non synchronisées : une sauvegarde
     // automatique restaurée sur un autre appareil les dupliquerait.
     allowBackup: false,
+    // Bluetooth CLASSIQUE (profil série), le transport de l'écrasante majorité
+    // des imprimantes 58 mm du marché. `react-native-ble-plx` pose lui-même
+    // celles du BLE via son greffon ; le paquet Bluetooth classique n'en a pas,
+    // d'où cette liste écrite à la main.
+    //
+    // Les deux familles cohabitent parce qu'Android a CHANGÉ de modèle en 12 :
+    // `BLUETOOTH` / `BLUETOOTH_ADMIN` valent jusqu'à l'API 30, `BLUETOOTH_SCAN`
+    // et `BLUETOOTH_CONNECT` à partir de 31. N'en garder qu'une moitié
+    // exclurait la moitié du parc, et les terminaux POS bon marché tournent
+    // souvent sur des versions anciennes.
+    permissions: [
+      "android.permission.BLUETOOTH",
+      "android.permission.BLUETOOTH_ADMIN",
+      "android.permission.BLUETOOTH_CONNECT",
+      "android.permission.BLUETOOTH_SCAN",
+      "android.permission.ACCESS_FINE_LOCATION",
+    ],
   },
 
   plugins: [
@@ -87,6 +104,18 @@ const config: ExpoConfig = {
     "expo-secure-store",
     "expo-background-task",
     "expo-sharing",
+    [
+      // Bluetooth basse consommation : les imprimantes plus récentes n'ont plus
+      // de profil série. Le greffon pose les clés Info.plist d'iOS et les
+      // permissions Android, qu'il faudrait sinon écrire deux fois.
+      "react-native-ble-plx",
+      {
+        isBackgroundEnabled: false,
+        modes: ["central"],
+        bluetoothAlwaysPermission:
+          "Le Bluetooth sert à envoyer les tickets à votre imprimante.",
+      },
+    ],
     "@react-native-community/datetimepicker",
     [
       "expo-camera",

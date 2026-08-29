@@ -156,9 +156,18 @@ describe("Repli", () => {
 
 describe("Règle de calibration", () => {
   it("gradue exactement la largeur supposée, pour se compter sur une photo", () => {
-    const lignes = regleDeCalibration(58);
-    const pleine = lignes.find((l) => l.text.startsWith("#"));
-    expect(pleine?.text).toHaveLength(LARGEUR);
-    expect(lignes.find((l) => l.text.includes(".........1"))).toBeDefined();
+    const lignes = rendreTexte(regleDeCalibration(58)).map((l) => l.text);
+    const pleine = lignes.find((t) => t.startsWith("#"));
+    expect(pleine).toHaveLength(LARGEUR);
+    expect(lignes.some((t) => t.includes(".........1"))).toBe(true);
+  });
+
+  it("passe par le chemin de production : une règle repliée mentirait", () => {
+    // Si la graduation se repliait, elle mesurerait le repli et non le papier.
+    const lignes = rendreTexte(regleDeCalibration(58));
+    expect(lignes.filter((l) => l.text.startsWith("#"))).toHaveLength(1);
+    for (const ligne of lignes) {
+      expect(ligne.text.length * (ligne.scale ?? 1)).toBeLessThanOrEqual(LARGEUR);
+    }
   });
 });
