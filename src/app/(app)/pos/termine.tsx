@@ -114,7 +114,7 @@ export default function Termine() {
           </Button>
         ) : null}
 
-        <Button onPress={() => router.replace("/pos")} fullWidth>
+        <Button onPress={() => router.replace("/vendre")} fullWidth>
           Nouvelle vente
         </Button>
         <Button variant="ghost" onPress={() => router.replace("/")} fullWidth>

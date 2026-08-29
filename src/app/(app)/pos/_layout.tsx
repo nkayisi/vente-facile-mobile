@@ -1,17 +1,12 @@
 import { Stack } from "expo-router";
 
-import { PanierProvider } from "@/features/pos/panier";
-
 /**
- * Le panier vit au-dessus des écrans du comptoir.
+ * Écrans du comptoir tenus PLEIN ÉCRAN, hors de la barre d'onglets.
  *
- * Le POS web tient dans une seule page ; sur un téléphone il en faut trois, et
- * un panier logé dans l'un d'eux se viderait en passant au suivant.
+ * `PanierProvider` n'est plus ici : il a été hissé dans `(app)/_layout.tsx`,
+ * parce que la grille d'articles vit désormais dans l'onglet « Vendre » et que
+ * le panier doit survivre au passage de l'un à l'autre.
  */
 export default function PosLayout() {
-  return (
-    <PanierProvider>
-      <Stack screenOptions={{ headerShown: false }} />
-    </PanierProvider>
-  );
+  return <Stack screenOptions={{ headerShown: false }} />;
 }

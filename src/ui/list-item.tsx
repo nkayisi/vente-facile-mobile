@@ -25,6 +25,8 @@ export interface ListItemProps {
   onPress?: () => void;
   /** Chevron : ne le poser que si l'appui ouvre vraiment un écran. */
   chevron?: boolean;
+  /** Sert l'état grisé d'une entrée hors droits. */
+  className?: string;
 }
 
 const VALUE_TONE = {
@@ -44,10 +46,11 @@ export function ListItem({
   trailing,
   onPress,
   chevron = false,
+  className,
 }: ListItemProps) {
   const content = (
     <View
-      className="flex-row items-center bg-card px-4"
+      className={`flex-row items-center bg-card px-4${className ? ` ${className}` : ""}`}
       style={{ minHeight: HIT.min }}
     >
       {leading ?? (icon ? <View className="mr-3"><Icon name={icon} color="mutedForeground" /></View> : null)}

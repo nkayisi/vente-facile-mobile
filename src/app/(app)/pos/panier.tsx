@@ -48,7 +48,7 @@ export default function Panier() {
       });
       panier.envoyer({ type: "vider" });
       setEtiquette(null);
-      router.replace("/pos");
+      router.replace("/vendre");
     } finally {
       verrouAttente.current = false;
     }

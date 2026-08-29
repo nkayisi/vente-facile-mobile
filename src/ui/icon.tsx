@@ -22,6 +22,7 @@
  * clairs.
  */
 import Ionicons from "@expo/vector-icons/Ionicons";
+import type { ColorValue } from "react-native";
 import type { ComponentProps } from "react";
 
 import { LUCIDE, type NomLucide } from "./icons/registre";
@@ -70,10 +71,10 @@ export function IconBrute({
   size = 20,
   color,
   strokeWidth = 2,
-}: Omit<IconProps, "color"> & { color: string }) {
+}: Omit<IconProps, "color"> & { color: ColorValue }) {
   if (name.startsWith("ion:")) {
-    return <Ionicons name={name.slice(4) as NomIonicon} size={size + 1} color={color} />;
+    return <Ionicons name={name.slice(4) as NomIonicon} size={size + 1} color={color as string} />;
   }
   const Glyphe = LUCIDE[name as NomLucide];
-  return <Glyphe size={size} color={color} strokeWidth={strokeWidth} />;
+  return <Glyphe size={size} color={color as string} strokeWidth={strokeWidth} />;
 }

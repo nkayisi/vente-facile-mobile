@@ -9,10 +9,19 @@
  * `text-muted-foreground`, et c'est ce fournisseur qui décide ce que ces noms
  * valent, en posant les variables sur la vue racine.
  */
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { View, useColorScheme as useSystemColorScheme } from "react-native";
 import { vars } from "nativewind";
 
+import { CLE_THEME, ecrireReglage, lireReglage } from "@/data/reglages";
 import { PALETTES, themeVars, type ColorScheme, type Palette } from "./tokens";
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -24,24 +33,42 @@ interface ThemeValue {
   preference: ThemePreference;
   /** Couleurs en dur, pour les API natives qui n'acceptent pas de classe. */
   colors: Palette;
+  /** Change le réglage et le range sur l'appareil. */
+  setPreference: (p: ThemePreference) => void;
 }
 
 const ThemeContext = createContext<ThemeValue | null>(null);
 
-export function ThemeProvider({
-  preference = "system",
-  children,
-}: {
-  preference?: ThemePreference;
-  children: ReactNode;
-}) {
+export function ThemeProvider({ children }: { children: ReactNode }) {
   const system = useSystemColorScheme();
+  const [preference, setPreferenceEtat] = useState<ThemePreference>("system");
+
+  // Le réglage rangé est relu APRÈS le premier rendu : ce fournisseur est monté
+  // au-dessus de la base, volontairement, pour que l'écran d'erreur de
+  // migration soit habillé. On démarre donc sur « system » et on corrige d'un
+  // rendu. `lireReglage` avale ses erreurs : un thème est un confort, il ne
+  // doit pas pouvoir empêcher l'application de démarrer.
+  useEffect(() => {
+    let vivant = true;
+    void lireReglage<ThemePreference>(CLE_THEME, "system").then((p) => {
+      if (vivant) setPreferenceEtat(p);
+    });
+    return () => {
+      vivant = false;
+    };
+  }, []);
+
+  const setPreference = useCallback((p: ThemePreference) => {
+    setPreferenceEtat(p);
+    void ecrireReglage(CLE_THEME, p);
+  }, []);
+
   const scheme: ColorScheme =
     preference === "system" ? (system === "dark" ? "dark" : "light") : preference;
 
   const value = useMemo<ThemeValue>(
-    () => ({ scheme, preference, colors: PALETTES[scheme] }),
-    [scheme, preference]
+    () => ({ scheme, preference, colors: PALETTES[scheme], setPreference }),
+    [scheme, preference, setPreference]
   );
 
   // `flex-1` est indispensable : sans lui la vue porteuse des variables se

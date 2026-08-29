@@ -160,7 +160,7 @@ export default function Sync() {
             message="Elles ne repartiront pas d'elles-mêmes."
             action={{
               label: "Voir et corriger",
-              onPress: () => router.push("/(app)/operations"),
+              onPress: () => router.push("/(app)/appareil/operations"),
             }}
           />
         </View>
