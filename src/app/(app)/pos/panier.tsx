@@ -226,7 +226,7 @@ function BoiteEtiquette({
       animationType="fade"
       onRequestClose={onFermer}
     >
-      <Pressable className="flex-1 justify-center bg-black/50 px-6" onPress={onFermer}>
+      <Pressable className="flex-1 justify-center bg-foreground/50 px-6" onPress={onFermer}>
         <Pressable className="rounded-2xl bg-card p-5" onPress={() => {}}>
           <Text variant="h4">Mettre en attente</Text>
           <Text variant="bodySmall" className="mt-1 text-muted-foreground">

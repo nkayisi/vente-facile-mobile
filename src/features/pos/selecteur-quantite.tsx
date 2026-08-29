@@ -115,7 +115,7 @@ export function SelecteurQuantite({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onFermer}>
       <Pressable
-        className="flex-1 justify-end bg-black/50"
+        className="flex-1 justify-end bg-foreground/50"
         onPress={onFermer}
         haptic="none"
         accessibilityLabel="Fermer"

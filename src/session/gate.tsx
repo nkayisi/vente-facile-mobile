@@ -11,7 +11,7 @@
  * pile : elle observe l'état à chaque changement, quel que soit l'écran affiché.
  */
 import { useEffect } from "react";
-import { useRouter, useSegments } from "expo-router";
+import { useRootNavigationState, useRouter, useSegments } from "expo-router";
 
 import { useSession } from "./provider";
 import type { SessionStatus } from "./types";
@@ -29,8 +29,15 @@ export function SessionGate() {
   const { status } = useSession();
   const segments = useSegments();
   const router = useRouter();
+  // La pile est declaree APRES cette garde dans le layout racine, et les effets
+  // s'executent dans l'ordre de declaration : sans ce temoin, le premier
+  // `router.replace` part alors que le navigateur a ete RENDU mais pas encore
+  // MONTE, et React leve « Can't perform a React state update on a component
+  // that hasn't mounted yet ». L'avertissement etait la depuis le lot 1.
+  const navigation = useRootNavigationState();
 
   useEffect(() => {
+    if (!navigation?.key) return;
     // Tant que le trousseau n'a pas parlé, on ne déplace rien : rediriger sur
     // un état provisoire ferait clignoter l'écran de connexion à chaque
     // démarrage, y compris pour un utilisateur déjà connecté.
@@ -58,7 +65,7 @@ export function SessionGate() {
           : current === target;
 
     if (!alreadyThere) router.replace(target as never);
-  }, [status, segments, router]);
+  }, [status, segments, router, navigation?.key]);
 
   return null;
 }

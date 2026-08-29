@@ -6,7 +6,7 @@
  * doit voir ce qu'il reprend avant de le faire.
  */
 import { useCallback, useState } from "react";
-import { Alert, FlatList, View } from "react-native";
+import { FlatList, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
 import { formatDateTime } from "@vente-facile/core";
@@ -22,7 +22,7 @@ import {
 import { sessionOuverte } from "@/features/pos/caisse";
 import { usePanier } from "@/features/pos/panier";
 import {
-  Banner, Divider, EmptyState, Icon, Pressable, Screen, Spinner, Text,
+  AlertDialog, Banner, Divider, EmptyState, Icon, Pressable, Screen, Spinner, Text,
 } from "@/ui";
 
 export default function Attente() {
@@ -42,18 +42,17 @@ export default function Attente() {
    * appui est une vente perdue, et le caissier ne saura pas ce qu'il y avait
    * dedans.
    */
+  // Trois confirmations qui passaient par `Alert.alert`. Le natif ignore le
+  // theme sombre, ignore la police, et son bouton destructif n'est rouge que
+  // sur iOS : au comptoir, l'ecran qui demande de perdre un panier ne peut pas
+  // etre le seul a ne pas ressembler a l'application.
+  const [aRanger, setARanger] = useState<PanierEnAttente | null>(null);
+  const [aSupprimer, setASupprimer] = useState<PanierEnAttente | null>(null);
+  const [reserves, setReserves] = useState<string | null>(null);
+
   const ouvrir = async (item: PanierEnAttente) => {
     if (panier.etat.lignes.length > 0) {
-      Alert.alert(
-        "Panier en cours",
-        `Le panier courant porte ${panier.etat.lignes.length} article${
-          panier.etat.lignes.length > 1 ? "s" : ""
-        }. Il sera mis en attente à son tour.`,
-        [
-          { text: "Annuler", style: "cancel" },
-          { text: "Ranger et reprendre", onPress: () => void rangerPuisReprendre(item) },
-        ]
-      );
+      setARanger(item);
       return;
     }
     await effectuerReprise(item);
@@ -93,31 +92,18 @@ export default function Attente() {
     }
 
     if (messages.length > 0) {
-      Alert.alert("Panier repris, avec des réserves", messages.join("\n\n"), [
-        { text: "J'ai compris", onPress: () => router.replace("/pos/panier") },
-      ]);
+      setReserves(messages.join("\n\n"));
       return;
     }
     router.replace("/pos/panier");
   };
 
-  const supprimer = (item: PanierEnAttente) => {
-    Alert.alert(
-      "Supprimer ce panier ?",
-      `« ${item.label} » sera perdu. Cette action ne peut pas être annulée.`,
-      [
-        { text: "Annuler", style: "cancel" },
-        {
-          text: "Supprimer",
-          style: "destructive",
-          onPress: async () => {
-            await supprimerEnAttente(item.id);
-            setAvis({ ton: "info", texte: `« ${item.label} » a été supprimé.` });
-            recharger();
-          },
-        },
-      ]
-    );
+  const confirmerSuppression = async () => {
+    if (!aSupprimer) return;
+    await supprimerEnAttente(aSupprimer.id);
+    setAvis({ ton: "info", texte: `« ${aSupprimer.label} » a été supprimé.` });
+    setASupprimer(null);
+    recharger();
   };
 
   return (
@@ -182,7 +168,7 @@ export default function Attente() {
                 </Text>
               </View>
               <Pressable
-                onPress={() => supprimer(item)}
+                onPress={() => setASupprimer(item)}
                 haptic="warning"
                 className="ml-2 h-11 w-11 items-center justify-center rounded-full active:bg-muted"
                 accessibilityLabel={`Supprimer le panier ${item.label}`}
@@ -193,6 +179,52 @@ export default function Attente() {
           )}
         />
       )}
-    </Screen>
+          <AlertDialog
+        ouvert={aRanger !== null}
+        titre="Panier en cours"
+        message={`Le panier courant porte ${panier.etat.lignes.length} article${
+          panier.etat.lignes.length > 1 ? "s" : ""
+        }. Il sera mis en attente à son tour.`}
+        confirmer="Ranger et reprendre"
+        onConfirmer={() => {
+          const item = aRanger;
+          setARanger(null);
+          if (item) void rangerPuisReprendre(item);
+        }}
+        onAnnuler={() => setARanger(null)}
+      />
+
+      <AlertDialog
+        ouvert={aSupprimer !== null}
+        titre="Supprimer ce panier ?"
+        message={
+          aSupprimer
+            ? `« ${aSupprimer.label} » sera perdu. Cette action ne peut pas être annulée.`
+            : undefined
+        }
+        confirmer="Supprimer"
+        destructif
+        onConfirmer={() => void confirmerSuppression()}
+        onAnnuler={() => setASupprimer(null)}
+      />
+
+      {/* Ce qui suit n'est PAS une confirmation mais un compte rendu : la
+          reprise a eu lieu, et elle dit ce qu'elle n'a pas pu honorer. */}
+      <AlertDialog
+        ouvert={reserves !== null}
+        titre="Panier repris, avec des réserves"
+        message={reserves ?? undefined}
+        confirmer="J'ai compris"
+        annuler=""
+        onConfirmer={() => {
+          setReserves(null);
+          router.replace("/pos/panier");
+        }}
+        onAnnuler={() => {
+          setReserves(null);
+          router.replace("/pos/panier");
+        }}
+      />
+</Screen>
   );
 }

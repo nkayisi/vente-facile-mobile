@@ -10,12 +10,13 @@
  * abandonner en connaissance de cause.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 import { useFocusEffect } from "expo-router";
 
 import { discard, quarantined } from "@/sync";
 import type { OutboxOperation } from "@/db/schema";
 import {
+  AlertDialog,
   Badge,
   Button,
   Card,
@@ -57,26 +58,26 @@ export default function Operations() {
   useEffect(() => void refresh(), [refresh]);
   useFocusEffect(useCallback(() => void refresh(), [refresh]));
 
-  const abandonner = (op: OutboxOperation) => {
-    const quoi = KIND_LABELS[op.kind] ?? op.kind;
-    Alert.alert(
-      "Abandonner cette opération ?",
-      `${quoi}${resume(op) ? ` · ${resume(op)}` : ""}\n\n` +
-        "Elle ne sera jamais envoyée. Si c'était une vente encaissée, " +
-        "le paiement restera sans trace au serveur.",
-      [
-        { text: "Garder", style: "cancel" },
-        {
-          text: "Abandonner",
-          style: "destructive",
-          onPress: async () => {
-            await discard(op.id);
-            await refresh();
-          },
-        },
-      ]
-    );
-  };
+  // `Alert.alert` a ete remplace par notre `AlertDialog` : le natif ignore le
+  // theme sombre, ignore la police, ne sait pas rendre un montant en chiffres
+  // tabulaires, et son bouton destructif n'est rouge que sur iOS. Une decision
+  // irreversible ne peut pas etre le seul ecran a ne pas ressembler a
+  // l'application.
+  const [aAbandonner, setAAbandonner] = useState<OutboxOperation | null>(null);
+  const [abandonEnCours, setAbandonEnCours] = useState(false);
+
+  const confirmerAbandon = useCallback(async () => {
+    if (!aAbandonner) return;
+    setAbandonEnCours(true);
+    try {
+      await discard(aAbandonner.id);
+      await refresh();
+      setAAbandonner(null);
+    } finally {
+      setAbandonEnCours(false);
+    }
+  }, [aAbandonner, refresh]);
+
 
   if (rows.length === 0) {
     return (
@@ -129,7 +130,7 @@ export default function Operations() {
                 variant="outline"
                 size="sm"
                 leftIcon="Trash2"
-                onPress={() => abandonner(op)}
+                onPress={() => setAAbandonner(op)}
               >
                 Abandonner
               </Button>
@@ -137,6 +138,24 @@ export default function Operations() {
           </Card>
         </View>
       ))}
-    </Screen>
+          <AlertDialog
+        ouvert={aAbandonner !== null}
+        titre="Abandonner cette opération ?"
+        message={
+          aAbandonner
+            ? `${KIND_LABELS[aAbandonner.kind] ?? aAbandonner.kind}` +
+              `${resume(aAbandonner) ? ` · ${resume(aAbandonner)}` : ""}\n\n` +
+              "Elle ne sera jamais envoyée. Si c'était une vente encaissée, " +
+              "le paiement restera sans trace au serveur."
+            : undefined
+        }
+        confirmer="Abandonner"
+        annuler="Garder"
+        destructif
+        enCours={abandonEnCours}
+        onConfirmer={() => void confirmerAbandon()}
+        onAnnuler={() => setAAbandonner(null)}
+      />
+</Screen>
   );
 }
