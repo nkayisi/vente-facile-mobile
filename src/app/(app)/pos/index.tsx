@@ -17,6 +17,7 @@ import {
   chercherArticles,
   type ArticlePos,
 } from "@/features/pos/catalogue";
+import { compterEnAttente } from "@/features/pos/attente";
 import { ouvrirSession, sessionOuverte, caissesDisponibles, type CaissePos, type SessionCaisse } from "@/features/pos/caisse";
 import { CarteArticle } from "@/features/pos/carte-article";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
@@ -37,12 +38,16 @@ export default function Comptoir() {
   const [rubrique, setRubrique] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
   const [choisi, setChoisi] = useState<ArticlePos | null>(null);
+  const [paniersRanges, setPaniersRanges] = useState(0);
 
   // Rechargement au retour sur l'écran : une synchronisation a pu passer, et
   // un stock périmé fait refuser des ventes possibles.
   useFocusEffect(
     useCallback(() => {
       sessionOuverte().then(setSession);
+      // Le compteur se relit au retour sur la grille : on vient peut-être d'y
+      // ranger un panier, ou d'en reprendre un.
+      compterEnAttente().then(setPaniersRanges);
     }, [])
   );
 
@@ -112,6 +117,20 @@ export default function Comptoir() {
             </Text>
           ) : null}
         </View>
+        {paniersRanges > 0 ? (
+          <Pressable
+            onPress={() => router.push("/pos/attente")}
+            className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+            accessibilityLabel={`${paniersRanges} panier${paniersRanges > 1 ? "s" : ""} en attente`}
+          >
+            <Icon name="pause-circle-outline" size={24} />
+            <View className="absolute right-1 top-1 h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1">
+              <Text variant="caption" className="text-primary-foreground">
+                {paniersRanges}
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={() => router.push("/pos/scan")}
           className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"

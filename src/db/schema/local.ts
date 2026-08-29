@@ -101,7 +101,51 @@ export const outboxOperations = sqliteTable(
   ]
 );
 
+/**
+ * Paniers mis en attente au comptoir.
+ *
+ * Le cas est quotidien : un client s'aperçoit qu'il a oublié quelque chose et
+ * repart dans les rayons, la file derrière lui n'a pas à attendre. On range son
+ * panier, on sert les suivants, on le reprend à son retour.
+ *
+ * ON MET EN ATTENTE UN PANIER, PAS UN ENCAISSEMENT. Ni les règlements, ni les
+ * points, ni le choix du crédit ne sont conservés : ce sont des décisions de
+ * l'écran d'encaissement, prises face au client, sur des soldes qui bougent
+ * entre-temps. Les restituer ferait payer avec des points qui ne sont plus là.
+ *
+ * Le contenu ne porte que des IDENTIFIANTS et les nombres saisis, jamais une
+ * copie du produit. Un panier en attente ne met pas le catalogue en cache : il
+ * s'y réfère, et le prix comme le stock sont RELUS à la reprise. Autrement, un
+ * panier rangé le matin vendrait le soir au prix du matin, sans que personne
+ * ne le voie.
+ */
+export const parkedCarts = sqliteTable(
+  "parked_carts",
+  {
+    id: text("id").primaryKey(),
+    /** Ce que le caissier lit dans la liste : un nom de client, une table, un repère. */
+    label: text("label").notNull(),
+    /** Session de caisse d'origine : un panier ne survit pas à la clôture. */
+    registerSessionId: text("register_session_id"),
+    /** `ContenuEnAttente` sérialisé. Voir `features/pos/attente.ts`. */
+    content: text("content").notNull(),
+    lineCount: integer("line_count").notNull().default(0),
+    /**
+     * Montant AU MOMENT DE LA MISE EN ATTENTE, pour que la liste dise quelque
+     * chose. Décimale en chaîne, comme partout. Il est indicatif : la reprise
+     * recalcule tout depuis le catalogue du jour.
+     */
+    totalAmount: text("total_amount").notNull().default("0"),
+    totalCurrency: text("total_currency").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("parked_session_idx").on(t.registerSessionId)]
+);
+
 export type SyncStateRow = typeof syncState.$inferSelect;
 export type LocalSetting = typeof localSettings.$inferSelect;
 export type OutboxOperation = typeof outboxOperations.$inferSelect;
 export type NewOutboxOperation = typeof outboxOperations.$inferInsert;
+export type ParkedCart = typeof parkedCarts.$inferSelect;

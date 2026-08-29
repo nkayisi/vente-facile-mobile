@@ -85,6 +85,34 @@ export async function chercherClients(terme: string, limite = 25): Promise<Clien
 }
 
 /**
+ * Un client par son identifiant, relu depuis la base locale.
+ *
+ * `null` quand il a disparu ou n'est plus actif. Sert la reprise d'un panier
+ * mis en attente : le solde et l'autorisation de crédit ont pu changer depuis,
+ * et c'est sur eux que se décide un refus de crédit.
+ */
+export async function clientParId(id: string): Promise<ClientPos | null> {
+  const [ligne] = await db
+    .select({
+      id: customers.id,
+      name: customers.name,
+      allow_credit: customers.allowCredit,
+      credit_limit: customers.creditLimit,
+      current_balance: customers.currentBalance,
+    })
+    .from(customers)
+    .where(
+      and(
+        eq(customers.id, id),
+        eq(customers.isActive, true),
+        or(eq(customers.isDeleted, false), isNull(customers.isDeleted))!
+      )
+    )
+    .limit(1);
+  return ligne ?? null;
+}
+
+/**
  * Points disponibles d'un client.
  *
  * Zéro quand la ligne n'existe pas : contrairement au stock, l'absence est ici

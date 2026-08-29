@@ -62,6 +62,7 @@ export type ActionPanier =
   | { type: "points"; points: number }
   | { type: "reglements"; reglements: Reglement[] }
   | { type: "credit"; actif: boolean; echeance?: string | null }
+  | { type: "restaurer"; etat: EtatPanier }
   | { type: "vider" };
 
 export const PANIER_VIDE: EtatPanier = {
@@ -186,6 +187,14 @@ export function reducteurPanier(etat: EtatPanier, action: ActionPanier): EtatPan
         aCredit: action.actif,
         echeance: action.actif ? (action.echeance ?? etat.echeance) : null,
       };
+
+    // Reprise d'un panier mis en attente. L'état arrive ENTIER, déjà rejoué
+    // contre le catalogue du jour par `attente.ts` : le réducteur ne le
+    // recompose pas, il le pose. Reconstituer ligne par ligne ici rejouerait
+    // les contrôles de stock une seconde fois, sur des lignes qui viennent
+    // justement de les passer.
+    case "restaurer":
+      return action.etat;
 
     case "vider":
       return PANIER_VIDE;

@@ -5,13 +5,15 @@
  * qu'au comptoir ce sont deux moments distincts : on compose, puis on relit
  * avec le client avant d'annoncer le montant.
  */
-import { useState } from "react";
-import { FlatList, View } from "react-native";
+import { useRef, useState } from "react";
+import { FlatList, Modal, View } from "react-native";
 import { router } from "expo-router";
 
 import { getPackaging, pluralizeUnit } from "@vente-facile/core";
 import { lineGross, looseQuantityOf, type Saisie } from "@vente-facile/core/pos";
 
+import { etiquetteParDefaut, mettreEnAttente } from "@/features/pos/attente";
+import { sessionOuverte } from "@/features/pos/caisse";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
 import { usePanier, type LignePanier } from "@/features/pos/panier";
 import {
@@ -22,8 +24,36 @@ export default function Panier() {
   const panier = usePanier();
   const [enEdition, setEnEdition] = useState<number | null>(null);
   const [remiseOuverte, setRemiseOuverte] = useState(false);
+  const [etiquette, setEtiquette] = useState<string | null>(null);
+  // Verrou synchrone AVANT tout `setState` : deux appuis rapprochés rangeraient
+  // le panier deux fois, et le second appui viderait un panier déjà vide.
+  const verrouAttente = useRef(false);
 
   const lignes = panier.etat.lignes;
+
+  const ranger = async (label: string) => {
+    if (verrouAttente.current) return;
+    verrouAttente.current = true;
+    try {
+      const session = await sessionOuverte();
+      await mettreEnAttente({
+        etat: panier.etat,
+        label,
+        registerSessionId: session?.id ?? null,
+        // Le montant est rangé TEL QUEL, pour que la liste dise quelque chose.
+        // Il est indicatif : la reprise recalcule tout depuis le catalogue du
+        // jour, prix compris.
+        totalAmount: String(panier.totaux.totalFacture),
+        totalCurrency: panier.deviseFacture,
+      });
+      panier.envoyer({ type: "vider" });
+      setEtiquette(null);
+      router.replace("/pos");
+    } finally {
+      verrouAttente.current = false;
+    }
+  };
+
   const ligne = enEdition !== null ? lignes[enEdition] : null;
 
   return (
@@ -116,12 +146,32 @@ export default function Panier() {
               </View>
             ) : null}
 
-            <Button onPress={() => router.push("/pos/encaissement")} fullWidth>
-              Encaisser
-            </Button>
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Button
+                  variant="secondary"
+                  onPress={() => setEtiquette(etiquetteParDefaut(panier.etat))}
+                  fullWidth
+                >
+                  Mettre en attente
+                </Button>
+              </View>
+              <View className="flex-1">
+                <Button onPress={() => router.push("/pos/encaissement")} fullWidth>
+                  Encaisser
+                </Button>
+              </View>
+            </View>
           </View>
         </>
       )}
+
+      <BoiteEtiquette
+        valeur={etiquette}
+        onChange={setEtiquette}
+        onValider={() => etiquette !== null && void ranger(etiquette)}
+        onFermer={() => setEtiquette(null)}
+      />
 
       <SelecteurQuantite
         article={ligne?.product ?? null}
@@ -147,6 +197,70 @@ export default function Panier() {
         }}
       />
     </Screen>
+  );
+}
+
+/**
+ * Nommer le panier qu'on range.
+ *
+ * Sans étiquette, une liste de trois paniers ne se distingue que par un montant
+ * et une heure, et le caissier doit les ouvrir un par un pour retrouver celui
+ * du client qui revient. Le nom du client sert de valeur par défaut ; à défaut,
+ * l'heure, qui sépare au moins deux paniers rangés à dix minutes d'intervalle.
+ */
+function BoiteEtiquette({
+  valeur,
+  onChange,
+  onValider,
+  onFermer,
+}: {
+  valeur: string | null;
+  onChange: (v: string) => void;
+  onValider: () => void;
+  onFermer: () => void;
+}) {
+  return (
+    <Modal
+      visible={valeur !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={onFermer}
+    >
+      <Pressable className="flex-1 justify-center bg-black/50 px-6" onPress={onFermer}>
+        <Pressable className="rounded-2xl bg-card p-5" onPress={() => {}}>
+          <Text variant="h4">Mettre en attente</Text>
+          <Text variant="bodySmall" className="mt-1 text-muted-foreground">
+            Le panier sera rangé et le comptoir libéré pour le client suivant.
+          </Text>
+
+          <View className="mt-4">
+            <FormField label="Nom du panier">
+              <Input
+                value={valeur ?? ""}
+                onChangeText={onChange}
+                placeholder="Client, table, repère…"
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={onValider}
+              />
+            </FormField>
+          </View>
+
+          <View className="mt-4 flex-row gap-3">
+            <View className="flex-1">
+              <Button variant="ghost" onPress={onFermer} fullWidth>
+                Annuler
+              </Button>
+            </View>
+            <View className="flex-1">
+              <Button onPress={onValider} fullWidth>
+                Ranger
+              </Button>
+            </View>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 

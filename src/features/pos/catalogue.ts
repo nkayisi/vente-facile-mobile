@@ -9,7 +9,7 @@
  * La conversion en nombre n'a lieu qu'au moment de calculer, jamais au stockage
  * ni à la comparaison SQL, où `"0.000" > "12.000"` lexicographiquement.
  */
-import { and, asc, eq, isNull, like, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { availableSplit, getPackaging } from "@vente-facile/core";
 import { alias } from "drizzle-orm/sqlite-core";
 
@@ -229,6 +229,28 @@ export async function articleParCodeBarres(
     .where(and(vendable(), eq(products.barcode, code.trim())))
     .limit(1);
   return ligne ? versArticle(ligne) : null;
+}
+
+/**
+ * Les articles portant ces identifiants, indexés par identifiant.
+ *
+ * Sert la reprise d'un panier mis en attente : le prix et le stock sont RELUS,
+ * jamais restitués depuis une copie rangée avec le panier. Un article devenu
+ * invendable ou supprimé est simplement absent de la carte, ce que l'appelant
+ * traduit en ligne écartée.
+ */
+export async function articlesParIds(
+  ids: string[],
+  warehouseId?: string | null
+): Promise<Map<string, ArticlePos>> {
+  const uniques = [...new Set(ids)].filter(Boolean);
+  if (uniques.length === 0) return new Map();
+
+  const lignes = await base(warehouseId).where(
+    and(vendable(), inArray(products.id, uniques))
+  );
+
+  return new Map(lignes.map(versArticle).map((a) => [a.id, a]));
 }
 
 export async function categoriesVendables(): Promise<{ id: string; name: string }[]> {
