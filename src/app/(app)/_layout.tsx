@@ -1,5 +1,6 @@
 import { Stack } from "expo-router";
 
+import { useDeviseParDefaut } from "@/data/devises";
 import { PanierProvider } from "@/features/pos/panier";
 import { ToastProvider } from "@/ui";
 
@@ -31,6 +32,10 @@ import { ToastProvider } from "@/ui";
  * personne ne relit.
  */
 export default function AppLayout() {
+  // Avant tout écran : sans cela, `formatPrice` écrit en francs congolais
+  // quelle que soit la devise de l'établissement.
+  useDeviseParDefaut();
+
   return (
     <ToastProvider>
       <PanierProvider>
