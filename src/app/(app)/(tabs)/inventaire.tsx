@@ -8,6 +8,7 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatDateFr } from "@vente-facile/core";
 
 import {
@@ -26,8 +27,12 @@ import {
 
 const TABLES = ["inventory_sessions", "inventory_counts", "warehouses"];
 
+/** Hauteur de la barre d'onglets, hors zone sûre. Mesurée sur l'émulateur. */
+const HAUTEUR_ONGLETS = 56;
+
 export default function Inventaire() {
   const { can } = useSession();
+  const insets = useSafeAreaInsets();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
 
@@ -138,7 +143,13 @@ export default function Inventaire() {
         <Fab
           icon="Plus"
           label="Nouvelle"
-          offsetBas={56}
+          // La barre d'onglets, plus la zone sûre QU'ELLE PORTE : sur un
+          // iPhone, elle s'étire de l'indicateur d'accueil et mesure donc
+          // trente-quatre points de plus qu'ici. Poser 56 en dur y placerait
+          // le bouton SUR les onglets. `Screen` n'y peut rien : un écran
+          // d'onglet passe `edges={[]}`, sans quoi il laisserait une bande
+          // vide au-dessus de la barre.
+          offsetBas={HAUTEUR_ONGLETS + insets.bottom}
           onPress={() => router.push("/comptage/nouveau")}
         />
       ) : null}

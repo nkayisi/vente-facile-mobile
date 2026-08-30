@@ -6,8 +6,14 @@
  * d'une main, ce coin est hors de portée du pouce. L'action descend donc ici.
  * C'est un écart au web, volontaire, listé dans la check-list de parité.
  *
- * Il laisse la place à la zone sûre ET à la barre d'onglets : sans le second
- * terme, le bouton se pose SUR les onglets.
+ * **`Fab` ne pose AUCUNE zone sûre**, c'est `Screen` qui s'en charge - même
+ * partage que `AppBar`, et pour la même raison : deux composants qui ajoutent
+ * `insets.bottom` font flotter le bouton à quatre-vingts points du bord, et
+ * cela ne se voit que sur un terminal à indicateur d'accueil.
+ *
+ * Reste `offsetBas`, qui n'est PAS une zone sûre : c'est la hauteur de la barre
+ * d'onglets pour un écran qui vit dedans, laquelle porte déjà sa propre zone
+ * sûre. Sans lui, le bouton se pose sur les onglets.
  */
 import { View } from "react-native";
 

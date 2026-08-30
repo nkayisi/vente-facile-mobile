@@ -24,7 +24,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net"
+        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net",
+        "EXPO_PUBLIC_SENTRY_DSN": ""
       }
     },
     "production": {
@@ -36,7 +37,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net"
+        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net",
+        "EXPO_PUBLIC_SENTRY_DSN": ""
       }
     }
   },

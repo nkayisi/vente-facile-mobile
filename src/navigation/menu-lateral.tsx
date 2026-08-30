@@ -150,6 +150,11 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
             // surtout repérer celui qu'il ne reconnaît plus.
             { titre: "Appareils", icon: "Cpu" as const, href: "/(app)/appareil/parc" },
             { titre: "Apparence", icon: "Settings" as const, href: "/(app)/appareil/apparence" },
+            // La bascule depuis l'ancienne app : les deux portent le même
+            // identifiant natif, donc la nouvelle hérite du bac à sable de
+            // l'ancienne. L'entrée reste visible même quand il n'y a rien -
+            // c'est justement ce qu'on vient vérifier avant de désinstaller.
+            { titre: "Ancienne application", icon: "CloudDownload" as const, href: "/(app)/appareil/bascule" },
           ].map((a) => (
             <Pressable
               key={a.href}

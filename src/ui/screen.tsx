@@ -21,7 +21,22 @@ import { useTheme } from "./theme";
 
 export interface ScreenProps {
   children: ReactNode;
-  /** Bords où appliquer la zone sûre. Le bas est souvent porté par une barre. */
+  /**
+   * Bords où appliquer la zone sûre.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ LE BAS EN FAIT PARTIE PAR DÉFAUT, et ne l'a pas toujours fait.         │
+   * │                                                                        │
+   * │ Sans lui, la dernière ligne d'un écran plein - le bouton « Enregistrer │
+   * │ » de tous les formulaires - se pose sur l'indicateur d'accueil d'un    │
+   * │ iPhone et sur la barre gestuelle d'un Android récent, là où le système │
+   * │ intercepte le geste. Le bouton devient dur à presser, sans que rien ne │
+   * │ le signale sur un émulateur à boutons logiciels.                       │
+   * └────────────────────────────────────────────────────────────────────────┘
+   *
+   * Un écran d'ONGLET passe `edges={[]}` : la barre d'onglets porte déjà les
+   * deux bords, et les cumuler laisserait une bande vide au-dessus d'elle.
+   */
   edges?: Edge[];
   /** Enveloppe le contenu dans un défilement. */
   scroll?: boolean;
@@ -35,7 +50,7 @@ export interface ScreenProps {
 
 export function Screen({
   children,
-  edges = ["top"],
+  edges = ["top", "bottom"],
   scroll = false,
   onRefresh,
   refreshing = false,

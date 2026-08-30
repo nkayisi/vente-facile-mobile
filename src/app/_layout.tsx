@@ -12,6 +12,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 
+import { initSentry } from "@/observabilite/sentry";
 import { DatabaseProvider } from "@/db/provider";
 import { SessionGate } from "@/session/gate";
 import { SessionProvider } from "@/session/provider";
@@ -23,6 +24,11 @@ import "../global.css";
 // l'application démarre en police système puis bascule sur Inter : un saut
 // visible sur tout l'écran, à chaque lancement.
 void SplashScreen.preventAutoHideAsync();
+
+// AVANT tout rendu, sinon un plantage au montage - le cas le plus difficile à
+// reproduire, et donc celui qu'on veut le plus - ne serait pas rapporté.
+// Sans DSN configuré, cet appel ne fait rien : voir `observabilite/sentry.ts`.
+initSentry();
 
 /**
  * Racine de l'application.

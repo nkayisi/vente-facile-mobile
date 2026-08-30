@@ -116,6 +116,10 @@ const config: ExpoConfig = {
           "Le Bluetooth sert à envoyer les tickets à votre imprimante.",
       },
     ],
+    // Sentry pose ses agents natifs (crash Java/Kotlin et ObjC/Swift) : sans
+    // le greffon, seules les erreurs JavaScript remonteraient, or un plantage
+    // natif est précisément celui qu'on ne peut pas reproduire au bureau.
+    "@sentry/react-native",
     "@react-native-community/datetimepicker",
     [
       "expo-camera",
@@ -138,6 +142,38 @@ const config: ExpoConfig = {
       },
     ],
   ],
+
+  /**
+   * Mises à jour par-dessus l'air.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ UNE MISE À JOUR NE DOIT JAMAIS RETARDER L'OUVERTURE DU COMPTOIR.       │
+   * │                                                                        │
+   * │ `fallbackToCacheTimeout: 0` fait démarrer l'application sur le paquet   │
+   * │ déjà présent, SANS attendre le réseau. La recherche continue en fond,   │
+   * │ et le nouveau paquet s'applique au lancement suivant. Le réglage par    │
+   * │ défaut bloquerait le démarrage le temps d'un aller-retour : sur une 2G  │
+   * │ congolaise, cela veut dire un caissier qui attend devant un client.     │
+   * └────────────────────────────────────────────────────────────────────────┘
+   *
+   * `policy: "fingerprint"` et non `"appVersion"` : l'empreinte change dès
+   * qu'une dépendance NATIVE bouge. C'est ce qui empêche d'envoyer à un
+   * terminal un paquet JavaScript qui appelle un module natif que son binaire
+   * n'a pas - l'imprimante Bluetooth, par exemple, qui planterait au premier
+   * ticket. Une version applicative, elle, se laisse oublier.
+   *
+   * `url` et `extra.eas.projectId` restent ABSENTS tant que le projet n'est pas
+   * relié à un compte EAS (`eas init` puis `eas update:configure` les posent).
+   * Sans eux le mécanisme est inerte : aucune mise à jour n'est cherchée, et
+   * rien ne casse. Les inventer ici enverrait les terminaux interroger un
+   * identifiant qui n'existe pas.
+   */
+  updates: {
+    enabled: true,
+    fallbackToCacheTimeout: 0,
+    checkAutomatically: "ON_LOAD",
+  },
+  runtimeVersion: { policy: "fingerprint" },
 
   experiments: {
     typedRoutes: true,

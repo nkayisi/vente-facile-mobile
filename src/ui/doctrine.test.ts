@@ -192,3 +192,45 @@ describe("aucun montant sans devise", () => {
   });
 });
 
+describe("un seul propriétaire par bord de zone sûre", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ DEUX COMPOSANTS QUI AJOUTENT LE MÊME INSET DOUBLENT LA MARGE.           │
+   * │                                                                          │
+   * │ La règle est déjà écrite dans `AppBar` : « `AppBar` ne pose AUCUNE zone  │
+   * │ sûre, c'est `Screen` qui s'en charge », parce que deux composants qui    │
+   * │ ajoutent `insets.top` donnent une barre de quatre-vingt-dix points. Elle │
+   * │ vaut pour le bas de la même façon, et `Fab` l'avait enfreinte - sa       │
+   * │ docstring PROMETTAIT la zone sûre que son code n'appliquait pas, puis    │
+   * │ l'a appliquée en double le temps d'un correctif.                         │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   *
+   * `Screen` est le seul composant de `src/ui/` autorisé à lire les insets pour
+   * poser une marge de contenu. Les exceptions sont NOMMÉES, et chacune tient à
+   * ce qu'elle ne vit pas dans un `Screen` :
+   *   - `sheet.tsx`   : une modale, rendue hors de l'arbre de l'écran
+   *   - `top-bar.tsx` : la barre système, au-dessus du contenu
+   *   - `toast.tsx`   : le fournisseur est monté AU-DESSUS du navigateur, pour
+   *                     servir aussi les écrans plein écran du comptoir
+   */
+  const AUTORISES = ["screen.tsx", "sheet.tsx", "top-bar.tsx", "toast.tsx"];
+
+  it("aucun composant d'interface n'ajoute une zone sûre en plus de `Screen`", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(join(RACINE, "ui"))) {
+      const nom = relative(RACINE, f);
+      if (AUTORISES.some((a) => nom.endsWith(a))) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/useSafeAreaInsets/.test(code)) fautifs.push(nom);
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("`Screen` applique bien les quatre bords, le bas compris", () => {
+    const code = readFileSync(join(RACINE, "ui", "screen.tsx"), "utf8");
+    // Le défaut est ce qui compte : 95 écrans ne passent pas `edges`, et
+    // c'est là que le bouton de formulaire se posait sur la barre gestuelle.
+    expect(code).toMatch(/edges = \["top", "bottom"\]/);
+    expect(code).toMatch(/paddingBottom: edges\.includes\("bottom"\)/);
+  });
+});

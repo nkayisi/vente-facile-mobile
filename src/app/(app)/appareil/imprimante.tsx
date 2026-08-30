@@ -10,7 +10,7 @@
  * divergerait de celle des réglages Android. On lit ce qui est déjà appairé.
  */
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { router } from "expo-router";
 
 import {
@@ -27,16 +27,50 @@ import {
   Banner, Button, Card, Divider, Icon, ListItem, Pressable, Screen, Section, Spinner, Text,
 } from "@/ui";
 
-const TRANSPORTS: { id: Transport; titre: string; detail: string }[] = [
+/**
+ * Les quatre transports, et ce que la PLATEFORME en laisse.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ SUR IOS, LE BLUETOOTH CLASSIQUE NE VOIT QUE LES ACCESSOIRES MFi.        │
+ * │                                                                          │
+ * │ Établi en portant le projet iOS : le module passe par `ExternalAccessory`│
+ * │ / `EAAccessoryManager`, qui n'expose QUE les accessoires certifiés par   │
+ * │ Apple. Les imprimantes 58 mm du marché ne le sont pas, et aucune         │
+ * │ configuration n'y changera rien.                                         │
+ * │                                                                          │
+ * │ Le dire est tout l'enjeu : sans cela, le marchand choisit « Bluetooth    │
+ * │ (classique) », lit « Aucune imprimante trouvée » et conclut que son      │
+ * │ imprimante est en panne. Un silence qui se lit comme un autre fait est   │
+ * │ exactement ce que ce dépôt combat.                                       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * L'imprimante intégrée relève du même raisonnement : aucun terminal de caisse
+ * iOS n'en expose. Le repli est toujours le PDF, qui ne peut pas manquer.
+ */
+const TRANSPORTS: {
+  id: Transport;
+  titre: string;
+  detail: string;
+  /** Présent : ce transport n'existe pas sur cette plateforme, et dit pourquoi. */
+  indisponible?: string;
+}[] = [
   {
     id: "embedded",
     titre: "Imprimante du terminal",
     detail: "L'imprimante intégrée d'un terminal de caisse (NYX, Sunmi…).",
+    indisponible:
+      Platform.OS === "ios"
+        ? "Les terminaux de caisse à imprimante intégrée sont des appareils Android."
+        : undefined,
   },
   {
     id: "bluetooth",
     titre: "Bluetooth (classique)",
     detail: "La grande majorité des imprimantes 58 mm du marché.",
+    indisponible:
+      Platform.OS === "ios"
+        ? "iOS ne voit que les accessoires certifiés MFi par Apple, ce que ces imprimantes ne sont pas. Employez le Bluetooth basse consommation, ou le PDF."
+        : undefined,
   },
   {
     id: "ble",
@@ -168,10 +202,14 @@ export default function Imprimante() {
               {i > 0 ? <Divider /> : null}
               <ListItem
                 title={t.titre}
-                subtitle={t.detail}
-                onPress={() => void choisirTransport(t.id)}
+                // La RAISON prend la place du descriptif : un transport
+                // indisponible n'a pas besoin qu'on vante ce qu'il ferait.
+                subtitle={t.indisponible ?? t.detail}
+                onPress={
+                  t.indisponible ? undefined : () => void choisirTransport(t.id)
+                }
                 trailing={
-                  reglage.transport === t.id ? (
+                  reglage.transport === t.id && !t.indisponible ? (
                     <Icon name="CheckCircle2" size={22} color="primary" />
                   ) : undefined
                 }
