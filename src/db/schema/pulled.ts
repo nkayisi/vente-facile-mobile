@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 33 tables, 492 colonnes.
+ * 34 tables, 513 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -749,6 +749,58 @@ export const stockAdjustmentItems = sqliteTable("stock_adjustment_items", {
 
 export type StockAdjustmentItemsRow =
   typeof stockAdjustmentItems.$inferSelect;
+
+export const inventorySessions = sqliteTable("inventory_sessions", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  reference: text("reference").notNull(),
+  name: text("name").notNull(),
+  warehouseId: text("warehouse_id").notNull(),
+  scopeType: text("scope_type").notNull(),
+  status: text("status").notNull(),
+  notes: text("notes").notNull(),
+  isStockLocked: integer("is_stock_locked", { mode: "boolean" }).notNull(),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }),
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  validatedAt: integer("validated_at", { mode: "timestamp_ms" }),
+  createdById: text("created_by_id"),
+  validatedById: text("validated_by_id"),
+  totalExpectedQuantity: text("total_expected_quantity").notNull(),
+  totalCountedQuantity: text("total_counted_quantity").notNull(),
+  totalDifferenceQuantity: text("total_difference_quantity").notNull(),
+  totalDifferenceValue: text("total_difference_value").notNull(),
+});
+
+export type InventorySessionsRow =
+  typeof inventorySessions.$inferSelect;
+
+export const inventoryCounts = sqliteTable("inventory_counts", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  productId: text("product_id").notNull(),
+  variantId: text("variant_id"),
+  quantityExpected: text("quantity_expected").notNull(),
+  expectedLooseQuantity: text("expected_loose_quantity").notNull(),
+  quantityCounted: text("quantity_counted").notNull(),
+  countedPackageQuantity: text("counted_package_quantity").notNull(),
+  countedLooseQuantity: text("counted_loose_quantity").notNull(),
+  packagingFactor: integer("packaging_factor"),
+  quantityDifference: text("quantity_difference").notNull(),
+  unitCost: text("unit_cost").notNull(),
+  differenceValue: text("difference_value").notNull(),
+  isCounted: integer("is_counted", { mode: "boolean" }).notNull(),
+  countedById: text("counted_by_id"),
+  countedAt: integer("counted_at", { mode: "timestamp_ms" }),
+  notes: text("notes").notNull(),
+});
+
+export type InventoryCountsRow =
+  typeof inventoryCounts.$inferSelect;
 
 export const incomeCategories = sqliteTable("income_categories", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

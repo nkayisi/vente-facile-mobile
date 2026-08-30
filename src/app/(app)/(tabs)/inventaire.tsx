@@ -2,27 +2,146 @@
  * Inventaire. Miroir de `app/dashboard/inventory/page.tsx`.
  *
  * C'est le meilleur usage mobile du produit : on compte debout dans le rayon,
- * le terminal à la main. Il arrive au lot 8.
- *
- * **Rien n'est lisible ici pour l'instant, et c'est structurel** : la table
- * `inventory_sessions` n'est PAS au manifeste de tirage. L'écran le dit au
- * développeur en développement, et se contente d'annoncer au marchand.
+ * le terminal à la main. La liste ouvre la feuille de comptage, qui est
+ * descendue avec sa session et s'ouvre donc hors ligne.
  */
-import { PageHeader, PasEncore, Screen } from "@/ui";
+import { useCallback, useState } from "react";
+import { View } from "react-native";
+import { router } from "expo-router";
+import { formatDateFr } from "@vente-facile/core";
+
+import {
+  PERIMETRE_INVENTAIRE,
+  STATUT_INVENTAIRE,
+  listeSessions,
+  type SessionResume,
+} from "@/data/inventaire";
+import { useLecture } from "@/data/live";
+import { creationsEnAttente, sessionsEnAttente } from "@/features/inventaire/actes";
+import { useSession } from "@/session/provider";
+import {
+  Badge, Chip, ChipRow, DataList, DataRow, Fab, PageHeader, Screen,
+  SearchInput, Text,
+} from "@/ui";
+
+const TABLES = ["inventory_sessions", "inventory_counts", "warehouses"];
 
 export default function Inventaire() {
-  return (
-    <Screen scroll edges={[]}>
+  const { can } = useSession();
+  const [recherche, setRecherche] = useState("");
+  const [statut, setStatut] = useState<string | null>(null);
+
+  const charger = useCallback(
+    () => listeSessions({ recherche, statut }),
+    [recherche, statut]
+  );
+  const { donnees, chargement } = useLecture(charger, {
+    tables: TABLES,
+    deps: [recherche, statut],
+  });
+  const { donnees: enFile } = useLecture(sessionsEnAttente, {
+    tables: ["outbox_operations"],
+  });
+  const { donnees: creations } = useLecture(creationsEnAttente, {
+    tables: ["outbox_operations"],
+  });
+
+  // Les sessions créées ici ne sont PAS dans la table tirée. Sans cette
+  // fusion, le magasinier ne retrouverait pas celle qu'il vient de créer.
+  const terme = recherche.trim().toLowerCase();
+  const nonSynchronisees: SessionResume[] = (creations ?? [])
+    .filter((c) => !terme || c.nom.toLowerCase().includes(terme))
+    .map((c) => ({
+      id: c.id,
+      reference: "—",
+      nom: c.nom,
+      entrepot: null,
+      statut: "draft",
+      perimetre: c.perimetre,
+      perimetreLabel: PERIMETRE_INVENTAIRE[c.perimetre] ?? c.perimetre,
+      comptees: 0,
+      lignes: 0,
+      date: null,
+    }));
+  const elements = [...nonSynchronisees, ...(donnees?.elements ?? [])];
+
+  const enTete = (
+    <View className="gap-3 px-4 pb-3 pt-2">
       <PageHeader
         title="Inventaire"
         subtitle="Gérez vos sessions d'inventaire et comptages de stock"
       />
-      <PasEncore
-        icon="ClipboardList"
-        lot={8}
-        quoi="les sessions d'inventaire et la feuille de comptage, remplie debout dans le rayon"
-        table="inventory_sessions"
+      <SearchInput
+        valeur={recherche}
+        onChange={setRecherche}
+        placeholder="Rechercher une session..."
       />
+      <ChipRow>
+        <Chip label="Toutes" actif={statut === null} onPress={() => setStatut(null)} />
+        {Object.entries(STATUT_INVENTAIRE).map(([code, s]) => (
+          <Chip
+            key={code}
+            label={s.label}
+            actif={statut === code}
+            onPress={() => setStatut(code)}
+          />
+        ))}
+      </ChipRow>
+    </View>
+  );
+
+  const rendu = (s: SessionResume) => {
+    const st = STATUT_INVENTAIRE[s.statut];
+    return (
+      <DataRow
+        principal={s.nom}
+        secondaire={[s.reference, s.entrepot, s.perimetreLabel]
+          .filter(Boolean)
+          .join(" · ")}
+        badge={
+          enFile?.has(s.id) ? (
+            <Badge tone="warning">En attente d&apos;envoi</Badge>
+          ) : st ? (
+            <Badge tone={st.ton}>{st.label}</Badge>
+          ) : undefined
+        }
+        valeur={
+          <Text variant="bodySmall" numeric className="font-sans-medium">
+            {/* L'avancement, pas un total : c'est ce que le magasinier
+                cherche en rouvrant une session. */}
+            {s.lignes > 0 ? `${s.comptees} / ${s.lignes}` : "—"}
+          </Text>
+        }
+        sousValeur={s.date ? formatDateFr(s.date) : null}
+        onPress={() => router.push(`/comptage/${s.id}`)}
+      />
+    );
+  };
+
+  return (
+    <Screen edges={[]} padded={false}>
+      <DataList
+        donnees={elements}
+        cle={(s) => s.id}
+        rendu={rendu}
+        enTete={enTete}
+        chargement={chargement && elements.length === 0}
+        vide={{
+          icon: "ClipboardList",
+          titre: "Aucune session",
+          message: recherche
+            ? "Aucune session ne correspond à votre recherche."
+            : "Créez une session pour compter votre stock, rayon par rayon.",
+        }}
+      />
+      {can("inventory.create") ? (
+        <Fab
+          icon="Plus"
+          label="Nouvelle"
+          offsetBas={56}
+          onPress={() => router.push("/comptage/nouveau")}
+        />
+      ) : null}
     </Screen>
   );
 }

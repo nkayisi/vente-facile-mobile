@@ -11,11 +11,12 @@
  * retire. Un écran qui demanderait un nombre signé ferait saisir des «-5» qui
  * augmentent le stock une fois sur deux.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
 import { useLecture } from "@/data/live";
+import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { entrepots } from "@/data/stock";
 import { TYPE_MOUVEMENT_STOCK } from "@/data/mouvements";
 import { chercherArticles } from "@/features/pos/catalogue";
@@ -51,6 +52,12 @@ export default function NouveauMouvement() {
   const [envoi, setEnvoi] = useState(false);
 
   const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+
+  // Un choix unique n'est pas un choix : l'entrepôt principal (ou l'unique) est
+  // proposé d'emblée. La règle vit dans `entrepotParDefaut`, avec son test.
+  useEffect(() => {
+    if (entrepot === null) setEntrepot(entrepotParDefaut(depots));
+  }, [depots, entrepot]);
   const chargerArticles = useCallback(
     () =>
       entrepot

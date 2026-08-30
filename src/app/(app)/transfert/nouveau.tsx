@@ -9,11 +9,12 @@
  * Le disponible affiché est celui de l'entrepôt SOURCE, réservations imputées
  * comme au comptoir : ce que l'écran montre est ce que le serveur acceptera.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
 import { useLecture } from "@/data/live";
+import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { entrepots } from "@/data/stock";
 import { chercherArticles } from "@/features/pos/catalogue";
 import { creerTransfert, type LigneSaisie } from "@/features/stock/actes";
@@ -52,6 +53,12 @@ export default function NouveauTransfert() {
   const [envoi, setEnvoi] = useState(false);
 
   const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+
+  // Seule la SOURCE est proposée : la destination est le choix qui compte, et
+  // la deviner ferait expédier ailleurs qu'on ne voulait.
+  useEffect(() => {
+    if (source === null) setSource(entrepotParDefaut(depots));
+  }, [depots, source]);
 
   const chargerArticles = useCallback(
     () =>

@@ -29,6 +29,13 @@
       "when": 1788056416816,
       "tag": "0003_operations_de_stock",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788092327313,
+      "tag": "0004_sessions_inventaire",
+      "breakpoints": true
     }
   ]
 }

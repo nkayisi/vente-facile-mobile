@@ -16,10 +16,12 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
+import { router } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
 import { compteursRubriques, listeArticles, type ArticleListe } from "@/data/articles";
 import { useLecture } from "@/data/live";
+import { useSession } from "@/session/provider";
 import {
   Badge,
   Button,
@@ -35,6 +37,7 @@ import {
 const TABLES = ["products", "categories", "brands", "units", "stocks"];
 
 export default function Articles() {
+  const { can } = useSession();
   const [recherche, setRecherche] = useState("");
 
   const charger = useCallback(() => listeArticles({ recherche, limite: 100 }), [recherche]);
@@ -51,28 +54,52 @@ export default function Articles() {
         count={{ n: total, label: total > 1 ? "produits au total" : "produit au total" }}
         actions={
           <>
+            {/* L'IMPORT Excel reste au back-office : choisir un fichier, en
+                relire les erreurs ligne à ligne et corriger se fait au clavier,
+                pas au pouce. L'écran le dit plutôt que de faire semblant. */}
             <Button variant="outline" size="sm" leftIcon="Upload" disabled onPress={() => {}}>
               Importer les Produits
             </Button>
-            <Button size="sm" leftIcon="Plus" disabled onPress={() => {}}>
-              Nouveau produit
-            </Button>
+            {can("products.create") ? (
+              <Button
+                size="sm"
+                leftIcon="Plus"
+                onPress={() => router.push("/article/nouveau")}
+              >
+                Nouveau produit
+              </Button>
+            ) : undefined}
           </>
         }
       />
       <Text variant="caption">
-        La création et l'import de produits arrivent au lot 8.
+        L&apos;import Excel se fait depuis le back-office.
       </Text>
 
       {/* Liens rapides de rubrique, avec leur compteur en pastille grise. */}
       <View className="flex-row flex-wrap gap-2">
-        <Button variant="outline" size="sm" leftIcon="FolderTree" disabled onPress={() => {}}>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon="FolderTree"
+          onPress={() => router.push("/referentiel")}
+        >
           {`Catégories  ${compteurs?.categories ?? 0}`}
         </Button>
-        <Button variant="outline" size="sm" leftIcon="Tag" disabled onPress={() => {}}>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon="Tag"
+          onPress={() => router.push("/referentiel")}
+        >
           {`Marques  ${compteurs?.marques ?? 0}`}
         </Button>
-        <Button variant="outline" size="sm" leftIcon="Ruler" disabled onPress={() => {}}>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon="Ruler"
+          onPress={() => router.push("/referentiel")}
+        >
           {`Unités  ${compteurs?.unites ?? 0}`}
         </Button>
       </View>
@@ -94,7 +121,7 @@ export default function Articles() {
       // `null` ne se lit JAMAIS comme zéro : un produit non suivi affiche « - »,
       // comme le back-office, et surtout pas « 0 » qui affirmerait une rupture.
       sousValeur={a.stockAffiche ?? (a.suitLeStock ? "—" : "Non suivi")}
-      chevron={false}
+      onPress={() => router.push(`/article/${a.id}`)}
     />
   );
 

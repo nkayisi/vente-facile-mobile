@@ -78,6 +78,19 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   "stock_adjustment.create": ["stock_adjustments"],
   "stock_adjustment.approve": ["stock_adjustments", "stocks", "stock_movements"],
   "stock_adjustment.reject": ["stock_adjustments"],
+  "inventory_session.create": ["inventory_sessions"],
+  // Démarrer engendre les lignes de comptage : elles descendent avec la
+  // session, sans quoi le magasinier ouvrirait une feuille vide.
+  "inventory_session.start": ["inventory_sessions", "stocks"],
+  "inventory_session.count": ["inventory_sessions"],
+  "inventory_session.submit": ["inventory_sessions"],
+  // Valider APPLIQUE les écarts : le stock et les mouvements suivent.
+  "inventory_session.validate": ["inventory_sessions", "stocks", "stock_movements"],
+  "inventory_session.cancel": ["inventory_sessions"],
+  "product.create": ["products", "stocks"],
+  "category.create": ["categories"],
+  "brand.create": ["brands"],
+  "unit.create": ["units"],
   "expense.create": ["expenses", "cash_movements"],
   "cash_movement.create": ["cash_movements"],
 };

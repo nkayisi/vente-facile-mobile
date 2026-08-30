@@ -11,7 +11,7 @@ import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
 
 import { db } from "@/db/client";
-import { brands, categories, products, stocks, units } from "@/db/schema";
+import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
 
 export interface ArticleListe {
   id: string;
@@ -147,4 +147,249 @@ export async function compteursRubriques(): Promise<{
     marques: await un(brands),
     unites: await un(units),
   };
+}
+
+// ------------------------------------------------------------------- lot 8
+
+const nb = (v: string | number | null | undefined): number => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * Marge sur le PRIX DE VENTE, convention du projet (session 2026-08-15).
+ *
+ * La calculer sur le prix d'achat donnerait un chiffre plus flatteur et faux.
+ * `null` quand un des deux prix manque : une marge de 0 % affirmerait qu'on
+ * vend à prix coûtant, ce qui n'est pas la même chose que « on ne sait pas ».
+ */
+function marge(achat: number, vente: number): number | null {
+  if (vente <= 0 || achat <= 0) return null;
+  return ((vente - achat) / vente) * 100;
+}
+
+/**
+ * Un couple achat / vente, pour un canal.
+ *
+ * Le produit porte QUATRE prix, deux par canal (`apps/products/pricing.py`) :
+ *   détail : `cost_price` et `selling_price`, TOUJOURS à l'unité de détail
+ *   gros   : `package_cost_price` et `wholesale_price`, au contenant entier
+ *
+ * Les mélanger est le piège : `cost_price` est la seule grandeur avec laquelle
+ * le coût moyen pondéré et les lots FIFO savent travailler.
+ */
+export interface PrixCanal {
+  canal: "retail" | "wholesale";
+  label: string;
+  achat: number | null;
+  vente: number | null;
+  /** Marge sur le PRIX DE VENTE. Null quand un des deux prix manque. */
+  margePourcent: number | null;
+}
+
+export interface DetailArticle {
+  id: string;
+  nom: string;
+  sku: string | null;
+  codeBarres: string | null;
+  description: string;
+  categorie: string | null;
+  marque: string | null;
+  actif: boolean;
+
+  /** Les QUATRE prix par canal, dans l'ordre du back-office. */
+  prix: PrixCanal[];
+  prixAchat: number;
+  /** Marge sur le PRIX DE VENTE, convention du projet. */
+  margePourcent: number | null;
+
+  suitLeStock: boolean;
+  stockNegatifAutorise: boolean;
+  seuilReassort: number;
+  uniteDetail: string | null;
+  uniteContenant: string | null;
+  unitesParContenant: number | null;
+  modeVente: string | null;
+
+  taxable: boolean;
+  tauxTaxe: number;
+
+  /** Stock par entrepôt, lisible en contenants. */
+  stocks: { entrepot: string; affiche: string; total: number }[];
+}
+
+/**
+ * Fiche d'un article. Miroir de `app/dashboard/products/[id]`.
+ *
+ * **La marge se calcule sur le PRIX DE VENTE**, pas sur le prix d'achat :
+ * c'est la convention du projet, posée à la session 2026-08-15, et l'inverser
+ * donnerait un chiffre plus flatteur et faux.
+ *
+ * `null` ne se lit jamais comme zéro : un prix de canal non défini s'affiche
+ * « Non défini », pas « 0 ».
+ */
+export async function detailArticle(id: string): Promise<DetailArticle | null> {
+  const { alias } = await import("drizzle-orm/sqlite-core");
+  const uniteDetail = alias(units, "unite_detail");
+  const uniteContenant = alias(units, "unite_contenant");
+
+  const [l] = await db
+    .select({
+      produit: products,
+      categorie: categories.name,
+      marque: brands.name,
+      unite: uniteDetail.name,
+      uniteContenant: uniteContenant.name,
+    })
+    .from(products)
+    .leftJoin(categories, eq(categories.id, products.categoryId))
+    .leftJoin(brands, eq(brands.id, products.brandId))
+    .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+    .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .where(eq(products.id, id))
+    .limit(1);
+  if (!l) return null;
+
+  const p = l.produit;
+  const lignesStock = await db
+    .select({
+      quantity: stocks.quantity,
+      packageQuantity: stocks.packageQuantity,
+      looseQuantity: stocks.looseQuantity,
+      entrepot: warehouses.name,
+    })
+    .from(stocks)
+    .leftJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
+    .where(eq(stocks.productId, id));
+
+  const vente = nb(p.sellingPrice);
+  const achat = nb(p.costPrice);
+
+  const cond =
+    p.unitsPerPackage && p.unitsPerPackage > 1
+      ? getPackaging({
+          selling_mode: p.sellingMode,
+          units_per_package: p.unitsPerPackage,
+          unit_name: l.unite,
+          packaging_unit_name: l.uniteContenant,
+        })
+      : null;
+
+  return {
+    id: p.id,
+    nom: p.name,
+    sku: p.sku?.trim() || null,
+    codeBarres: p.barcode?.trim() || null,
+    description: p.shortDescription ?? "",
+    categorie: l.categorie ?? null,
+    marque: l.marque ?? null,
+    actif: Boolean(p.isActive),
+
+    // Les DEUX canaux, chacun avec son couple achat / vente.
+    prix: [
+      {
+        canal: "retail",
+        label: `Détail${l.unite ? ` (${l.unite})` : ""}`,
+        achat: achat || null,
+        vente: vente || null,
+        margePourcent: marge(achat, vente),
+      },
+      {
+        canal: "wholesale",
+        label: `Gros${l.uniteContenant ? ` (${l.uniteContenant})` : ""}`,
+        achat: nb(p.packageCostPrice) || null,
+        vente: nb(p.wholesalePrice) || null,
+        margePourcent: marge(nb(p.packageCostPrice), nb(p.wholesalePrice)),
+      },
+    ],
+    prixAchat: achat,
+    margePourcent: marge(achat, vente),
+
+    suitLeStock: Boolean(p.trackInventory),
+    stockNegatifAutorise: Boolean(p.allowNegativeStock),
+    seuilReassort: Number(p.reorderPoint ?? 0),
+    uniteDetail: l.unite ?? null,
+    uniteContenant: l.uniteContenant ?? null,
+    unitesParContenant: p.unitsPerPackage ?? null,
+    modeVente: p.sellingMode ?? null,
+
+    taxable: Boolean(p.isTaxable),
+    tauxTaxe: nb(p.taxRate),
+
+    stocks: lignesStock.map((s) => {
+      const total = nb(s.quantity);
+      return {
+        entrepot: s.entrepot ?? "Entrepôt",
+        affiche: cond
+          ? formatPackagedSplit(cond, nb(s.packageQuantity), nb(s.looseQuantity))
+          : `${total} ${pluralizeUnit(l.unite ?? "unité", total)}`,
+        total,
+      };
+    }),
+  };
+}
+
+export interface EntreeReferentiel {
+  id: string;
+  nom: string;
+  detail: string | null;
+  actif: boolean;
+  /** Nombre de produits qui s'y rattachent. */
+  produits: number;
+}
+
+/** Catégories, marques ou unités, avec leur nombre de produits. */
+export async function referentiel(
+  genre: "categories" | "marques" | "unites"
+): Promise<EntreeReferentiel[]> {
+  const tousProduits = await db
+    .select({
+      categoryId: products.categoryId,
+      brandId: products.brandId,
+      unitId: products.unitId,
+    })
+    .from(products);
+
+  const compter = (choisir: (p: (typeof tousProduits)[number]) => string | null) => {
+    const m = new Map<string, number>();
+    for (const p of tousProduits) {
+      const cle = choisir(p);
+      if (cle) m.set(cle, (m.get(cle) ?? 0) + 1);
+    }
+    return m;
+  };
+
+  if (genre === "categories") {
+    const n = compter((p) => p.categoryId);
+    const lignes = await db.select().from(categories).orderBy(categories.name);
+    return lignes.map((c) => ({
+      id: c.id,
+      nom: c.name,
+      detail: c.parentId ? "Sous-catégorie" : null,
+      actif: Boolean(c.isActive),
+      produits: n.get(c.id) ?? 0,
+    }));
+  }
+  if (genre === "marques") {
+    const n = compter((p) => p.brandId);
+    const lignes = await db.select().from(brands).orderBy(brands.name);
+    return lignes.map((b) => ({
+      id: b.id,
+      nom: b.name,
+      detail: null,
+      actif: Boolean(b.isActive),
+      produits: n.get(b.id) ?? 0,
+    }));
+  }
+  const n = compter((p) => p.unitId);
+  const lignes = await db.select().from(units).orderBy(units.name);
+  return lignes.map((u) => ({
+    id: u.id,
+    nom: u.name,
+    detail: u.symbol?.trim() || null,
+    // Une UNITÉ n'a pas de drapeau d'activité au manifeste : elle est toujours
+    // utilisable. Inventer un `false` ferait griser des unités valides.
+    actif: true,
+    produits: n.get(u.id) ?? 0,
+  }));
 }

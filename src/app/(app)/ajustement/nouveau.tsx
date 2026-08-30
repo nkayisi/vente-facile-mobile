@@ -11,12 +11,13 @@
  * **L'ajustement est créé en BROUILLON.** Le stock ne bouge qu'à l'approbation,
  * un geste distinct et confirmé.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
 import { useLecture } from "@/data/live";
 import { niveauxDeStock } from "@/data/stock-niveaux";
+import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { entrepots } from "@/data/stock";
 import { TYPE_AJUSTEMENT } from "@/data/stock-operations";
 import { creerAjustement } from "@/features/stock/actes";
@@ -47,6 +48,12 @@ export default function NouvelAjustement() {
   const [envoi, setEnvoi] = useState(false);
 
   const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+
+  // Un choix unique n'est pas un choix : l'entrepôt principal (ou l'unique) est
+  // proposé d'emblée. La règle vit dans `entrepotParDefaut`, avec son test.
+  useEffect(() => {
+    if (entrepot === null) setEntrepot(entrepotParDefaut(depots));
+  }, [depots, entrepot]);
 
   const chargerLignes = useCallback(
     () =>

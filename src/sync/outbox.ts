@@ -42,6 +42,19 @@ export type OperationKind =
   | "stock_adjustment.create"
   | "stock_adjustment.approve"
   | "stock_adjustment.reject"
+  // COMPTER est le meilleur usage mobile du produit : on compte debout dans le
+  // rayon, souvent au fond d'un dépôt sans réseau. Les cinq transitions d'une
+  // session passent donc par le journal.
+  | "inventory_session.create"
+  | "inventory_session.start"
+  | "inventory_session.count"
+  | "inventory_session.submit"
+  | "inventory_session.validate"
+  | "inventory_session.cancel"
+  | "product.create"
+  | "category.create"
+  | "brand.create"
+  | "unit.create"
   | "stock_movement.create"
   | "expense.create"
   | "cash_movement.create";
