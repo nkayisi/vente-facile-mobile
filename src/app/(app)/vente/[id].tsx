@@ -179,6 +179,9 @@ export default function DetailVenteEcran() {
 
   const statut = STATUT_VENTE[vente.statut];
   const annulable = !["cancelled", "refunded"].includes(vente.statut);
+  // Un retour porte sur une facture ÉMISE : ni un brouillon (rien n'est parti),
+  // ni une facture déjà annulée ou remboursée (il n'y a plus rien à rendre).
+  const retournable = !["cancelled", "refunded", "draft"].includes(vente.statut);
   const encaissable = vente.statut === "pending" || vente.statut === "partially_paid";
 
   // Le restant dû tient compte de ce qui attend dans le journal, à devise
@@ -293,6 +296,16 @@ export default function DetailVenteEcran() {
               </Button>
             ) : null}
           </View>
+          {retournable && can("sale_returns.create") ? (
+            <Button
+              variant="ghost"
+              fullWidth
+              leftIcon="PackageX"
+              onPress={() => router.push(`/vente/retour?vente=${vente.id}`)}
+            >
+              Enregistrer un retour
+            </Button>
+          ) : null}
         </View>
 
         <Card>

@@ -40,3 +40,20 @@ if (!API_BASE_URL) {
  */
 export const REQUEST_TIMEOUT_MS = 30_000;
 export const SYNC_TIMEOUT_MS = 120_000;
+
+/**
+ * Adresse du BACK-OFFICE web.
+ *
+ * Elle ne sert qu'à ouvrir le tunnel de paiement de l'abonnement, qui reste
+ * hébergé côté web : Moko passe par une page à lui, et l'embarquer dans une
+ * WebView est le motif de refus 4.2 le plus fréquent à la revue App Store. Le
+ * lien part donc dans le navigateur du système, où le marchand voit la barre
+ * d'adresse avant de saisir un moyen de paiement.
+ *
+ * Contrairement à `API_BASE_URL`, son absence NE FAIT PAS ÉCHOUER LE DÉMARRAGE :
+ * on ne bloque pas un comptoir parce qu'un lien de facturation manque. L'écran
+ * d'abonnement se contente de désactiver le bouton et de dire pourquoi.
+ */
+export const WEB_BASE_URL: string | null =
+  process.env.EXPO_PUBLIC_WEB_URL ??
+  (__DEV__ ? devBaseUrl().replace(/:8005\/api\/v1$/, ":3005") : null);

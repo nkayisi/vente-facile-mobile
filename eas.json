@@ -23,7 +23,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net"
       }
     },
     "production": {
@@ -34,7 +35,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net"
       }
     }
   },

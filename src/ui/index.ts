@@ -63,7 +63,6 @@ export { Dialog, AlertDialog } from "./dialog";
 export { ToastProvider, useToast } from "./toast";
 export { Fab } from "./fab";
 export { DataList, DataRow } from "./data-list";
-export { PasEncore } from "./pas-encore";
 export { Stepper } from "./stepper";
 export { TuileChoix } from "./tuile-choix";
 export { HorsLigneBloquant } from "./hors-ligne";

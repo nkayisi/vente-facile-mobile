@@ -143,6 +143,9 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
             { titre: "Synchronisation", icon: "CloudDownload" as const, href: "/(app)/appareil/synchronisation" },
             { titre: "Opérations à corriger", icon: "AlertTriangle" as const, href: "/(app)/appareil/operations" },
             { titre: "Imprimante", icon: "Printer" as const, href: "/(app)/appareil/imprimante" },
+            // La file d'impression EXISTE depuis le lot 5, rien n'y donnait
+            // accès : un ticket avalé par un rouleau vide était perdu.
+            { titre: "Documents imprimés", icon: "Receipt" as const, href: "/(app)/appareil/documents" },
             // Le PARC : le marchand doit pouvoir reconnaître ses terminaux, et
             // surtout repérer celui qu'il ne reconnaît plus.
             { titre: "Appareils", icon: "Cpu" as const, href: "/(app)/appareil/parc" },

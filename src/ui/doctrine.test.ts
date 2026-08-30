@@ -150,3 +150,45 @@ describe("aucune classe utilitaire inerte", () => {
     expect(classes('style={{ fontVariant: ["tabular-nums"] }}')).toEqual([]);
   });
 });
+
+describe("aucun montant sans devise", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ `money(x, "")` REND UN MONTANT SANS SYMBOLE, EN SILENCE.                 │
+   * │                                                                          │
+   * │ `symbolOf` du noyau ne se replie sur la devise par défaut que si le code │
+   * │ lui EST ÉGAL ; une chaîne vide ne l'est pas, donc le symbole vaut la     │
+   * │ chaîne vide, et « 190 240,5 $ » sort « 190 240,5 ». Relevé sur           │
+   * │ l'émulateur, sur les écrans de caisses, de retours et de devis à la      │
+   * │ fois : un nombre nu, dans une application MULTI-DEVISE où le même chiffre│
+   * │ vaut soit trois dollars, soit trois francs.                              │
+   * │                                                                          │
+   * │ La signature exige déjà une devise, ce qui n'a pas suffi : la chaîne     │
+   * │ vide la satisfait. Écrire `money.primaryCode`, ou la devise de la pièce, │
+   * │ est aussi court et dit ce qu'on a décidé.                                │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  it("aucun appel ne passe une devise vide", () => {
+    const fautifs: string[] = [];
+    // `money(...)`, `money.money(...)`, `m.money(...)` : on cherche le second
+    // argument littéralement vide, quelle que soit la forme de l'appel.
+    const motif = /\bmoney\s*\([^;]*?,\s*(""|''|``)\s*\)/;
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      const m = code.match(motif);
+      if (m) fautifs.push(`${relative(RACINE, f)} : ${m[0].slice(0, 60)}`);
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le garde-fou VOIT une devise vide", () => {
+    // Sans cette vérification, une expression régulière trop étroite passerait
+    // pour un dépôt propre.
+    const motif = /\bmoney\s*\([^;]*?,\s*(""|''|``)\s*\)/;
+    expect(motif.test('money.money(total, "")')).toBe(true);
+    expect(motif.test("money(l.total, '')")).toBe(true);
+    expect(motif.test("money.money(total, money.primaryCode)")).toBe(false);
+    expect(motif.test('money.money(l.montant, devise)')).toBe(false);
+  });
+});
+

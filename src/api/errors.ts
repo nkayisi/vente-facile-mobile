@@ -70,13 +70,58 @@ export function classifyThrown(error: unknown): FailureKind {
 export const isOffline = (error: unknown) =>
   classifyThrown(error) === "network";
 
-/** Extrait un message lisible d'un corps d'erreur DRF, si possible. */
+/**
+ * Longueur au-delà de laquelle un « message » n'en est plus un.
+ *
+ * Mesuré : une phrase d'erreur DRF dépasse rarement 120 caractères. Ce qui est
+ * plus long est une trace, un gabarit ou une page.
+ */
+const LONGUEUR_MAX_MESSAGE = 300;
+
+/**
+ * Vrai quand la chaîne est une PAGE, pas un message.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ MESURÉ SUR L'ÉMULATEUR, et le résultat était spectaculaire : un appel à  │
+ * │ une route inexistante a fait rendre à Django sa page de débogage         │
+ * │ complète, que ce module a rendue telle quelle et que le bandeau d'erreur │
+ * │ a affichée sur DEUX ÉCRANS de balises HTML. Le marchand ne pouvait ni    │
+ * │ comprendre, ni même faire défiler jusqu'au bouton.                       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Le cas n'a rien d'exceptionnel : page 404 ou 500 de Django, page d'un proxy
+ * inverse, portail captif d'un hôtel qui intercepte tout le trafic. Aucun ne
+ * parle JSON, et tous répondent une page.
+ */
+function estUnePage(texte: string): boolean {
+  const t = texte.trimStart().toLowerCase();
+  return (
+    t.startsWith("<!doctype") ||
+    t.startsWith("<html") ||
+    t.startsWith("<?xml") ||
+    // Une page servie sans en-tête, ou tronquée avant sa balise ouvrante.
+    t.includes("<head>") ||
+    t.includes("<body")
+  );
+}
+
+/**
+ * Extrait un message lisible d'un corps d'erreur DRF, si possible.
+ *
+ * Ce qui n'est pas une phrase revient au REPLI, qui est écrit pour l'écran
+ * appelant. Mieux vaut « L'abonnement n'a pas pu être lu. » qu'une page de
+ * balises exacte mais illisible.
+ */
 export function readableMessage(body: unknown, fallback: string): string {
-  if (typeof body === "string" && body.trim()) return body;
+  if (typeof body === "string") {
+    const t = body.trim();
+    if (t && !estUnePage(t) && t.length <= LONGUEUR_MAX_MESSAGE) return t;
+  }
   if (body && typeof body === "object") {
     const o = body as Record<string, unknown>;
     for (const key of ["detail", "error", "message"]) {
-      if (typeof o[key] === "string") return o[key] as string;
+      const v = o[key];
+      if (typeof v === "string" && v.trim()) return v;
     }
     // DRF renvoie souvent { champ: ["message"] }.
     for (const value of Object.values(o)) {

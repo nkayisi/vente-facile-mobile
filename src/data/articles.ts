@@ -7,7 +7,7 @@
  * Redécouper au facteur du jour donnerait « 10 casiers » pour cinq casiers plus
  * cent vingt bouteilles, et le facteur a pu changer depuis.
  */
-import { and, desc, eq, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
 
 import { db } from "@/db/client";
@@ -392,4 +392,24 @@ export async function referentiel(
     actif: true,
     produits: n.get(u.id) ?? 0,
   }));
+}
+
+/**
+ * Noms de produits par identifiant.
+ *
+ * Le journal d'opérations ne porte QUE des identifiants, parce que c'est ce que
+ * le serveur attend. Une fiche en attente d'envoi doit pourtant se lire : elle
+ * relit donc les noms dans le catalogue local, en UNE requête plutôt qu'une par
+ * ligne.
+ */
+export async function nomsDeProduits(
+  ids: string[]
+): Promise<Map<string, string>> {
+  const uniques = [...new Set(ids.filter(Boolean))];
+  if (uniques.length === 0) return new Map();
+  const lignes = await db
+    .select({ id: products.id, name: products.name })
+    .from(products)
+    .where(inArray(products.id, uniques));
+  return new Map(lignes.map((l) => [l.id, l.name]));
 }

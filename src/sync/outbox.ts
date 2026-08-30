@@ -58,6 +58,13 @@ export type OperationKind =
   // La CLÔTURE passe par le journal : le Z se tire au comptoir, souvent avant
   // que le réseau ne revienne.
   | "register_session.close"
+  // Retours et devis : NI L'UN NI L'AUTRE n'avait d'écran, nulle part. Le
+  // terminal crée la référence.
+  | "sale_return.create"
+  | "sale_return.approve"
+  | "sale_return.reject"
+  | "quotation.create"
+  | "quotation.convert"
   | "stock_movement.create"
   | "expense.create"
   | "cash_movement.create";

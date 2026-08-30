@@ -94,6 +94,18 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   // Fermer une session fige ses soldes par devise et son écart : la session
   // suit, et les mouvements de caisse avec elle.
   "register_session.close": ["register_sessions", "cash_movements"],
+  "sale_return.create": ["sale_returns"],
+  // Approuver un retour REND le stock, éteint la dette et peut rembourser :
+  // les cinq tables suivent.
+  "sale_return.approve": ["sale_returns", "stocks", "stock_movements", "sales",
+                          "customers", "customer_balances", "customer_transactions",
+                          "cash_movements"],
+  "sale_return.reject": ["sale_returns"],
+  "quotation.create": ["quotations"],
+  // Convertir crée une VENTE et inscrit une dette : la vente, le stock réservé
+  // et le compte du client changent tous.
+  "quotation.convert": ["quotations", "sales", "stocks", "customers",
+                        "customer_balances", "customer_transactions"],
   "expense.create": ["expenses", "cash_movements"],
   "cash_movement.create": ["cash_movements"],
 };

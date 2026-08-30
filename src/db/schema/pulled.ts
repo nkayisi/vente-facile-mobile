@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 36 tables, 534 colonnes.
+ * 38 tables, 567 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -700,6 +700,85 @@ export const stockMovements = sqliteTable("stock_movements", {
 
 export type StockMovementsRow =
   typeof stockMovements.$inferSelect;
+
+export const saleReturns = sqliteTable("sale_returns", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  reference: text("reference").notNull(),
+  originalSaleId: text("original_sale_id").notNull(),
+  returnType: text("return_type").notNull(),
+  status: text("status").notNull(),
+  totalAmount: text("total_amount").notNull(),
+  refundAmount: text("refund_amount").notNull(),
+  reason: text("reason").notNull(),
+  createdById: text("created_by_id"),
+  approvedById: text("approved_by_id"),
+  returnDate: integer("return_date", { mode: "timestamp_ms" }).notNull(),
+  approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
+});
+
+export type SaleReturnsRow =
+  typeof saleReturns.$inferSelect;
+
+export const saleReturnItems = sqliteTable("sale_return_items", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  saleReturnId: text("sale_return_id").notNull(),
+  originalItemId: text("original_item_id").notNull(),
+  quantity: text("quantity").notNull(),
+  unitPrice: text("unit_price").notNull(),
+  total: text("total").notNull(),
+  reason: text("reason").notNull(),
+  restock: integer("restock", { mode: "boolean" }).notNull(),
+});
+
+export type SaleReturnItemsRow =
+  typeof saleReturnItems.$inferSelect;
+
+export const quotations = sqliteTable("quotations", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  reference: text("reference").notNull(),
+  customerId: text("customer_id"),
+  status: text("status").notNull(),
+  subtotal: text("subtotal").notNull(),
+  taxAmount: text("tax_amount").notNull(),
+  discountAmount: text("discount_amount").notNull(),
+  total: text("total").notNull(),
+  validUntil: integer("valid_until", { mode: "timestamp_ms" }).notNull(),
+  notes: text("notes").notNull(),
+  terms: text("terms").notNull(),
+  createdById: text("created_by_id"),
+  convertedSaleId: text("converted_sale_id"),
+});
+
+export type QuotationsRow =
+  typeof quotations.$inferSelect;
+
+export const quotationItems = sqliteTable("quotation_items", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  quotationId: text("quotation_id").notNull(),
+  productId: text("product_id").notNull(),
+  variantId: text("variant_id"),
+  description: text("description").notNull(),
+  quantity: text("quantity").notNull(),
+  unitPrice: text("unit_price").notNull(),
+  discountPercentage: text("discount_percentage").notNull(),
+  taxRate: text("tax_rate").notNull(),
+  total: text("total").notNull(),
+});
+
+export type QuotationItemsRow =
+  typeof quotationItems.$inferSelect;
 
 export const stockTransfers = sqliteTable("stock_transfers", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

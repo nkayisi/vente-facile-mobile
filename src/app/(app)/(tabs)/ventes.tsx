@@ -3,7 +3,7 @@
  *
  * Le hub du back-office, repris dans son ordre : le bouton d'ouverture du
  * comptoir, le bandeau d'état de session, les quatre relevés du jour à deux
- * colonnes, les quatre raccourcis à deux colonnes, puis les ventes du jour.
+ * colonnes, les raccourcis à deux colonnes, puis les ventes du jour.
  *
  * **Aucun total n'est sommé entre devises** : `MultiCurrencyTotal` rend une
  * ligne par devise. Le back-office a dû l'apprendre à ses dépens.
@@ -187,7 +187,7 @@ export default function Ventes() {
         </CarteReleve>
       </View>
 
-      {/* Quatre raccourcis, DEUX COLONNES comme le web à cette largeur. */}
+      {/* Six raccourcis, DEUX COLONNES comme le web à cette largeur. */}
       <View className="mt-4 flex-row flex-wrap gap-3">
         <ActionTile
           href="/vente/reglements"
@@ -204,20 +204,32 @@ export default function Ventes() {
           accent="chart2"
         />
         <ActionTile
-          href="/ventes"
+          href="/caisses"
           forme="grille"
           title="Caisses"
           icon="Calculator"
           accent="chart3"
-          raison="Arrive au lot 6."
         />
         <ActionTile
-          href="/ventes"
+          href="/devis"
           forme="grille"
           title="Devis"
           icon="FileText"
           accent="primary"
-          raison="Arrive au lot 11."
+        />
+        <ActionTile
+          href="/retour"
+          forme="grille"
+          title="Retours"
+          icon="PackageX"
+          accent="chart2"
+        />
+        <ActionTile
+          href="/creances"
+          forme="grille"
+          title="Créances"
+          icon="Clock"
+          accent="chart3"
         />
       </View>
 

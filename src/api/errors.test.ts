@@ -69,4 +69,48 @@ describe("readableMessage", () => {
     expect(readableMessage({}, "repli")).toBe("repli");
     expect(readableMessage(42, "repli")).toBe("repli");
   });
+
+  it("rend une chaîne courte telle quelle", () => {
+    expect(readableMessage("Abonnement expiré.", "repli")).toBe("Abonnement expiré.");
+  });
+
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ UN MESSAGE D'ERREUR EST UNE PHRASE, JAMAIS UNE PAGE.                  │
+   * │                                                                        │
+   * │ Mesuré sur l'émulateur : un appel à une route inexistante a fait       │
+   * │ rendre à Django sa page de débogage complète, que ce module renvoyait  │
+   * │ telle quelle et que le bandeau d'erreur affichait sur DEUX ÉCRANS de   │
+   * │ balises. Le marchand ne pouvait ni comprendre, ni faire défiler        │
+   * │ jusqu'au bouton « Réessayer ».                                         │
+   * │                                                                        │
+   * │ Le cas n'a rien d'exceptionnel : page 404 ou 500 de Django, page d'un  │
+   * │ proxy inverse, portail captif d'un hôtel. Aucun ne parle JSON.         │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  it("REFUSE une page HTML de Django", () => {
+    const page = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Page not found at /api/v1/subscriptions/plans/</title>
+</head>
+<body><h1>Page not found <small>(404)</small></h1></body>
+</html>`;
+    expect(readableMessage(page, "repli")).toBe("repli");
+  });
+
+  it("REFUSE une page servie sans doctype", () => {
+    expect(readableMessage("<html><body>502 Bad Gateway</body></html>", "repli")).toBe(
+      "repli"
+    );
+  });
+
+  it("REFUSE une trace trop longue pour être un message", () => {
+    expect(readableMessage("Traceback: ".repeat(60), "repli")).toBe("repli");
+  });
+
+  it("ignore un champ présent mais blanc", () => {
+    expect(readableMessage({ detail: "  " }, "repli")).toBe("repli");
+    expect(readableMessage("   ", "repli")).toBe("repli");
+  });
 });

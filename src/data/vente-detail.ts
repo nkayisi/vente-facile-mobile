@@ -41,6 +41,8 @@ const nb = (v: string | number | null | undefined): number => {
 
 export interface LigneVente {
   id: string;
+  /** Null quand le produit a été supprimé du catalogue depuis la vente. */
+  produitId: string | null;
   produit: string;
   sku: string | null;
   /** « 2 casiers + 3 bouteilles », dans les termes de la FACTURATION. */
@@ -81,6 +83,8 @@ export interface DetailVente {
   client: { id: string; nom: string; telephone: string | null } | null;
   caisse: string | null;
   entrepot: string | null;
+  /** L'identifiant, pour un retour : la marchandise revient d'où elle est partie. */
+  entrepotId: string | null;
   notes: string;
   ticketImprime: boolean;
 
@@ -121,6 +125,7 @@ export async function detailVente(id: string): Promise<DetailVente | null> {
   const lignes = await db
     .select({
       id: saleItems.id,
+      produitId: saleItems.productId,
       quantity: saleItems.quantity,
       unitPrice: saleItems.unitPrice,
       packageQuantity: saleItems.packageQuantity,
@@ -175,6 +180,7 @@ export async function detailVente(id: string): Promise<DetailVente | null> {
       : null,
     caisse: v.caisse ?? null,
     entrepot: v.entrepot ?? null,
+    entrepotId: s.warehouseId ?? null,
     notes: s.notes ?? "",
     ticketImprime: Boolean(s.receiptPrinted),
 
@@ -209,6 +215,7 @@ export async function detailVente(id: string): Promise<DetailVente | null> {
 
       return {
         id: l.id,
+        produitId: l.produitId ?? null,
         produit: l.produit ?? l.description ?? "Produit supprimé",
         sku: l.sku ?? null,
         quantiteAffichee:

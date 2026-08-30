@@ -43,6 +43,13 @@
       "when": 1788105220681,
       "tag": "0005_personnes_et_appareils",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788111115197,
+      "tag": "0006_retours_et_devis",
+      "breakpoints": true
     }
   ]
 }
