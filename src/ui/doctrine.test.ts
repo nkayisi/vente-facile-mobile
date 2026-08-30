@@ -95,3 +95,58 @@ describe("aucun composant natif de dialogue", () => {
     expect(fautifs).toEqual([]);
   });
 });
+
+describe("aucune classe utilitaire inerte", () => {
+  /**
+   * Une classe que NativeWind ne sait pas traduire ne lève rien : elle est
+   * simplement ignorée, et le défaut ne se voit qu'à l'œil, sur un écran qu'on
+   * ne regarde pas de près.
+   *
+   * `tabular-nums` est le cas rencontré, et il n'est pas cosmétique : sans
+   * chasse fixe, une colonne de montants ondule et devient pénible à balayer,
+   * ce qui est exactement l'usage d'un écran de créances. La chasse fixe passe
+   * par la prop `numeric` de `Text`, qui pose `fontVariant`.
+   */
+  const INERTES = [
+    { classe: "tabular-nums", remplacer: "la prop `numeric` de `Text`" },
+    { classe: "slashed-zero", remplacer: "la prop `numeric` de `Text`" },
+    { classe: "antialiased", remplacer: "rien : le lissage n'est pas réglable ici" },
+  ];
+
+  /**
+   * On ne regarde QUE le contenu des `className`. `tabular-nums` est aussi une
+   * valeur légitime de `fontVariant` en React Native - c'est même la manière
+   * correcte de l'obtenir, et `ui/text.tsx` l'emploie. Chercher la chaîne dans
+   * tout le fichier condamnerait le remède avec le mal.
+   */
+  function classes(source: string): string[] {
+    const sortie: string[] = [];
+    for (const m of source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+      sortie.push(m[1] ?? m[2] ?? "");
+    }
+    return sortie;
+  }
+
+  it("aucun fichier n'écrit une classe que NativeWind ignore", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const listes = classes(sansCommentaires(readFileSync(f, "utf8")));
+      for (const { classe, remplacer } of INERTES) {
+        const motif = new RegExp(`\\b${classe}\\b`);
+        if (listes.some((l) => motif.test(l))) {
+          fautifs.push(`${relative(RACINE, f)} : ${classe} - employer ${remplacer}`);
+        }
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le garde-fou VOIT une classe inerte dans un `className`", () => {
+    // Sans cette vérification, resserrer l'analyse aux `className` pourrait la
+    // rendre aveugle sans que rien ne le signale.
+    expect(classes('<Text className="shrink-0 tabular-nums" />')).toEqual([
+      "shrink-0 tabular-nums",
+    ]);
+    expect(classes('style={{ fontVariant: ["tabular-nums"] }}')).toEqual([]);
+  });
+});

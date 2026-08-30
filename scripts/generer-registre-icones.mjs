@@ -43,6 +43,10 @@ const DEMANDES = [
   "Trash2", "RefreshCw", "LogOut", "Save", "Download", "Upload", "Eye", "EyeOff",
   "Pencil",
   // Domaine.
+  // `Phone` et `Mail` viennent de la fiche client du back-office. Ils
+  // manquaient, et la fiche mobile affichait une devanture de boutique en face
+  // d'un numéro de téléphone.
+  "Phone", "Mail",
   "User", "UserPlus", "Key", "Cpu", "Printer", "CloudDownload", "PauseCircle",
   "Warehouse", "Banknote", "Coins", "Gift", "TrendingDown", "TrendingUp",
   "PackageX", "Activity", "ArrowLeftRight", "SlidersHorizontal", "FolderTree",

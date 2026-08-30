@@ -5,9 +5,13 @@
  * sienne, et le hub les rend par devise. C'est la règle que le back-office a dû
  * apprendre à ses dépens (`MultiCurrencyTotal`), et elle vaut ici mot pour mot.
  */
-import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, lt, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
+
+import { depuisQuand, type Periode } from "./periodes";
+
+export type { Periode };
 import { customers, registerSessions, registers, sales } from "@/db/schema";
 
 const nb = (v: string | null | undefined): number => {
@@ -160,4 +164,161 @@ export function depuis(d: Date | null): string {
     return r === 0 ? `depuis ${h} h` : `depuis ${h} h ${String(r).padStart(2, "0")}`;
   }
   return `depuis ${Math.floor(h / 24)} j`;
+}
+
+// --------------------------------------------------------------- lot 6
+
+export interface FiltresHistorique {
+  recherche?: string;
+  /** Code de statut, ou `null` pour tous. */
+  statut?: string | null;
+  periode?: Periode;
+  limite?: number;
+}
+
+export interface PageVentes {
+  elements: VenteResume[];
+  /** Nombre total AVANT la limite : c'est lui que le sous-titre annonce. */
+  total: number;
+}
+
+/**
+ * L'historique complet.
+ *
+ * La recherche et les filtres sont poussés dans le SQL, pas appliqués après
+ * coup sur une page déjà tronquée. Filtrer en mémoire une liste limitée à cent
+ * lignes ferait mentir le compteur et cacherait les ventes plus anciennes que
+ * la centième, ce qui est précisément le défaut que le back-office a dû
+ * corriger sur son écran de niveaux de stock.
+ */
+export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageVentes> {
+  const terme = (f.recherche ?? "").trim().toLowerCase();
+  const motif = `%${terme}%`;
+  const borne = depuisQuand(f.periode ?? "tout");
+
+  const conditions = [
+    borne ? gte(sales.saleDate, borne) : undefined,
+    f.statut ? eq(sales.status, f.statut) : undefined,
+    terme
+      ? or(
+          like(sql`lower(${sales.reference})`, motif),
+          like(sql`lower(coalesce(${customers.name}, ''))`, motif)
+        )
+      : undefined,
+  ].filter(Boolean);
+  const filtre = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [{ n: total } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(sales)
+    .leftJoin(customers, eq(customers.id, sales.customerId))
+    .where(filtre);
+
+  const lignes = await db
+    .select({
+      id: sales.id,
+      reference: sales.reference,
+      statut: sales.status,
+      total: sales.total,
+      amountDue: sales.amountDue,
+      currency: sales.currency,
+      saleDate: sales.saleDate,
+      client: customers.name,
+    })
+    .from(sales)
+    .leftJoin(customers, eq(customers.id, sales.customerId))
+    .where(filtre)
+    .orderBy(desc(sales.saleDate))
+    .limit(f.limite ?? 50);
+
+  return {
+    total,
+    elements: lignes.map((l) => ({
+      id: l.id,
+      reference: l.reference,
+      client: l.client ?? null,
+      statut: l.statut,
+      total: nb(l.total),
+      resteAPayer: nb(l.amountDue),
+      devise: l.currency ?? "",
+      date: l.saleDate ?? null,
+    })),
+  };
+}
+
+export interface ReglementsEnAttente {
+  ventes: VenteResume[];
+  enAttente: number;
+  partiellementPayees: number;
+  /** Restant dû ventilé par devise : jamais une somme inter-devises. */
+  duParDevise: { devise: string; montant: number }[];
+  /** Factures dont l'échéance est dépassée. */
+  enRetard: number;
+}
+
+/**
+ * Les factures qui restent à encaisser.
+ *
+ * Le critère est `amount_due > 0` sur un statut ouvert, exactement celui
+ * d'`open_credit_sales` côté serveur. S'en écarter ferait apparaître ici des
+ * factures que le serveur refuserait de solder, ou l'inverse.
+ */
+export async function reglementsEnAttente(recherche = ""): Promise<ReglementsEnAttente> {
+  const terme = recherche.trim().toLowerCase();
+  const motif = `%${terme}%`;
+
+  const lignes = await db
+    .select({
+      id: sales.id,
+      reference: sales.reference,
+      statut: sales.status,
+      total: sales.total,
+      amountDue: sales.amountDue,
+      currency: sales.currency,
+      saleDate: sales.saleDate,
+      dueDate: sales.dueDate,
+      client: customers.name,
+    })
+    .from(sales)
+    .leftJoin(customers, eq(customers.id, sales.customerId))
+    .where(
+      and(
+        inArray(sales.status, ["pending", "partially_paid"]),
+        sql`cast(${sales.amountDue} as real) > 0`,
+        terme
+          ? or(
+              like(sql`lower(${sales.reference})`, motif),
+              like(sql`lower(coalesce(${customers.name}, ''))`, motif)
+            )
+          : undefined
+      )
+    )
+    .orderBy(desc(sales.saleDate));
+
+  const parDevise = new Map<string, number>();
+  let enRetard = 0;
+  const maintenant = Date.now();
+  for (const l of lignes) {
+    parDevise.set(l.currency ?? "", (parDevise.get(l.currency ?? "") ?? 0) + nb(l.amountDue));
+    if (l.dueDate && l.dueDate.getTime() < maintenant) enRetard += 1;
+  }
+
+  return {
+    enAttente: lignes.filter((l) => l.statut === "pending").length,
+    partiellementPayees: lignes.filter((l) => l.statut === "partially_paid").length,
+    enRetard,
+    duParDevise: [...parDevise.entries()]
+      .map(([devise, montant]) => ({ devise, montant }))
+      .sort((a, b) => a.devise.localeCompare(b.devise)),
+    ventes: lignes.map((l) => ({
+      id: l.id,
+      reference: l.reference,
+      client: l.client ?? null,
+      statut: l.statut,
+      total: nb(l.total),
+      resteAPayer: nb(l.amountDue),
+      devise: l.currency ?? "",
+      date: l.saleDate ?? null,
+    })),
+  };
 }

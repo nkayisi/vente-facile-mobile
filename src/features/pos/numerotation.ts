@@ -1,5 +1,5 @@
 /**
- * Numérotation des ventes émises par ce terminal.
+ * Numérotation des documents émis par ce terminal.
  *
  * DOCTRINE DU PROJET : un numéro doit être DÉFINITIF dès l'impression. Un
  * numéro provisoire remplacé plus tard par un définitif réintroduit exactement
@@ -24,7 +24,40 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { localSettings } from "@/db/schema";
 
-const CLE = "pos.compteur_ventes";
+/**
+ * Préfixes, alignés sur `apps/core/numbering.py` et sur les identités de
+ * document de `@vente-facile/core/receipt`. C'est le préfixe qui rend un reçu
+ * de règlement reconnaissable au premier regard dans une liasse.
+ *
+ * `AVC` (avance) et `RGL` (règlement) désignent le même acte au comptoir, mais
+ * pas le même papier : le serveur choisit l'un ou l'autre selon qu'il a trouvé
+ * une facture ouverte à solder. Hors ligne, le terminal tranche pareil, avec ce
+ * qu'il a en base.
+ */
+export const PREFIXE = {
+  vente: "VT",
+  reglement: "RGL",
+  avance: "AVC",
+  ajustement: "AJU",
+  cloture: "CZ",
+  depense: "DEP",
+} as const;
+
+export type Prefixe = (typeof PREFIXE)[keyof typeof PREFIXE];
+
+/**
+ * Une série par préfixe : les numéros de vente et ceux de règlement ne
+ * partagent pas leur compteur, sur le serveur non plus. Un compteur unique
+ * ferait sauter des rangs dans chaque série, et une série trouée porte le RCCM
+ * et le NIF.
+ *
+ * La vente GARDE sa clé d'origine, `pos.compteur_ventes`, et ce n'est pas de la
+ * nostalgie : un terminal déjà en service porte son compteur du jour sous ce
+ * nom. Le renommer ferait repartir la série à 1 sur des appareils qui ont déjà
+ * imprimé, et deux ventes de la même journée sortiraient sous le même numéro.
+ */
+const CLE = (prefixe: string) =>
+  prefixe === "VT" ? "pos.compteur_ventes" : `pos.compteur.${prefixe}`;
 
 interface Compteur {
   /** Jour de la série, en AAAAMMJJ local. */
@@ -39,7 +72,7 @@ function jourLocal(maintenant = new Date()): string {
 }
 
 /**
- * Alloue le prochain numéro de vente de ce terminal.
+ * Alloue le prochain numéro de ce terminal, pour un type de document.
  *
  * L'incrément et la lecture sont faits dans UNE SEULE instruction SQL, sous la
  * transaction implicite de SQLite : deux encaissements simultanés (le caissier
@@ -47,14 +80,18 @@ function jourLocal(maintenant = new Date()): string {
  * tirer le même numéro. Lire puis écrire en JavaScript le permettrait, et c'est
  * précisément le défaut que `ReferenceGenerator` porte encore côté serveur.
  */
-export async function prochaineReference(deviceCode: string | null): Promise<string> {
+export async function prochainNumero(
+  prefixe: Prefixe,
+  deviceCode: string | null
+): Promise<string> {
   const jour = jourLocal();
+  const cle = CLE(prefixe);
 
   // `ON CONFLICT` avec un test sur le jour stocké : même journée, on incrémente ;
   // journée différente, la série repart à 1.
   const [ligne] = await db
     .insert(localSettings)
-    .values({ key: CLE, value: JSON.stringify({ jour, dernier: 1 } satisfies Compteur) })
+    .values({ key: cle, value: JSON.stringify({ jour, dernier: 1 } satisfies Compteur) })
     .onConflictDoUpdate({
       target: localSettings.key,
       set: {
@@ -78,16 +115,21 @@ export async function prochaineReference(deviceCode: string | null): Promise<str
   // un code fabriqué localement pourrait entrer en collision avec celui d'un
   // autre terminal, et deux ventes porteraient le même numéro.
   return deviceCode
-    ? `VT-${jour}-${deviceCode}-${rang}`
-    : `VT-${jour}-${rang}`;
+    ? `${prefixe}-${jour}-${deviceCode}-${rang}`
+    : `${prefixe}-${jour}-${rang}`;
+}
+
+/** Le prochain numéro de VENTE, cas de loin le plus fréquent. */
+export function prochaineReference(deviceCode: string | null): Promise<string> {
+  return prochainNumero(PREFIXE.vente, deviceCode);
 }
 
 /** Le dernier numéro tiré, pour l'afficher sans en consommer un. */
-export async function dernierNumero(): Promise<Compteur | null> {
+export async function dernierNumero(prefixe: Prefixe = PREFIXE.vente): Promise<Compteur | null> {
   const [ligne] = await db
     .select({ value: localSettings.value })
     .from(localSettings)
-    .where(eq(localSettings.key, CLE))
+    .where(eq(localSettings.key, CLE(prefixe)))
     .limit(1);
   return ligne ? (JSON.parse(ligne.value) as Compteur) : null;
 }

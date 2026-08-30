@@ -63,6 +63,10 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   "customer.create": ["customers"],
   "customer.record_payment": ["customers", "customer_balances",
                               "customer_transactions", "sales", "cash_movements"],
+  // Un ajustement négatif entre au tiroir : `cash_movements` en fait partie,
+  // et l'oublier laisserait le rapport de caisse en arrière d'une écriture.
+  "customer.adjust_balance": ["customers", "customer_balances",
+                              "customer_transactions", "cash_movements"],
   "stock_movement.create": ["stocks", "stock_movements"],
   "expense.create": ["expenses", "cash_movements"],
   "cash_movement.create": ["cash_movements"],

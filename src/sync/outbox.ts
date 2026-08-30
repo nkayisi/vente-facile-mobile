@@ -24,6 +24,12 @@ export type OperationKind =
   | "register_session.open"
   | "customer.create"
   | "customer.record_payment"
+  // « Avance » n'a PAS d'acte propre : le serveur en a fait un alias de
+  // `record_payment`, parce qu'inscrire une avance sans toucher aux factures
+  // d'un client endetté faisait diverger son solde de la somme de ses
+  // `amount_due`. Un seul acte, donc, et le préfixe du reçu (`RGL` ou `AVC`)
+  // dit après coup ce qu'il a été.
+  | "customer.adjust_balance"
   | "stock_movement.create"
   | "expense.create"
   | "cash_movement.create";

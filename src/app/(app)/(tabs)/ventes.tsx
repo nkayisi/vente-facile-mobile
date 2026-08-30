@@ -28,6 +28,7 @@ import {
   Icon,
   MultiCurrencyTotal,
   PageHeader,
+  Pressable,
   Screen,
   SearchInput,
   StatValue,
@@ -189,20 +190,18 @@ export default function Ventes() {
       {/* Quatre raccourcis, DEUX COLONNES comme le web à cette largeur. */}
       <View className="mt-4 flex-row flex-wrap gap-3">
         <ActionTile
-          href="/ventes"
+          href="/vente/reglements"
           forme="grille"
-          title="Paiements en attente"
+          title="Règlements en attente"
           icon="Banknote"
           accent="primary"
-          raison="Arrive au lot 6."
         />
         <ActionTile
-          href="/ventes"
+          href="/vente/historique"
           forme="grille"
           title="Historique"
           icon="Receipt"
           accent="chart2"
-          raison="Arrive au lot 6."
         />
         <ActionTile
           href="/ventes"
@@ -253,7 +252,12 @@ export default function Ventes() {
               return (
                 <View key={v.id}>
                   {i > 0 ? <Divider /> : null}
-                  <View className="flex-row items-center gap-3 px-4 py-3">
+                  <Pressable
+                    onPress={() => router.push(`/vente/${v.id}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Vente ${v.reference}`}
+                    className="flex-row items-center gap-3 px-4 py-3"
+                  >
                     <View className="h-9 w-9 items-center justify-center rounded-lg bg-muted">
                       <Icon name="Receipt" size={16} color="mutedForeground" />
                     </View>
@@ -281,7 +285,7 @@ export default function Ventes() {
                         {money.money(v.total, v.devise)}
                       </Text>
                     </View>
-                  </View>
+                  </Pressable>
                 </View>
               );
             })}

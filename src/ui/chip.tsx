@@ -61,12 +61,21 @@ export function Chip({
   );
 }
 
-/** Rangée de puces à défilement horizontal. */
+/**
+ * Rangée de puces à défilement horizontal.
+ *
+ * `flexGrow: 0` et une hauteur EXPLICITE ne sont pas décoratifs : dans une
+ * feuille basse à taille dynamique, il n'existe aucune hauteur de parent à
+ * hériter, et un `ScrollView` horizontal s'y mesure à zéro. La feuille sortait
+ * alors avec son titre et rien d'autre - vérifié sur l'émulateur, sans la
+ * moindre erreur en journal. La hauteur est celle d'une puce (`h-9`).
+ */
 export function ChipRow({ children }: { children: React.ReactNode }) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={{ flexGrow: 0, height: 36 }}
       contentContainerStyle={{ gap: 8, paddingRight: 16 }}
     >
       {children}

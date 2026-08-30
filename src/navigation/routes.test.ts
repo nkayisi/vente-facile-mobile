@@ -53,6 +53,26 @@ function normaliser(cible: string): string {
   return "/" + segments.join("/");
 }
 
+/**
+ * Une route dynamique ne se compare pas caractère par caractère.
+ *
+ * `/vente/[id]` déclaré et `/vente/${v.id}` écrit dans le code désignent la
+ * même chose. On compare donc la FORME : même nombre de segments, et chaque
+ * segment égal sauf là où la route en déclare un dynamique. Sans cela, le lot 6
+ * aurait ajouté quatre routes que ce test ne regarderait pas.
+ */
+function correspond(cible: string, route: string): boolean {
+  const a = cible.split("/").filter(Boolean);
+  const b = route.split("/").filter(Boolean);
+  if (a.length !== b.length) return false;
+  return b.every((seg, i) => (seg.startsWith("[") && seg.endsWith("]")) || seg === a[i]);
+}
+
+function existe(routes: Set<string>, cible: string): boolean {
+  if (routes.has(cible)) return true;
+  return [...routes].some((r) => r.includes("[") && correspond(cible, r));
+}
+
 describe("cibles de navigation", () => {
   const routes = new Set(
     fichiers(APP).map(cheminDeRoute).filter((r): r is string => r !== null)
@@ -70,9 +90,39 @@ describe("cibles de navigation", () => {
       const code = readFileSync(f, "utf8");
       for (const m of code.matchAll(/router\.(?:push|replace)\(\s*"([^"$]+)"/g)) {
         const cible = normaliser(m[1]);
-        // Un segment dynamique (`[id]`) ne se compare pas littéralement.
-        if (cible.includes("[")) continue;
-        if (!routes.has(cible)) casses.push(`${relative(SRC, f)} -> ${m[1]}`);
+        if (!existe(routes, cible)) casses.push(`${relative(SRC, f)} -> ${m[1]}`);
+      }
+    }
+    expect(casses).toEqual([]);
+  });
+
+  it("chaque gabarit `router.push(`/x/${id}`)` mène quelque part", () => {
+    // Les routes dynamiques du lot 6 s'écrivent presque toutes ainsi, et
+    // l'ancienne expression les ignorait toutes : elle excluait `$`.
+    const casses: string[] = [];
+    let vus = 0;
+    for (const f of fichiers(SRC)) {
+      const code = readFileSync(f, "utf8");
+      for (const m of code.matchAll(/router\.(?:push|replace)\(\s*`([^`]+)`/g)) {
+        // Chaque interpolation devient un segment dynamique.
+        const cible = normaliser(m[1].replace(/\$\{[^}]*\}/g, "[x]"));
+        vus += 1;
+        if (!existe(routes, cible)) casses.push(`${relative(SRC, f)} -> ${m[1]}`);
+      }
+    }
+    // Sans cette assertion, une expression qui ne trouve rien ferait passer le
+    // test sans rien démontrer.
+    expect(vus).toBeGreaterThan(0);
+    expect(casses).toEqual([]);
+  });
+
+  it("chaque `pathname:` mène quelque part", () => {
+    const casses: string[] = [];
+    for (const f of fichiers(SRC)) {
+      const code = readFileSync(f, "utf8");
+      for (const m of code.matchAll(/pathname:\s*"([^"]+)"/g)) {
+        const cible = normaliser(m[1]);
+        if (!existe(routes, cible)) casses.push(`${relative(SRC, f)} -> ${m[1]}`);
       }
     }
     expect(casses).toEqual([]);
@@ -82,7 +132,7 @@ describe("cibles de navigation", () => {
     const menu = readFileSync(join(SRC, "navigation/menu.ts"), "utf8");
     const casses: string[] = [];
     for (const m of menu.matchAll(/href:\s*"([^"]+)"/g)) {
-      if (!routes.has(normaliser(m[1]))) casses.push(m[1]);
+      if (!existe(routes, normaliser(m[1]))) casses.push(m[1]);
     }
     expect(casses).toEqual([]);
   });
@@ -95,5 +145,24 @@ describe("cibles de navigation", () => {
       const attendu = nom === "index" ? "/" : `/${nom}`;
       expect(routes.has(attendu)).toBe(true);
     }
+  });
+});
+
+/**
+ * `src/app/` est le dossier de ROUTES, et rien d'autre.
+ *
+ * Un souligné de tête n'y protège de rien : expo-router enregistre quand même
+ * le fichier et avertit qu'il n'exporte pas de composant par défaut. C'est le
+ * même piège que le test rangé là au lot 5bis.7, et il se paie de la même
+ * façon - un avertissement au démarrage que plus personne ne lit.
+ */
+describe("src/app ne contient que des routes", () => {
+  it("chaque fichier exporte un composant par défaut", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(APP)) {
+      const code = readFileSync(f, "utf8");
+      if (!/export default\b/.test(code)) fautifs.push(relative(APP, f));
+    }
+    expect(fautifs).toEqual([]);
   });
 });

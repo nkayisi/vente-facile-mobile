@@ -83,6 +83,17 @@ export async function enregistrerDocument(options: {
   documentNumber: string;
   label: string;
   donnees: DonneesDocument;
+  /**
+   * Le document est DÉJÀ sorti ailleurs, et sa réimpression ici est donc un
+   * duplicata dès la première fois.
+   *
+   * Le cas est réel et fréquent : une vente encaissée sur un autre terminal ou
+   * au back-office descend par le tirage, et son ticket peut être redemandé
+   * depuis n'importe quel appareil. Sans ce drapeau, le second papier sortirait
+   * indiscernable du premier, et deux tickets identiques circuleraient pour une
+   * seule vente.
+   */
+  dejaImprime?: boolean;
 }): Promise<string> {
   const id = Crypto.randomUUID();
   await db.insert(printJobs).values({
@@ -91,9 +102,38 @@ export async function enregistrerDocument(options: {
     documentNumber: options.documentNumber,
     label: options.label,
     data: JSON.stringify(options.donnees),
+    printCount: options.dejaImprime ? 1 : 0,
     createdAt: new Date(),
   });
   return id;
+}
+
+/**
+ * Le document déjà rangé sous ce numéro, s'il existe.
+ *
+ * Un numéro de document est définitif et unique : le retrouver évite de ranger
+ * une seconde copie du même ticket, dont le compteur de duplicata repartirait
+ * de zéro.
+ */
+export async function documentParNumero(
+  documentNumber: string
+): Promise<DocumentImprimable | null> {
+  const [l] = await db
+    .select()
+    .from(printJobs)
+    .where(eq(printJobs.documentNumber, documentNumber))
+    .limit(1);
+  if (!l) return null;
+  return {
+    id: l.id,
+    kind: l.kind as GenreDocument,
+    documentNumber: l.documentNumber,
+    label: l.label,
+    createdAt: l.createdAt,
+    printedAt: l.printedAt,
+    printCount: l.printCount,
+    transport: l.transport,
+  };
 }
 
 /**
@@ -129,6 +169,7 @@ export async function enregistrerEtImprimer(options: {
   documentNumber: string;
   label: string;
   donnees: DonneesDocument;
+  dejaImprime?: boolean;
 }): Promise<{ id: string; transport: string }> {
   const id = await enregistrerDocument(options);
   const transport = await imprimerDocument(id);

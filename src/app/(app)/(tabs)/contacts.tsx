@@ -13,11 +13,14 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
+import { router } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
-import { listeClients, listeFournisseurs, relevesContacts } from "@/data/contacts";
+import { listeClients, listeFournisseurs, relevesContacts, type ClientResume } from "@/data/contacts";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
+import { clientsEnAttente } from "@/features/clients/actes";
+import { useSession } from "@/session/provider";
 import {
   Badge,
   Button,
@@ -39,6 +42,7 @@ type Onglet = "clients" | "fournisseurs";
 
 export default function Contacts() {
   const money = useMonnaie();
+  const { can } = useSession();
   const [onglet, setOnglet] = useState<Onglet>("clients");
   const [recherche, setRecherche] = useState("");
 
@@ -54,20 +58,52 @@ export default function Contacts() {
     deps: [recherche],
   });
 
+  // Les clients créés hors ligne ne sont PAS dans `customers` : on n'écrit
+  // jamais dans une table tirée. Ils vivent dans le journal, et sans cette
+  // fusion un caissier qui vient d'inscrire un client ne le retrouverait nulle
+  // part et le saisirait une seconde fois.
+  const { donnees: attente } = useLecture(clientsEnAttente, {
+    tables: ["outbox_operations"],
+  });
+  const terme = recherche.trim().toLowerCase();
+  const nonSynchronises: ClientResume[] = (attente ?? [])
+    .filter(
+      (c) =>
+        !terme ||
+        c.nom.toLowerCase().includes(terme) ||
+        (c.telephone ?? "").toLowerCase().includes(terme)
+    )
+    .map((c) => ({
+      id: c.id,
+      nom: c.nom,
+      code: null,
+      telephone: c.telephone,
+      entreprise: c.entreprise,
+      actif: true,
+      creditAutorise: c.creditAutorise,
+      soldes: [],
+      soldePrincipal: 0,
+    }));
+  const tousLesClients = [...nonSynchronises, ...(clients?.elements ?? [])];
+  const enAttenteIds = new Set(nonSynchronises.map((c) => c.id));
+
   const enTete = (
     <View className="gap-4 px-4 pb-3 pt-2">
       <PageHeader
         title="Clients & Fournisseurs"
         subtitle="Gérez vos clients, fournisseurs et leurs informations"
         actions={
-          <Button size="sm" leftIcon="UserPlus" disabled onPress={() => {}}>
-            Nouveau
-          </Button>
+          can("customers.create") ? (
+            <Button
+              size="sm"
+              leftIcon="UserPlus"
+              onPress={() => router.push("/client/nouveau")}
+            >
+              Nouveau client
+            </Button>
+          ) : undefined
         }
       />
-      <Text variant="caption">
-        La création, les règlements, avances et ajustements de solde arrivent au lot 6.
-      </Text>
 
       {/* Quatre relevés, deux colonnes, dans l'ordre du web. */}
       <View className="flex-row flex-wrap gap-4">
@@ -142,7 +178,7 @@ export default function Contacts() {
     return (
       <Screen edges={[]} padded={false}>
         <DataList
-          donnees={clients?.elements ?? []}
+          donnees={tousLesClients}
           cle={(c) => c.id}
           enTete={enTete}
           chargement={chC && !clients}
@@ -159,7 +195,9 @@ export default function Contacts() {
               secondaire={[c.code, c.telephone].filter(Boolean).join(" · ") || null}
               icon={c.entreprise ? "Building2" : "User"}
               badge={
-                !c.creditAutorise ? (
+                enAttenteIds.has(c.id) ? (
+                  <Badge tone="warning">Pas encore synchronisé</Badge>
+                ) : !c.creditAutorise ? (
                   <Badge tone="destructive">Crédit refusé</Badge>
                 ) : !c.actif ? (
                   <Badge tone="neutral">Inactif</Badge>
@@ -174,15 +212,22 @@ export default function Contacts() {
                   />
                 ) : undefined
               }
-              // Libellés du back-office, mot pour mot.
+              // Libellés du back-office, plus un troisième qu'il n'a pas :
+              // dette et avance COEXISTENT dès que les devises diffèrent, et
+              // trancher sur le seul solde principal converti en taisait une.
               sousValeur={
-                c.soldes.length === 0
-                  ? "À jour"
-                  : c.soldePrincipal > 0
-                    ? "Dette"
-                    : "Avance"
+                enAttenteIds.has(c.id)
+                  ? null
+                  : c.soldes.length === 0
+                    ? "À jour"
+                    : c.soldes.some((s) => s.montant > 0) &&
+                        c.soldes.some((s) => s.montant < 0)
+                      ? "Dette et avance"
+                      : c.soldePrincipal > 0
+                        ? "Dette"
+                        : "Avance"
               }
-              chevron={false}
+              onPress={() => router.push(`/client/${c.id}`)}
             />
           )}
         />
@@ -220,7 +265,7 @@ export default function Contacts() {
               ) : undefined
             }
             sousValeur={f.solde !== 0 ? "Solde" : null}
-            chevron={false}
+            onPress={() => router.push(`/fournisseur/${f.id}`)}
           />
         )}
       />

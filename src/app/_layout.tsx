@@ -4,7 +4,6 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -34,10 +33,10 @@ void SplashScreen.preventAutoHideAsync();
  * basses, glissement pour supprimer) et exige un `flex: 1` explicite, sinon
  * l'arbre se réduit à zéro pixel de haut.
  *
- * `BottomSheetModalProvider` est monté ICI, une seule fois, sous
- * `GestureHandlerRootView` et AU-DESSUS de la pile. Monté par écran, deux
- * feuilles ouvertes en même temps s'empilent mal ; monté sous la pile, la
- * feuille se rend derrière l'écran.
+ * `BottomSheetModalProvider` A ÉTÉ RETIRÉ au lot 6 : `Sheet` ne repose plus
+ * sur `@gorhom/bottom-sheet`, qui ne s'ouvrait pas au démarrage à froid. Le
+ * motif complet, et la mesure qui l'établit, sont en tête de
+ * `src/ui/sheet.tsx`.
  *
  * Le thème vient avant la base, pour que l'écran d'erreur de migration soit lui
  * aussi habillé. La base vient avant la session : celle-ci lira bientôt des
@@ -74,14 +73,12 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider>
           <StatusBar style="auto" />
-          <BottomSheetModalProvider>
-            <DatabaseProvider>
-              <SessionProvider>
-                <SessionGate />
-                <Stack screenOptions={{ headerShown: false }} />
-              </SessionProvider>
-            </DatabaseProvider>
-          </BottomSheetModalProvider>
+          <DatabaseProvider>
+            <SessionProvider>
+              <SessionGate />
+              <Stack screenOptions={{ headerShown: false }} />
+            </SessionProvider>
+          </DatabaseProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
