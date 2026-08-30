@@ -12,10 +12,12 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
+import { router } from "expo-router";
 import { formatNumber, formatPrice } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
+import { alertes, ventesParJour } from "@/data/tableau-alertes";
 import {
   LABELS_PERIODE,
   relevesTableauDeBord,
@@ -23,9 +25,12 @@ import {
 } from "@/data/tableau-de-bord";
 import { useSession } from "@/session/provider";
 import {
-  Banner,
+  BarChart,
   Card,
+  CardHeader,
+  Divider,
   Icon,
+  ListItem,
   MultiCurrencyTotal,
   PageHeader,
   Pressable,
@@ -97,6 +102,23 @@ export default function TableauDeBord() {
   const charger = useCallback(() => relevesTableauDeBord(periode), [periode]);
   const { donnees: r } = useLecture(charger, { tables: TABLES, deps: [periode] });
 
+  // La devise du GRAPHIQUE : la principale de l'établissement. Une série qui
+  // mêlerait les devises ne dirait rien.
+  const deviseGraphe =
+    snapshot?.currencies?.find((d) => d.is_primary)?.currency_code ?? "CDF";
+  const chargerSerie = useCallback(
+    () => ventesParJour(deviseGraphe, 7),
+    [deviseGraphe]
+  );
+  const { donnees: serie } = useLecture(chargerSerie, {
+    tables: ["sales"],
+    deps: [deviseGraphe],
+  });
+  const { donnees: lesAlertes } = useLecture(() => alertes(12), {
+    tables: ["stocks", "products", "sales", "customers"],
+  });
+  const listeAlertes = lesAlertes ?? [];
+
   return (
     <Screen scroll edges={[]}>
       <PageHeader
@@ -166,12 +188,54 @@ export default function TableauDeBord() {
         </CarteKpi>
       </View>
 
+      {/* L'ÉVOLUTION, dans UNE devise nommée. Empiler des francs et des
+          dollars dessinerait une courbe qui ne veut rien dire. */}
       <View className="mt-6">
-        <Banner
-          tone="info"
-          title="Graphiques et alertes"
-          message="L'évolution des ventes, la répartition des modes de paiement et les alertes d'inventaire arrivent au lot 9."
-        />
+        <Card>
+          <CardHeader
+            title="Ventes des 7 derniers jours"
+            subtitle={`En ${deviseGraphe}`}
+          />
+          <BarChart
+            points={serie ?? []}
+            formater={(v: number) => money.money(v, deviseGraphe)}
+          />
+        </Card>
+      </View>
+
+      <View className="mt-6">
+        <Text variant="h4" className="mb-3">
+          {`Alertes (${listeAlertes.length})`}
+        </Text>
+        {listeAlertes.length === 0 ? (
+          <Card>
+            <Text variant="bodySmall">
+              Rien à signaler : aucune rupture, aucun stock bas, aucune facture en
+              retard.
+            </Text>
+          </Card>
+        ) : (
+          <Card className="overflow-hidden p-0">
+            {listeAlertes.map((a, i) => (
+              <View key={a.id}>
+                {i > 0 ? <Divider /> : null}
+                <ListItem
+                  title={a.titre}
+                  subtitle={a.detail}
+                  icon={
+                    a.genre === "rupture"
+                      ? "PackageX"
+                      : a.genre === "stock_bas"
+                        ? "TrendingDown"
+                        : "Clock"
+                  }
+                  chevron={Boolean(a.cible)}
+                  onPress={a.cible ? () => router.push(a.cible as never) : undefined}
+                />
+              </View>
+            ))}
+          </Card>
+        )}
       </View>
     </Screen>
   );

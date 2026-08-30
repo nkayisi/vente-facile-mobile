@@ -91,6 +91,9 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   "category.create": ["categories"],
   "brand.create": ["brands"],
   "unit.create": ["units"],
+  // Fermer une session fige ses soldes par devise et son écart : la session
+  // suit, et les mouvements de caisse avec elle.
+  "register_session.close": ["register_sessions", "cash_movements"],
   "expense.create": ["expenses", "cash_movements"],
   "cash_movement.create": ["cash_movements"],
 };

@@ -7,6 +7,7 @@
  * mouvements sont d'ailleurs déjà enregistrés dans la devise physique.
  */
 import { View } from "react-native";
+import { router } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
 import {
@@ -17,6 +18,8 @@ import {
 } from "@/data/caisse";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
+import { sessionOuverte } from "@/features/pos/caisse";
+import { useSession } from "@/session/provider";
 import {
   Badge,
   Button,
@@ -78,7 +81,13 @@ function CarteSolde({
 
 export default function Caisse() {
   const money = useMonnaie();
+  const { can } = useSession();
   const { donnees: r } = useLecture(relevesCaisse, { tables: TABLES });
+  // La session OUVERTE, journal compris : une session ouverte hors ligne
+  // n'existe que là, et c'est pourtant elle qu'on clôture le soir.
+  const { donnees: session } = useLecture(sessionOuverte, {
+    tables: ["register_sessions", "outbox_operations"],
+  });
   const { donnees: mouvements } = useLecture(() => mouvementsCaisse(30), { tables: TABLES });
 
   return (
@@ -88,18 +97,38 @@ export default function Caisse() {
         subtitle="Suivi des entrées et sorties de caisse"
         actions={
           <>
-            <Button variant="outline" size="sm" leftIcon="Receipt" disabled onPress={() => {}}>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon="Receipt"
+              onPress={() => router.push("/depense")}
+            >
               Dépenses
             </Button>
-            <Button variant="outline" size="sm" leftIcon="Calendar" disabled onPress={() => {}}>
-              Rapports de caisse
-            </Button>
+            {can("cashbook.create_movement") ? (
+              <Button
+                size="sm"
+                leftIcon="Plus"
+                onPress={() => router.push("/depense/mouvement")}
+              >
+                Mouvement
+              </Button>
+            ) : undefined}
           </>
         }
       />
-      <Text variant="caption" className="mt-1">
-        La saisie d'entrées, les dépenses et les rapports arrivent au lot 9.
-      </Text>
+      {session ? (
+        <View className="mt-4">
+          <Button
+            variant="outline"
+            fullWidth
+            leftIcon="Calculator"
+            onPress={() => router.push(`/cloture/${session.id}`)}
+          >
+            {`Clôturer ${session.registerName}`}
+          </Button>
+        </View>
+      ) : null}
 
       {/* Quatre cartes, UNE colonne : c'est ce que le web rend à cette largeur. */}
       <View className="mt-4 gap-4">

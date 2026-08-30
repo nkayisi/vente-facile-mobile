@@ -69,3 +69,6 @@ export { TuileChoix } from "./tuile-choix";
 export { HorsLigneBloquant } from "./hors-ligne";
 export { MultiCurrencyTotal, CarteReleve } from "./multi-currency-total";
 export { IconBrute } from "./icon";
+
+// --- Lot 9 : le tableau de bord ---
+export { BarChart, type PointGraphe } from "./bar-chart";

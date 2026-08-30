@@ -100,7 +100,7 @@ export default function DetailRayon() {
 
   const e = ETAT_STOCK[r.etat];
   const peutDeconditionner =
-    r.facteur != null && r.contenants > 0 && can("stock.adjust");
+    r.facteur != null && r.contenants > 0 && can("stock_movements.create");
   const enFile = attente?.deconditionnements.has(r.id) ?? false;
 
   const valider = async () => {

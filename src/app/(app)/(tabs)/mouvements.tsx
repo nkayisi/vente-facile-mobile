@@ -52,7 +52,7 @@ export default function Mouvements() {
               title="Mouvements de stock"
               subtitle="Historique des entrées et sorties de stock"
               actions={
-                can("stock.adjust") ? (
+                can("stock_movements.create") ? (
                   <Button
                     size="sm"
                     leftIcon="Plus"

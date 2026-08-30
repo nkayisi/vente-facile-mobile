@@ -55,6 +55,9 @@ export type OperationKind =
   | "category.create"
   | "brand.create"
   | "unit.create"
+  // La CLÔTURE passe par le journal : le Z se tire au comptoir, souvent avant
+  // que le réseau ne revienne.
+  | "register_session.close"
   | "stock_movement.create"
   | "expense.create"
   | "cash_movement.create";

@@ -57,7 +57,7 @@ export default function Stock() {
         actions={
           // « Nouvel entrepôt » n'est PAS ici : une action se pose à côté de ce
           // sur quoi elle agit. Elle vit dans la section « Entrepôts ».
-          can("stock.adjust") ? (
+          can("stock_movements.create") ? (
             <Button
               variant="outline"
               size="sm"
