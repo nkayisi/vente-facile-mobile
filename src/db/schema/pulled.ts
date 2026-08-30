@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 31 tables, 464 colonnes.
+ * 33 tables, 492 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -667,6 +667,88 @@ export const stockMovements = sqliteTable("stock_movements", {
 
 export type StockMovementsRow =
   typeof stockMovements.$inferSelect;
+
+export const stockTransfers = sqliteTable("stock_transfers", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  reference: text("reference").notNull(),
+  sourceWarehouseId: text("source_warehouse_id").notNull(),
+  destinationWarehouseId: text("destination_warehouse_id").notNull(),
+  status: text("status").notNull(),
+  notes: text("notes").notNull(),
+  requestedById: text("requested_by_id"),
+  approvedById: text("approved_by_id"),
+  requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
+  shippedAt: integer("shipped_at", { mode: "timestamp_ms" }),
+  receivedAt: integer("received_at", { mode: "timestamp_ms" }),
+});
+
+export type StockTransfersRow =
+  typeof stockTransfers.$inferSelect;
+
+export const stockTransferItems = sqliteTable("stock_transfer_items", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  transferId: text("transfer_id").notNull(),
+  productId: text("product_id").notNull(),
+  variantId: text("variant_id"),
+  batchId: text("batch_id"),
+  quantityRequested: text("quantity_requested").notNull(),
+  quantityShipped: text("quantity_shipped"),
+  quantityReceived: text("quantity_received"),
+  packageQuantity: text("package_quantity").notNull(),
+  looseQuantity: text("loose_quantity").notNull(),
+  packagingFactor: integer("packaging_factor"),
+  notes: text("notes").notNull(),
+});
+
+export type StockTransferItemsRow =
+  typeof stockTransferItems.$inferSelect;
+
+export const stockAdjustments = sqliteTable("stock_adjustments", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  reference: text("reference").notNull(),
+  warehouseId: text("warehouse_id").notNull(),
+  adjustmentType: text("adjustment_type").notNull(),
+  status: text("status").notNull(),
+  reason: text("reason").notNull(),
+  createdById: text("created_by_id"),
+  approvedById: text("approved_by_id"),
+  approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
+});
+
+export type StockAdjustmentsRow =
+  typeof stockAdjustments.$inferSelect;
+
+export const stockAdjustmentItems = sqliteTable("stock_adjustment_items", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  adjustmentId: text("adjustment_id").notNull(),
+  productId: text("product_id").notNull(),
+  variantId: text("variant_id"),
+  batchId: text("batch_id"),
+  quantityCounted: text("quantity_counted").notNull(),
+  quantityExpected: text("quantity_expected").notNull(),
+  quantityDifference: text("quantity_difference").notNull(),
+  countedLooseQuantity: text("counted_loose_quantity"),
+  expectedLooseQuantity: text("expected_loose_quantity"),
+  countedPackageQuantity: text("counted_package_quantity"),
+  packagingFactor: integer("packaging_factor"),
+  unitCost: text("unit_cost").notNull(),
+  notes: text("notes").notNull(),
+});
+
+export type StockAdjustmentItemsRow =
+  typeof stockAdjustmentItems.$inferSelect;
 
 export const incomeCategories = sqliteTable("income_categories", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

@@ -9,16 +9,27 @@
  *
  *   VF_API=http://192.168.0.185:8005/api/v1 \
  *   VF_EMAIL=... VF_PASSWORD=... node scripts/generate-schema.mjs
+ *
+ * Ou depuis un manifeste déjà extrait, sans serveur ni compte :
+ *
+ *   docker compose exec -T vf_backend python manage.py dump_pull_manifest \
+ *     > /tmp/manifeste.json
+ *   VF_MANIFEST=/tmp/manifeste.json node scripts/generate-schema.mjs
+ *
+ * Cette seconde voie existe pour une raison précise : régénérer le schéma ne
+ * doit pas exiger le mot de passe d'un marchand. La source reste la MÊME
+ * fonction du serveur, `pull_manifest`, donc le fichier produit est identique.
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const API = process.env.VF_API ?? "http://127.0.0.1:8005/api/v1";
 const EMAIL = process.env.VF_EMAIL;
 const PASSWORD = process.env.VF_PASSWORD;
+const FICHIER_MANIFESTE = process.env.VF_MANIFEST;
 const SORTIE = "src/db/schema/pulled.ts";
 
-if (!EMAIL || !PASSWORD) {
-  console.error("VF_EMAIL et VF_PASSWORD sont requis.");
+if (!FICHIER_MANIFESTE && (!EMAIL || !PASSWORD)) {
+  console.error("VF_EMAIL et VF_PASSWORD sont requis, ou VF_MANIFEST.");
   process.exit(1);
 }
 
@@ -28,17 +39,24 @@ const json = async (url, options) => {
   return res.json();
 };
 
-const { access, user } = await json(`${API}/auth/login/`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
-});
-const org = user.organizations?.[0]?.id;
-if (!org) throw new Error("Ce compte n'appartient à aucun établissement.");
+async function lireManifeste() {
+  if (FICHIER_MANIFESTE) {
+    return JSON.parse(readFileSync(FICHIER_MANIFESTE, "utf8"));
+  }
+  const { access, user } = await json(`${API}/auth/login/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+  });
+  const org = user.organizations?.[0]?.id;
+  if (!org) throw new Error("Ce compte n'appartient à aucun établissement.");
 
-const manifest = await json(`${API}/sync/pull/manifest/`, {
-  headers: { Authorization: `Bearer ${access}`, "X-Organization-ID": org },
-});
+  return json(`${API}/sync/pull/manifest/`, {
+    headers: { Authorization: `Bearer ${access}`, "X-Organization-ID": org },
+  });
+}
+
+const manifest = await lireManifeste();
 
 /** snake_case -> camelCase, pour la propriété TypeScript. */
 const camel = (s) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());

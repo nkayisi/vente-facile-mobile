@@ -9,16 +9,35 @@
  * La quantité est rendue dans les termes de la SAISIE D'ORIGINE, avec le
  * facteur figé sur la ligne, jamais redécoupée au conditionnement du jour.
  */
+import { useCallback, useState } from "react";
 import { View } from "react-native";
+import { router } from "expo-router";
 
 import { useLecture } from "@/data/live";
-import { listeMouvements } from "@/data/mouvements";
-import { Badge, DataList, DataRow, Icon, PageHeader, Screen, Text } from "@/ui";
+import { TYPE_MOUVEMENT_STOCK, listeMouvements } from "@/data/mouvements";
+import { entrepots } from "@/data/stock";
+import { useSession } from "@/session/provider";
+import {
+  Badge, Button, Chip, ChipRow, DataList, DataRow, Icon, PageHeader, Screen,
+  SearchInput, Text,
+} from "@/ui";
 
 const TABLES = ["stock_movements", "products", "warehouses", "units"];
 
 export default function Mouvements() {
-  const { donnees, chargement } = useLecture(() => listeMouvements(100), { tables: TABLES });
+  const { can } = useSession();
+  const [recherche, setRecherche] = useState("");
+  const [type, setType] = useState<string | null>(null);
+  const [sens, setSens] = useState<boolean | null>(null);
+
+  const charger = useCallback(
+    () => listeMouvements({ recherche, type, entree: sens, limite: 150 }),
+    [recherche, type, sens]
+  );
+  const { donnees, chargement } = useLecture(charger, {
+    tables: TABLES,
+    deps: [recherche, type, sens],
+  });
   const mouvements = donnees ?? [];
 
   return (
@@ -28,20 +47,54 @@ export default function Mouvements() {
         cle={(m) => m.id}
         chargement={chargement && mouvements.length === 0}
         enTete={
-          <View className="gap-2 px-4 pb-3 pt-2">
+          <View className="gap-3 px-4 pb-3 pt-2">
             <PageHeader
               title="Mouvements de stock"
               subtitle="Historique des entrées et sorties de stock"
+              actions={
+                can("stock.adjust") ? (
+                  <Button
+                    size="sm"
+                    leftIcon="Plus"
+                    onPress={() => router.push("/mouvement/nouveau")}
+                  >
+                    Saisir un mouvement
+                  </Button>
+                ) : undefined
+              }
             />
-            <Text variant="caption">
-              La saisie d'un mouvement et les filtres arrivent au lot 7.
-            </Text>
+            <SearchInput
+              valeur={recherche}
+              onChange={setRecherche}
+              placeholder="Rechercher un produit..."
+            />
+            <ChipRow>
+              <Chip label="Tout" actif={sens === null} onPress={() => setSens(null)} />
+              <Chip label="Entrées" actif={sens === true} onPress={() => setSens(true)} />
+              <Chip label="Sorties" actif={sens === false} onPress={() => setSens(false)} />
+            </ChipRow>
+            {/* Douze types : ils DÉFILENT. Repliés, ils occuperaient quatre
+                lignes avant le premier mouvement. */}
+            <ChipRow>
+              <Chip label="Tous les types" actif={type === null} onPress={() => setType(null)} />
+              {Object.entries(TYPE_MOUVEMENT_STOCK).map(([code, t]) => (
+                <Chip
+                  key={code}
+                  label={t.label}
+                  actif={type === code}
+                  onPress={() => setType(code)}
+                />
+              ))}
+            </ChipRow>
           </View>
         }
         vide={{
           icon: "ClipboardList",
           titre: "Aucun mouvement",
-          message: "Les mouvements de stock apparaîtront ici.",
+          message:
+            recherche || type || sens !== null
+              ? "Aucun mouvement ne correspond à vos critères."
+              : "Les mouvements de stock apparaîtront ici.",
         }}
         rendu={(m) => (
           <DataRow

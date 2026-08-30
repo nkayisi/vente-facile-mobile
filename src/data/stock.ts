@@ -120,3 +120,73 @@ export async function entrepots(): Promise<EntrepotResume[]> {
     valeurStock: valeurs.get(w.id) ?? 0,
   }));
 }
+
+// --------------------------------------------------------------- lot 7
+
+export interface DetailEntrepot extends EntrepotResume {
+  /** L'entrepôt ne porte ni ville, ni téléphone, ni nom de responsable au
+   *  manifeste : seul `manager_id` existe, et `users` n'est pas tiré. On ne
+   *  fabrique donc pas ces champs - on les tait, ce qui est la seule chose
+   *  honnête à faire d'une donnée qu'on n'a pas. Ils reviendront au lot 10,
+   *  avec les utilisateurs. */
+  responsableId: string | null;
+  /** Le dépôt accepte-t-il de descendre sous zéro ? */
+  stockNegatifAutorise: boolean;
+  /** Nombre de lignes de stock, produits distincts. */
+  produits: number;
+  unitesAuTotal: number;
+  stockBas: number;
+  enRupture: number;
+}
+
+/**
+ * Fiche d'un entrepôt. Miroir de `stock/warehouses/[id]/page.tsx`.
+ *
+ * `unitesAuTotal` additionne des unités de PRODUITS DIFFÉRENTS : le libellé
+ * doit le dire, faute de quoi on lit un nombre de contenants. C'est la
+ * correction que le back-office a dû appliquer à sa carte « Unités au total ».
+ */
+export async function detailEntrepot(id: string): Promise<DetailEntrepot | null> {
+  const [w] = await db.select().from(warehouses).where(eq(warehouses.id, id)).limit(1);
+  if (!w) return null;
+
+  const lignes = await db
+    .select({
+      quantity: stocks.quantity,
+      avgCost: stocks.avgCost,
+      costPrice: products.costPrice,
+      reorderPoint: products.reorderPoint,
+    })
+    .from(stocks)
+    .leftJoin(products, eq(products.id, stocks.productId))
+    .where(eq(stocks.warehouseId, id));
+
+  let valeur = 0;
+  let unites = 0;
+  let bas = 0;
+  let rupture = 0;
+  for (const l of lignes) {
+    const q = nb(l.quantity);
+    const seuil = Number(l.reorderPoint ?? 0);
+    unites += q;
+    valeur += q * (nb(l.avgCost) || nb(l.costPrice));
+    if (q <= 0) rupture += 1;
+    else if (seuil > 0 && q <= seuil) bas += 1;
+  }
+
+  return {
+    id: w.id,
+    nom: w.name,
+    code: w.code,
+    adresse: w.address?.trim() || null,
+    responsableId: w.managerId ?? null,
+    parDefaut: Boolean(w.isDefault),
+    actif: Boolean(w.isActive),
+    stockNegatifAutorise: Boolean(w.allowNegativeStock),
+    valeurStock: valeur,
+    produits: lignes.length,
+    unitesAuTotal: unites,
+    stockBas: bas,
+    enRupture: rupture,
+  };
+}

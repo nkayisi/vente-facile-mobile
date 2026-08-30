@@ -6,17 +6,19 @@
  * « Opérations » à quatre raccourcis, puis les entrepôts.
  *
  * **Les relevés sont réels**, lus dans les tables tirées : l'écran est juste
- * hors ligne. Les actions d'écriture attendent le lot 7 et le disent.
+ * hors ligne. Depuis le lot 7, les actions d'écriture y sont branchées.
  *
  * Écart au web assumé : les quatre raccourcis sont en UNE colonne. Le web écrit
  * `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`, donc à 390 points il rend lui
  * aussi une seule colonne : c'est la parité exacte, pas une simplification.
  */
 import { View } from "react-native";
+import { router } from "expo-router";
 import { formatNumber, formatPrice } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
 import { entrepots, relevesStock } from "@/data/stock";
+import { useSession } from "@/session/provider";
 import {
   ActionTile,
   Badge,
@@ -25,6 +27,7 @@ import {
   EmptyState,
   Icon,
   PageHeader,
+  Pressable,
   Screen,
   SearchInput,
   Section,
@@ -37,6 +40,7 @@ import { useState } from "react";
 const TABLES = ["stocks", "products", "warehouses"];
 
 export default function Stock() {
+  const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const { donnees: r } = useLecture(relevesStock, { tables: TABLES });
   const { donnees: liste } = useLecture(entrepots, { tables: TABLES });
@@ -53,15 +57,18 @@ export default function Stock() {
         actions={
           // « Nouvel entrepôt » n'est PAS ici : une action se pose à côté de ce
           // sur quoi elle agit. Elle vit dans la section « Entrepôts ».
-          <Button variant="outline" size="sm" leftIcon="Activity" disabled onPress={() => {}}>
-            Entrée de stock
-          </Button>
+          can("stock.adjust") ? (
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon="Activity"
+              onPress={() => router.push("/mouvement/nouveau")}
+            >
+              Entrée de stock
+            </Button>
+          ) : undefined
         }
       />
-      <Text variant="caption" className="mt-1">
-        La saisie de mouvements arrive au lot 7.
-      </Text>
-
       {/* Les six relevés, dans l'ordre EXACT du back-office. */}
       <View className="mt-5">
         <StatStrip>
@@ -105,12 +112,11 @@ export default function Stock() {
         <View className="flex-row flex-wrap gap-3">
           <ActionTile
             forme="grille"
-            href="/stock"
+            href="/rayon"
             title="Niveaux de stock"
             description="Ce qui reste en rayon"
             icon="Package"
             accent="primary"
-            raison="Arrive au lot 7."
           />
           <ActionTile
             forme="grille"
@@ -122,21 +128,19 @@ export default function Stock() {
           />
           <ActionTile
             forme="grille"
-            href="/stock"
+            href="/transfert"
             title="Transferts"
             description="D'un entrepôt à l'autre"
             icon="ArrowLeftRight"
             accent="chart3"
-            raison="Arrive au lot 7."
           />
           <ActionTile
             forme="grille"
-            href="/stock"
+            href="/ajustement"
             title="Ajustements"
             description="Corriger un écart"
             icon="SlidersHorizontal"
             accent="primary"
-            raison="Arrive au lot 7."
           />
         </View>
       </View>
@@ -144,12 +148,15 @@ export default function Stock() {
       <View className="mt-6">
         <View className="mb-3 flex-row items-center justify-between gap-3">
           <Text variant="h4">Entrepôts</Text>
+          {/* La CRÉATION d'un entrepôt n'a pas d'acte de synchronisation : elle
+              relève de l'administration, pas du comptoir, et arrive au lot 10.
+              Un bouton grisé qui dit pourquoi vaut mieux qu'un bouton absent. */}
           <Button size="sm" leftIcon="Plus" disabled onPress={() => {}}>
             Nouvel entrepôt
           </Button>
         </View>
         <Text variant="caption" className="mb-3">
-          La création d'entrepôts arrive au lot 7.
+          La création d'entrepôts arrive au lot 10, avec l'administration.
         </Text>
         <View className="mb-3">
           <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Rechercher..." />
@@ -168,7 +175,13 @@ export default function Stock() {
         ) : (
           <View className="gap-4">
             {filtres.map((w) => (
-              <Card key={w.id} className="p-4">
+              <Pressable
+                key={w.id}
+                onPress={() => router.push(`/entrepot/${w.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Entrepôt ${w.nom}`}
+                className="rounded-xl bg-card p-4"
+              >
                 <View className="flex-row items-start gap-3">
                   <View className="h-9 w-9 items-center justify-center rounded-lg bg-chart-2/10">
                     <Icon name="Warehouse" size={18} color="chart2" />
@@ -205,7 +218,7 @@ export default function Stock() {
                     {formatPrice(w.valeurStock)}
                   </Text>
                 </View>
-              </Card>
+              </Pressable>
             ))}
           </View>
         )}

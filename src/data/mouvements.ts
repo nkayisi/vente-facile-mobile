@@ -9,7 +9,7 @@
  * chaque changement de facteur : c'est le défaut que le back-office a corrigé
  * dans ses exports.
  */
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
 
 import { db } from "@/db/client";
@@ -44,7 +44,36 @@ export interface MouvementStock {
   date: Date | null;
 }
 
-export async function listeMouvements(limite = 100): Promise<MouvementStock[]> {
+export interface FiltresMouvements {
+  recherche?: string;
+  /** Code de type, ou `null` pour tous. */
+  type?: string | null;
+  /** `true` : entrées seules. `false` : sorties seules. `null` : les deux. */
+  entree?: boolean | null;
+  entrepot?: string | null;
+  limite?: number;
+}
+
+export async function listeMouvements(
+  f: FiltresMouvements | number = {}
+): Promise<MouvementStock[]> {
+  // Compatibilité : l'appelant historique passait une limite nue.
+  const filtres: FiltresMouvements = typeof f === "number" ? { limite: f } : f;
+  const limite = filtres.limite ?? 100;
+  const terme = (filtres.recherche ?? "").trim().toLowerCase();
+  const motif = `%${terme}%`;
+
+  const conditions = [
+    filtres.type ? eq(stockMovements.movementType, filtres.type) : undefined,
+    filtres.entrepot ? eq(stockMovements.warehouseId, filtres.entrepot) : undefined,
+    terme
+      ? or(
+          like(sql`lower(coalesce(${products.name}, ''))`, motif),
+          like(sql`lower(coalesce(${products.sku}, ''))`, motif)
+        )
+      : undefined,
+  ].filter(Boolean);
+
   const lignes = await db
     .select({
       id: stockMovements.id,
@@ -66,10 +95,15 @@ export async function listeMouvements(limite = 100): Promise<MouvementStock[]> {
     .leftJoin(products, eq(products.id, stockMovements.productId))
     .leftJoin(units, eq(units.id, products.unitId))
     .leftJoin(warehouses, eq(warehouses.id, stockMovements.warehouseId))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(stockMovements.createdAt))
-    .limit(limite);
+    // Le sens (entrée / sortie) se lit dans la TABLE DES TYPES, pas dans le
+    // SQL : c'est elle qui fait foi, et la dupliquer en conditions dérivées la
+    // ferait diverger au premier type ajouté. On filtre donc après lecture, et
+    // on demande plus de lignes pour ne pas rendre une page tronquée.
+    .limit(filtres.entree == null ? limite : limite * 3);
 
-  return lignes.map((m) => {
+  const rendus = lignes.map((m) => {
     const t = TYPE_MOUVEMENT_STOCK[m.movementType] ?? {
       label: m.movementType,
       entree: true,
@@ -106,4 +140,8 @@ export async function listeMouvements(limite = 100): Promise<MouvementStock[]> {
       date: m.createdAt ?? null,
     };
   });
+
+  const filtres2 =
+    filtres.entree == null ? rendus : rendus.filter((m) => m.entree === filtres.entree);
+  return filtres2.slice(0, limite);
 }

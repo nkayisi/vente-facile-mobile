@@ -30,6 +30,18 @@ export type OperationKind =
   // `amount_due`. Un seul acte, donc, et le préfixe du reçu (`RGL` ou `AVC`)
   // dit après coup ce qu'il a été.
   | "customer.adjust_balance"
+  | "stock.unpack"
+  // Les TRANSITIONS d'un transfert ou d'un ajustement sont des actes à part
+  // entière : elles bougent du stock. Un refus y est déterministe (« déjà
+  // expédié ») et ne se réessaie donc JAMAIS - il part en quarantaine.
+  | "stock_transfer.create"
+  | "stock_transfer.approve"
+  | "stock_transfer.ship"
+  | "stock_transfer.receive"
+  | "stock_transfer.cancel"
+  | "stock_adjustment.create"
+  | "stock_adjustment.approve"
+  | "stock_adjustment.reject"
   | "stock_movement.create"
   | "expense.create"
   | "cash_movement.create";

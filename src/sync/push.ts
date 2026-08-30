@@ -68,6 +68,16 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   "customer.adjust_balance": ["customers", "customer_balances",
                               "customer_transactions", "cash_movements"],
   "stock_movement.create": ["stocks", "stock_movements"],
+  "stock.unpack": ["stocks", "stock_movements"],
+  "stock_transfer.create": ["stock_transfers"],
+  "stock_transfer.approve": ["stock_transfers"],
+  // Expédier et réceptionner DÉPLACENT du stock : les trois tables suivent.
+  "stock_transfer.ship": ["stock_transfers", "stocks", "stock_movements"],
+  "stock_transfer.receive": ["stock_transfers", "stocks", "stock_movements"],
+  "stock_transfer.cancel": ["stock_transfers", "stocks", "stock_movements"],
+  "stock_adjustment.create": ["stock_adjustments"],
+  "stock_adjustment.approve": ["stock_adjustments", "stocks", "stock_movements"],
+  "stock_adjustment.reject": ["stock_adjustments"],
   "expense.create": ["expenses", "cash_movements"],
   "cash_movement.create": ["cash_movements"],
 };

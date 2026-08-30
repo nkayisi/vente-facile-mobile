@@ -22,6 +22,13 @@
       "when": 1787977749057,
       "tag": "0002_documents_imprimables",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788056416816,
+      "tag": "0003_operations_de_stock",
+      "breakpoints": true
     }
   ]
 }
