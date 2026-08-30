@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 34 tables, 513 colonnes.
+ * 36 tables, 534 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -99,6 +99,39 @@ export const memberships = sqliteTable("memberships", {
 
 export type MembershipsRow =
   typeof memberships.$inferSelect;
+
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  phone: text("phone").notNull(),
+  isActive: integer("is_active", { mode: "boolean" }).notNull(),
+  dateJoined: integer("date_joined", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export type UsersRow =
+  typeof users.$inferSelect;
+
+export const devices = sqliteTable("devices", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  platform: text("platform").notNull(),
+  model: text("model").notNull(),
+  osVersion: text("os_version").notNull(),
+  appVersion: text("app_version").notNull(),
+  deviceCode: text("device_code").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+});
+
+export type DevicesRow =
+  typeof devices.$inferSelect;
 
 export const units = sqliteTable("units", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

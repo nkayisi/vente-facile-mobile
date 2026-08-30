@@ -6,6 +6,7 @@ import m0001 from './0001_paniers_en_attente.sql';
 import m0002 from './0002_documents_imprimables.sql';
 import m0003 from './0003_operations_de_stock.sql';
 import m0004 from './0004_sessions_inventaire.sql';
+import m0005 from './0005_personnes_et_appareils.sql';
 
   export default {
     journal,
@@ -14,7 +15,8 @@ import m0004 from './0004_sessions_inventaire.sql';
 m0001,
 m0002,
 m0003,
-m0004
+m0004,
+m0005
     }
   }
   

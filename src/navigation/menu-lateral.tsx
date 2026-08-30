@@ -143,6 +143,9 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
             { titre: "Synchronisation", icon: "CloudDownload" as const, href: "/(app)/appareil/synchronisation" },
             { titre: "Opérations à corriger", icon: "AlertTriangle" as const, href: "/(app)/appareil/operations" },
             { titre: "Imprimante", icon: "Printer" as const, href: "/(app)/appareil/imprimante" },
+            // Le PARC : le marchand doit pouvoir reconnaître ses terminaux, et
+            // surtout repérer celui qu'il ne reconnaît plus.
+            { titre: "Appareils", icon: "Cpu" as const, href: "/(app)/appareil/parc" },
             { titre: "Apparence", icon: "Settings" as const, href: "/(app)/appareil/apparence" },
           ].map((a) => (
             <Pressable

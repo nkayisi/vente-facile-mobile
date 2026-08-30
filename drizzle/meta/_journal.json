@@ -36,6 +36,13 @@
       "when": 1788092327313,
       "tag": "0004_sessions_inventaire",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788105220681,
+      "tag": "0005_personnes_et_appareils",
+      "breakpoints": true
     }
   ]
 }
