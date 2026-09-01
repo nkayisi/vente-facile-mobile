@@ -45,6 +45,29 @@ export interface ScreenProps {
   refreshing?: boolean;
   /** Retire la marge intérieure par défaut, pour un POS pleine largeur. */
   padded?: boolean;
+  /**
+   * Barre d'actions FIXE, posée sous le contenu.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ ELLE VIT DANS `Screen`, ET C'EST OBLIGATOIRE.                          │
+   * │                                                                        │
+   * │ La zone sûre a un seul propriétaire par bord. Une barre fixe écrite    │
+   * │ dans un écran devrait lire les insets pour ne pas se poser sur la      │
+   * │ barre gestuelle - et deux composants qui ajoutent le même inset        │
+   * │ donnent une marge double. Ici elle est SOUS le rembourrage de zone     │
+   * │ sûre déjà appliqué, donc elle est juste, et le prochain écran qui en   │
+   * │ voudra une n'aura pas à le redécouvrir.                                │
+   * │                                                                        │
+   * │ Elle est un FRÈRE du défilement, jamais une surcouche : le contenu se  │
+   * │ réduit d'autant et rien ne passe dessous. Une barre en `absolute`      │
+   * │ obligerait chaque écran à réserver sa hauteur en bas de liste, et      │
+   * │ celui qui l'oublie cache sa dernière ligne.                            │
+   * │                                                                        │
+   * │ Elle est DANS l'évitement du clavier : une barre d'action qui reste    │
+   * │ sous un clavier ouvert n'est pas une barre d'action.                   │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  pied?: ReactNode;
   className?: string;
 }
 
@@ -55,6 +78,7 @@ export function Screen({
   onRefresh,
   refreshing = false,
   padded = true,
+  pied,
   className = "",
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
@@ -99,6 +123,12 @@ export function Screen({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         {body}
+        {pied ? (
+          // Le filet et le fond de carte DÉTACHENT la barre du contenu qui
+          // défile dessous. Sans eux, un texte qui passe derrière donne
+          // l'impression que la page s'arrête là où elle continue.
+          <View className="border-t border-border bg-card px-4 py-3">{pied}</View>
+        ) : null}
       </KeyboardAvoidingView>
     </View>
   );

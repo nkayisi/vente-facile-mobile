@@ -25,7 +25,7 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatDateTimeFr, formatPrice } from "@vente-facile/core";
+import { formatDateTimeFr } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
@@ -227,8 +227,52 @@ export default function DetailVenteEcran() {
     }
   };
 
+  const encaisser = encaissable && resteReel > 0 && can("sales.create");
+
+  const barre = (
+    <View className="gap-2">
+      {/* LE RESTE DÛ EST DANS LA BARRE, pas seulement dans le récapitulatif
+          quinze centimètres plus haut : c'est le montant qu'on annonce au
+          client au moment d'encaisser, et il doit être sous les yeux quand on
+          appuie. En orange, comme partout où le dépôt écrit un reste à payer. */}
+      {encaisser ? (
+        <View className="flex-row items-baseline justify-between gap-3">
+          <Text variant="caption">Reste à payer</Text>
+          <Text numeric variant="body" className="font-sans-semibold text-warning">
+            {money.money(resteReel, vente.devise)}
+          </Text>
+        </View>
+      ) : null}
+      <View className="flex-row gap-2">
+        {encaisser ? (
+          <Button
+            size="lg"
+            leftIcon="Banknote"
+            className="flex-1"
+            onPress={() => setFeuilleReglement(true)}
+          >
+            Encaisser
+          </Button>
+        ) : null}
+        {/* Le ticket se réimprime TOUJOURS - un rouleau vide ne doit pas faire
+            perdre un reçu - donc ce bouton n'a pas de condition, et il prend
+            toute la barre quand il n'y a plus rien à encaisser. */}
+        <Button
+          variant="outline"
+          size="lg"
+          leftIcon="Printer"
+          className="flex-1"
+          disabled={impression}
+          onPress={() => void imprimer()}
+        >
+          {impression ? "Impression…" : vente.ticketImprime ? "Réimprimer" : "Imprimer"}
+        </Button>
+      </View>
+    </View>
+  );
+
   return (
-    <Screen scroll padded={false}>
+    <Screen scroll padded={false} pied={barre}>
       <AppBar
         title={vente.reference}
         subtitle={formatDateTimeFr(vente.date ?? new Date())}
@@ -258,32 +302,25 @@ export default function DetailVenteEcran() {
           />
         ) : null}
 
-        {/* Actions : l'encaissement d'abord, c'est ce qu'on vient faire ici. */}
-        <View className="gap-2">
-          {encaissable && resteReel > 0 && can("sales.create") ? (
-            <Button
-              fullWidth
-              size="lg"
-              leftIcon="Banknote"
-              onPress={() => setFeuilleReglement(true)}
-            >
-              {`Encaisser ${money.money(resteReel, vente.devise)}`}
-            </Button>
-          ) : null}
+        {/* ┌──────────────────────────────────────────────────────────────┐
+            │ LES ACTIONS FRÉQUENTES EN BAS, LES RARES EN HAUT.            │
+            │                                                              │
+            │ Quatre boutons s'empilaient ici, en tête de page : ils        │
+            │ repoussaient les articles et les règlements sous la ligne de │
+            │ flottaison, et « Encaisser » - la seule raison d'ouvrir cette│
+            │ fiche depuis « Règlements en attente » - remontait hors de   │
+            │ portée du pouce dès qu'on descendait lire la facture.        │
+            │                                                              │
+            │ Encaisser et imprimer descendent donc dans une barre FIXE    │
+            │ (`Screen pied`), toujours visible et dans le tiers bas de    │
+            │ l'écran. Restent ici les deux gestes RARES et lourds de      │
+            │ conséquence : annuler la vente, enregistrer un retour. Les   │
+            │ éloigner du pouce n'est pas un oubli, c'est ce qu'on veut    │
+            │ d'un geste qu'on ne fait pas deux fois par jour.             │
+            └──────────────────────────────────────────────────────────────┘ */}
+        {(annulable && can("sales.cancel")) ||
+        (retournable && can("sale_returns.create")) ? (
           <View className="flex-row gap-2">
-            <Button
-              variant="outline"
-              leftIcon="Printer"
-              className="flex-1"
-              disabled={impression}
-              onPress={() => void imprimer()}
-            >
-              {impression
-                ? "Impression…"
-                : vente.ticketImprime
-                  ? "Réimprimer"
-                  : "Imprimer"}
-            </Button>
             {annulable && can("sales.cancel") ? (
               <Button
                 variant="destructive"
@@ -292,21 +329,24 @@ export default function DetailVenteEcran() {
                 disabled={attente?.annulationEnAttente}
                 onPress={() => setDialogueAnnulation(true)}
               >
-                Annuler
+                Annuler la vente
+              </Button>
+            ) : null}
+            {retournable && can("sale_returns.create") ? (
+              <Button
+                variant="outline"
+                leftIcon="PackageX"
+                className="flex-1"
+                onPress={() => router.push(`/vente/retour?vente=${vente.id}`)}
+              >
+                {/* « Retour » tout court, sous une flèche de retour arrière et
+                    à côté d'« Annuler », se lit comme « revenir » : le mot
+                    doit dire la MARCHANDISE. */}
+                Retour article
               </Button>
             ) : null}
           </View>
-          {retournable && can("sale_returns.create") ? (
-            <Button
-              variant="ghost"
-              fullWidth
-              leftIcon="PackageX"
-              onPress={() => router.push(`/vente/retour?vente=${vente.id}`)}
-            >
-              Enregistrer un retour
-            </Button>
-          ) : null}
-        </View>
+        ) : null}
 
         <Card>
           <CardHeader title="Informations" />
