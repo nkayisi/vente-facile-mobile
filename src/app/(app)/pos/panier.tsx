@@ -5,7 +5,7 @@
  * qu'au comptoir ce sont deux moments distincts : on compose, puis on relit
  * avec le client avant d'annoncer le montant.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FlatList, Modal, View } from "react-native";
 import { router } from "expo-router";
 
@@ -30,6 +30,58 @@ export default function Panier() {
   const verrouAttente = useRef(false);
 
   const lignes = panier.etat.lignes;
+
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LA REMISE SE SAISISSAIT EN DEVISE PRINCIPALE, ET TOUT AUTOUR PARLAIT │
+  // │ EN DEVISE DE FACTURE.                                                │
+  // │                                                                      │
+  // │ `globalDiscountAmount` est en devise PRINCIPALE, comme le noyau le    │
+  // │ documente, et le corps de vente la reconvertit. Mais la borne          │
+  // │ affichée, la ligne « Remise » et le total sont, eux, en devise de     │
+  // │ FACTURE. Relevé à l'écran, facture en CDF sur un établissement dont   │
+  // │ la principale est le dollar : « Au plus 2 581 520 FC », le caissier   │
+  // │ tape 1 000 000 en croyant offrir un million de francs, et le total    │
+  // │ tombe à ZÉRO. Il vient d'offrir la vente entière.                     │
+  // │                                                                      │
+  // │ Le champ parle donc désormais la même langue que sa propre borne.     │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const versFacture = (montant: number) =>
+    panier.devises.convertMoney(montant, panier.devises.primary, panier.deviseFacture);
+  const versPrincipale = (montant: number) =>
+    panier.devises.convertMoney(montant, panier.deviseFacture, panier.devises.primary);
+
+  // Le texte tapé vit à part de l'état : une saisie au-delà du plafond est
+  // RABAISSÉE par le réducteur, et un champ contrôlé de React Native ne
+  // réécrit pas son texte natif quand la valeur bornée ne change plus d'un
+  // rendu à l'autre. Sans cet accord explicite, le champ affichait encore
+  // « 1000000 » pendant que la vente appliquait le plafond.
+  const [texteRemise, setTexteRemise] = useState("");
+  const deviseTexte = useRef(panier.deviseFacture);
+  useEffect(() => {
+    const saisi = Number(texteRemise.replace(",", ".")) || 0;
+
+    // La devise de facture a changé depuis la saisie : le nombre tapé désigne
+    // maintenant autre chose que ce que son étiquette annonce. On le réécrit.
+    if (deviseTexte.current !== panier.deviseFacture) {
+      deviseTexte.current = panier.deviseFacture;
+      const applique = versFacture(panier.etat.remiseGlobale);
+      setTexteRemise(applique > 0 ? String(applique) : "");
+      return;
+    }
+
+    // Sinon on ne réécrit QUE si la borne a mordu, et la comparaison se fait en
+    // devise PRINCIPALE, là où la remise vit. Comparer en devise de facture
+    // ferait passer un aller-retour de conversion pour un plafonnement :
+    // 1 000 000 FC valent 434,78 $ arrondis, qui revalent 999 994 FC, et le
+    // champ se réécrirait pour six francs sur un million.
+    const saisiPrincipale = versPrincipale(saisi);
+    if (panier.etat.remiseGlobale < saisiPrincipale - 0.005) {
+      setTexteRemise(String(versFacture(panier.etat.remiseGlobale)));
+    }
+    // `texteRemise` n'entre pas dans les dépendances : c'est lui qu'on corrige,
+    // et l'y mettre relancerait l'effet sur sa propre écriture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panier.etat.remiseGlobale, panier.deviseFacture]);
 
   const ranger = async (label: string) => {
     if (verrouAttente.current) return;
@@ -127,18 +179,21 @@ export default function Panier() {
             {remiseOuverte ? (
               <View className="pb-2">
                 <FormField
-                  label="Remise"
-                  hint={`Au plus ${panier.argent(
-                    panier.devises.convertMoney(
-                      panier.totaux.remiseGlobaleMax, panier.devises.primary, panier.deviseFacture
-                    )
-                  )}`}
+                  label={`Remise (${panier.deviseFacture})`}
+                  hint={`Au plus ${panier.argent(versFacture(panier.totaux.remiseGlobaleMax))}`}
                 >
                   <Input
-                    value={panier.etat.remiseGlobale ? String(panier.etat.remiseGlobale) : ""}
-                    onChangeText={(v) =>
-                      panier.envoyer({ type: "remiseGlobale", montant: Number(v) || 0 })
-                    }
+                    value={texteRemise}
+                    onChangeText={(v) => {
+                      setTexteRemise(v);
+                      // Saisi en devise de FACTURE, rangé en principale : c'est
+                      // dans cette devise que le noyau totalise et que le corps
+                      // de vente reconvertit.
+                      panier.envoyer({
+                        type: "remiseGlobale",
+                        montant: versPrincipale(Number(v.replace(",", ".")) || 0),
+                      });
+                    }}
                     keyboardType="decimal-pad"
                     placeholder="0"
                   />
@@ -184,6 +239,13 @@ export default function Panier() {
         }
         scellesDisponibles={ligne?.product.stock_packages}
         vracDisponible={ligne?.product.stock_loose}
+        // Un article verrouillé par un inventaire depuis sa mise au panier se
+        // dit ICI, pas à l'encaissement. `verifierModification` retire la ligne
+        // éditée de son propre contrôle de stock : `verifier` la compterait
+        // contre elle-même et refuserait une correction possible.
+        verifier={(saisie: Saisie) =>
+          enEdition === null ? null : panier.verifierModification(enEdition, saisie)
+        }
         libelleValider="Mettre à jour"
         onRetirer={() => {
           if (enEdition === null) return;

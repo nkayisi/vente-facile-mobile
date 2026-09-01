@@ -10,7 +10,7 @@
  * sm:text-left`) : on fait de même.
  */
 import { View } from "react-native";
-import { ROLE_LABELS } from "@vente-facile/core";
+import { formatDateFr, ROLE_LABELS } from "@vente-facile/core";
 
 import { useSession } from "@/session/provider";
 import {
@@ -32,7 +32,10 @@ function dateLisible(v: string | null | undefined): string {
   const d = new Date(v);
   return Number.isNaN(d.getTime())
     ? "—"
-    : d.toLocaleDateString("fr-CD", { day: "numeric", month: "long", year: "numeric" });
+    // `formatDateFr` du noyau rend « 31 août 2026 », exactement ce que
+    // rendait `toLocaleDateString` ici. Voir `data/dates.ts` : une locale que
+    // le moteur ne reconnaît pas se replie sur l'anglais SANS lever.
+    : formatDateFr(d);
 }
 
 export default function Profil() {

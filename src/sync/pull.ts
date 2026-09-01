@@ -165,9 +165,11 @@ async function fetchChangedTables(
  * et les stocks d'abord, parce que le point de vente s'ouvre dès qu'ils sont
  * là. Le reste continue derrière.
  *
- * Une table sans changement est SAUTÉE, sans que son point de reprise bouge :
- * une synchronisation qui ne trouve rien coûte désormais un aller-retour au
- * lieu de trente-deux.
+ * Une table sans changement est SAUTÉE, sans que son CURSEUR bouge : une
+ * synchronisation qui ne trouve rien coûte un aller-retour au lieu de
+ * trente-deux. Sa date de fraîcheur, elle, avance : le serveur vient de
+ * confirmer qu'elle est complète, et le taire ferait annoncer « il y a 3 j »
+ * juste après une synchronisation réussie.
  */
 export async function pullAll(options: PullOptions = {}): Promise<{
   tables: number;
@@ -198,8 +200,29 @@ export async function pullAll(options: PullOptions = {}): Promise<{
 
   for (const [index, spec] of manifest.tables.entries()) {
     if (changed !== null && !changed.has(spec.name)) {
-      // Rien de neuf : on ne touche PAS au point de reprise. L'écrire ici
-      // ferait croire à un tirage qui n'a pas eu lieu.
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ « RIEN DE NEUF » EST UNE CONFIRMATION, PAS UNE ABSENCE DE        │
+      // │ RÉPONSE. Elle s'enregistre.                                      │
+      // │                                                                  │
+      // │ Le CURSEUR ne bouge pas, et c'est intouchable : l'avancer sans   │
+      // │ avoir tiré sauterait des lignes pour toujours, le défaut exact   │
+      // │ de l'ancien `/sync/`. Mais `lastFullSyncAt` répond à une AUTRE   │
+      // │ question : « de quand date ce que je sais de cette table ? ». Le │
+      // │ serveur vient précisément de répondre « de maintenant ».         │
+      // │                                                                  │
+      // │ Sans cette ligne, l'écran de synchronisation annonçait « Complet │
+      // │ il y a 3 j » sur trente tables SUR TRENTE ET UNE, à l'instant    │
+      // │ même où la synchronisation venait de réussir. Relevé sur         │
+      // │ l'émulateur ; le marchand ne peut pas distinguer « à jour » de   │
+      // │ « jamais synchronisé », et le comptoir annonçait un verrou       │
+      // │ d'inventaire « arrêté au 30 août » trente secondes après l'avoir │
+      // │ vérifié. Un chiffre de fraîcheur faux est pire qu'aucun : il     │
+      // │ fait appuyer sur « Synchroniser » sans effet.                    │
+      // │                                                                  │
+      // │ Défaut né avec la sonde (session 2026-08-29), invisible avant    │
+      // │ elle : toutes les tables étaient alors tirées à chaque fois.     │
+      // └──────────────────────────────────────────────────────────────────┘
+      await writeState(spec.name, { lastFullSyncAt: new Date(), lastError: null });
       skipped += 1;
       continue;
     }

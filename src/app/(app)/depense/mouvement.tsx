@@ -59,10 +59,12 @@ export default function MouvementCaisse() {
         description,
         categorieRecette: sens === "in" ? categorie : null,
         categorieDepense: sens === "out" ? categorie : null,
-        // Rattaché à la session OUVERTE : sans ce lien, le mouvement
-        // n'entrerait pas dans le solde attendu à la clôture, et le caissier
-        // constaterait un écart qu'il ne saurait pas expliquer.
-        session: session?.id ?? null,
+        // La session n'est PAS envoyée : le serveur la résout depuis la session
+        // ouverte de l'utilisateur, comme il le fait pour le back-office. Elle
+        // rattache le mouvement à une caisse, donc à un entrepôt, donc au
+        // périmètre de visibilité des magasiniers - et un client qui la
+        // désignerait pourrait viser celle d'un autre. Le champ était de toute
+        // façon jeté en silence : il n'est pas dans le serializer.
       });
       toast.succes("Mouvement enregistré. Il partira à la prochaine synchronisation.");
       router.back();

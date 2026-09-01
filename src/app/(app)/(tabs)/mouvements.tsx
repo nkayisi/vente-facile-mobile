@@ -14,6 +14,7 @@ import { View } from "react-native";
 import { router } from "expo-router";
 
 import { useLecture } from "@/data/live";
+import { dateCourteFr } from "@/data/dates";
 import { TYPE_MOUVEMENT_STOCK, listeMouvements } from "@/data/mouvements";
 import { entrepots } from "@/data/stock";
 import { useSession } from "@/session/provider";
@@ -99,7 +100,7 @@ export default function Mouvements() {
         rendu={(m) => (
           <DataRow
             principal={m.produit}
-            secondaire={[m.entrepot, m.date ? m.date.toLocaleDateString("fr-CD") : null]
+            secondaire={[m.entrepot, m.date ? dateCourteFr(m.date) : null]
               .filter(Boolean)
               .join(" · ") || null}
             badge={<Badge tone={m.entree ? "success" : "destructive"}>{m.typeLabel}</Badge>}

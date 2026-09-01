@@ -18,6 +18,7 @@ import {
   pullAll,
   pushAll,
   readAllStates,
+  unblockAll,
   type OutboxState,
   type PullProgress,
 } from "@/sync";
@@ -54,7 +55,7 @@ export default function Sync() {
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
 
-  const { snapshot } = useSession();
+  const { snapshot, refresh: rafraichirSession } = useSession();
 
   const refresh = useCallback(async () => {
     setStates(await readAllStates());
@@ -84,6 +85,30 @@ export default function Sync() {
         signal: abort.current.signal,
         onProgress: setProgress,
       });
+
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ LE DROIT AUSSI DOIT REDESCENDRE, ET IL NE LE FAISAIT JAMAIS.     │
+      // │                                                                  │
+      // │ `refresh` était exposé par le fournisseur de session et n'avait  │
+      // │ AUCUN APPELANT : permissions, devises, programme de fidélité et  │
+      // │ réglages de l'établissement restaient figés à l'enrôlement,      │
+      // │ indéfiniment. Un gérant pouvait accorder une permission au       │
+      // │ back-office sans qu'elle atteigne jamais le terminal.            │
+      // │                                                                  │
+      // │ D'où l'enchaînement : on rafraîchit l'instantané, PUIS on rend   │
+      // │ leur chance aux opérations bloquées. Dans cet ordre, sinon elles │
+      // │ repartiraient avec les droits d'hier et se feraient rebloquer.   │
+      // │ Un échec n'est pas une erreur de synchronisation : les données   │
+      // │ sont passées, c'est l'essentiel.                                 │
+      // └──────────────────────────────────────────────────────────────────┘
+      try {
+        await rafraichirSession();
+        await unblockAll();
+      } catch {
+        // Le terminal garde l'instantané qu'il avait : c'est la règle du
+        // lot 1, ouvrir l'application sans réseau ne doit jamais enfermer
+        // l'utilisateur dehors.
+      }
     } catch (e) {
       setError(
         e instanceof ApiError && e.kind === "network"

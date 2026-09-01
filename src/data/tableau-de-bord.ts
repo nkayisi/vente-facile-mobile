@@ -5,99 +5,110 @@
  * le back-office : « ↗ 100 % vs période précédente ». Une variation sans point
  * de comparaison ne dit rien.
  */
-import { and, gte, lt } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
+import { getPackaging } from "@vente-facile/core";
 
 import { db } from "@/db/client";
-import { customers, saleItems, sales } from "@/db/schema";
+import {
+  customers,
+  paymentMethods,
+  payments,
+  products,
+  saleItems,
+  sales,
+  stocks,
+  units,
+} from "@/db/schema";
+import {
+  cumulerProduits,
+  libelleQuantite,
+  type LigneVendue,
+} from "@/features/tableau-de-bord/produits";
+import {
+  bornes,
+  cleDeSeau,
+  seauxDePeriode,
+  type Periode,
+} from "@/features/tableau-de-bord/series";
 
 const nb = (v: string | null | undefined): number => {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
 };
 
-export type Periode = "day" | "week" | "month" | "year";
-
-/** Libellés du sélecteur et de la ligne de sous-titre, repris du web. */
-export const LABELS_PERIODE: Record<Periode, { bouton: string; phrase: string }> = {
-  day: { bouton: "Jour", phrase: "Aujourd'hui" },
-  week: { bouton: "Semaine", phrase: "Cette semaine" },
-  month: { bouton: "Mois", phrase: "Ce mois" },
-  year: { bouton: "Année", phrase: "Cette année" },
+/**
+ * Un montant de vente ramené en DEVISE PRINCIPALE.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE TABLEAU DE BORD EST UN ÉCRAN EN DEVISE PRINCIPALE.                    │
+ * │                                                                          │
+ * │ Il ventilait par devise et offrait un sélecteur ; le back-office, lui,   │
+ * │ additionnait les monnaies sans regarder. Aucune des deux lectures n'est  │
+ * │ celle qu'attend le marchand : ses prix d'achat comme ses prix de vente   │
+ * │ sont tenus en devise principale, et c'est dans cette monnaie qu'il juge  │
+ * │ sa journée. Le livre de caisse RESTE multi-devise, lui : il rend la      │
+ * │ réalité physique du tiroir, où les liasses ne se mélangent pas.          │
+ * │                                                                          │
+ * │ `exchange_rate` est le taux FIGÉ sur la vente (unités de principale pour │
+ * │ une unité de la devise de facture). Jamais le taux du jour : un tableau  │
+ * │ de bord dont les chiffres d'hier bougent avec le cours n'est pas         │
+ * │ relisable, et le marchand ne saurait pas lequel croire. C'est aussi ce   │
+ * │ que fait `primary_sum` côté serveur.                                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+const enPrincipale = (v: {
+  total: string | null;
+  exchangeRate: string | null;
+}): number => {
+  const taux = nb(v.exchangeRate);
+  // Un taux nul ou absent vaudrait « montant à zéro » : sur une vente en devise
+  // secondaire dont le taux n'aurait pas été enregistré, le chiffre d'affaires
+  // perdrait la vente en silence. Le taux neutre laisse au moins le montant.
+  return nb(v.total) * (taux > 0 ? taux : 1);
 };
 
 /**
- * Bornes des deux périodes, RECOPIÉES du serveur.
- *
- * `apps/organizations/views.py::dashboard` les définit ainsi, et ce n'est pas
- * ce qu'on devinerait :
- *
- *   - `week` n'est PAS la semaine calendaire mais les SEPT DERNIERS JOURS
- *     (`today - 6` à `today`), et la période précédente les sept d'avant.
- *   - `month` va du 1er du mois À AUJOURD'HUI, pas à la fin du mois.
- *   - la borne haute est TOUJOURS aujourd'hui inclus, jamais le futur.
- *
- * Les recalculer « logiquement » ferait diverger le terminal du back-office sur
- * le même établissement, ce que ce lot existe précisément pour éviter.
+ * `Periode` vit dans le module PUR `features/tableau-de-bord/series`, avec le
+ * découpage qui la consomme. Elle est re-exportée ici pour que les écrans
+ * gardent un seul import, et parce que ce fichier reste l'entrée du tableau
+ * de bord.
  */
-export function bornes(p: Periode): {
-  debut: Date;
-  fin: Date;
-  debutPrecedent: Date;
-  finPrecedent: Date;
-} {
-  const n = new Date();
-  const jour = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const plus = (d: Date, j: number) => {
-    const r = new Date(d);
-    r.setDate(r.getDate() + j);
-    return r;
-  };
-  const aujourdhui = jour(n);
-  // Borne haute exclusive : « jusqu'à aujourd'hui inclus » vaut « avant demain ».
-  const fin = plus(aujourdhui, 1);
+export type { Periode };
 
-  if (p === "day") {
-    return {
-      debut: aujourdhui,
-      fin,
-      debutPrecedent: plus(aujourdhui, -1),
-      finPrecedent: aujourdhui,
-    };
-  }
-  if (p === "week") {
-    return {
-      debut: plus(aujourdhui, -6),
-      fin,
-      debutPrecedent: plus(aujourdhui, -13),
-      finPrecedent: plus(aujourdhui, -6),
-    };
-  }
-  if (p === "year") {
-    const debut = new Date(aujourdhui.getFullYear(), 0, 1);
-    return {
-      debut,
-      fin,
-      debutPrecedent: new Date(aujourdhui.getFullYear() - 1, 0, 1),
-      finPrecedent: debut,
-    };
-  }
-  const debut = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 1);
-  return {
-    debut,
-    fin,
-    debutPrecedent: new Date(aujourdhui.getFullYear(), aujourdhui.getMonth() - 1, 1),
-    finPrecedent: debut,
-  };
-}
+/**
+ * Les bornes vivent dans le module PUR `features/tableau-de-bord/series`, avec
+ * le découpage qui les consomme : c'est ce qui les rend testables sans ouvrir
+ * la base, et elles doivent l'être - un décalage de bornes ne lève rien, il
+ * fait simplement disparaître des ventes d'un écran.
+ */
+export { bornes };
+
+/**
+ * Libellés du sélecteur et de la ligne de sous-titre, repris du web.
+ *
+ * Ils NOMMENT la fenêtre glissante. « Mois » laissait entendre le mois
+ * calendaire, et le marchand qui ne retrouvait pas ses ventes de la semaine
+ * dans « Mois » y lisait une perte de données plutôt qu'un début de mois.
+ */
+export const LABELS_PERIODE: Record<Periode, { bouton: string; phrase: string }> = {
+  day: { bouton: "Jour", phrase: "Aujourd'hui" },
+  week: { bouton: "7 jours", phrase: "Les 7 derniers jours" },
+  month: { bouton: "30 jours", phrase: "Les 30 derniers jours" },
+  year: { bouton: "12 mois", phrase: "Les 12 derniers mois" },
+};
 
 export interface CarteReleve {
-  ventes: { devise: string; montant: number }[];
+  /** Chiffre d'affaires de la période, EN DEVISE PRINCIPALE. */
+  ventes: number;
   variationVentes: number;
   clients: number;
   nouveauxClients: number;
   unitesVendues: number;
   variationUnites: number;
-  benefice: { devise: string; montant: number }[];
+  /** Bénéfice brut, en devise principale lui aussi. */
+  benefice: number;
+  /** Marge en pourcentage, ou `null` quand il n'y a rien à rapporter. */
   marge: number | null;
 }
 
@@ -118,7 +129,7 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
     .select({
       id: sales.id,
       total: sales.total,
-      currency: sales.currency,
+      exchangeRate: sales.exchangeRate,
       saleDate: sales.saleDate,
       status: sales.status,
       isDeleted: sales.isDeleted,
@@ -132,11 +143,6 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
   const avant = retenues.filter(
     (v) => v.saleDate! >= debutPrecedent && v.saleDate! < finPrecedent
   );
-
-  const parDevise = new Map<string, number>();
-  for (const v of dansPeriode) {
-    parDevise.set(v.currency ?? "", (parDevise.get(v.currency ?? "") ?? 0) + nb(v.total));
-  }
 
   const idsPeriode = new Set(dansPeriode.map((v) => v.id));
   const idsAvant = new Set(avant.map((v) => v.id));
@@ -155,16 +161,22 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
     const q = nb(l.quantity);
     if (idsPeriode.has(l.saleId)) {
       unites += q;
-      // Le serveur agrège `cost_price * quantity` sur les LIGNES des ventes
-      // retenues, et calcule le bénéfice comme `Sum(sale.total) - ce coût`.
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ LE COÛT N'EST PAS CONVERTI, ET C'EST VOLONTAIRE.                 │
+      // │                                                                  │
+      // │ `cost_price` vient du catalogue, qui n'a pas de devise : il est  │
+      // │ DÉJÀ en principale, comme le prix d'achat que le marchand a      │
+      // │ saisi. Lui appliquer le taux d'une vente en francs le diviserait │
+      // │ par deux mille huit cents, et la marge afficherait 100 %.        │
+      // └──────────────────────────────────────────────────────────────────┘
       cout += nb(l.costPrice) * q;
     } else if (idsAvant.has(l.saleId)) {
       unitesAvant += q;
     }
   }
 
-  const totalPeriode = dansPeriode.reduce((s, v) => s + nb(v.total), 0);
-  const totalAvant = avant.reduce((s, v) => s + nb(v.total), 0);
+  const totalPeriode = dansPeriode.reduce((s, v) => s + enPrincipale(v), 0);
+  const totalAvant = avant.reduce((s, v) => s + enPrincipale(v), 0);
 
   const tousClients = await db
     .select({ id: customers.id, createdAt: customers.createdAt })
@@ -173,19 +185,330 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
     (c) => c.createdAt && c.createdAt >= debut && c.createdAt < fin
   );
 
-  const devisePrincipale = [...parDevise.keys()][0] ?? "";
   const benefice = totalPeriode - cout;
 
   return {
-    ventes: [...parDevise.entries()]
-      .map(([devise, montant]) => ({ devise, montant }))
-      .sort((a, b) => a.devise.localeCompare(b.devise)),
+    ventes: totalPeriode,
     variationVentes: variation(totalPeriode, totalAvant),
     clients: tousClients.length,
     nouveauxClients: nouveaux.length,
     unitesVendues: unites,
     variationUnites: variation(unites, unitesAvant),
-    benefice: benefice === 0 ? [] : [{ devise: devisePrincipale, montant: benefice }],
+    benefice,
+    // La marge est un RAPPORT : sans chiffre d'affaires, elle ne se rattache à
+    // rien et un « 0 % » se lirait comme une vente à perte.
     marge: totalPeriode > 0 ? (benefice / totalPeriode) * 100 : null,
   };
+}
+
+// ===========================================================================
+// LES GRAPHIQUES ET LES TABLEAUX DU BAS
+//
+// Tout est calculé LOCALEMENT, sur les tables tirées : le tableau de bord doit
+// s'ouvrir hors ligne, c'est le premier écran que le marchand regarde le matin.
+// Les définitions suivent celles du serveur (`organizations/views.py::dashboard`)
+// pour que le terminal et le back-office ne donnent jamais deux chiffres pour
+// le même établissement.
+// ===========================================================================
+
+export interface PointSerie {
+  label: string;
+  valeur: number;
+}
+
+export interface TranchePaiement {
+  nom: string;
+  /** Montant en devise principale : c'est lui qui donne la part. */
+  montant: number;
+  nombre: number;
+}
+
+export interface TrancheDevise {
+  /** Code de la devise du BILLET reçu. */
+  code: string;
+  /** Montant tel que le caissier l'a compté, dans cette devise. */
+  natif: number;
+  /** Le même, ramené en devise principale. */
+  principal: number;
+  nombre: number;
+}
+
+export interface GraphesTableauDeBord {
+  evolution: PointSerie[];
+  /** Encaissements par DEVISE du billet reçu. */
+  devises: TrancheDevise[];
+  /** Les mêmes encaissements, par moyen de paiement, en principale. */
+  paiements: TranchePaiement[];
+  /** Total encaissé sur la période, en devise principale. */
+  totalEncaisse: number;
+  /** Total facturé sur la période, en devise principale. */
+  totalVendu: number;
+}
+
+/**
+ * L'évolution des ventes et la répartition des encaissements, EN PRINCIPALE.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'ANNEAU VENTILE PAR DEVISE, PAS PAR MOYEN DE PAIEMENT.                 │
+ * │                                                                          │
+ * │ Sur un écran tout entier converti, la question qui reste est « en quelle │
+ * │ monnaie l'argent est entré », et elle ne se lit nulle part ailleurs. La  │
+ * │ PART se calcule sur le montant converti - sans quoi 7 728 FC et          │
+ * │ 132 775 $ ne seraient pas comparables et l'anneau mentirait - mais la    │
+ * │ légende porte AUSSI le montant natif, qui est celui que le caissier a    │
+ * │ compté dans son tiroir.                                                  │
+ * │                                                                          │
+ * │ Les moyens de paiement restent servis, en second plan : même contenu     │
+ * │ qu'avant, rangé au rang qui est désormais le sien.                       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * **L'évolution et l'anneau ne parlent pas de la même chose** : la première
+ * suit la FACTURE, le second le BILLET reçu. Une vente libellée en dollars peut
+ * être réglée en francs, et les deux lectures sont justes. L'écran écrit donc
+ * « facturé » d'un côté, « encaissé » de l'autre.
+ */
+export async function graphesTableauDeBord(
+  p: Periode
+): Promise<GraphesTableauDeBord> {
+  const { debut, fin } = bornes(p);
+  const dansLaPeriode = and(
+    eq(sales.status, "completed"),
+    eq(sales.isDeleted, false),
+    gte(sales.saleDate, debut),
+    lt(sales.saleDate, fin)
+  );
+
+  const lignesVentes = await db
+    .select({
+      total: sales.total,
+      exchangeRate: sales.exchangeRate,
+      date: sales.saleDate,
+    })
+    .from(sales)
+    .where(dansLaPeriode);
+
+  // Les seaux VIDES sont posés d'abord : une journée sans vente doit se voir
+  // comme un zéro, pas disparaître de l'axe. Voir `features/tableau-de-bord/series`.
+  const seaux = seauxDePeriode(p, debut, fin);
+  const par = new Map(seaux.map((s) => [s.cle, 0]));
+  let totalVendu = 0;
+  for (const l of lignesVentes) {
+    if (!l.date) continue;
+    const cle = cleDeSeau(l.date, p);
+    if (!par.has(cle)) continue;
+    const v = enPrincipale(l);
+    par.set(cle, (par.get(cle) as number) + v);
+    totalVendu += v;
+  }
+
+  const lignesPaiements = await db
+    .select({
+      montant: payments.amount,
+      remis: payments.tenderedAmount,
+      devise: payments.currency,
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ `payments.amount` EST DÉJÀ DANS LA DEVISE DE LA VENTE.           │
+      // │                                                                  │
+      // │ Ce n'est PAS le billet reçu : celui-là est `tendered_amount`,    │
+      // │ exprimé dans `payments.currency`. Le taux qui ramène un règlement │
+      // │ en principale est donc celui de la VENTE, pas celui du règlement │
+      // │ (qui, lui, convertit le billet vers la facture).                 │
+      // └──────────────────────────────────────────────────────────────────┘
+      tauxVente: sales.exchangeRate,
+      nom: paymentMethods.name,
+    })
+    .from(payments)
+    .innerJoin(sales, eq(sales.id, payments.saleId))
+    .leftJoin(paymentMethods, eq(paymentMethods.id, payments.paymentMethodId))
+    .where(and(dansLaPeriode, eq(payments.status, "completed")));
+
+  const parMoyen = new Map<string, TranchePaiement>();
+  const parDevise = new Map<string, TrancheDevise>();
+  let totalEncaisse = 0;
+  for (const l of lignesPaiements) {
+    const principal = enPrincipale({ total: l.montant, exchangeRate: l.tauxVente });
+
+    // « Non défini » est le libellé du serveur pour un règlement dont la
+    // méthode a été supprimée. Le taire ferait manquer de l'argent à l'anneau.
+    const nom = l.nom ?? "Non défini";
+    const t = parMoyen.get(nom) ?? { nom, montant: 0, nombre: 0 };
+    t.montant += principal;
+    t.nombre += 1;
+    parMoyen.set(nom, t);
+
+    const code = l.devise || "";
+    const d = parDevise.get(code) ?? { code, natif: 0, principal: 0, nombre: 0 };
+    // `tendered_amount` est nullable pour compatibilité : les anciennes lignes
+    // mono-devise sont backfillées à `amount`, et le repli n'est juste que dans
+    // ce cas précis, devise du règlement égale à celle de la vente.
+    d.natif += nb(l.remis ?? l.montant);
+    d.principal += principal;
+    d.nombre += 1;
+    parDevise.set(code, d);
+
+    totalEncaisse += principal;
+  }
+
+  return {
+    evolution: seaux.map((s) => ({
+      label: s.label,
+      valeur: par.get(s.cle) as number,
+    })),
+    devises: [...parDevise.values()]
+      .filter((d) => d.code)
+      .sort((a, b) => b.principal - a.principal),
+    paiements: [...parMoyen.values()].sort((a, b) => b.montant - a.montant),
+    totalEncaisse,
+    totalVendu,
+  };
+}
+
+export interface ProduitVendu {
+  id: string;
+  nom: string;
+  sku: string;
+  /** Quantité totale, en unité de détail. */
+  quantite: number;
+  /** « 3 casiers + 7 bouteilles », ou « 24 bouteilles » sans conditionnement. */
+  rendu: string;
+  /** Non nul : le rendu est ventilé, et le total brut mérite d'être rappelé. */
+  facteur: number | null;
+  /** Recette, EN DEVISE PRINCIPALE, au taux figé sur chaque vente. */
+  revenus: number;
+}
+
+/**
+ * Les produits les plus vendus de la période. Miroir de `_dashboard_top_product`.
+ *
+ * **Le partage gros/détail vient des CONTENANTS RÉELLEMENT FACTURÉS**, jamais
+ * d'une division du total au facteur du jour : cinq casiers plus cent vingt
+ * bouteilles ne se relisent pas « dix casiers », et le facteur d'un produit a
+ * pu changer depuis la vente. C'est la règle posée dans tout le stock, et le
+ * serveur l'applique ici de la même façon.
+ */
+export async function topProduits(p: Periode, limite = 10): Promise<ProduitVendu[]> {
+  const { debut, fin } = bornes(p);
+  const uniteDetail = alias(units, "unite_detail");
+  const uniteContenant = alias(units, "unite_contenant");
+
+  const lignes = await db
+    .select({
+      produitId: products.id,
+      nom: products.name,
+      sku: products.sku,
+      sellingMode: products.sellingMode,
+      unitsPerPackage: products.unitsPerPackage,
+      unite: uniteDetail.name,
+      uniteContenant: uniteContenant.name,
+      quantity: saleItems.quantity,
+      packageQuantity: saleItems.packageQuantity,
+      packagingFactor: saleItems.packagingFactor,
+      total: saleItems.total,
+      tauxVente: sales.exchangeRate,
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(sales.id, saleItems.saleId))
+    .innerJoin(products, eq(products.id, saleItems.productId))
+    .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+    .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .where(
+      and(
+        eq(sales.status, "completed"),
+        eq(sales.isDeleted, false),
+        gte(sales.saleDate, debut),
+        lt(sales.saleDate, fin)
+      )
+    );
+
+  // Le conditionnement est celui du PRODUIT (le nom du contenant vient du
+  // catalogue) ; le facteur qui découpe, lui, est celui figé sur chaque LIGNE.
+  const conditionnements = new Map<string, ReturnType<typeof getPackaging>>();
+  const unites = new Map<string, string | null>();
+  const brutes: LigneVendue[] = lignes.map((l) => {
+    if (!conditionnements.has(l.produitId)) {
+      unites.set(l.produitId, l.unite);
+      conditionnements.set(
+        l.produitId,
+        getPackaging({
+          selling_mode: l.sellingMode,
+          units_per_package: l.unitsPerPackage,
+          unit_name: l.unite,
+          packaging_unit_name: l.uniteContenant,
+        })
+      );
+    }
+    return {
+      produitId: l.produitId,
+      nom: l.nom,
+      sku: l.sku,
+      quantite: nb(l.quantity),
+      contenants: nb(l.packageQuantity),
+      facteurLigne: l.packagingFactor ?? null,
+      total: nb(l.total),
+      tauxVente: nb(l.tauxVente),
+    };
+  });
+
+  return cumulerProduits(brutes)
+    .slice(0, limite)
+    .map((c) => {
+      const cond = conditionnements.get(c.id) ?? null;
+      return {
+        id: c.id,
+        nom: c.nom,
+        sku: c.sku,
+        quantite: c.quantite,
+        rendu: libelleQuantite(cond, unites.get(c.id) ?? null, c),
+        // Le facteur est rendu DÈS QU'IL EXISTE, que le partage vienne des
+        // contenants facturés ou d'une division du total : c'est lui qui
+        // autorise l'écran à rappeler « N au total » sous la lecture en
+        // contenants, et c'est ce que le serveur met dans sa réponse.
+        facteur: cond?.factor ?? null,
+        revenus: c.revenus,
+      };
+    });
+}
+
+export interface ReleveInventaire {
+  /** Produits au seuil de réassort ou en dessous. */
+  stockBas: number;
+  /** Valeur d'achat du stock, dans la devise de tenue des coûts. */
+  valeurStock: number;
+}
+
+/**
+ * Les deux relevés d'inventaire du web.
+ *
+ * **Les deux périmètres DIFFÈRENT, et c'est le serveur qui en décide ainsi** :
+ * le comptage des stocks bas ne retient que les produits SUIVIS en inventaire,
+ * la valorisation prend tout ce qui n'est pas supprimé. Les aligner « pour
+ * faire propre » ferait diverger le terminal du back-office.
+ *
+ * La valorisation suit `Stock.unit_cost_expression()` : le coût moyen s'il est
+ * renseigné, sinon le prix d'achat du catalogue. Cette règle avait trois
+ * écritures côté serveur, et le même stock s'affichait à deux valeurs selon
+ * l'écran ouvert ; il n'y en a plus qu'une, et c'est celle-ci que l'on suit.
+ */
+export async function releveInventaire(): Promise<ReleveInventaire> {
+  const lignes = await db
+    .select({
+      quantity: stocks.quantity,
+      avgCost: stocks.avgCost,
+      costPrice: products.costPrice,
+      reorderPoint: products.reorderPoint,
+      trackInventory: products.trackInventory,
+    })
+    .from(stocks)
+    .innerJoin(products, eq(products.id, stocks.productId))
+    .where(eq(products.isDeleted, false));
+
+  let stockBas = 0;
+  let valeurStock = 0;
+  for (const l of lignes) {
+    const quantite = nb(l.quantity);
+    const moyen = nb(l.avgCost);
+    valeurStock += quantite * (moyen > 0 ? moyen : nb(l.costPrice));
+    if (l.trackInventory && quantite <= Number(l.reorderPoint ?? 0)) stockBas += 1;
+  }
+  return { stockBas, valeurStock };
 }

@@ -6,6 +6,7 @@ export {
   readyToSend,
   countByState,
   quarantined,
+  bloquees,
   discard,
   unblockAll,
   purgeDone,
@@ -13,6 +14,9 @@ export {
   BATCH_SIZE,
   type OperationKind,
   type OutboxState,
+  type EtatEnvoi,
+  type OperationEnAttente,
+  etatEnvoi,
   enAttenteParType,
 } from "./outbox";
 export { readState, readAllStates, writeState, resetAllStates } from "./state";

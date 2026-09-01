@@ -1,5 +1,5 @@
 /**
- * Alertes et séries du tableau de bord.
+ * Alertes du tableau de bord.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ TOUT EST CALCULÉ LOCALEMENT, sur les tables tirées : le tableau de bord  │
@@ -10,13 +10,12 @@
  * │ raison.                                                                  │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import { db } from "@/db/client";
 import {
-  customerBalances,
   customers,
   products,
   sales,
@@ -152,59 +151,4 @@ export async function alertes(limite = 12): Promise<Alerte[]> {
     credit: 3,
   };
   return sorties.sort((a, b) => ordre[a.genre] - ordre[b.genre]).slice(0, limite);
-}
-
-export interface PointSerie {
-  /** Étiquette courte, telle qu'elle s'affiche sous la barre. */
-  label: string;
-  valeur: number;
-}
-
-/**
- * Le chiffre d'affaires des N derniers jours, dans UNE devise.
- *
- * **Une seule devise par série, et elle est nommée.** Un graphique qui
- * empilerait des francs et des dollars dessinerait une courbe qui ne veut rien
- * dire ; c'est la même raison qui interdit les sommes inter-devises partout
- * ailleurs.
- */
-export async function ventesParJour(
-  devise: string,
-  jours = 7
-): Promise<PointSerie[]> {
-  const debut = new Date();
-  debut.setHours(0, 0, 0, 0);
-  debut.setDate(debut.getDate() - (jours - 1));
-
-  const lignes = await db
-    .select({ total: sales.total, date: sales.saleDate })
-    .from(sales)
-    .where(
-      and(
-        eq(sales.currency, devise),
-        eq(sales.status, "completed"),
-        gte(sales.saleDate, debut)
-      )
-    );
-
-  const par = new Map<string, number>();
-  for (let i = 0; i < jours; i += 1) {
-    const d = new Date(debut);
-    d.setDate(d.getDate() + i);
-    par.set(d.toDateString(), 0);
-  }
-  for (const l of lignes) {
-    if (!l.date) continue;
-    const cle = new Date(
-      l.date.getFullYear(),
-      l.date.getMonth(),
-      l.date.getDate()
-    ).toDateString();
-    if (par.has(cle)) par.set(cle, (par.get(cle) ?? 0) + nb(l.total));
-  }
-
-  return [...par.entries()].map(([cle, valeur]) => ({
-    label: new Date(cle).toLocaleDateString("fr-CD", { weekday: "short" }).slice(0, 3),
-    valeur,
-  }));
 }

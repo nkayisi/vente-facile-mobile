@@ -11,17 +11,18 @@
  * sur ce téléphone laisse exactement le même état qu'une vente saisie sur le
  * back-office, ce que le backend vérifie par test.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as Crypto from "expo-crypto";
 
+import { formatNumberFr } from "@vente-facile/core";
 import { buildSalePayload } from "@vente-facile/core/pos";
 
 import { enregistrerDocument } from "@/printing/jobs";
 import { donneesTicketVente } from "@/features/pos/ticket";
 
-import { moyensDePaiement, pointsDuClient, type MoyenPaiement } from "@/features/pos/donnees";
+import { moyensDePaiement, type MoyenPaiement } from "@/features/pos/donnees";
 import { prochaineReference } from "@/features/pos/numerotation";
 import { sessionOuverte, type SessionCaisse } from "@/features/pos/caisse";
 import { usePanier } from "@/features/pos/panier";
@@ -35,13 +36,19 @@ export default function Encaissement() {
   const panier = usePanier();
   const { snapshot } = useSession();
   const { etat, totaux, devises, deviseFacture, deviseMonnaie, argent } = panier;
+  const { rafraichirClient } = panier;
 
   const [moyens, setMoyens] = useState<MoyenPaiement[]>([]);
   const [session, setSession] = useState<SessionCaisse | null>(null);
-  const [points, setPoints] = useState(0);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const verrou = useRef(false);
+
+  // Une synchronisation a pu passer pendant que le panier était ouvert : le
+  // solde de points et la dette en file viennent de la base locale, que seul
+  // le tirage écrit. On les relit en ARRIVANT sur cet écran, qui est le seul
+  // où ils décident de quelque chose.
+  useFocusEffect(useCallback(() => { rafraichirClient(); }, [rafraichirClient]));
 
   useEffect(() => {
     moyensDePaiement().then((liste) => {
@@ -63,14 +70,6 @@ export default function Encaissement() {
     // frappe empêcherait le caissier de saisir un montant partiel.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!etat.client) {
-      setPoints(0);
-      return;
-    }
-    pointsDuClient(etat.client.id).then(setPoints);
-  }, [etat.client]);
 
   const reglement = etat.reglements[0];
   const modifier = (patch: Partial<typeof reglement>) =>
@@ -339,7 +338,10 @@ export default function Encaissement() {
               action={{ label: "Choisir un client", onPress: () => router.push("/pos/client") }}
             />
           ) : credit?.blocked ? (
-            <Banner tone="destructive" title="Crédit refusé" message={credit.reason ?? ""} />
+            <>
+              <Banner tone="destructive" title="Crédit refusé" message={credit.reason ?? ""} />
+              <EnAttenteDuClient montant={totaux.detteEnAttente} argent={argent} devise={devises.primary} />
+            </>
           ) : (
             <View className="rounded-xl border border-border p-4">
               <Text variant="body">{etat.client.name}</Text>
@@ -347,6 +349,7 @@ export default function Encaissement() {
                 Dette actuelle : {argent(credit?.currentBalance ?? 0, devises.primary)} ·
                 {" "}après cette vente : {argent(credit?.projectedBalance ?? 0, devises.primary)}
               </Text>
+              <EnAttenteDuClient montant={totaux.detteEnAttente} argent={argent} devise={devises.primary} />
             </View>
           )}
         </Rubrique>
@@ -364,23 +367,34 @@ export default function Encaissement() {
         </Rubrique>
       )}
 
-      {etat.client && snapshot?.loyalty_program?.is_active && points > 0 ? (
+      {etat.client && snapshot?.loyalty_program?.is_active && totaux.soldePoints > 0 ? (
         <Rubrique titre="Points de fidélité">
           <Text variant="bodySmall" className="mb-2 text-muted-foreground">
-            {points} point{points > 1 ? "s" : ""} disponible{points > 1 ? "s" : ""}.
-            {" "}Au plus {Math.min(points, totaux.pointsMax)} utilisable
-            {Math.min(points, totaux.pointsMax) > 1 ? "s" : ""} sur cette vente.
+            {/* Le solde ET le plafond viennent du PANIER, qui totalise. Cet
+                écran tenait son propre solde et passait zéro au noyau : il
+                annonçait « 372 points disponibles. Au plus 0 utilisable », et
+                n'en laissait saisir aucun. */}
+            {/* `formatNumberFr` et non l'interpolation brute : « 704.13 points »
+                sortait avec un point décimal ANGLAIS deux lignes sous
+                « 1 122,4 $ ». `Intl` est proscrit (Hermes n'embarque pas l'ICU
+                complète et se replie sur l'anglais SANS lever), d'où le
+                formateur du noyau. */}
+            {formatNumberFr(totaux.soldePoints, 2)} point
+            {totaux.soldePoints > 1 ? "s" : ""} disponible
+            {totaux.soldePoints > 1 ? "s" : ""}.
+            {" "}Au plus {formatNumberFr(totaux.pointsMax, 2)} utilisable
+            {totaux.pointsMax > 1 ? "s" : ""} sur cette vente.
           </Text>
           <FormField
             label="Points à utiliser"
-            hint={`Minimum ${totaux.pointsMinimum}. En dessous, aucune remise n'est accordée.`}
+            hint={`Minimum ${formatNumberFr(totaux.pointsMinimum, 2)}. En dessous, aucune remise n'est accordée.`}
           >
             <Input
               value={etat.points ? String(etat.points) : ""}
               onChangeText={(v) =>
                 panier.envoyer({
                   type: "points",
-                  points: Math.min(Number(v) || 0, Math.min(points, totaux.pointsMax)),
+                  points: Math.min(Number(v) || 0, totaux.pointsMax),
                 })
               }
               keyboardType="number-pad"
@@ -469,5 +483,39 @@ function Rang({ libelle, valeur }: { libelle: string; valeur: string }) {
       </Text>
       <Text variant="bodySmall">{valeur}</Text>
     </View>
+  );
+}
+
+/**
+ * Pourquoi la dette opposée dépasse celle de la fiche client.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN CHIFFRE QUI NE S'EXPLIQUE PAS SE LIT COMME UNE ERREUR.               │
+ * │                                                                          │
+ * │ Le contrôle de crédit compte désormais les ventes à crédit que ce        │
+ * │ terminal n'a pas encore poussées : sans elles, un client à 40 $ de       │
+ * │ plafond repart trois fois de suite avec 30 $ de marchandise, et le       │
+ * │ serveur refuse les deux dernières ventes une fois les tickets imprimés.  │
+ * │                                                                          │
+ * │ Mais la fiche du client, elle, vient du tirage et ignore ces ventes. Le  │
+ * │ caissier lirait donc « dette : 90 $ » sur un compte que la liste des     │
+ * │ clients annonce à 30 $, et conclurait à un bug plutôt qu'à un retard de  │
+ * │ synchronisation. Cette ligne nomme l'écart.                              │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+function EnAttenteDuClient({
+  montant,
+  argent,
+  devise,
+}: {
+  montant: number;
+  argent: (m: number, code?: string) => string;
+  devise: string;
+}) {
+  if (montant <= 0) return null;
+  return (
+    <Text variant="caption" className="mt-2 text-muted-foreground">
+      Dont {argent(montant, devise)} de ventes à crédit qui attendent leur envoi.
+    </Text>
   );
 }

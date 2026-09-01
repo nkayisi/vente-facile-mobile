@@ -11,7 +11,7 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
@@ -37,10 +37,21 @@ import {
 
 const TABLES = ["stocks", "products", "warehouses", "categories", "units"];
 
+/** Filtre d'arrivée admis dans l'URL. Ce qui n'est pas connu ne filtre rien. */
+function etatDemande(v: string | string[] | undefined): EtatStock {
+  const cle = Array.isArray(v) ? v[0] : v;
+  return cle === "bas" || cle === "rupture" || cle === "ok" ? cle : "tous";
+}
+
 export default function Niveaux() {
+  // Le relevé « Stock bas » du tableau de bord ouvre cette page DÉJÀ filtrée.
+  // Un chiffre d'alerte qui débarque sur la liste entière oblige le magasinier
+  // à refaire le tri à la main, et il ne retrouve pas forcément les mêmes
+  // produits : c'est la règle « chaque alerte mène quelque part ».
+  const params = useLocalSearchParams<{ etat?: string }>();
   const [recherche, setRecherche] = useState("");
   const [entrepot, setEntrepot] = useState<string | null>(null);
-  const [etat, setEtat] = useState<EtatStock>("tous");
+  const [etat, setEtat] = useState<EtatStock>(() => etatDemande(params.etat));
 
   const charger = useCallback(
     () => niveauxDeStock({ recherche, entrepot, etat, limite: 300 }),

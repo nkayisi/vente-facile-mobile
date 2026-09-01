@@ -37,10 +37,29 @@ export async function creerDepense(saisie: SaisieDepense): Promise<string> {
     amount: String(saisie.montant),
     currency: saisie.devise,
     beneficiary: (saisie.beneficiaire ?? "").trim(),
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ `expense_date` EST OBLIGATOIRE, et il manquait.                      │
+    // │                                                                      │
+    // │ `Expense.expense_date` n'a ni défaut ni valeur nulle possible, et le │
+    // │ serializer le rend donc requis : le serveur répondait « Ce champ est │
+    // │ obligatoire » et la dépense partait en quarantaine. Établi par       │
+    // │ `test_cashbook_operations_parity` : AUCUNE dépense saisie sur un     │
+    // │ terminal depuis le lot 9 n'était jamais arrivée.                     │
+    // │                                                                      │
+    // │ La date est celle de la SAISIE, pas celle de l'envoi : une dépense   │
+    // │ notée samedi soir et synchronisée lundi appartient au samedi.        │
+    // └──────────────────────────────────────────────────────────────────────┘
+    expense_date: jourISO(new Date()),
     ...(saisie.methode ? { payment_method: saisie.methode } : {}),
     notes: saisie.notes ?? "",
   });
   return id;
+}
+
+/** « 2026-08-31 » sans passer par `Intl`, qui est proscrit (voir `data/dates`). */
+function jourISO(d: Date): string {
+  const deux = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
 }
 
 export interface SaisieMouvementCaisse {
@@ -51,7 +70,6 @@ export interface SaisieMouvementCaisse {
   description: string;
   categorieRecette?: string | null;
   categorieDepense?: string | null;
-  session?: string | null;
 }
 
 /**
@@ -68,13 +86,25 @@ export async function creerMouvementCaisse(
   await enqueue(id, "cash_movement.create", {
     id,
     direction: saisie.sens,
-    movement_type: saisie.sens === "in" ? "income" : "expense",
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ « income » ET « expense » N'EXISTENT PAS.                            │
+    // │                                                                      │
+    // │ Les valeurs de `CashMovement.MovementType` sont `fund_in`,           │
+    // │ `other_in`, `fund_out`, `other_out`, `sale`, `adjustment`… Le        │
+    // │ serveur répondait « income n'est pas un choix valide » et le         │
+    // │ mouvement partait en quarantaine. On reprend le défaut du            │
+    // │ back-office, `other_in` (`cashbook/page.tsx:175`) : une saisie       │
+    // │ manuelle n'est un apport de fonds que si le marchand le dit, et      │
+    // │ l'écran ne le lui demande pas.                                       │
+    // └──────────────────────────────────────────────────────────────────────┘
+    movement_type: saisie.sens === "in" ? "other_in" : "other_out",
     amount: String(saisie.montant),
     currency: saisie.devise,
     description: saisie.description.trim(),
+    // Requis par le modèle, et absent lui aussi. C'est l'instant de la SAISIE.
+    movement_date: new Date().toISOString(),
     ...(saisie.categorieRecette ? { income_category: saisie.categorieRecette } : {}),
     ...(saisie.categorieDepense ? { expense_category: saisie.categorieDepense } : {}),
-    ...(saisie.session ? { session: saisie.session } : {}),
   });
   return id;
 }

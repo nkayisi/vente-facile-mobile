@@ -10,11 +10,14 @@
  * ni à la comparaison SQL, où `"0.000" > "12.000"` lexicographiquement.
  */
 import { and, asc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
-import { availableSplit, getPackaging } from "@vente-facile/core";
+import { availableSplit, getPackaging, remainingChannels } from "@vente-facile/core";
 import { alias } from "drizzle-orm/sqlite-core";
+import { addDatabaseChangeListener } from "expo-sqlite";
 
 import { db } from "@/db/client";
-import { categories, products, stocks, units } from "@/db/schema";
+import { categories, products, stocks, units, warehouses } from "@/db/schema";
+import { reservesEnAttente, type ReserveLocale } from "./reserve-locale";
+import { produitsVerrouilles, type VerrouInventaire } from "./verrou-inventaire";
 
 /**
  * Un article tel que le comptoir le voit.
@@ -63,6 +66,15 @@ export interface ArticlePos {
   stock_loose: number | null;
   /** Réservé, pour l'affichage seul : ce n'est pas une borne de vente. */
   reserved_quantity: number;
+
+  /**
+   * Référence de la session d'inventaire qui bloque cet article, ou `null`.
+   *
+   * Le serveur refuse la vente d'un produit sous inventaire ; le comptoir le
+   * dit AVANT l'impression, et nomme la session pour que le caissier sache
+   * quoi attendre.
+   */
+  verrou_inventaire: string | null;
 }
 
 const CHAMPS = {
@@ -81,11 +93,21 @@ const CHAMPS = {
   units_per_package: products.unitsPerPackage,
   allow_auto_unpacking: products.allowAutoUnpacking,
   track_inventory: products.trackInventory,
-  allow_negative_stock: products.allowNegativeStock,
   _quantity: stocks.quantity,
   _reserved: stocks.reservedQuantity,
   _packages: stocks.packageQuantity,
   _loose: stocks.looseQuantity,
+  /**
+   * LE DÉCOUVERT SE DÉCIDE AU NIVEAU DE L'ENTREPÔT, PAS DU PRODUIT.
+   *
+   * C'est ce que fait le serveur partout en aval - `assert_sealed_available`,
+   * `ensure_loose_available`, `Stock.save` - et son pré-contrôle de vente le
+   * documente explicitement : lire `product.allow_negative_stock` était un
+   * bug. Sur une configuration divergente (produit permissif, entrepôt strict)
+   * le comptoir acceptait une vente que le serveur refuse ensuite ; dans
+   * l'autre sens il refusait une vente parfaitement licite.
+   */
+  _allow_negative: warehouses.allowNegativeStock,
 };
 
 /** Les décimales voyagent en chaînes ; on ne les convertit qu'ici. */
@@ -96,19 +118,52 @@ function nombre(v: string | number | null | undefined): number {
 
 type LigneBrute = Record<string, unknown>;
 
+/** Ce que la lecture doit connaître en plus des colonnes, une fois par requête. */
+export interface Contexte {
+  /** Vrai quand aucune caisse n'est ouverte : il n'y a pas d'entrepôt à opposer. */
+  sansEntrepot: boolean;
+  verrou: VerrouInventaire;
+  reserve: ReserveLocale;
+}
+
+const CONTEXTE_VIDE: Contexte = {
+  sansEntrepot: true,
+  verrou: new Map(),
+  reserve: new Map(),
+};
+
 /**
  * Transforme une ligne SQL en article du comptoir.
  *
- * C'est ici, et seulement ici, que les réservations sont déduites et ventilées.
- * Les laisser à la charge de chaque écran garantirait qu'un écran l'oublie et
- * propose à la vente un contenant déjà promis à un devis.
+ * Exporté pour être ÉPROUVÉ sans appareil : ce qu'il décide n'est visible ni à
+ * l'écran ni dans un journal, seulement dans un refus de vente qui arrive trop
+ * tard. Les appelants réels sont les trois lectures de ce fichier.
+ *
+ * C'est ici, et seulement ici, que sont retranchés du disponible les
+ * réservations du serveur ET les ventes que ce terminal n'a pas encore
+ * poussées. Les laisser à la charge de chaque écran garantirait qu'un écran
+ * l'oublie et propose à la vente un contenant déjà promis.
  */
-function versArticle(ligne: LigneBrute): ArticlePos {
+export function versArticle(ligne: LigneBrute, ctx: Contexte = CONTEXTE_VIDE): ArticlePos {
   const {
-    _quantity, _reserved, _packages, _loose, ...reste
-  } = ligne as Record<string, string | null>;
+    _quantity, _reserved, _packages, _loose, _allow_negative, ...reste
+  } = ligne as {
+    _quantity: string | null;
+    _reserved: string | null;
+    _packages: string | null;
+    _loose: string | null;
+    /** Colonne booléenne de l'entrepôt, `null` si la jointure n'a rien trouvé. */
+    _allow_negative: boolean | null;
+  } & Record<string, unknown>;
 
   const article = reste as unknown as ArticlePos;
+  article.verrou_inventaire = ctx.verrou.get(article.id) ?? null;
+
+  // SANS ENTREPÔT, AUCUNE BORNE. Le serveur fait exactement pareil : son
+  // pré-contrôle de stock est enveloppé dans un `if warehouse:`. Poser ici une
+  // borne à zéro rendrait invendable tout le catalogue d'une caisse sans dépôt,
+  // configuration que l'écran d'ouverture tolère avec un avertissement.
+  article.allow_negative_stock = ctx.sansEntrepot ? true : _allow_negative === true;
 
   // Aucune ligne de stock : on ne sait RIEN, et un zéro bloquerait la vente
   // d'un produit peut-être abondant. Le serveur reste juge.
@@ -124,14 +179,140 @@ function versArticle(ligne: LigneBrute): ArticlePos {
     loose_quantity: nombre(_loose),
   };
   const { packages, loose } = availableSplit(compteurs, facteur);
+  const disponible = compteurs.quantity - Math.max(0, compteurs.reserved_quantity);
+
+  // Ce que ce terminal a déjà vendu sans que le serveur le sache. Retranché par
+  // `remainingChannels`, qui rejoue l'ordre du serveur : la part en contenants
+  // sort du scellé, puis le détail puise dans le vrac et ouvre un contenant s'il
+  // le faut. Une soustraction brute des deux compteurs laisserait un scellé
+  // apparemment libre alors qu'il vient d'être ouvert pour servir du détail.
+  const enAttente = ctx.reserve.get(article.id);
+  if (!enAttente) {
+    return {
+      ...article,
+      stock_quantity: disponible,
+      stock_packages: facteur ? packages : null,
+      stock_loose: loose,
+      reserved_quantity: compteurs.reserved_quantity,
+    };
+  }
+
+  const retenu = facteur
+    ? enAttente.packages * facteur + enAttente.loose
+    : enAttente.loose;
+  // Sans conditionnement, il n'y a qu'un canal et `remainingChannels` sort
+  // d'emblée : le vrac se retranche alors directement, sinon l'écran
+  // continuerait d'annoncer un disponible que le total contredit déjà.
+  const restant = facteur
+    ? remainingChannels(
+        { sealed: packages, loose },
+        { packages: enAttente.packages, loose: enAttente.loose },
+        facteur
+      )
+    : { sealed: null, loose: loose - retenu };
 
   return {
     ...article,
-    stock_quantity: compteurs.quantity - Math.max(0, compteurs.reserved_quantity),
-    stock_packages: facteur ? packages : null,
-    stock_loose: loose,
+    stock_quantity: disponible - retenu,
+    stock_packages: restant.sealed,
+    stock_loose: restant.loose,
     reserved_quantity: compteurs.reserved_quantity,
   };
+}
+
+/**
+ * Verrou d'inventaire et ventes en file, MÉMORISÉS entre deux lectures.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ IL ÉTAIT REFAIT À CHAQUE FRAPPE, SUR LA GRILLE DU COMPTOIR.             │
+ * │                                                                          │
+ * │ Le contexte ne dépend pas du terme cherché, mais il était reconstruit à  │
+ * │ chaque lecture du catalogue - donc à chaque recherche différée, à chaque │
+ * │ scan, à chaque reprise de panier. Sous un inventaire de périmètre TOTAL, │
+ * │ cela relit TOUTES les lignes de stock de l'entrepôt (des milliers sur un │
+ * │ vrai catalogue) et redéserialise le corps de chaque vente en file, pour  │
+ * │ un résultat rigoureusement identique. Sur le seul écran qui doit rester  │
+ * │ instantané, un client devant le comptoir.                                │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA MÉMOIRE EST INVALIDÉE PAR LA BASE, JAMAIS PAR UNE DURÉE.             │
+ * │                                                                          │
+ * │ Un cache à échéance laisserait une fenêtre - fût-elle d'une seconde - où │
+ * │ le comptoir reproposerait un article que la vente précédente vient de    │
+ * │ sortir, ou en vendrait un que l'inventaire vient de bloquer. C'est       │
+ * │ exactement ce que la réserve locale et le verrou existent pour empêcher, │
+ * │ et une seconde suffit à deux appuis.                                     │
+ * │                                                                          │
+ * │ On écoute donc les tables dont il est tiré, par le même mécanisme que    │
+ * │ `useLecture` (`enableChangeListener`), et le compteur `generation` fait  │
+ * │ que le résultat d'une lecture commencée AVANT un changement n'est jamais │
+ * │ rangé après lui : il est rendu à son appelant, qui l'a demandé plus tôt, │
+ * │ et la lecture suivante repart de la base.                                │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+const TABLES_DU_CONTEXTE = new Set([
+  // La réserve locale, tirée du journal d'opérations. `unblockAll` y écrit
+  // aussi : une vente débloquée doit cesser d'être retenue deux fois.
+  "outbox_operations",
+  // Le verrou d'inventaire : ses sessions, et la feuille de comptage d'où sont
+  // lus les périmètres partiels.
+  "inventory_sessions",
+  "inventory_counts",
+  // Le périmètre TOTAL se lit dans `stocks` : une réception pendant un
+  // inventaire y crée une ligne, que le serveur verrouille aussitôt.
+  "stocks",
+]);
+
+let contexteMemorise: { cle: string; ctx: Contexte } | null = null;
+let generation = 0;
+let ecoute: { remove: () => void } | null = null;
+
+/** Abonnement posé au PREMIER besoin : l'import du module n'ouvre rien. */
+function surveillerLaBase(): void {
+  if (ecoute) return;
+  ecoute = addDatabaseChangeListener((ev) => {
+    if (!TABLES_DU_CONTEXTE.has(ev.tableName)) return;
+    generation += 1;
+    contexteMemorise = null;
+  });
+}
+
+async function contexteDe(warehouseId?: string | null): Promise<Contexte> {
+  surveillerLaBase();
+
+  // L'entrepôt fait partie de la clé : le verrou comme la réserve portent sur
+  // un dépôt, et servir le contexte d'un autre retiendrait du stock que celui
+  // d'en face n'a pas vendu.
+  const cle = warehouseId ?? "";
+  if (contexteMemorise && contexteMemorise.cle === cle) return contexteMemorise.ctx;
+
+  const attendu = generation;
+  const [verrou, reserve] = await Promise.all([
+    produitsVerrouilles(warehouseId),
+    reservesEnAttente(warehouseId),
+  ]);
+  const ctx: Contexte = { sansEntrepot: !warehouseId, verrou, reserve };
+
+  // Un changement survenu PENDANT la lecture la rend périmée : on la rend à
+  // l'appelant, qui l'a demandée avant, mais on ne la range pas.
+  if (attendu === generation) contexteMemorise = { cle, ctx };
+  return ctx;
+}
+
+/**
+ * Oublie le contexte mémorisé. Réservé aux TESTS.
+ *
+ * L'invalidation normale vient de la base, et elle doit rester la seule : un
+ * appelant qui prendrait l'habitude d'oublier « au cas où » remettrait la
+ * fraîcheur à la charge de chaque écran, ce que cette mémoire existe justement
+ * pour éviter. La mémoire est de MODULE, donc partagée par les tests d'un même
+ * fichier : sans ce point d'entrée, le second test lirait le contexte du
+ * premier.
+ */
+export function oublierLeContexte(): void {
+  generation += 1;
+  contexteMemorise = null;
 }
 
 /**
@@ -170,6 +351,13 @@ function base(warehouseId?: string | null) {
         : // Sans entrepôt on ne joint RIEN plutôt que le premier venu : afficher
           // le stock d'un autre dépôt serait pire qu'afficher « inconnu ».
           sql`1 = 0`
+    )
+    // L'entrepôt de la session, pour son seul réglage de découvert. Jointure
+    // sur une constante et non sur une colonne : le stock est déjà filtré sur
+    // ce dépôt, la ligne d'entrepôt est la même pour tout le résultat.
+    .leftJoin(
+      warehouses,
+      warehouseId ? eq(warehouses.id, warehouseId) : sql`1 = 0`
     );
 }
 
@@ -207,12 +395,12 @@ export async function chercherArticles({
   }
   if (categoryId) conditions.push(eq(products.categoryId, categoryId));
 
-  const lignes = await base(warehouseId)
-    .where(and(...conditions))
-    .orderBy(asc(products.name))
-    .limit(limite);
+  const [lignes, ctx] = await Promise.all([
+    base(warehouseId).where(and(...conditions)).orderBy(asc(products.name)).limit(limite),
+    contexteDe(warehouseId),
+  ]);
 
-  return lignes.map(versArticle);
+  return lignes.map((l) => versArticle(l, ctx));
 }
 
 /**
@@ -225,10 +413,11 @@ export async function articleParCodeBarres(
   code: string,
   warehouseId?: string | null
 ): Promise<ArticlePos | null> {
-  const [ligne] = await base(warehouseId)
-    .where(and(vendable(), eq(products.barcode, code.trim())))
-    .limit(1);
-  return ligne ? versArticle(ligne) : null;
+  const [lignes, ctx] = await Promise.all([
+    base(warehouseId).where(and(vendable(), eq(products.barcode, code.trim()))).limit(1),
+    contexteDe(warehouseId),
+  ]);
+  return lignes[0] ? versArticle(lignes[0], ctx) : null;
 }
 
 /**
@@ -246,11 +435,12 @@ export async function articlesParIds(
   const uniques = [...new Set(ids)].filter(Boolean);
   if (uniques.length === 0) return new Map();
 
-  const lignes = await base(warehouseId).where(
-    and(vendable(), inArray(products.id, uniques))
-  );
+  const [lignes, ctx] = await Promise.all([
+    base(warehouseId).where(and(vendable(), inArray(products.id, uniques))),
+    contexteDe(warehouseId),
+  ]);
 
-  return new Map(lignes.map(versArticle).map((a) => [a.id, a]));
+  return new Map(lignes.map((l) => versArticle(l, ctx)).map((a) => [a.id, a]));
 }
 
 export async function categoriesVendables(): Promise<{ id: string; name: string }[]> {

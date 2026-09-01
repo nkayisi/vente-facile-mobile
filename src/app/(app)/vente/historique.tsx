@@ -37,7 +37,11 @@ import {
   StatValue,
 } from "@/ui";
 
-const TABLES = ["sales", "customers"];
+// `outbox_operations` et `print_jobs` en sont : l'historique fusionne les
+// ventes encore en file, et leurs montants viennent du ticket rangé. Sans eux,
+// une vente encaissée pendant que cet écran est ouvert n'y paraîtrait qu'après
+// un aller-retour, et la liste dirait qu'elle n'existe pas.
+const TABLES = ["sales", "customers", "outbox_operations", "print_jobs"];
 
 const PERIODES: { valeur: Periode; label: string }[] = [
   { valeur: "jour", label: "Jour" },

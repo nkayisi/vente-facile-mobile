@@ -34,6 +34,7 @@ const casier = {
   stock_packages: 4,
   stock_loose: 12,
   reserved_quantity: 0,
+  verrou_inventaire: null,
 } satisfies ArticlePos;
 
 const savon = {

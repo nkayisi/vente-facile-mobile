@@ -249,6 +249,29 @@ export async function quarantined(): Promise<OutboxOperation[]> {
     .orderBy(asc(outboxOperations.seq));
 }
 
+/**
+ * Les opérations que le serveur a BLOQUÉES, faute de droit ou d'abonnement.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE OPÉRATION BLOQUÉE N'EST PAS PERDUE, MAIS ELLE ÉTAIT INVISIBLE.      │
+ * │                                                                          │
+ * │ « Opérations à corriger » ne lisait que la quarantaine. Une opération    │
+ * │ bloquée restait donc dans le journal sans que rien ne la montre : le     │
+ * │ marchand voyait un compteur d'attente qui ne descendait jamais, sans     │
+ * │ savoir pourquoi ni quoi faire.                                           │
+ * │                                                                          │
+ * │ Elle se distingue d'une quarantaine : celle-ci est définitive, celle-là  │
+ * │ repart d'elle-même dès que le droit est accordé ou l'abonnement réglé.   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export async function bloquees(): Promise<OutboxOperation[]> {
+  return db
+    .select()
+    .from(outboxOperations)
+    .where(eq(outboxOperations.state, "blocked"))
+    .orderBy(asc(outboxOperations.seq));
+}
+
 /** Abandonne une opération mise en quarantaine, sur décision de l'utilisateur. */
 export async function discard(id: string): Promise<void> {
   await db.delete(outboxOperations).where(eq(outboxOperations.id, id));
@@ -257,6 +280,37 @@ export async function discard(id: string): Promise<void> {
 /** Purge les opérations abouties. Les refus, eux, ne se purgent jamais. */
 export async function purgeDone(): Promise<void> {
   await db.delete(outboxOperations).where(eq(outboxOperations.state, "done"));
+}
+
+/**
+ * Où en est un acte, du point de vue de l'ÉCRAN qui le montre.
+ *
+ * Trois états, et pas deux : « bloqué » n'est pas « en attente ». Une opération
+ * en attente part à la prochaine synchronisation ; une opération bloquée
+ * attend une DÉCISION - un abonnement à régler, un droit à accorder - et n'en
+ * partira pas d'elle-même. Les confondre laisse le marchand attendre un réseau
+ * qui est déjà là, parfois des jours, en regardant un compteur qui ne descend
+ * jamais.
+ */
+export type EtatEnvoi =
+  /** Le serveur l'a acceptée : la ligne authentique fait foi. */
+  | "envoye"
+  /** Elle part à la prochaine synchronisation. */
+  | "en_attente"
+  /** Elle attend une décision : abonnement expiré, droit manquant. */
+  | "bloque";
+
+/** Ce qu'une lecture d'écran reçoit pour une opération non encore aboutie. */
+export interface OperationEnAttente<T = unknown> {
+  id: string;
+  payload: T;
+  occurredAt: Date;
+  envoi: EtatEnvoi;
+}
+
+/** Traduit l'état du journal en état d'écran. Un seul endroit le décide. */
+export function etatEnvoi(state: OutboxState | string): EtatEnvoi {
+  return state === "blocked" ? "bloque" : "en_attente";
 }
 
 /**
@@ -274,24 +328,51 @@ export async function purgeDone(): Promise<void> {
  * la mise en quarantaine sort l'opération de cette liste.
  *
  * `done` est exclu : l'opération a abouti, sa ligne authentique est arrivée par
- * le tirage et c'est elle qui fait foi. `quarantined` et `blocked` aussi : rien
- * n'en est advenu côté serveur, elles ne doivent donc rien afficher comme acquis.
+ * le tirage et c'est elle qui fait foi. `quarantined` aussi : le serveur l'a
+ * refusée, rien n'en est advenu, elle ne doit rien afficher comme acquis.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `blocked` N'EST PAS `quarantined`, ET LES CONFONDRE FAIT VENDRE DEUX     │
+ * │ FOIS LE MÊME ARTICLE.                                                    │
+ * │                                                                          │
+ * │ Une opération bloquée n'est pas refusée : elle est CONSERVÉE, et elle    │
+ * │ repart telle quelle dès que le droit est accordé ou l'abonnement réglé   │
+ * │ (`unblockAll`). Une vente bloquée par un abonnement expiré sera donc     │
+ * │ appliquée, et le stock qu'elle a sorti est déjà parti avec le client.    │
+ * │                                                                          │
+ * │ La lire comme inexistante rouvrait exactement le défaut que la réserve   │
+ * │ locale referme : pendant toute la durée du blocage - des jours, le temps │
+ * │ qu'un marchand règle son abonnement - le comptoir reproposait le dernier │
+ * │ article à chaque nouveau client. `avecBloquees` demande donc la lecture  │
+ * │ CONSERVATRICE, celle qui ne peut que resserrer : réserve de stock, dette │
+ * │ en file, et le hub des ventes, où le caissier doit retrouver ce qu'il a  │
+ * │ vendu et imprimé.                                                        │
+ * │                                                                          │
+ * │ La lecture PAR DÉFAUT reste la bonne partout ailleurs : un écran qui     │
+ * │ présenterait une opération bloquée comme ACQUISE - une session de        │
+ * │ caisse ouverte, un transfert expédié - affirmerait un état que le        │
+ * │ serveur n'a pas accordé, et sur lequel le comptoir continuerait de       │
+ * │ travailler.                                                              │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 export async function enAttenteParType<T = unknown>(
-  kind: string
-): Promise<{ id: string; payload: T; occurredAt: Date }[]> {
+  kind: string,
+  options: { avecBloquees?: boolean } = {}
+): Promise<OperationEnAttente<T>[]> {
+  const etats: OutboxState[] = options.avecBloquees
+    ? ["pending", "inflight", "blocked"]
+    : ["pending", "inflight"];
+
   const lignes = await db
     .select({
       id: outboxOperations.id,
       payload: outboxOperations.payload,
       occurredAt: outboxOperations.occurredAt,
+      state: outboxOperations.state,
     })
     .from(outboxOperations)
     .where(
-      and(
-        eq(outboxOperations.kind, kind),
-        inArray(outboxOperations.state, ["pending", "inflight"])
-      )
+      and(eq(outboxOperations.kind, kind), inArray(outboxOperations.state, etats))
     )
     .orderBy(asc(outboxOperations.seq));
 
@@ -299,5 +380,6 @@ export async function enAttenteParType<T = unknown>(
     id: l.id,
     payload: JSON.parse(l.payload) as T,
     occurredAt: l.occurredAt,
+    envoi: etatEnvoi(l.state),
   }));
 }

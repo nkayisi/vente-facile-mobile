@@ -30,7 +30,7 @@ import {
   users,
   warehouses,
 } from "@/db/schema";
-import { enAttenteParType } from "@/sync";
+import { enAttenteParType, type EtatEnvoi } from "@/sync";
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -44,8 +44,14 @@ export interface SessionDeCaisse {
   parQui: string | null;
   nbVentes: number;
   encaisseParDevise: { devise: string; montant: number }[];
-  /** Vraie tant que le serveur n'a pas confirmé l'ouverture. */
-  enAttente: boolean;
+  /**
+   * Où en est l'ouverture : acceptée, en file, ou BLOQUÉE.
+   *
+   * Une ouverture bloquée reste une session : elle partira dès que
+   * l'abonnement sera réglé. La montrer comme inexistante ferait ouvrir un
+   * second comptoir sur la même caisse, et c'est lui que le serveur refuse.
+   */
+  envoi: EtatEnvoi;
 }
 
 export interface CaisseParc {
@@ -114,10 +120,21 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
     parSession.set(cle, e);
   }
 
-  const attentes = await enAttenteParType<{ register: string }>("register_session.open");
-  const enAttenteParCaisse = new Map<string, { id: string; date: Date | null }>();
+  // Les ouvertures BLOQUÉES en sont : voir `features/pos/caisse.ts`, c'est la
+  // même lecture, et deux écrans qui ne voient pas la même chose de la même
+  // caisse est la pire des situations pour qui essaie de comprendre.
+  const attentes = await enAttenteParType<{ register: string }>(
+    "register_session.open",
+    { avecBloquees: true }
+  );
+  const enAttenteParCaisse = new Map<
+    string,
+    { id: string; date: Date | null; envoi: EtatEnvoi }
+  >();
   for (const o of attentes) {
-    enAttenteParCaisse.set(o.payload.register, { id: o.id, date: o.occurredAt });
+    enAttenteParCaisse.set(o.payload.register, {
+      id: o.id, date: o.occurredAt, envoi: o.envoi,
+    });
   }
 
   const sessionDe = (registerId: string): SessionDeCaisse | null => {
@@ -134,7 +151,7 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
           devise,
           montant,
         })),
-        enAttente: false,
+        envoi: "envoye",
       };
     }
     const attente = enAttenteParCaisse.get(registerId);
@@ -145,7 +162,7 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
       parQui: null,
       nbVentes: 0,
       encaisseParDevise: [],
-      enAttente: true,
+      envoi: attente.envoi,
     };
   };
 

@@ -9,9 +9,15 @@
  * Ce réducteur porte des règles que l'écran ne montre pas, et dont un défaut se
  * traduit par un panier FAUX plutôt que par un plantage visible.
  */
-import { verifierAjout, type BasketLine, type Saisie } from "@vente-facile/core/pos";
+import {
+  maxGlobalDiscount,
+  verifierAjout,
+  type BasketLine,
+  type Saisie,
+} from "@vente-facile/core/pos";
 
 import type { ArticlePos } from "./catalogue";
+import { motifDuVerrou, motifStockInconnu } from "./motifs";
 
 /** Un client, réduit à ce dont le comptoir a besoin. */
 export interface ClientPos {
@@ -47,6 +53,16 @@ export interface EtatPanier {
   /** Vente portée au compte du client plutôt qu'encaissée intégralement. */
   aCredit: boolean;
   echeance: string | null;
+  /**
+   * Plafond de remise par ligne, en pourcentage, tel que le MARCHAND l'a réglé.
+   *
+   * Il vient du snapshot de session (`organization.max_sale_discount_percent`),
+   * donc du serveur, qui l'oppose de son côté dans `validate_discount_percentage`.
+   * Le comptoir bornait à 100 : un marchand ayant abaissé son plafond à 20
+   * voyait la caisse accepter 45 %, imprimer le ticket, puis la vente ENTIÈRE
+   * refusée. Le refus arrivait après le client.
+   */
+  plafondRemise: number;
 }
 
 export type ActionPanier =
@@ -62,6 +78,7 @@ export type ActionPanier =
   | { type: "points"; points: number }
   | { type: "reglements"; reglements: Reglement[] }
   | { type: "credit"; actif: boolean; echeance?: string | null }
+  | { type: "plafondRemise"; pourcentage: number }
   | { type: "restaurer"; etat: EtatPanier }
   | { type: "vider" };
 
@@ -75,15 +92,54 @@ export const PANIER_VIDE: EtatPanier = {
   reglements: [],
   aCredit: false,
   echeance: null,
+  // Défaut SERVEUR (`DEFAULT_MAX_SALE_DISCOUNT_PERCENT`), employé tant que le
+  // snapshot n'a rien dit. Ce n'est pas une constante du comptoir.
+  plafondRemise: 50,
 };
+
+/**
+ * Ramène la remise globale sous son plafond, sans jamais la remonter.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE CHAMP MONTRAIT 999 999 PENDANT QUE LE TOTAL APPLIQUAIT LE PLAFOND.   │
+ * │                                                                          │
+ * │ `basketTotals` borne déjà l'EFFET, et c'est la seule borne que le serveur │
+ * │ oppose : le corps envoyé était juste, et le total affiché aussi. Ce qui   │
+ * │ était faux, c'est le CHAMP, qui gardait le nombre tapé. Le caissier       │
+ * │ annonçait une remise à son client, lisait un total qui ne la reflétait    │
+ * │ pas, et ne pouvait pas savoir lequel des deux croire.                     │
+ * │                                                                          │
+ * │ Appliqué à chaque changement de LIGNES, pas seulement à la saisie : une   │
+ * │ remise devient impossible quand on retire un article, et borner au seul   │
+ * │ moment de la frappe laisserait le champ en arrière.                       │
+ * │                                                                          │
+ * │ Jamais vers le HAUT : ajouter un article n'accorde pas une remise que     │
+ * │ personne n'a saisie.                                                      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+function avecRemiseBornee(etat: EtatPanier): EtatPanier {
+  const plafond = maxGlobalDiscount(etat.lignes);
+  return etat.remiseGlobale <= plafond
+    ? etat
+    : { ...etat, remiseGlobale: plafond };
+}
 
 /**
  * Exporté pour être éprouvé sans appareil : ce réducteur porte des règles que
  * l'écran ne montre pas (fusion des deux compteurs, exclusion de la ligne en
  * cours d'édition de son propre contrôle de stock), et un défaut s'y traduit
  * par un panier faux plutôt que par un plantage visible.
+ *
+ * La borne de remise globale est posée SUR LA SORTIE, une fois pour toutes :
+ * six actions peuvent abaisser le plafond (retirer une ligne, en réduire la
+ * quantité, en baisser le prix, y poser une remise…), et les traiter une à une
+ * laisserait la septième à écrire.
  */
 export function reducteurPanier(etat: EtatPanier, action: ActionPanier): EtatPanier {
+  return avecRemiseBornee(_reduire(etat, action));
+}
+
+function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
   switch (action.type) {
     case "ajouter": {
       const verdict = verifierAjout(action.article, etat.lignes, action.saisie);
@@ -144,7 +200,7 @@ export function reducteurPanier(etat: EtatPanier, action: ActionPanier): EtatPan
       if (!courante) return etat;
       lignes[action.index] = {
         ...courante,
-        discount_percentage: Math.min(100, Math.max(0, action.pourcentage)),
+        discount_percentage: Math.min(etat.plafondRemise, Math.max(0, action.pourcentage)),
       };
       return { ...etat, lignes };
     }
@@ -181,6 +237,15 @@ export function reducteurPanier(etat: EtatPanier, action: ActionPanier): EtatPan
     case "reglements":
       return { ...etat, reglements: action.reglements };
 
+    case "plafondRemise": {
+      // Borné comme le serveur le borne : un réglage aberrant retombe sur son
+      // défaut plutôt que d'ouvrir la remise à 100 % ou de la fermer à zéro.
+      const brut = Number(action.pourcentage);
+      const plafond =
+        Number.isFinite(brut) && brut >= 0 ? Math.min(100, brut) : PANIER_VIDE.plafondRemise;
+      return { ...etat, plafondRemise: plafond };
+    }
+
     case "credit":
       return {
         ...etat,
@@ -194,10 +259,54 @@ export function reducteurPanier(etat: EtatPanier, action: ActionPanier): EtatPan
     // les contrôles de stock une seconde fois, sur des lignes qui viennent
     // justement de les passer.
     case "restaurer":
-      return action.etat;
+      // Le plafond COURANT prime sur celui rangé avec le panier : c'est la même
+      // règle que pour les prix et le stock, relus à la reprise. Un panier
+      // rangé hier ne doit pas rouvrir une remise fermée depuis.
+      return { ...action.etat, plafondRemise: etat.plafondRemise };
 
     case "vider":
-      return PANIER_VIDE;
+      // Vider un panier ne rend pas au comptoir le réglage par défaut.
+      return { ...PANIER_VIDE, plafondRemise: etat.plafondRemise };
   }
 }
 
+/**
+ * Le refus d'une saisie, en français, dans l'ORDRE DU SERVEUR.
+ *
+ * Deux motifs précèdent le noyau, et il faut qu'ils le précèdent :
+ *
+ * 1. **Le verrou d'inventaire**, parce que `SaleCreateSerializer.validate`
+ *    refuse les produits bloqués AVANT de regarder les quantités. Dire « stock
+ *    insuffisant » sur un article sous inventaire enverrait le caissier
+ *    chercher au dépôt une marchandise qui est là, mais interdite à la vente.
+ * 2. **Le stock INCONNU**, parce que le noyau lit `null` comme zéro pour
+ *    composer sa phrase, et écrivait « 0 en stock » sous une carte annonçant
+ *    « Stock inconnu ». Le VERDICT reste celui du noyau, et il reste juste :
+ *    sans ligne de stock pour cet entrepôt, le serveur refuse aussi.
+ *
+ * Ici plutôt que dans le fournisseur React : c'est une règle, elle s'éprouve
+ * sans appareil.
+ */
+export function motifDeRefus(
+  article: ArticlePos,
+  lignes: LignePanier[],
+  saisie: Saisie
+): string | null {
+  if (article.verrou_inventaire !== null) {
+    return motifDuVerrou(article.name, article.verrou_inventaire);
+  }
+
+  const verdict = verifierAjout(article, lignes, saisie);
+  if (verdict.ok) return null;
+
+  // Seul le cas « aucune ligne de stock » est réétiqueté. Un zéro RÉELLEMENT
+  // enregistré doit continuer de se lire « 0 en stock » : c'est une
+  // information certaine, et la noyer dans « inconnu » ferait chercher une
+  // synchronisation là où il faut réapprovisionner.
+  const inconnu =
+    article.stock_quantity === null &&
+    article.track_inventory &&
+    !article.allow_negative_stock;
+
+  return inconnu ? motifStockInconnu(article.name) : verdict.raison;
+}

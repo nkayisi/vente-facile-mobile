@@ -42,13 +42,32 @@ export function initSentry(): void {
     // Un POS travaille sur 2G. Une trace sur dix suffit à voir une lenteur, et
     // ne prend pas la bande passante dont la synchronisation a besoin.
     tracesSampleRate: 0.1,
+    // Les requêtes en échec ne sont pas capturées : leur URL porte les
+    // identifiants de client, et leur corps le reste. C'est déjà le défaut du
+    // SDK ; on l'écrit pour que personne ne l'active en croyant gagner du
+    // diagnostic.
+    enableCaptureFailedRequests: false,
     integrations: (defaut) =>
       defaut.filter(
-        (i) =>
-          // Les fils d'ariane de CONSOLE recopient les journaux, où passent des
-          // corps de requête entiers. Ceux de RÉSEAU portent les URL, donc les
-          // identifiants de client dans les chemins.
-          i.name !== "Breadcrumbs" && i.name !== "ReactNativeErrorHandlers"
+        // ┌──────────────────────────────────────────────────────────────────┐
+        // │ ON NE RETIRE QUE `Breadcrumbs`, ET SÛREMENT PAS LES              │
+        // │ GESTIONNAIRES D'ERREURS.                                         │
+        // │                                                                  │
+        // │ Le nom trompe : `ReactNativeErrorHandlers` ne pose AUCUN fil     │
+        // │ d'ariane. Il installe le gestionnaire global d'`ErrorUtils` et   │
+        // │ le suivi des promesses non rattrapées                            │
+        // │ (`reactnativeerrorhandlers.js`, `setupErrorUtilsGlobalHandler`). │
+        // │ Le retirer laissait le SDK démarrer, la console dire « Sentry    │
+        // │ initialisé », et AUCUN plantage non rattrapé ne partir jamais -  │
+        // │ y compris celui du montage que `_layout.tsx` dit vouloir         │
+        // │ attraper en initialisant tôt. Un outil d'observation muet est    │
+        // │ pire qu'un outil absent : on croit voir.                         │
+        // │                                                                  │
+        // │ `Breadcrumbs`, lui, est bien le fautif : il recopie la CONSOLE   │
+        // │ (où passent des corps de requête entiers) et les requêtes XHR    │
+        // │ (dont les URL portent les identifiants de client).               │
+        // └──────────────────────────────────────────────────────────────────┘
+        (i) => i.name !== "Breadcrumbs"
       ),
     beforeSend: (evenement) => raturer(evenement) as typeof evenement,
     beforeBreadcrumb: (fil) => raturer(fil) as typeof fil,

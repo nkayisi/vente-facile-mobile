@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
+import { formatDateTimeFr, formatTimeFr } from "@vente-facile/core";
 import type { Saisie } from "@vente-facile/core/pos";
 
 import {
@@ -18,6 +19,8 @@ import {
   type ArticlePos,
 } from "@/features/pos/catalogue";
 import { compterEnAttente } from "@/features/pos/attente";
+import { libelleEnvoi } from "@/data/envoi";
+import { arreteA } from "@/features/pos/verrou-inventaire";
 import { ouvrirSession, sessionOuverte, caissesDisponibles, type CaissePos, type SessionCaisse } from "@/features/pos/caisse";
 import { CarteArticle } from "@/features/pos/carte-article";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
@@ -39,6 +42,11 @@ export default function Comptoir() {
   const [chargement, setChargement] = useState(true);
   const [choisi, setChoisi] = useState<ArticlePos | null>(null);
   const [paniersRanges, setPaniersRanges] = useState(0);
+  // Depuis quand l'état des inventaires est-il celui qu'on oppose ? Un verrou
+  // est l'instantané d'un état concurrent, pas une autorité : le dire est ce
+  // qui distingue « attendez la fin du comptage » de « votre appareil est en
+  // retard, synchronisez ».
+  const [verrouArreteA, setVerrouArreteA] = useState<Date | null>(null);
 
   // Rechargement au retour sur l'écran : une synchronisation a pu passer, et
   // un stock périmé fait refuser des ventes possibles.
@@ -48,6 +56,7 @@ export default function Comptoir() {
       // Le compteur se relit au retour sur la grille : on vient peut-être d'y
       // ranger un panier, ou d'en reprendre un.
       compterEnAttente().then(setPaniersRanges);
+      arreteA().then(setVerrouArreteA);
     }, [])
   );
 
@@ -107,9 +116,21 @@ export default function Comptoir() {
           <Text variant="h4" numberOfLines={1}>
             {session.registerName}
           </Text>
-          {session.enAttente ? (
-            <Text variant="caption" className="text-muted-foreground">
-              Ouverture en attente d'envoi
+          {/* Une ouverture BLOQUÉE ne part pas d'elle-même : le dire ici est
+              le seul endroit où le caissier peut l'apprendre avant de vendre
+              toute la journée sur une session que le serveur refusera. */}
+          {libelleEnvoi(session.envoi) ? (
+            <Text
+              variant="caption"
+              className={
+                session.envoi === "bloque"
+                  ? "text-warning"
+                  : "text-muted-foreground"
+              }
+            >
+              {session.envoi === "bloque"
+                ? "Ouverture bloquée : abonnement ou droit manquant"
+                : "Ouverture en attente d'envoi"}
             </Text>
           ) : null}
         </View>
@@ -175,6 +196,8 @@ export default function Comptoir() {
           }}
         />
       ) : null}
+
+      <BandeauInventaire articles={articles} arrete={verrouArreteA} />
 
       {chargement && articles.length === 0 ? (
         <View className="flex-1 items-center justify-center">
@@ -244,6 +267,9 @@ export default function Comptoir() {
         onFermer={() => setChoisi(null)}
         scellesDisponibles={choisi?.stock_packages}
         vracDisponible={choisi?.stock_loose}
+        // Le motif du refus s'AFFICHE, et le bouton se ferme. Il était calculé
+        // puis jeté : l'appui restait sans effet et sans explication.
+        verifier={(saisie: Saisie) => (choisi ? panier.verifier(choisi, saisie) : null)}
         onValider={(saisie: Saisie) => {
           if (!choisi) return;
           const refus = panier.verifier(choisi, saisie);
@@ -258,6 +284,49 @@ export default function Comptoir() {
         }}
       />
     </Screen>
+  );
+}
+
+/**
+ * Ce que l'inventaire en cours retire du comptoir, et depuis quand.
+ *
+ * Les cartes le disent déjà une par une ; ce bandeau donne la vue d'ensemble et
+ * l'ISSUE. Sans lui, un caissier devant trois articles grisés conclut que son
+ * appareil est cassé plutôt qu'à un comptage en cours dans le dépôt.
+ */
+function BandeauInventaire({
+  articles,
+  arrete,
+}: {
+  articles: ArticlePos[];
+  arrete: Date | null;
+}) {
+  const bloques = articles.filter((a) => a.verrou_inventaire !== null);
+  if (bloques.length === 0) return null;
+
+  const references = [...new Set(bloques.map((a) => a.verrou_inventaire!))].filter(Boolean);
+  const quand = arrete
+    ? // L'heure seule si c'est aujourd'hui : « arrêté à 14:07 » se lit d'un coup
+      // d'œil, là où une date complète oblige à la déchiffrer.
+      arrete.toDateString() === new Date().toDateString()
+      ? `arrêté à ${formatTimeFr(arrete)}`
+      : `arrêté au ${formatDateTimeFr(arrete)}`
+    : "jamais synchronisé";
+
+  return (
+    <View className="mt-2">
+      <Banner
+        tone="warning"
+        title={`${bloques.length} article${bloques.length > 1 ? "s" : ""} bloqué${
+          bloques.length > 1 ? "s" : ""
+        } par un inventaire`}
+        message={`${references.join(", ")} : état ${quand}. Synchronisez si le comptage est terminé.`}
+        action={{
+          label: "Synchroniser",
+          onPress: () => router.push("/appareil/synchronisation"),
+        }}
+      />
+    </View>
   );
 }
 

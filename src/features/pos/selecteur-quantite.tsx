@@ -44,8 +44,23 @@ export interface SelecteurQuantiteProps {
   scellesDisponibles?: number | null;
   /** Unités hors emballage. `null` : partage inconnu, jamais à lire comme 0. */
   vracDisponible?: number | null;
-  /** Refus éventuel, calculé par l'appelant : le paquet en est seul juge. */
-  refus?: string | null;
+  /**
+   * Refus éventuel de la saisie COURANTE, décidé par l'appelant.
+   *
+   * Une fonction et non une chaîne : le refus dépend de ce qui est tapé, et
+   * seul ce composant tient la saisie en cours. Le paquet reste seul juge -
+   * l'appelant lui délègue, il ne réécrit pas la règle.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ UN AJOUT REFUSÉ NE DISAIT RIEN.                                       │
+   * │                                                                        │
+   * │ Ce prop existait déjà et n'avait AUCUN appelant : la grille appelait   │
+   * │ `panier.verifier(...)`, jetait le message et sortait. Le caissier      │
+   * │ appuyait sur « Ajouter », rien ne se passait, et rien n'expliquait     │
+   * │ pourquoi. Seul l'écran de scan affichait le motif.                     │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  verifier?: (saisie: Saisie) => string | null;
   libelleValider?: string;
   /** Retrait de la ligne, proposé en édition. */
   onRetirer?: () => void;
@@ -59,7 +74,7 @@ export function SelecteurQuantite({
   initiale,
   scellesDisponibles,
   vracDisponible,
-  refus,
+  verifier,
   libelleValider = "Ajouter",
   onRetirer,
 }: SelecteurQuantiteProps) {
@@ -108,6 +123,10 @@ export function SelecteurQuantite({
     ? saisie.packages * conditionnement.factor + saisie.loose
     : saisie.loose;
   const rien = totalDetail < 1;
+
+  // Une saisie vide n'est pas un refus : afficher « indiquez une quantité » en
+  // rouge dès l'ouverture ferait crier l'écran avant la moindre frappe.
+  const refus = rien ? null : (verifier?.(saisie) ?? null);
 
   const motDetail = conditionnement?.retailWord ?? article.unit_name ?? "unité";
   const motContenant = conditionnement?.packageWord ?? "contenant";
@@ -280,7 +299,9 @@ function Disponibilite({
   // possibles, et le caissier n'aurait aucun moyen de savoir que c'est faux.
   const morceaux: string[] = [];
   if (conditionnement && scelles !== null && scelles !== undefined) {
-    morceaux.push(`${scelles} ${pluralizeUnit(motContenant, scelles)} scellé${scelles > 1 ? "s" : ""}`);
+    // « en scellé » est INVARIABLE : « 11 BOITES scellés » n'accordait pas, et
+    // le genre d'un nom de contenant saisi par le marchand ne se devine pas.
+    morceaux.push(`${scelles} ${pluralizeUnit(motContenant, scelles)} en scellé`);
   }
   if (vrac !== null && vrac !== undefined) {
     morceaux.push(`${vrac} ${pluralizeUnit(motDetail, vrac)}`);

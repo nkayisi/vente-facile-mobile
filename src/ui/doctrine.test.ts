@@ -151,6 +151,42 @@ describe("aucune classe utilitaire inerte", () => {
   });
 });
 
+describe("aucun formatage par `Intl`", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ UNE LOCALE INCONNUE NE LÈVE PAS, ELLE SE REPLIE SUR L'ANGLAIS.          │
+   * │                                                                          │
+   * │ C'est la raison d'être d'`intl-fr.ts` dans `@vente-facile/core`, et      │
+   * │ cette règle n'était tenue que dans le noyau : sept écrans appelaient     │
+   * │ encore `toLocaleDateString("fr-CD")`. « lundi 31 août » sortirait        │
+   * │ « Monday, August 31 » sur un terminal dont le moteur n'embarque pas la   │
+   * │ donnée de locale - et JAMAIS sur l'émulateur qui a servi à écrire        │
+   * │ l'écran, ni sur la machine du développeur. Le défaut ne se découvrirait  │
+   * │ donc qu'en production, sur un parc qu'on ne voit pas.                    │
+   * │                                                                          │
+   * │ Le noyau rend « 31 août 2026 », « 31 août, 14:07 » et « 14:07 » ;        │
+   * │ `data/dates.ts` porte les deux formes numériques qui lui manquent.       │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  it("aucun fichier n'appelle `toLocale*String` ni `Intl`", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      const m = code.match(/\btoLocale[A-Za-z]*String\s*\(|\bIntl\./);
+      if (m) fautifs.push(`${relative(RACINE, f)} : ${m[0]}`);
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le garde-fou VOIT un appel, et laisse passer un commentaire", () => {
+    const motif = /\btoLocale[A-Za-z]*String\s*\(|\bIntl\./;
+    expect(motif.test('d.toLocaleDateString("fr-CD")')).toBe(true);
+    expect(motif.test("new Intl.NumberFormat()")).toBe(true);
+    expect(motif.test(sansCommentaires("// voir toLocaleDateString"))).toBe(false);
+    expect(motif.test("formatDateFr(d)")).toBe(false);
+  });
+});
+
 describe("aucun montant sans devise", () => {
   /**
    * ┌──────────────────────────────────────────────────────────────────────────┐

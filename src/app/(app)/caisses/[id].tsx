@@ -22,6 +22,7 @@ import { parcDeCaisses, sessionsFermees, type SessionFermee } from "@/data/caiss
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { depuis } from "@/data/ventes";
+import { libelleEnvoi } from "@/data/envoi";
 import {
   AppBar, Badge, Banner, Button, Card, CardHeader, Divider, EmptyState, Icon,
   Pressable, Screen, Spinner, Text,
@@ -186,11 +187,24 @@ export default function DetailCaisse() {
           <CardHeader title="État" />
           {c.session ? (
             <View className="gap-3">
-              <View className="flex-row items-center gap-2">
-                <Icon name="CheckCircle2" size={18} color="success" />
-                <Text variant="bodySmall" className="font-sans-medium">
-                  {c.session.enAttente ? "Ouverture en attente d'envoi" : "Session ouverte"}
-                </Text>
+              <View className="gap-1">
+                <View className="flex-row items-center gap-2">
+                  <Icon
+                    name={c.session.envoi === "bloque" ? "AlertTriangle" : "CheckCircle2"}
+                    size={18}
+                    color={c.session.envoi === "bloque" ? "warning" : "success"}
+                  />
+                  <Text variant="bodySmall" className="font-sans-medium">
+                    {libelleEnvoi(c.session.envoi)?.court ?? "Session ouverte"}
+                  </Text>
+                </View>
+                {/* Le POURQUOI, là où il y a la place de l'écrire : sans lui,
+                    le marchand cherche du réseau qui ne débloquera rien. */}
+                {libelleEnvoi(c.session.envoi) ? (
+                  <Text variant="caption" className="text-muted-foreground">
+                    {libelleEnvoi(c.session.envoi)?.detail}
+                  </Text>
+                ) : null}
               </View>
               <View>
                 <Paire
@@ -207,7 +221,7 @@ export default function DetailCaisse() {
                   variant="outline"
                   className="flex-1"
                   leftIcon="Calculator"
-                  disabled={c.session.enAttente}
+                  disabled={c.session.envoi !== "envoye"}
                   onPress={() => router.push(`/cloture/${c.session?.id}`)}
                 >
                   Clôturer

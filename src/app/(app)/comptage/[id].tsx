@@ -43,32 +43,56 @@ import {
 
 const TABLES = ["inventory_sessions", "inventory_counts", "products", "warehouses", "units"];
 
-/** Ce qui est proposé, selon l'état de la session. */
+/**
+ * Ce qui est proposé, selon l'état de la session ET LE DROIT.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ SEUL LE COMPTAGE ÉTAIT GARDÉ, LES QUATRE TRANSITIONS NE L'ÉTAIENT PAS.  │
+ * │                                                                          │
+ * │ Démarrer, soumettre, valider et annuler étaient proposés à quiconque     │
+ * │ atteignait cet écran. Le back-office les réserve depuis toujours         │
+ * │ (`InventorySessionViewSet.action_permissions`), et le serveur les refuse │
+ * │ désormais aussi sur le chemin du journal : sans ce filtre, le magasinier │
+ * │ verrait un bouton « Valider » qui part en opération bloquée.             │
+ * │                                                                          │
+ * │ Le motif est celui de `transfert/[id].tsx`, qui le fait déjà bien.       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
 const ACTIONS: Record<
   TransitionSession,
-  { label: string; depuis: string[]; question: string; destructif?: boolean }
+  {
+    label: string;
+    depuis: string[];
+    permission: string;
+    question: string;
+    destructif?: boolean;
+  }
 > = {
   start: {
     label: "Démarrer le comptage",
     depuis: ["draft"],
+    permission: "inventory.start",
     question:
       "Le stock des produits visés est VERROUILLÉ et la feuille de comptage est engendrée avec le stock théorique du moment.",
   },
   submit: {
     label: "Soumettre pour révision",
     depuis: ["in_progress"],
+    permission: "inventory.submit",
     question:
       "Toutes les lignes doivent être comptées. La session passe en révision, le stock ne bouge pas encore.",
   },
   validate: {
     label: "Valider l'inventaire",
     depuis: ["review"],
+    permission: "inventory.validate",
     question:
       "Les écarts sont APPLIQUÉS au stock et des mouvements sont écrits. Cette opération ne se défait pas.",
   },
   cancel: {
     label: "Annuler la session",
     depuis: ["draft", "in_progress", "review"],
+    permission: "inventory.cancel",
     question: "La session est annulée, le stock se déverrouille et ne bouge pas.",
     destructif: true,
   },
@@ -201,7 +225,7 @@ export default function FeuilleComptage() {
   const st = STATUT_INVENTAIRE[s.statut];
   const enFile = sessionsFile?.has(s.id) ?? false;
   const possibles = (Object.keys(ACTIONS) as TransitionSession[]).filter(
-    (a) => ACTIONS[a].depuis.includes(s.statut)
+    (a) => ACTIONS[a].depuis.includes(s.statut) && can(ACTIONS[a].permission)
   );
   const peutCompter = s.statut === "in_progress" && can("inventory.count");
 

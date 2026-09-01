@@ -22,6 +22,7 @@ import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { depuis } from "@/data/ventes";
 import { ouvrirSession } from "@/features/pos/caisse";
+import { libelleEnvoi } from "@/data/envoi";
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Banner, Button, Card, Divider, EmptyState, FormField, Icon,
@@ -145,12 +146,25 @@ export default function Caisses() {
               </View>
 
               {c.session ? (
-                <View className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3">
+                // Une ouverture BLOQUÉE n'est pas une session ouverte : la
+                // peindre en vert la ferait passer pour acquise, alors qu'elle
+                // attend une décision et ne partira pas d'elle-même.
+                <View
+                  className={
+                    c.session.envoi === "bloque"
+                      ? "mt-3 rounded-lg border border-solid border-warning/40 bg-warning/10 p-3"
+                      : "mt-3 rounded-lg border border-solid border-success/30 bg-success/10 p-3"
+                  }
+                >
                   <View className="flex-row items-center justify-between gap-2">
                     <View className="min-w-0 flex-row items-center gap-2">
-                      <Icon name="CheckCircle2" size={16} color="success" />
+                      <Icon
+                        name={c.session.envoi === "bloque" ? "AlertTriangle" : "CheckCircle2"}
+                        size={16}
+                        color={c.session.envoi === "bloque" ? "warning" : "success"}
+                      />
                       <Text variant="bodySmall" className="font-sans-medium">
-                        {c.session.enAttente ? "Ouverture en attente" : "Session ouverte"}
+                        {libelleEnvoi(c.session.envoi)?.court ?? "Session ouverte"}
                       </Text>
                     </View>
                     {c.session.ouverteLe ? (
@@ -210,7 +224,7 @@ export default function Caisses() {
                       leftIcon="Calculator"
                       // Une ouverture non confirmée n'a pas de session côté
                       // serveur : la clôturer partirait forcément en refus.
-                      disabled={c.session.enAttente}
+                      disabled={c.session.envoi !== "envoye"}
                       onPress={() => router.push(`/cloture/${c.session?.id}`)}
                     >
                       Clôturer

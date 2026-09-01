@@ -18,6 +18,7 @@ import {
 } from "@/data/caisse";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
+import { dateCourteFr } from "@/data/dates";
 import { sessionOuverte } from "@/features/pos/caisse";
 import { useSession } from "@/session/provider";
 import {
@@ -178,7 +179,7 @@ export default function Caisse() {
                       <Text variant="caption" numberOfLines={1}>
                         {[
                           TYPE_MOUVEMENT[m.type] ?? m.type,
-                          m.date ? m.date.toLocaleDateString("fr-CD") : null,
+                          m.date ? dateCourteFr(m.date) : null,
                           m.reference,
                         ]
                           .filter(Boolean)

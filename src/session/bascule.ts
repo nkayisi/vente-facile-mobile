@@ -25,13 +25,23 @@
  * On ne tente PAS de rejouer ces enregistrements. Leur schéma n'est pas le
  * nôtre, leurs numéros de document ont été fabriqués par le serveur d'alors, et
  * une migration silencieuse de données comptables est exactement ce qu'on ne
- * veut pas faire dans le dos d'un marchand. On le renvoie vers l'ancienne app,
- * qui sait, elle, les synchroniser.
+ * veut pas faire dans le dos d'un marchand.
+ *
+ * L'ancienne voie de synchronisation (`POST /api/v1/sync/`) a été retirée du
+ * serveur avec l'application qu'elle servait : réinstaller celle-ci ne remonte
+ * plus rien. Ce module ne fait donc plus qu'une chose, et c'est la seule qui
+ * reste vraie : DIRE que ces écritures n'existent que dans ce fichier, avant
+ * qu'une désinstallation ne l'emporte.
  */
-import { Directory, File, Paths } from "expo-file-system";
+import { File } from "expo-file-system";
 import * as SQLite from "expo-sqlite";
 
-/** Nom par défaut de la base WatermelonDB : l'ancienne app n'en fixe aucun. */
+/**
+ * Nom du fichier de l'ancienne base.
+ *
+ * `SQLiteAdapter` sans `dbName` retombe sur `'watermelon'` (son `_getName`), et
+ * les deux plateformes y accolent `.db`.
+ */
 const FICHIER_ANCIEN = "watermelon.db";
 
 /**
@@ -59,38 +69,104 @@ export interface ResteAncienneApp {
   total: number;
 }
 
+/** Retire le dernier segment d'un chemin absolu. */
+function parentDe(chemin: string): string {
+  return chemin.replace(/\/+[^/]+\/*$/, "");
+}
+
+/**
+ * Les dossiers où l'ancienne application a pu déposer sa base.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA BASE DE WATERMELONDB N'EST PAS DANS LE DOSSIER DES DOCUMENTS SUR      │
+ * │ ANDROID.                                                                 │
+ * │                                                                          │
+ * │ Établi dans la source de `@nozbe/watermelondb@0.28` :                     │
+ * │                                                                          │
+ * │   WMDatabase.java   context.getDatabasePath(name + ".db")                │
+ * │                            .getPath().replace("/databases", "")           │
+ * │                     → /data/user/0/<paquet>/watermelon.db                 │
+ * │                                                                          │
+ * │   DatabasePlatformIOS.mm   NSDocumentDirectory + "<name>.db"              │
+ * │                     → <bac à sable>/Documents/watermelon.db               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Sur Android le fichier est donc dans le PARENT du dossier des documents
+ * (`files/`), pas dedans : chercher sous `Paths.document` n'y trouve jamais
+ * rien, et la bascule se tairait précisément sur la plateforme qu'elle vise.
+ *
+ * La racine se déduit de `SQLite.defaultDatabaseDirectory`, qui vaut
+ * `<documents>/SQLite` des deux côtés (`SQLiteModule.kt` : `filesDir` ;
+ * `SQLiteModule.swift` : `documentDirectory`). C'est un chemin NU, sans schéma
+ * `file://`, ce que `openDatabaseAsync` attend et ce qu'un URI d'
+ * `expo-file-system` n'est pas.
+ */
+function dossiersCandidats(): string[] {
+  const parDefaut = SQLite.defaultDatabaseDirectory as string | null | undefined;
+  if (!parDefaut) return [];
+
+  const documents = parentDe(parDefaut); // `files/` (Android) ou `Documents/` (iOS)
+  const racine = parentDe(documents); // bac à sable de l'application
+
+  return [
+    racine, // Android : /data/user/0/<paquet>/watermelon.db
+    documents, // iOS : <bac à sable>/Documents/watermelon.db
+    // Anciennes versions de WatermelonDB, qui ne retiraient pas `/databases`.
+    `${racine}/databases`,
+    `${documents}/databases`,
+  ];
+}
+
+/** Le premier dossier candidat qui porte réellement le fichier. */
+function dossierDeLaBase(): string | null {
+  for (const dossier of dossiersCandidats()) {
+    try {
+      // `File` veut un URI, `openDatabaseAsync` veut un chemin nu : les deux
+      // API voisinent sans parler la même langue, et les confondre est
+      // exactement le défaut que ce module a porté.
+      if (new File(`file://${dossier}/${FICHIER_ANCIEN}`).exists) return dossier;
+    } catch {
+      // Chemin inaccessible : ce n'est pas une bascule, on passe au suivant.
+    }
+  }
+  return null;
+}
+
 /**
  * Ce que l'ancienne application a laissé, s'il y a quelque chose.
  *
  * Rend `null` quand il n'y a pas de bascule : installation neuve, ou ancienne
  * app déjà vidée et désinstallée. C'est le cas de très loin le plus fréquent,
- * et il ne doit rien coûter - une existence de fichier, et on s'arrête.
+ * et il ne doit rien coûter - quelques existences de fichier, et on s'arrête.
  */
 export async function resteDeLAncienneApp(): Promise<ResteAncienneApp | null> {
-  let fichier: File;
-  try {
-    fichier = new File(Paths.document, FICHIER_ANCIEN);
-    if (!fichier.exists) {
-      // Android range parfois la base sous `databases/`, selon la version du
-      // greffon SQLite qu'employait l'ancienne app.
-      const autre = new File(new Directory(Paths.document, "databases"), FICHIER_ANCIEN);
-      if (!autre.exists) return null;
-      fichier = autre;
-    }
-  } catch {
-    // Un accès refusé n'est pas une bascule : on ne bloque pas le comptoir
-    // pour une lecture qui n'a pas abouti.
-    return null;
-  }
+  const dossier = dossierDeLaBase();
+  if (dossier === null) return null;
+  const chemin = `${dossier}/${FICHIER_ANCIEN}`;
 
   const parTable: { table: string; nombre: number }[] = [];
   try {
-    // LECTURE SEULE, et c'est la seule façon d'ouvrir ce fichier : il
-    // appartient à un schéma qui n'est pas le nôtre, et l'ouvrir en écriture
-    // exposerait à une migration accidentelle.
-    const base = await SQLite.openDatabaseAsync(fichier.uri, {
-      useNewConnection: true,
-    });
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ LE PREMIER ARGUMENT EST UN NOM, PAS UN CHEMIN.                     │
+    // │                                                                    │
+    // │ `openDatabaseAsync(nom, options, dossier)` recolle simplement      │
+    // │ `dossier + "/" + nom` (`pathUtils.createDatabasePath`). Lui passer │
+    // │ un URI le traite comme un NOM DE FICHIER : SQLite crée alors une   │
+    // │ base VIDE sous `<SQLite>/file:/…/watermelon.db`, chaque requête    │
+    // │ échoue, le compte tombe à zéro, et l'écran annonce « Rien à        │
+    // │ reprendre » pendant que les ventes de l'ancienne app sont          │
+    // │ toujours là. Un silence, jamais une erreur.                        │
+    // └────────────────────────────────────────────────────────────────────┘
+    //
+    // On n'écrit RIEN : que des `SELECT`, aucune migration. `expo-sqlite`
+    // n'expose pas d'ouverture en lecture seule (`SQLiteOpenOptions` ne porte
+    // que `enableChangeListener`, `useNewConnection`, `libSQLOptions`), la
+    // discipline est donc ici et pas dans un drapeau.
+    const base = await SQLite.openDatabaseAsync(
+      FICHIER_ANCIEN,
+      { useNewConnection: true },
+      dossier
+    );
     try {
       for (const table of TABLES_A_RISQUE) {
         try {
@@ -112,13 +188,13 @@ export async function resteDeLAncienneApp(): Promise<ResteAncienneApp | null> {
   } catch {
     // Le fichier existe mais ne s'ouvre pas : on le SIGNALE quand même, sans
     // compte. Un fichier illisible est justement le cas où il faut un humain.
-    return { chemin: fichier.uri, parTable: [], total: -1 };
+    return { chemin, parTable: [], total: -1 };
   }
 
   const total = parTable.reduce((t, l) => t + l.nombre, 0);
   // Le fichier est là mais vidé : la bascule s'est bien passée, on se tait.
   if (total === 0) return null;
-  return { chemin: fichier.uri, parTable, total };
+  return { chemin, parTable, total };
 }
 
 /** Libellés français des tables, pour un écran que lit un marchand. */

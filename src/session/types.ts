@@ -33,6 +33,16 @@ export interface SessionOrganization {
   rccm?: string;
   id_nat?: string;
   logo?: string | null;
+  /**
+   * Plafond de remise par ligne et sur le total, RÉSOLU par le serveur.
+   *
+   * Le comptoir bornait à 100 et le POS web codait 50 en dur, alors que la
+   * valeur se règle par organisation. Un marchand qui l'abaisse à 20 voyait
+   * donc le terminal accepter 45 %, imprimer, puis le serveur refuser la vente
+   * ENTIÈRE : le refus arrivait après le client. Le champ vient du détail
+   * d'organisation, donc du snapshot de session, et se rafraîchit avec lui.
+   */
+  max_sale_discount_percent?: string | number;
 }
 
 export interface SessionMembership {
@@ -61,6 +71,23 @@ export interface SessionLoyaltyProgram {
   point_value: string;
   min_points_to_redeem?: number;
   max_redemption_percent?: string;
+  /**
+   * Borne DURE du plafond de rédemption, décidée par le modèle serveur.
+   *
+   * Le serveur l'envoie déjà (`LoyaltyProgramSerializer`) et `toSnapshot`
+   * recopie le programme entier : la valeur ARRIVE, seule la ligne de type
+   * manquait. Elle compte quand même, et pour deux raisons.
+   *
+   * `maxLoyaltyAmount` s'en sert pour plafonner `max_redemption_percent`, et
+   * se replie sur 70 quand le champ manque - jamais sur 100, « ce serait
+   * desserrer la garantie au lieu de la maintenir ». Un objet construit à la
+   * main, dans un test ou un écran, aurait donc silencieusement changé la
+   * règle : le type est ce qui le signale.
+   *
+   * Et sans elle, tout code qui LIT le champ sur un `SessionLoyaltyProgram`
+   * ne compile pas, alors que la donnée est là.
+   */
+  max_redemption_percent_ceiling?: string | number;
 }
 
 export interface SessionDevice {

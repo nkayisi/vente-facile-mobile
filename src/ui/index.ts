@@ -71,3 +71,5 @@ export { IconBrute } from "./icon";
 
 // --- Lot 9 : le tableau de bord ---
 export { BarChart, type PointGraphe } from "./bar-chart";
+export { AreaChart, type PointAire } from "./area-chart";
+export { DonutChart, couleurDeSerie, type TrancheDonut } from "./donut-chart";

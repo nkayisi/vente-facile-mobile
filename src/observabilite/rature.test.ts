@@ -60,11 +60,71 @@ describe("raturer", () => {
     expect(raturer(42)).toBe(42);
   });
 
-  it("s'arrête sur une structure trop profonde plutôt que de boucler", () => {
-    let profond: unknown = "a@b.com";
-    for (let i = 0; i < 12; i += 1) profond = { suivant: profond };
-    // Ne lève pas, et ne s'exécute pas indéfiniment : c'est tout ce qu'on
-    // demande d'un garde-fou de profondeur.
-    expect(() => raturer(profond)).not.toThrow();
+  it("NE MANGE PAS un horodatage, qui est la première chose qu'on lit", () => {
+    // Le motif d'origine (`\+?\d[\d\s().-]{7,}\d`) rendait « [numéro]:46:47 » :
+    // une rature qui détruit le diagnostic sans rien protéger.
+    expect(raturer("2026-08-31 00:46:47 échec de poussée")).toBe(
+      "2026-08-31 00:46:47 échec de poussée"
+    );
+    expect(raturer("expiré le 2026-08-31T00:46:47Z")).toBe(
+      "expiré le 2026-08-31T00:46:47Z"
+    );
+  });
+
+  it("ne confond pas un écart ventilé ni une quantité avec un téléphone", () => {
+    expect(raturer("-2 casiers, +5 bouteilles")).toBe("-2 casiers, +5 bouteilles");
+    expect(raturer("13 BOITES + 14 AMPOULES")).toBe("13 BOITES + 14 AMPOULES");
+  });
+
+  it("rature un montant, qui est ancré sur sa devise", () => {
+    // Le montant part, mais il part SOUS SON NOM : « [numéro] » laissait
+    // croire à un téléphone là où il n'y en avait pas.
+    expect(raturer("Total 12 500 000.00 CDF")).toBe("Total [montant]");
+    expect(raturer("solde 1 250 036,40 USD restant")).toBe("solde [montant] restant");
+    expect(raturer("reste $ 42.50 à payer")).toBe("reste [montant] à payer");
+  });
+
+  it("RATURE, et ne laisse pas passer, un sous-arbre trop profond", () => {
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ Un garde-fou de parcours se ferme, il ne s'ouvre pas.              │
+    // │                                                                    │
+    // │ La borne rendait le sous-arbre TEL QUEL : une erreur d'API         │
+    // │ sérialisée profondément repartait en clair, téléphone compris.     │
+    // └────────────────────────────────────────────────────────────────────┘
+    let profond: unknown = { tel: "+243997876765" };
+    for (let i = 0; i < 40; i += 1) profond = { suivant: profond };
+    expect(JSON.stringify(raturer(profond))).not.toContain("243997876765");
+  });
+
+  it("descend assez profond pour ne pas amputer un cadre de pile", () => {
+    // Un événement Sentry porte
+    // `exception.values[0].stacktrace.frames[i].vars.…` : huit niveaux avant
+    // la moindre donnée. Une borne à six coupait DEDANS.
+    const evenement = {
+      exception: {
+        values: [
+          {
+            stacktrace: {
+              frames: [{ filename: "app/(app)/pos.tsx", vars: { qte: "3" } }],
+            },
+          },
+        ],
+      },
+    };
+    expect(raturer(evenement)).toEqual(evenement);
+  });
+
+  it("s'arrête sur un cycle sans boucler, et sans amputer un partage légitime", () => {
+    const cycle: Record<string, unknown> = { nom: "a@b.com" };
+    cycle.moi = cycle;
+    expect(() => raturer(cycle)).not.toThrow();
+
+    // Deux références au MÊME objet côte à côte ne sont pas un cycle : les
+    // couper reviendrait à amputer un rapport valide.
+    const partage = { valeur: "ok" };
+    expect(raturer({ a: partage, b: partage })).toEqual({
+      a: { valeur: "ok" },
+      b: { valeur: "ok" },
+    });
   });
 });

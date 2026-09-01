@@ -6,9 +6,21 @@
  * │                                                                          │
  * │ Leur schéma n'est pas le nôtre, leurs numéros de document ont été       │
  * │ fabriqués autrement, et migrer des écritures comptables en silence est  │
- * │ précisément ce qu'un marchand ne peut pas vérifier. On le renvoie vers   │
- * │ l'ancienne application, qui sait les synchroniser : c'est plus long, et  │
- * │ c'est le seul chemin dont le résultat se contrôle.                       │
+ * │ précisément ce qu'un marchand ne peut pas vérifier.                      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'ANCIENNE VOIE DE SYNCHRONISATION N'EXISTE PLUS.                        │
+ * │                                                                          │
+ * │ Cet écran renvoyait vers l'ancienne application « qui sait les           │
+ * │ synchroniser ». Elle le savait par `POST /api/v1/sync/`, retiré du       │
+ * │ serveur avec elle. Réinstaller l'ancienne app ne remonterait donc plus   │
+ * │ rien, et le conseil aurait envoyé un marchand perdre une soirée à        │
+ * │ regarder une synchronisation échouer.                                    │
+ * │                                                                          │
+ * │ Le comptage, lui, garde tout son sens, et c'est même le seul endroit qui │
+ * │ le dise : ces écritures n'existent QUE dans ce fichier. La reprise est   │
+ * │ désormais manuelle, et l'écran l'annonce au lieu de promettre un bouton. │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { useCallback } from "react";
@@ -102,16 +114,18 @@ export default function Bascule() {
           <CardHeader title="Que faire" />
           <View className="gap-2">
             <Text variant="bodySmall">
-              1. Réinstallez l&apos;ancienne application sur ce terminal, sans
-              désinstaller celle-ci.
+              1. Ne désinstallez rien et ne réinitialisez pas ce terminal : le
+              fichier ci-dessous est le seul endroit où ces écritures existent.
             </Text>
             <Text variant="bodySmall">
-              2. Ouvrez-la avec du réseau et laissez-la synchroniser jusqu&apos;au
-              bout.
+              2. Signalez-le à votre support avant toute intervention. La voie
+              de synchronisation de l&apos;ancienne application a été retirée du
+              serveur : la réinstaller ne remonterait plus rien.
             </Text>
             <Text variant="bodySmall">
-              3. Vérifiez au back-office que les ventes du terminal y sont, puis
-              revenez ici : cet écran dira « Rien à reprendre ».
+              3. Ressaisissez ces opérations ici, d&apos;après les tickets
+              imprimés, une fois le fichier mis à l&apos;abri. C&apos;est plus
+              long, et c&apos;est le seul chemin dont le résultat se contrôle.
             </Text>
           </View>
           <Text variant="caption" className="mt-3">

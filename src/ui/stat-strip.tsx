@@ -17,6 +17,7 @@
  * colonnes il resterait une centaine de points par cellule, et tout montant en
  * CDF tomberait au plus petit palier de `statValueSize`.
  */
+import type { ReactNode } from "react";
 import { View } from "react-native";
 
 import { Icon, type IconName } from "./icon";
@@ -46,16 +47,28 @@ const TONS: Record<StatTone, { valeur: Parameters<typeof StatValue>[0]["tone"]; 
 export function StatStripItem({
   label,
   value,
+  children,
   icon,
   tone = "neutral",
 }: {
   label: string;
-  value: string;
+  /** Valeur simple. Omise quand `children` rend la valeur lui-même. */
+  value?: string;
+  /**
+   * Contenu de la valeur, pour ce qu'une chaîne ne peut pas porter : un
+   * `MultiCurrencyTotal` rend une LIGNE PAR DEVISE, et les aplatir en une
+   * chaîne remettrait une somme inter-devises là où le composant existe
+   * précisément pour l'empêcher.
+   */
+  children?: ReactNode;
   icon?: IconName;
   tone?: StatTone;
 }) {
-  // Un relevé à zéro reste neutre : voir la règle 2 ci-dessus.
-  const actif = tone === "neutral" || tone === "accent" || value !== "0";
+  // Un relevé à zéro reste neutre : voir la règle 2 ci-dessus. Avec `children`,
+  // seul l'appelant sait si sa valeur est nulle - c'est lui qui passe `tone`
+  // en conséquence.
+  const actif =
+    tone === "neutral" || tone === "accent" || value === undefined || value !== "0";
   const t = TONS[actif ? tone : "neutral"];
 
   return (
@@ -67,7 +80,7 @@ export function StatStripItem({
         </Text>
       </View>
       <View className="mt-1">
-        <StatValue value={value} tone={t.valeur} />
+        {children ?? <StatValue value={value ?? "0"} tone={t.valeur} />}
       </View>
     </View>
   );

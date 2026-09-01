@@ -26,16 +26,27 @@ interface Props {
 
 export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, onPress }: Props) {
   const conditionnement = getPackaging(article);
+  // UN ARTICLE SOUS INVENTAIRE EST INERTE, comme au back-office. Le laisser
+  // cliquable ferait composer un panier, imprimer un ticket, puis découvrir le
+  // refus du serveur avec le client déjà parti - c'est exactement ce qui est
+  // arrivé au comptoir. Le verrou prime sur l'épuisement : c'est le motif que
+  // le serveur oppose en premier.
+  const verrouille = article.verrou_inventaire !== null;
+  const inerte = verrouille || epuise;
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={epuise}
+      disabled={inerte}
       haptic="selection"
       className={`flex-1 rounded-xl border p-3 ${
-        epuise ? "border-border bg-muted opacity-60" : "border-border bg-card active:bg-muted"
+        inerte ? "border-border bg-muted opacity-60" : "border-border bg-card active:bg-muted"
       }`}
-      accessibilityLabel={`${article.name}, ${prix}`}
+      accessibilityLabel={
+        verrouille
+          ? `${article.name}, ${prix}, bloqué par un inventaire en cours`
+          : `${article.name}, ${prix}`
+      }
     >
       <View className="flex-row items-start justify-between">
         <Text variant="body" numberOfLines={2} className="flex-1 font-sans-medium">
@@ -55,21 +66,30 @@ export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, on
       </Text>
       {conditionnement && prixGros ? (
         <Text variant="caption" className="text-muted-foreground">
-          {prixGros} le {conditionnement.packageWord}
+          {/* « par » et non « le » : le GENRE d'un nom de contenant n'est pas
+              dérivable sans lexique, et ce nom vient du marchand. Relevé à
+              l'écran : « 28 $ le BOITE ». Même famille que « Ouvrir un BOITE »,
+              corrigé au lot 7 par un tour invariable. */}
+          {prixGros} par {conditionnement.packageWord}
         </Text>
       ) : null}
 
       <View className="mt-2 flex-row items-center gap-1">
         <Icon
-          name={epuise ? "PackageX" : "Package"}
+          name={verrouille ? "Lock" : epuise ? "PackageX" : "Package"}
           size={13}
-          color={epuise ? "destructive" : "mutedForeground"}
+          color={verrouille || epuise ? "destructive" : "mutedForeground"}
         />
         <Text
           variant="caption"
-          className={epuise ? "text-destructive" : "text-muted-foreground"}
+          numberOfLines={1}
+          className={verrouille || epuise ? "text-destructive" : "text-muted-foreground"}
         >
-          {libelleStock(article, conditionnement)}
+          {/* La RÉFÉRENCE, pas « indisponible » : le caissier doit pouvoir dire
+              au client ce qu'on attend, et au gérant quelle session bloquer. */}
+          {verrouille
+            ? `Inventaire ${article.verrou_inventaire}`
+            : libelleStock(article, conditionnement)}
         </Text>
       </View>
     </Pressable>
