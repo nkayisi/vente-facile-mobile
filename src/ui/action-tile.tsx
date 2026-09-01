@@ -20,7 +20,8 @@
  *             ligne, pastille à gauche du titre - empiler une pastille au
  *             dessus d'un titre qu'aucune description ne suit laisse un vide au
  *             milieu, et ce vide se lit comme une donnée manquante.
- *   `action`  trois par rangée : pastille ronde centrée, libellé court dessous.
+ *   `action`  trois par rangée, sur la carte commune : pastille ronde centrée,
+ *             libellé d'un mot dessous, décompte en pastille de coin.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ `action` EXISTE PARCE QU'UNE TUILE ENCADRÉE SE LIT COMME UN RELEVÉ.      │
@@ -33,12 +34,14 @@
  * │ au seul intitulé de section, ce qui ne suffit pas : on lit une forme     │
  * │ avant de lire un titre.                                                  │
  * │                                                                          │
- * │ `action` retire donc au raccourci TOUT ce qu'il partageait avec un       │
- * │ relevé - le cadre, le fond de carte, le coin arrondi, l'alignement à     │
- * │ gauche, le nombre à la place de la valeur - et ne garde que ce qu'un     │
- * │ relevé n'a jamais : une pastille RONDE, centrée, surmontant un libellé   │
- * │ court. Un cadran d'instrument ne ressemble pas à un trousseau de         │
- * │ boutons, et c'est la forme qui le dit, pas le titre de section.          │
+ * │ CE N'EST PAS LA SURFACE QUI DISTINGUE, C'EST CE QU'ELLE PORTE. Une      │
+ * │ première version retirait aussi la carte ; elle se lisait bien, mais     │
+ * │ elle sortait du dessin de la page - tout le reste, cadran compris, vit   │
+ * │ sur un fond de carte à filet. La carte est donc CONSERVÉE, avec le même  │
+ * │ fond, le même filet et le même rayon qu'ailleurs, et c'est le CONTENU    │
+ * │ qui change : une pastille RONDE, centrée, surmontant un libellé d'un     │
+ * │ mot, et pas de valeur du tout. Un relevé n'est jamais rond, jamais       │
+ * │ centré, et il porte toujours un chiffre à la place du libellé.           │
  * │                                                                          │
  * │ Le décompte devient une PASTILLE DE COIN, la grammaire du badge d'onglet │
  * │ - « il y a trois choses à traiter ici », et non « la valeur du relevé    │
@@ -118,17 +121,27 @@ export function ActionTile({
     .join(". ");
 
   if (forme === "action") {
+    // `flex-1` avec `basis-[30%]` : trois par rangée, qui se PARTAGENT la
+    // largeur restante. Une base fixe laisserait une bande vide à droite, et
+    // la grille ne serait plus alignée sur les cartes de la page.
     return (
-      <View className="min-w-0 basis-[31%]">
+      <View className="min-w-0 flex-1 basis-[30%]">
         <Pressable
           onPress={aller}
           haptic={desactive ? "none" : "selection"}
           disabled={desactive}
           accessibilityRole="link"
           accessibilityLabel={etiquette}
-          className={`items-center gap-2 rounded-2xl px-1 py-2${desactive ? " opacity-50" : ""}`}
-          // 0,96 et pas moins : en deçà, l'appui a l'air d'un rebond. La tuile
-          // n'a ni cadre ni fond, c'est donc le seul retour visuel qu'elle a.
+          // La CARTE est celle de toute la page : même fond, même filet, même
+          // rayon que le cadran et les listes. Ce qui distingue un raccourci
+          // d'un relevé n'est donc pas la SURFACE mais ce qu'elle porte : une
+          // pastille RONDE centrée, un libellé d'un mot, aucune valeur - et un
+          // décompte en pastille de coin, jamais là où un relevé écrit son
+          // chiffre.
+          className={`items-center gap-2 rounded-xl border border-border bg-card px-2 py-3${
+            desactive ? " opacity-50" : ""
+          }`}
+          // 0,96 et pas moins : en deçà, l'appui a l'air d'un rebond.
           pressedClassName="active:opacity-90 active:scale-[0.96]"
         >
           {/* Le rembourrage de quatre points sert à poser la pastille de coin

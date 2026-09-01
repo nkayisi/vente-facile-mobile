@@ -38,9 +38,10 @@
  * │ quarante points sous un panneau de relevés. Seul le titre « Raccourcis » │
  * │ les en distinguait, et un titre se lit APRÈS la forme.                   │
  * │                                                                          │
- * │ Ils passent en `forme="action"` : pastille ronde centrée, libellé d'un   │
- * │ mot, aucun cadre, décompte en pastille de coin. Trois par rangée au lieu │
- * │ de deux, ce qui rend encore une rangée à la liste des ventes.            │
+ * │ Ils passent en `forme="action"` : la carte reste - c'est le dessin de    │
+ * │ toute la page - mais son contenu change, pastille RONDE centrée,         │
+ * │ libellé d'un mot, décompte en pastille de coin, et aucune valeur. Trois  │
+ * │ par rangée au lieu de deux, ce qui rend une rangée à la liste des ventes.│
  * │                                                                          │
  * │ L'action primaire, elle, remonte sur la LIGNE DU TITRE : elle occupait   │
  * │ une bande pleine largeur pour mener où mène déjà l'onglet du centre.     │
@@ -126,12 +127,12 @@ export default function Ventes() {
           │ reviennent à « Ventes du jour », la seule chose de cet écran   │
           │ qu'on vient lire plutôt que traverser.                         │
           │                                                                │
-          │ Le libellé se raccourcit à « Vendre » quand une session est    │
-          │ ouverte : « Ouvrir le point de vente » et un titre ne tiennent │
-          │ pas sur 390 points, et c'est le bouton qui perdrait son mot.   │
-          │ Sans session, le libellé reste ENTIER - c'est là qu'il apprend │
-          │ quelque chose, et c'est aussi le seul état où il n'y a rien    │
-          │ d'autre à faire sur cet écran.                                 │
+          │ LE LIBELLÉ DIT L'ÉTAT DE LA CAISSE, pas la destination : les   │
+          │ deux mènent au comptoir, mais « Ouvrir une session » et        │
+          │ « Continuer la vente » n'engagent pas le même geste, et c'est  │
+          │ la seule chose que le caissier a besoin de savoir avant        │
+          │ d'appuyer. Un libellé unique (« Vendre ») taisait qu'il allait │
+          │ ouvrir un tiroir et compter un fonds de caisse.                │
           └────────────────────────────────────────────────────────────────┘ */}
       <PageHeader
         title="Ventes"
@@ -139,7 +140,7 @@ export default function Ventes() {
         action={
           can("sales.create") ? (
             <Button leftIcon="ShoppingCart" onPress={() => router.push("/vendre")}>
-              {session ? "Vendre" : "Ouvrir une session"}
+              {session ? "Continuer la vente" : "Ouvrir une session"}
             </Button>
           ) : null
         }
@@ -283,13 +284,13 @@ export default function Ventes() {
 
       {/* LES DESTINATIONS, sous leur titre. Le titre à lui seul sépare les deux
           registres : on ne lit pas un cadran sous un intitulé d'actions. */}
-      {/* LES DESTINATIONS. Elles ne portent plus ni cadre, ni fond de carte,
-          ni nombre à la place d'une valeur : c'était la grammaire exacte du
-          cadran posé au-dessus, et on lit une forme avant de lire un titre.
-          Une pastille ronde centrée sous un libellé court ne peut pas se
-          confondre avec un relevé, et le décompte des règlements devient une
-          pastille de coin - « trois choses à traiter », pas « la valeur est
-          trois ». Voir `ui/action-tile.tsx`. */}
+      {/* LES DESTINATIONS. Elles gardent la carte de la page - même fond,
+          même filet, même rayon que le cadran et les listes - mais plus rien
+          de son CONTENU : pastille ronde centrée au lieu d'une icône alignée
+          à gauche, libellé d'un mot, et aucune valeur là où un relevé écrit
+          son chiffre. Le décompte des règlements devient une pastille de coin,
+          « trois choses à traiter » et non « la valeur est trois ».
+          Voir `ui/action-tile.tsx`. */}
       <View className="mt-6">
         <Text variant="h4" className="mb-3">
           Raccourcis
@@ -297,7 +298,7 @@ export default function Ventes() {
         {/* Le libellé dessiné tient en un mot ; la description n'est PAS
             dessinée à cette largeur, elle complète ce que le lecteur d'écran
             annonce. */}
-        <View className="flex-row flex-wrap gap-2">
+        <View className="flex-row flex-wrap gap-3">
           <ActionTile
             href="/vente/reglements"
             forme="action"
