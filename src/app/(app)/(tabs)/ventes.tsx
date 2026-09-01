@@ -27,6 +27,26 @@
  * quarante points plus haut. Il mène désormais au parc de caisses, seul
  * endroit d'où l'on ouvre ou ferme une session - et la variante « aucune
  * session » n'est plus un cul-de-sac.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA FRONTIÈRE NE TENAIT QU'À UN INTITULÉ DE SECTION.                     │
+ * │                                                                          │
+ * │ Le remède ci-dessus a été appliqué à moitié : les relevés sont bien      │
+ * │ passés dans un cadran, mais les raccourcis sont restés des rectangles à  │
+ * │ bordure, fond de carte, icône en pastille et - pour les règlements - un  │
+ * │ NOMBRE. C'est-à-dire la grammaire d'une cellule de relevé, reproduite    │
+ * │ quarante points sous un panneau de relevés. Seul le titre « Raccourcis » │
+ * │ les en distinguait, et un titre se lit APRÈS la forme.                   │
+ * │                                                                          │
+ * │ Ils passent en `forme="action"` : pastille ronde centrée, libellé d'un   │
+ * │ mot, aucun cadre, décompte en pastille de coin. Trois par rangée au lieu │
+ * │ de deux, ce qui rend encore une rangée à la liste des ventes.            │
+ * │                                                                          │
+ * │ L'action primaire, elle, remonte sur la LIGNE DU TITRE : elle occupait   │
+ * │ une bande pleine largeur pour mener où mène déjà l'onglet du centre.     │
+ * │ Total repris aux blancs : une centaine de points, soit deux ventes de    │
+ * │ plus visibles sans défiler.                                              │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { useState } from "react";
 import { View } from "react-native";
@@ -89,23 +109,41 @@ export default function Ventes() {
   );
   const restantes = Math.max(0, ventes.length - VISIBLES);
   const aEncaisser = r?.nbAEncaisser ?? 0;
+  // Une session ouverte hors ligne EST une session : elle se lit dans le
+  // journal, le comptoir vend dessus, et le bandeau doit dire où elle en est
+  // plutôt que de la peindre en vert comme si le serveur l'avait acceptée.
+  const envoiSession = libelleEnvoi(session?.envoi);
 
   return (
     <Screen scroll edges={[]}>
-      <PageHeader title="Ventes" subtitle={jourEnLettresFr(new Date())} />
-
-      {can("sales.create") ? (
-        <View className="mt-4">
-          <Button
-            fullWidth
-            size="lg"
-            leftIcon="ShoppingCart"
-            onPress={() => router.push("/vendre")}
-          >
-            {session ? "Ouvrir le point de vente" : "Ouvrir une session"}
-          </Button>
-        </View>
-      ) : null}
+      {/* ┌────────────────────────────────────────────────────────────────┐
+          │ L'ACTION EST SUR LA LIGNE DU TITRE, ET ELLE Y GAGNE UN ÉCRAN. │
+          │                                                                │
+          │ Elle occupait une bande pleine largeur sous l'en-tête : une    │
+          │ soixantaine de points, pour un bouton qui mène là où mène      │
+          │ DÉJÀ l'onglet du centre de la barre - c'est-à-dire au point le │
+          │ plus sûr du pouce, et il n'a pas bougé. Ces soixante points    │
+          │ reviennent à « Ventes du jour », la seule chose de cet écran   │
+          │ qu'on vient lire plutôt que traverser.                         │
+          │                                                                │
+          │ Le libellé se raccourcit à « Vendre » quand une session est    │
+          │ ouverte : « Ouvrir le point de vente » et un titre ne tiennent │
+          │ pas sur 390 points, et c'est le bouton qui perdrait son mot.   │
+          │ Sans session, le libellé reste ENTIER - c'est là qu'il apprend │
+          │ quelque chose, et c'est aussi le seul état où il n'y a rien    │
+          │ d'autre à faire sur cet écran.                                 │
+          └────────────────────────────────────────────────────────────────┘ */}
+      <PageHeader
+        title="Ventes"
+        subtitle={jourEnLettresFr(new Date())}
+        action={
+          can("sales.create") ? (
+            <Button leftIcon="ShoppingCart" onPress={() => router.push("/vendre")}>
+              {session ? "Vendre" : "Ouvrir une session"}
+            </Button>
+          ) : null
+        }
+      />
 
       {/* Bandeau d'état : toujours présent, deux variantes, pour que la page ne
           change pas de structure selon qu'une caisse est ouverte ou non. Il
@@ -139,15 +177,29 @@ export default function Ventes() {
           // └──────────────────────────────────────────────────────────────┘
           className={
             session
-              ? "flex-row items-center gap-3 rounded-xl border border-solid border-success/30 bg-success/10 p-3.5"
+              ? envoiSession?.ton === "warning"
+                ? "flex-row items-center gap-3 rounded-xl border border-solid border-warning/30 bg-warning/10 p-3.5"
+                : "flex-row items-center gap-3 rounded-xl border border-solid border-success/30 bg-success/10 p-3.5"
               : "flex-row items-center gap-3 rounded-xl border border-dashed border-border bg-card p-3.5"
           }
           pressedClassName="active:opacity-90 active:scale-[0.98]"
         >
           <Icon
-            name={session ? "CheckCircle2" : "Clock"}
+            name={
+              session
+                ? envoiSession?.ton === "warning"
+                  ? "AlertTriangle"
+                  : "CheckCircle2"
+                : "Clock"
+            }
             size={20}
-            color={session ? "success" : "mutedForeground"}
+            color={
+              session
+                ? envoiSession?.ton === "warning"
+                  ? "warning"
+                  : "success"
+                : "mutedForeground"
+            }
           />
           <View className="min-w-0 flex-1">
             <Text variant="label" numberOfLines={1}>
@@ -156,12 +208,23 @@ export default function Ventes() {
             <Text variant="caption" numberOfLines={1}>
               {session
                 ? [
+                    // L'état d'envoi passe EN TÊTE : une session que le serveur
+                    // n'a pas vue reste une session sur laquelle on vend, mais
+                    // « bloquée » et « en file » n'appellent pas le même geste,
+                    // et c'est la première chose à savoir avant de la clôturer.
+                    envoiSession?.court,
                     depuis(session.ouverteLe),
                     `${session.nbVentes} ${session.nbVentes > 1 ? "ventes" : "vente"}`,
                     session.encaisseParDevise.length > 0
                       ? `${session.encaisseParDevise
                           .map((e) => money.money(e.montant, e.devise))
-                          .join(" · ")} encaissés`
+                          .join(" · ")} encaissés${
+                          // Un total présenté comme complet alors qu'un ticket
+                          // manque se compare au tiroir et tombe faux.
+                          session.sansMontant > 0
+                            ? ` (+${session.sansMontant} sans montant)`
+                            : ""
+                        }`
                       : null,
                   ]
                     .filter(Boolean)
@@ -220,51 +283,67 @@ export default function Ventes() {
 
       {/* LES DESTINATIONS, sous leur titre. Le titre à lui seul sépare les deux
           registres : on ne lit pas un cadran sous un intitulé d'actions. */}
+      {/* LES DESTINATIONS. Elles ne portent plus ni cadre, ni fond de carte,
+          ni nombre à la place d'une valeur : c'était la grammaire exacte du
+          cadran posé au-dessus, et on lit une forme avant de lire un titre.
+          Une pastille ronde centrée sous un libellé court ne peut pas se
+          confondre avec un relevé, et le décompte des règlements devient une
+          pastille de coin - « trois choses à traiter », pas « la valeur est
+          trois ». Voir `ui/action-tile.tsx`. */}
       <View className="mt-6">
         <Text variant="h4" className="mb-3">
           Raccourcis
         </Text>
-        <View className="flex-row flex-wrap gap-3">
+        {/* Le libellé dessiné tient en un mot ; la description n'est PAS
+            dessinée à cette largeur, elle complète ce que le lecteur d'écran
+            annonce. */}
+        <View className="flex-row flex-wrap gap-2">
           <ActionTile
             href="/vente/reglements"
-            forme="grille"
-            title="Règlements en attente"
+            forme="action"
+            title="Règlements"
+            description="Factures en attente de paiement"
             icon="Banknote"
             accent="primary"
             badge={aEncaisser}
           />
           <ActionTile
             href="/vente/historique"
-            forme="grille"
+            forme="action"
             title="Historique"
+            description="Toutes les ventes, toutes périodes"
             icon="Receipt"
             accent="chart2"
           />
           <ActionTile
             href="/caisses"
-            forme="grille"
+            forme="action"
             title="Caisses"
+            description="Comptoirs, sessions et clôtures"
             icon="Calculator"
             accent="chart3"
           />
           <ActionTile
             href="/devis"
-            forme="grille"
+            forme="action"
             title="Devis"
+            description="Propositions de prix à convertir"
             icon="FileText"
             accent="primary"
           />
           <ActionTile
             href="/retour"
-            forme="grille"
+            forme="action"
             title="Retours"
+            description="Marchandise rendue par les clients"
             icon="PackageX"
             accent="chart2"
           />
           <ActionTile
             href="/creances"
-            forme="grille"
+            forme="action"
             title="Créances"
+            description="Ce que les clients doivent, par ancienneté"
             icon="Clock"
             accent="chart3"
           />

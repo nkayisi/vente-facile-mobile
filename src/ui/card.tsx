@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
+import { fusionner } from "./classes";
+
 import { Text } from "./text";
 
 /**
@@ -18,7 +20,9 @@ export function Card({
   className?: string;
 }) {
   return (
-    <View className={`rounded-xl bg-card p-4 ${className}`}>{children}</View>
+    // `p-0` d'un appelant ne retirait PAS le `p-4` d'ici : les listes en carte
+    // sortaient indentées, filets compris. Voir `ui/classes.ts`.
+    <View className={fusionner("rounded-xl bg-card p-4", className)}>{children}</View>
   );
 }
 

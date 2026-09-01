@@ -52,6 +52,26 @@ export default function Reglements() {
 
   const enTete = (
     <View className="gap-4 px-4 pb-3 pt-2">
+      {/* L'ARGENT D'ABORD. Cet écran répond à « combien reste-t-il à
+          encaisser » ; les quatre décomptes disent ensuite comment ce montant
+          se répartit. Le total arrivait TROISIÈME, sous quatre nombres sans
+          unité, à l'endroit où l'œil ne cherche pas un montant. */}
+      <Card>
+        <Text variant="caption" className="mb-1">
+          Restant dû
+        </Text>
+        {/* Neutre, comme au back-office. Ce total n'est pas une anomalie :
+            c'est le chiffre d'affaires qui reste à rentrer, sur un écran où
+            TOUT est en attente. Peindre en rouge la raison d'être de l'écran
+            use le rouge, et il ne reste plus rien pour le vrai retard - qui
+            est, lui, compté juste en dessous. */}
+        <MultiCurrencyTotal
+          lignes={donnees?.duParDevise ?? []}
+          money={money.money}
+          vide="Rien à encaisser"
+        />
+      </Card>
+
       <StatStrip>
         <StatStripItem
           label="Factures"
@@ -75,18 +95,6 @@ export default function Reglements() {
           tone={donnees?.enRetard ? "alert" : undefined}
         />
       </StatStrip>
-
-      <Card>
-        <Text variant="caption" className="mb-1">
-          Restant dû
-        </Text>
-        <MultiCurrencyTotal
-          lignes={donnees?.duParDevise ?? []}
-          money={money.money}
-          tone="destructive"
-          vide="Rien à encaisser"
-        />
-      </Card>
 
       <SearchInput
         valeur={recherche}
@@ -113,7 +121,11 @@ export default function Reglements() {
           ) : undefined
         }
         valeur={
-          <Text numeric variant="body" className="font-sans-medium text-destructive">
+          // Orange, comme le « Reste à payer » du back-office et comme la
+          // liste du hub. Le rouge y était déclaré depuis toujours et ne
+          // s'était jamais VU : `text-destructive` passé en `className`
+          // perdait contre la couleur de la variante (voir `ui/classes.ts`).
+          <Text numeric variant="body" className="font-sans-medium text-warning">
             {money.money(v.resteAPayer, v.devise)}
           </Text>
         }

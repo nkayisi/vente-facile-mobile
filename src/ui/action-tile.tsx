@@ -12,18 +12,38 @@
  * seulement réagissaient au clic »), et les rayons concentriques, tuile en
  * `rounded-xl` et pastille en `rounded-lg`.
  *
- * **Deux formes.** `ligne` occupe la largeur : pastille à gauche, titre et
- * description, chevron. `grille` en tient deux par rangée : pastille au-dessus
- * du titre, description sous lui. La seconde est celle des concentrateurs, où
- * l'on balaie des destinations plutôt qu'on ne lit des explications.
+ * **Trois formes.**
  *
- * **Une tuile de grille SANS description se replie sur une seule ligne**,
- * pastille à gauche du titre. C'est la disposition exacte des raccourcis du
- * back-office (`flex items-center gap-3 p-3`), et elle rend une trentaine de
- * points par tuile : sur les six raccourcis de la page Ventes, c'est presque
- * un tiers d'écran repris à des blancs qui ne disaient rien. Empiler la
- * pastille au-dessus d'un titre qu'aucune description ne suit laisse un vide
- * au milieu de la tuile, et ce vide se lit comme une donnée manquante.
+ *   `ligne`   pleine largeur : pastille, titre, description, chevron.
+ *   `grille`  deux par rangée, pour un concentrateur qui EXPLIQUE ses
+ *             destinations. Sans description, elle se replie sur une seule
+ *             ligne, pastille à gauche du titre - empiler une pastille au
+ *             dessus d'un titre qu'aucune description ne suit laisse un vide au
+ *             milieu, et ce vide se lit comme une donnée manquante.
+ *   `action`  trois par rangée : pastille ronde centrée, libellé court dessous.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `action` EXISTE PARCE QU'UNE TUILE ENCADRÉE SE LIT COMME UN RELEVÉ.      │
+ * │                                                                          │
+ * │ La forme `grille` sans description donne un rectangle à bordure, à fond  │
+ * │ de carte, portant une icône, un libellé et - pour « Règlements en        │
+ * │ attente » - un NOMBRE. C'est trait pour trait la grammaire d'une cellule │
+ * │ de `StatStrip`, posée quarante points sous un `StatStrip`. La frontière  │
+ * │ que le dépôt a payé cher (« deux registres, deux formes ») tenait alors  │
+ * │ au seul intitulé de section, ce qui ne suffit pas : on lit une forme     │
+ * │ avant de lire un titre.                                                  │
+ * │                                                                          │
+ * │ `action` retire donc au raccourci TOUT ce qu'il partageait avec un       │
+ * │ relevé - le cadre, le fond de carte, le coin arrondi, l'alignement à     │
+ * │ gauche, le nombre à la place de la valeur - et ne garde que ce qu'un     │
+ * │ relevé n'a jamais : une pastille RONDE, centrée, surmontant un libellé   │
+ * │ court. Un cadran d'instrument ne ressemble pas à un trousseau de         │
+ * │ boutons, et c'est la forme qui le dit, pas le titre de section.          │
+ * │                                                                          │
+ * │ Le décompte devient une PASTILLE DE COIN, la grammaire du badge d'onglet │
+ * │ - « il y a trois choses à traiter ici », et non « la valeur du relevé    │
+ * │ est trois ».                                                             │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
  * **Trois accents seulement**, pris sur des jetons existants. Le web en a cinq
  * (`purple`, `indigo`, `cyan`, `amber`, `orange`) mais aucun n'a de jeton chez
@@ -38,7 +58,7 @@ import { Pressable } from "./pressable";
 import { Text } from "./text";
 
 export type AccentTuile = "primary" | "chart2" | "chart3";
-export type FormeTuile = "ligne" | "grille";
+export type FormeTuile = "ligne" | "grille" | "action";
 
 const ACCENTS: Record<AccentTuile, { fond: string; jeton: "primary" | "chart2" | "chart3" }> = {
   primary: { fond: "bg-primary/10", jeton: "primary" },
@@ -58,7 +78,13 @@ export function ActionTile({
 }: {
   href: string;
   title: string;
-  /** Omise en `grille` quand la destination se passe d'explication. */
+  /**
+   * Omise en `grille` quand la destination se passe d'explication.
+   *
+   * En `action` elle n'est PAS dessinée - la cellule fait cent dix points de
+   * large : elle complète le libellé lu par le lecteur d'écran, à qui
+   * « Règlements » seul ne dit pas de quels règlements il s'agit.
+   */
   description?: string;
   icon: IconName;
   accent?: AccentTuile;
@@ -81,6 +107,65 @@ export function ActionTile({
   // Sans description, rien ne justifie d'empiler : voir l'en-tête de fichier.
   const empile = grille && Boolean(description);
 
+  const aller = desactive ? undefined : () => router.push(href as never);
+  const etiquette = [
+    title,
+    compte === null ? null : `${compte} en attente`,
+    description,
+    raison,
+  ]
+    .filter(Boolean)
+    .join(". ");
+
+  if (forme === "action") {
+    return (
+      <View className="min-w-0 basis-[31%]">
+        <Pressable
+          onPress={aller}
+          haptic={desactive ? "none" : "selection"}
+          disabled={desactive}
+          accessibilityRole="link"
+          accessibilityLabel={etiquette}
+          className={`items-center gap-2 rounded-2xl px-1 py-2${desactive ? " opacity-50" : ""}`}
+          // 0,96 et pas moins : en deçà, l'appui a l'air d'un rebond. La tuile
+          // n'a ni cadre ni fond, c'est donc le seul retour visuel qu'elle a.
+          pressedClassName="active:opacity-90 active:scale-[0.96]"
+        >
+          {/* Le rembourrage de quatre points sert à poser la pastille de coin
+              SANS décalage négatif : la cellule reste centrée, et le badge
+              déborde dans un espace prévu pour lui. */}
+          <View className="p-1">
+            <View className={`h-12 w-12 items-center justify-center rounded-full ${a.fond}`}>
+              <Icon name={icon} size={20} color={a.jeton} />
+            </View>
+            {compte === null ? null : (
+              // Le liseré couleur de fond détache la pastille de l'icône, comme
+              // un badge d'onglet : sans lui, les deux ronds se touchent et se
+              // lisent comme un seul dessin.
+              <View className="absolute right-0 top-0 h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-warning px-1">
+                <Text variant="caption" numeric className="font-sans-medium text-warning-foreground">
+                  {String(compte)}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text
+            variant="bodySmall"
+            numberOfLines={1}
+            className="text-center font-sans-medium"
+          >
+            {title}
+          </Text>
+        </Pressable>
+        {raison ? (
+          <Text variant="caption" numberOfLines={2} className="mt-0.5 text-center">
+            {raison}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
+
   const pastille = (
     <View className={`h-9 w-9 items-center justify-center rounded-lg ${a.fond}`}>
       <Icon name={icon} size={18} color={a.jeton} />
@@ -99,18 +184,11 @@ export function ActionTile({
   return (
     <View className={grille ? "min-w-0 flex-1 basis-[45%]" : undefined}>
       <Pressable
-        onPress={desactive ? undefined : () => router.push(href as never)}
+        onPress={aller}
         haptic={desactive ? "none" : "selection"}
         disabled={desactive}
         accessibilityRole="link"
-        accessibilityLabel={[
-          title,
-          compte === null ? null : `${compte} en attente`,
-          description,
-          raison,
-        ]
-          .filter(Boolean)
-          .join(". ")}
+        accessibilityLabel={etiquette}
         className={`rounded-xl border border-border bg-card p-3.5${
           empile ? "" : " flex-row items-center gap-3"
         }${desactive ? " opacity-50" : ""}`}

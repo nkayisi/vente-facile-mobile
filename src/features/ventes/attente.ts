@@ -46,6 +46,16 @@ export interface VenteEnAttente {
   date: Date;
   nbArticles: number | null;
   /**
+   * La session de caisse à laquelle la vente se rattache, telle qu'elle part
+   * au serveur. `null` quand le corps n'en porte pas.
+   *
+   * Elle est ici parce que les compteurs d'une session ouverte hors ligne
+   * n'ont aucune autre source : ni la vente ni la session n'existent dans une
+   * table tirée, et un comptoir qui annonce « 0 vente » après une journée de
+   * travail se lit comme une perte.
+   */
+  session: string | null;
+  /**
    * En file, ou BLOQUÉE faute d'abonnement ou de droit.
    *
    * « Attend son envoi » est faux pour la seconde : elle n'attend pas le
@@ -73,7 +83,7 @@ export async function ventesEnAttente(): Promise<VenteEnAttente[]> {
   // temps qu'un abonnement soit réglé. Les taire ferait relire au caissier
   // « Ventes du jour (0) » après une journée de comptoir, c'est-à-dire le
   // défaut exact que ce module referme, sur la période où il fait le plus mal.
-  const ops = await enAttenteParType<{ id: string; reference?: string }>(
+  const ops = await enAttenteParType<{ id: string; reference?: string; session?: string }>(
     "sale.create",
     { avecBloquees: true }
   );
@@ -110,6 +120,7 @@ export async function ventesEnAttente(): Promise<VenteEnAttente[]> {
       devise: t?.currency ?? null,
       date: o.occurredAt,
       nbArticles: Array.isArray(t?.items) ? t.items.length : null,
+      session: o.payload.session ?? null,
       envoi: o.envoi,
     };
   });

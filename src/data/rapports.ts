@@ -249,13 +249,64 @@ export async function chargerRapport(
  * que le back-office a mis le plus longtemps à obtenir juste : additionner
  * des dettes en francs et en dollars produit un nombre qui n'existe pas.
  */
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LES CINQ TRANCHES SONT CELLES DU SERVEUR, ET ELLES ONT SES NOMS.        │
+ * │                                                                          │
+ * │ Cette lecture inventait quatre champs - `days_30_60`, `days_60_90`,      │
+ * │ `days_90_plus` - qui n'existent nulle part : le serveur rend `current`,  │
+ * │ `d1_30`, `d31_60`, `d61_90`, `d90_plus`. Trois tranches sur quatre       │
+ * │ valaient donc `undefined`, que `nb()` rend ZÉRO.                         │
+ * │                                                                          │
+ * │ Relevé à l'écran : « 9 923,43 $ » de créances, et les quatre tranches à  │
+ * │ « 0 $ ». C'est-à-dire, pour qui le lit, « rien n'est en retard » - très  │
+ * │ exactement le contraire de la vérité, sur le seul écran dont le métier   │
+ * │ est de dire qui relancer. Un chiffre faux crie ; quatre zéros sous un    │
+ * │ total juste ne se remarquent pas.                                        │
+ * │                                                                          │
+ * │ La quatrième était fausse autrement : « 0-30 j » lisait `current`, qui   │
+ * │ est le PAS ENCORE ÉCHU. Une facture en retard de dix jours n'apparaissait│
+ * │ donc dans aucune tranche, et confondre « pas encore dû » avec « en       │
+ * │ retard d'un mois » est la distinction même que ce rapport existe pour    │
+ * │ porter. Les cinq clés et leurs libellés sont ceux du back-office, mot    │
+ * │ pour mot (`AGING_BUCKET_LABELS`).                                        │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export type CleTranche = "current" | "d1_30" | "d31_60" | "d61_90" | "d90_plus";
+
+const LIBELLES_TRANCHES: Record<CleTranche, string> = {
+  current: "Pas encore échu",
+  d1_30: "1 à 30 j",
+  d31_60: "31 à 60 j",
+  d61_90: "61 à 90 j",
+  d90_plus: "Plus de 90 j",
+};
+
+const ORDRE_TRANCHES: CleTranche[] = ["current", "d1_30", "d31_60", "d61_90", "d90_plus"];
+
+export interface Debiteur {
+  clientId: string;
+  nom: string;
+  devise: string;
+  /** Tout ce qu'il doit dans cette devise, échu ou non. */
+  montant: number;
+  /** La part déjà échue. Zéro : il doit, mais rien n'est en retard. */
+  echu: number;
+  nbFactures: number;
+  /** Jours de retard de sa facture la plus ancienne. Zéro : rien n'est échu. */
+  plusAncienneJours: number;
+}
+
 export interface Creances {
   parDevise: {
     devise: string;
     total: number;
-    tranches: { label: string; montant: number }[];
+    tranches: { cle: CleTranche; label: string; montant: number }[];
   }[];
-  clients: number;
+  /** Qui doit, et depuis quand. C'est la liste avec laquelle on relance. */
+  debiteurs: Debiteur[];
+  nbDebiteurs: number;
+  nbFactures: number;
 }
 
 export async function chargerCreances(ctx: ContexteRapport): Promise<Creances> {
@@ -269,18 +320,34 @@ export async function chargerCreances(ctx: ContexteRapport): Promise<Creances> {
       ? d
       : [];
 
+  // Le serveur DIT ses tranches et leur ordre ; on ne les redécide pas ici.
+  // Le repli n'est là que pour une réponse tronquée : il porte les mêmes clés.
+  const cles: CleTranche[] = Array.isArray(d.buckets)
+    ? d.buckets.filter((b: unknown): b is CleTranche => typeof b === "string" && b in LIBELLES_TRANCHES)
+    : ORDRE_TRANCHES;
+
+  const debiteurs: any[] = Array.isArray(d.by_customer) ? d.by_customer : [];
+
   return {
-    clients: nb(d.customers_count ?? d.total_customers),
+    nbDebiteurs: nb(d.debtor_count),
+    nbFactures: nb(d.invoice_count),
     parDevise: parDevise.map((c) => ({
       devise: String(c.currency ?? ctx.devisePrincipale),
       total: nb(c.total),
-      // Les quatre tranches du back-office, dans son ordre.
-      tranches: [
-        { label: "0-30 j", montant: nb(c.current ?? c.days_0_30) },
-        { label: "30-60 j", montant: nb(c.days_30_60) },
-        { label: "60-90 j", montant: nb(c.days_60_90) },
-        { label: "90 j et +", montant: nb(c.days_90_plus) },
-      ],
+      tranches: cles.map((cle) => ({
+        cle,
+        label: LIBELLES_TRANCHES[cle],
+        montant: nb(c[cle]),
+      })),
+    })),
+    debiteurs: debiteurs.map((b) => ({
+      clientId: String(b.customer_id ?? ""),
+      nom: String(b.customer_name ?? "Client"),
+      devise: String(b.currency ?? ctx.devisePrincipale),
+      montant: nb(b.amount_due),
+      echu: nb(b.overdue_amount),
+      nbFactures: nb(b.invoice_count),
+      plusAncienneJours: nb(b.oldest_days),
     })),
   };
 }

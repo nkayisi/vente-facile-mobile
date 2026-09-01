@@ -8,13 +8,16 @@
 import { and, desc, eq, gte, inArray, like, lt, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
+import { sessionOuverte } from "@/features/pos/caisse";
 import { ventesEnAttente } from "@/features/ventes/attente";
 import type { EtatEnvoi } from "@/sync";
 
+import { customers, saleItems, sales } from "@/db/schema";
+
 import { depuisQuand, type Periode } from "./periodes";
+import { compteursDeSessions, compteursVides } from "./sessions";
 
 export type { Periode };
-import { customers, registerSessions, registers, saleItems, sales } from "@/db/schema";
 
 const nb = (v: string | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -208,37 +211,50 @@ export interface SessionOuverte {
   ouverteLe: Date | null;
   nbVentes: number;
   encaisseParDevise: { devise: string; montant: number }[];
+  /** Ventes comptées dont le ticket est introuvable : montant INCONNU. */
+  sansMontant: number;
+  /** Acceptée par le serveur, en file, ou bloquée faute de droit. */
+  envoi: EtatEnvoi;
 }
 
-/** La session de caisse en cours, s'il y en a une. */
+/**
+ * La session de caisse en cours, s'il y en a une.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE HUB DISAIT « AUCUNE SESSION » PENDANT QUE LE COMPTOIR VENDAIT.       │
+ * │                                                                          │
+ * │ Cette lecture n'interrogeait que `register_sessions`, la table TIRÉE, où │
+ * │ une session ouverte hors ligne n'est pas écrite - elle vit dans le       │
+ * │ journal, et c'est délibéré (voir `features/pos/caisse.ts`). Relevé sur   │
+ * │ l'émulateur : le parc de caisses annonçait « 1 session ouverte » et      │
+ * │ « Attend son envoi » quand le hub, à deux écrans de là, affichait        │
+ * │ « Aucune session ouverte » et proposait d'en ouvrir une.                 │
+ * │                                                                          │
+ * │ Ce n'est pas qu'un affichage : le bandeau mène au parc de caisses, où le │
+ * │ caissier qui croit n'avoir rien d'ouvert ouvre une SECONDE session. Elle │
+ * │ porte un autre identifiant, et au déblocage c'est elle que le serveur    │
+ * │ refuse, avec toutes les ventes qui s'y rattachaient.                     │
+ * │                                                                          │
+ * │ Une seule lecture pour toute l'application, donc : `sessionOuverte()`,   │
+ * │ celle du comptoir, qui sait déjà lire la table, les clôtures en attente  │
+ * │ et le journal, dans cet ordre.                                           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
 export async function sessionOuverteResume(): Promise<SessionOuverte | null> {
-  const [s] = await db
-    .select({
-      id: registerSessions.id,
-      registerId: registerSessions.registerId,
-      openedAt: registerSessions.openedAt,
-      caisse: registers.name,
-    })
-    .from(registerSessions)
-    .leftJoin(registers, eq(registers.id, registerSessions.registerId))
-    .where(eq(registerSessions.status, "open"))
-    .limit(1);
+  const s = await sessionOuverte();
   if (!s) return null;
 
-  const ventes = await db
-    .select({ total: sales.total, currency: sales.currency })
-    .from(sales)
-    .where(inArray(sales.sessionId, [s.id]));
-
-  const m = new Map<string, number>();
-  for (const v of ventes) m.set(v.currency ?? "", (m.get(v.currency ?? "") ?? 0) + nb(v.total));
+  const compteurs =
+    (await compteursDeSessions([s.id])).get(s.id) ?? compteursVides();
 
   return {
     id: s.id,
-    caisse: s.caisse ?? "Caisse",
-    ouverteLe: s.openedAt ?? null,
-    nbVentes: ventes.length,
-    encaisseParDevise: [...m.entries()].map(([devise, montant]) => ({ devise, montant })),
+    caisse: s.registerName,
+    ouverteLe: s.openedAt,
+    nbVentes: compteurs.nbVentes,
+    encaisseParDevise: compteurs.encaisseParDevise,
+    sansMontant: compteurs.sansMontant,
+    envoi: s.envoi,
   };
 }
 

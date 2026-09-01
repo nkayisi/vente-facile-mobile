@@ -11,6 +11,8 @@
  */
 import { Text as RNText, type TextProps as RNTextProps } from "react-native";
 
+import { fusionner } from "./classes";
+
 export type TextVariant =
   | "h1"
   | "h2"
@@ -60,7 +62,10 @@ export function Text({
 }: TextProps) {
   return (
     <RNText
-      className={`${VARIANTS[variant]}${className ? ` ${className}` : ""}`}
+      // La variante perd ce que l'appelant redéfinit : sans ce retrait,
+      // `text-destructive` et `text-2xl` sont SANS EFFET sur une variante qui
+      // porte déjà une couleur ou une taille. Voir `ui/classes.ts`.
+      className={fusionner(VARIANTS[variant], className)}
       style={[numeric ? { fontVariant: ["tabular-nums"] } : null, style]}
       {...rest}
     />

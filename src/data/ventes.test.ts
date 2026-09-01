@@ -71,6 +71,7 @@ function enAttente(patch: Partial<VenteEnAttente> = {}): VenteEnAttente {
     devise: "USD",
     date: ce_matin,
     nbArticles: 2,
+    session: null,
     envoi: "en_attente",
     ...patch,
   };

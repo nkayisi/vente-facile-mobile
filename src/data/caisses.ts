@@ -23,7 +23,6 @@ import { desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import {
-  payments,
   registerSessions,
   registers,
   sales,
@@ -31,6 +30,8 @@ import {
   warehouses,
 } from "@/db/schema";
 import { enAttenteParType, type EtatEnvoi } from "@/sync";
+
+import { compteursDeSessions, compteursVides } from "./sessions";
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -94,32 +95,6 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
     .where(eq(registerSessions.status, "open"))
     .orderBy(desc(registerSessions.openedAt));
 
-  // Les ventes de TOUTES les sessions ouvertes en une requête : une par caisse
-  // ferait autant d'allers-retours SQLite qu'il y a de comptoirs.
-  const idsSessions = ouvertes.map((s) => s.id);
-  const ventes =
-    idsSessions.length > 0
-      ? await db
-          .select({
-            id: sales.id,
-            sessionId: sales.sessionId,
-            currency: sales.currency,
-            total: sales.total,
-          })
-          .from(sales)
-          .where(inArray(sales.sessionId, idsSessions))
-      : [];
-
-  const parSession = new Map<string, { nb: number; devises: Map<string, number> }>();
-  for (const v of ventes) {
-    const cle = v.sessionId ?? "";
-    const e = parSession.get(cle) ?? { nb: 0, devises: new Map<string, number>() };
-    e.nb += 1;
-    const d = v.currency ?? "";
-    e.devises.set(d, (e.devises.get(d) ?? 0) + nb(v.total));
-    parSession.set(cle, e);
-  }
-
   // Les ouvertures BLOQUÉES en sont : voir `features/pos/caisse.ts`, c'est la
   // même lecture, et deux écrans qui ne voient pas la même chose de la même
   // caisse est la pire des situations pour qui essaie de comprendre.
@@ -137,31 +112,45 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
     });
   }
 
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ UNE SESSION EN FILE COMPTAIT « 0 VENTE · 0 $ », TOUTE LA JOURNÉE.    │
+  // │                                                                      │
+  // │ Ses ventes ne sont pas dans `sales` - elles sont dans le journal,    │
+  // │ avec elle. La carte affichait donc un tiroir vide sur un comptoir    │
+  // │ qui venait d'encaisser, à côté d'un hub qui les listait toutes. Les  │
+  // │ compteurs se lisent des DEUX sources, en une fois pour toutes les    │
+  // │ sessions : une requête par comptoir ferait autant d'allers-retours   │
+  // │ SQLite qu'il y a de caisses.                                         │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const idsSessions = [
+    ...ouvertes.map((s) => s.id),
+    ...[...enAttenteParCaisse.values()].map((a) => a.id),
+  ];
+  const compteurs = await compteursDeSessions(idsSessions);
+
   const sessionDe = (registerId: string): SessionDeCaisse | null => {
     const s = ouvertes.find((x) => x.registerId === registerId);
     if (s) {
-      const agg = parSession.get(s.id);
+      const agg = compteurs.get(s.id) ?? compteursVides();
       const qui = `${s.prenom ?? ""} ${s.nom ?? ""}`.trim();
       return {
         id: s.id,
         ouverteLe: s.openedAt ?? null,
         parQui: qui || null,
-        nbVentes: agg?.nb ?? 0,
-        encaisseParDevise: [...(agg?.devises ?? new Map())].map(([devise, montant]) => ({
-          devise,
-          montant,
-        })),
+        nbVentes: agg.nbVentes,
+        encaisseParDevise: agg.encaisseParDevise,
         envoi: "envoye",
       };
     }
     const attente = enAttenteParCaisse.get(registerId);
     if (!attente) return null;
+    const agg = compteurs.get(attente.id) ?? compteursVides();
     return {
       id: attente.id,
       ouverteLe: attente.date,
       parQui: null,
-      nbVentes: 0,
-      encaisseParDevise: [],
+      nbVentes: agg.nbVentes,
+      encaisseParDevise: agg.encaisseParDevise,
       envoi: attente.envoi,
     };
   };
