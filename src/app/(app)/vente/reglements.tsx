@@ -45,7 +45,6 @@ import { ventesAvecReglementEnAttente } from "@/features/ventes/actes";
 import {
   AppBar,
   Badge,
-  Card,
   Chip,
   ChipRow,
   DataList,
@@ -53,6 +52,8 @@ import {
   MultiCurrencyTotal,
   Screen,
   SearchInput,
+  StatStrip,
+  StatStripItem,
   Text,
 } from "@/ui";
 
@@ -85,12 +86,7 @@ export default function Reglements() {
   });
 
   const toutes = donnees?.ventes ?? [];
-  const LIBELLES_FILTRE: Record<Filtre, string> = {
-    toutes: "factures",
-    attente: "factures en attente",
-    partielles: "factures partielles",
-    retard: "factures en retard",
-  };
+  const enRetard = toutes.filter((v) => (v.joursDeRetard ?? 0) > 0);
   const ventes = toutes.filter((v) => {
     if (filtre === "attente") return v.statut === "pending";
     if (filtre === "partielles") return v.statut === "partially_paid";
@@ -100,36 +96,53 @@ export default function Reglements() {
 
   const enTete = (
     <View className="gap-3 px-4 pb-3 pt-2">
-      {/* L'ARGENT D'ABORD. Cet écran répond à « combien reste-t-il à
-          encaisser » ; les filtres disent ensuite comment ce montant se
-          répartit. Le total arrivait TROISIÈME, sous quatre nombres sans
-          unité, à l'endroit où l'œil ne cherche pas un montant. */}
-      <Card>
-        {/* LE TOTAL SUIT LE FILTRE. Au-dessus d'une liste filtrée, un montant
-            global annonce une somme que rien à l'écran ne compose : le
-            marchand qui tape « En retard » veut savoir combien est en retard,
-            pas combien reste à encaisser en tout. Le libellé dit toujours sur
-            quoi il porte, et sur combien de pièces. */}
-        <Text variant="caption" className="mb-1">
-          {ventes.length === 0
-            ? "Restant dû"
-            : `Restant dû sur ${ventes.length} ${
-                ventes.length > 1
-                  ? LIBELLES_FILTRE[filtre]
-                  : LIBELLES_FILTRE[filtre].replace("factures", "facture")
-              }`}
-        </Text>
-        {/* Neutre, comme au back-office. Ce total n'est pas une anomalie :
-            c'est le chiffre d'affaires qui reste à rentrer, sur un écran où
-            TOUT est en attente. Peindre en rouge la raison d'être de l'écran
-            use le rouge, et il ne reste plus rien pour le vrai retard - qui
-            est, lui, à un doigt de là, sur sa puce. */}
-        <MultiCurrencyTotal
-          lignes={duParDevise(ventes)}
-          money={money.money}
-          vide="Rien à encaisser"
-        />
-      </Card>
+      {/* ┌──────────────────────────────────────────────────────────────┐
+          │ DEUX CHIFFRES, ET C'EST TOUT CE QUE CET ÉCRAN A À LIRE.      │
+          │                                                              │
+          │ Combien reste-t-il, et combien est DÉJÀ EN RETARD. Le second │
+          │ est la seule vraie mauvaise nouvelle de la page, et il       │
+          │ n'était écrit nulle part - le décompte « En retard » disait  │
+          │ un nombre de factures, jamais un montant, alors qu'on décide │
+          │ de relancer sur des sommes.                                  │
+          │                                                              │
+          │ La grammaire est celle du cadran du hub : libellé au-dessus, │
+          │ icône DANS la ligne du libellé, valeur en dessous sur toute  │
+          │ la largeur de la cellule. C'est ce qui protège les montants  │
+          │ longs, et un montant en CDF à sept chiffres l'est.           │
+          │                                                              │
+          │ Les deux valeurs sont GLOBALES et ne suivent pas les filtres.│
+          │ Un cadran est une référence : s'il bougeait à chaque puce,   │
+          │ on perdrait le chiffre auquel on compare, et sous « En       │
+          │ retard » les deux cellules afficheraient deux fois le même   │
+          │ montant. Ce sont les puces qui découpent la LISTE.           │
+          └──────────────────────────────────────────────────────────────┘ */}
+      <StatStrip>
+        <StatStripItem label="Restant dû" icon="Banknote">
+          {/* Neutre, comme au back-office. Ce total n'est pas une anomalie :
+              c'est le chiffre d'affaires qui reste à rentrer, sur un écran où
+              TOUT est en attente. Peindre en rouge la raison d'être de la page
+              use le rouge, et il n'en reste plus pour le vrai retard. */}
+          <MultiCurrencyTotal
+            lignes={duParDevise(toutes)}
+            money={money.money}
+            vide="Rien à encaisser"
+          />
+        </StatStripItem>
+        <StatStripItem
+          label="Dont en retard"
+          icon="AlertTriangle"
+          tone={enRetard.length > 0 ? "alert" : "neutral"}
+        >
+          {/* Un « 0 » en rouge crie pour rien, et à force on ne voit plus le
+              vrai rouge : sans retard, la cellule est neutre et le dit. */}
+          <MultiCurrencyTotal
+            lignes={duParDevise(enRetard)}
+            money={money.money}
+            tone={enRetard.length > 0 ? "destructive" : "foreground"}
+            vide="Rien en retard"
+          />
+        </StatStripItem>
+      </StatStrip>
 
       <SearchInput
         valeur={recherche}
