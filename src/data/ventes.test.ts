@@ -52,7 +52,7 @@ jest.mock("@/features/ventes/attente", () => ({
   ventesEnAttente: jest.fn(async () => mockAttente),
 }));
 
-import { historiqueVentes, relevesVentes } from "./ventes";
+import { historiqueVentes, joursDeRetard, reglementsEnAttente, relevesVentes } from "./ventes";
 
 const AUJOURDHUI = new Date();
 const ce_matin = new Date(
@@ -186,5 +186,110 @@ describe("historiqueVentes", () => {
     expect(page.elements).toHaveLength(1);
     expect(page.elements[0].envoi).toBeUndefined();
     expect(page.total).toBe(1);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ « EN RETARD : 1 » NE MENAIT NULLE PART.                                 │
+ * │                                                                          │
+ * │ Le décompte était affiché en tête, mais aucune ligne ne portait son      │
+ * │ échéance et la liste était triée par date de VENTE : la facture qui      │
+ * │ traîne depuis trois semaines se trouvait donc tout en bas, sous les      │
+ * │ récentes, et rien ne la désignait. Un écran de recouvrement se descend   │
+ * │ dans l'ordre où l'on appelle.                                            │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("joursDeRetard", () => {
+  const jours = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d;
+  };
+
+  it("compte en JOURS CIVILS, pas en heures", () => {
+    // Une facture due hier est en retard d'un jour dès minuit : c'est la
+    // lecture du marchand, et celle du serveur, qui compare des dates.
+    expect(joursDeRetard(jours(-1))).toBe(1);
+    expect(joursDeRetard(jours(-21))).toBe(21);
+  });
+
+  it("le jour de l'échéance n'est PAS un retard", () => {
+    // La journée court encore : relancer un client le matin de son échéance
+    // est le meilleur moyen de le fâcher pour rien.
+    expect(joursDeRetard(new Date())).toBe(0);
+    expect(joursDeRetard(jours(3))).toBe(0);
+  });
+
+  it("sans échéance, jamais de retard", () => {
+    // Rien à dépasser. En inventer un ferait relancer un client qui ne doit
+    // encore rien.
+    expect(joursDeRetard(null)).toBe(0);
+  });
+});
+
+describe("reglementsEnAttente", () => {
+  const jours = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d;
+  };
+
+  function facture(patch: Record<string, unknown>) {
+    return {
+      id: "s", reference: "VT", statut: "pending", total: "100",
+      amountDue: "100", currency: "USD", saleDate: ce_matin, dueDate: null,
+      client: null,
+      ...patch,
+    };
+  }
+
+  beforeEach(() => {
+    mockResultats.length = 0;
+  });
+
+  it("met le RETARD devant, le plus ancien en tête", async () => {
+    mockResultats.push([
+      facture({ id: "recente", reference: "VT-RECENTE", saleDate: ce_matin }),
+      facture({ id: "retard5", reference: "VT-5J", dueDate: jours(-5) }),
+      facture({ id: "retard20", reference: "VT-20J", dueDate: jours(-20) }),
+    ]);
+
+    const r = await reglementsEnAttente();
+    expect(r.ventes.map((v) => v.reference)).toEqual(["VT-20J", "VT-5J", "VT-RECENTE"]);
+    expect(r.enRetard).toBe(2);
+  });
+
+  it("porte l'échéance et le retard SUR CHAQUE LIGNE", async () => {
+    // Sans eux, le décompte en tête désigne des factures que la liste ne
+    // montre pas, et le marchand doit ouvrir chaque vente pour trouver
+    // laquelle relancer.
+    mockResultats.push([facture({ id: "s1", dueDate: jours(-3) })]);
+
+    const v = (await reglementsEnAttente()).ventes[0];
+    expect(v.joursDeRetard).toBe(3);
+    expect(v.echeance).not.toBeNull();
+  });
+
+  it("une facture SANS échéance n'est pas comptée en retard", async () => {
+    mockResultats.push([
+      facture({ id: "s1", dueDate: null, saleDate: jours(-90) }),
+    ]);
+
+    const r = await reglementsEnAttente();
+    expect(r.enRetard).toBe(0);
+    expect(r.ventes[0].joursDeRetard).toBe(0);
+  });
+
+  it("ne somme jamais entre devises", async () => {
+    mockResultats.push([
+      facture({ id: "s1", currency: "USD", amountDue: "10" }),
+      facture({ id: "s2", currency: "CDF", amountDue: "2800" }),
+    ]);
+
+    expect((await reglementsEnAttente()).duParDevise).toEqual([
+      { devise: "CDF", montant: 2800 },
+      { devise: "USD", montant: 10 },
+    ]);
   });
 });

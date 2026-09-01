@@ -51,6 +51,21 @@ export interface VenteResume {
    */
   nbArticles?: number;
   /**
+   * L'échéance de la facture, quand la lecture la porte.
+   *
+   * `undefined` se lit « pas relue », `null` « aucune échéance fixée » - et une
+   * facture sans échéance n'est jamais en retard, elle n'a rien à dépasser.
+   */
+  echeance?: Date | null;
+  /**
+   * Jours de retard, zéro quand rien n'est dépassé.
+   *
+   * Compté en JOURS CIVILS locaux : une facture due hier est en retard d'un
+   * jour dès minuit, et pas seulement vingt-quatre heures plus tard. C'est la
+   * lecture du marchand, et celle du serveur (`aging_date`, comparé à `today`).
+   */
+  joursDeRetard?: number;
+  /**
    * Où en est l'envoi de cette vente, quand elle vit encore dans le JOURNAL.
    *
    * Absent pour une vente tirée : elle est arrêtée, il n'y a rien à dire. Son
@@ -268,6 +283,23 @@ export const STATUT_VENTE: Record<string, { label: string; ton: "neutral" | "war
   refunded: { label: "Remboursée", ton: "neutral" },
 };
 
+/**
+ * Jours de retard d'une échéance, en jours CIVILS locaux.
+ *
+ * Comparer des horodatages ferait dire « à l'heure » d'une facture due hier à
+ * 14 h jusqu'à cet après-midi, alors que le marchand - et le serveur, qui
+ * compare des DATES (`aging_date` contre `today`) - la comptent en retard dès
+ * minuit. Une facture sans échéance n'est jamais en retard : elle n'a rien à
+ * dépasser, et inventer un retard ferait relancer un client qui ne doit rien
+ * encore.
+ */
+export function joursDeRetard(echeance: Date | null): number {
+  if (!echeance) return 0;
+  const jour = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const ecart = jour(new Date()) - jour(echeance);
+  return ecart > 0 ? Math.round(ecart / 86400000) : 0;
+}
+
 /** « depuis 3 h 20 », « depuis 5 min », « depuis 80 j » - formulation du web. */
 export function depuis(d: Date | null): string {
   if (!d) return "";
@@ -409,6 +441,29 @@ export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageV
   };
 }
 
+/**
+ * Restant dû d'une liste de factures, VENTILÉ par devise.
+ *
+ * Elle vit ici et non dans l'écran parce qu'un écran qui filtre a besoin du
+ * total de CE qu'il montre : un « restant dû » global au-dessus d'une liste
+ * filtrée dit un montant que rien à l'écran ne compose. Et une addition écrite
+ * dans un écran est exactement ce que ce module existe pour empêcher.
+ *
+ * Jamais de somme inter-devises : le même chiffre vaut soit trois dollars,
+ * soit trois francs.
+ */
+export function duParDevise(
+  ventes: VenteResume[]
+): { devise: string; montant: number }[] {
+  const parDevise = new Map<string, number>();
+  for (const v of ventes) {
+    parDevise.set(v.devise, (parDevise.get(v.devise) ?? 0) + v.resteAPayer);
+  }
+  return [...parDevise.entries()]
+    .map(([devise, montant]) => ({ devise, montant }))
+    .sort((a, b) => a.devise.localeCompare(b.devise));
+}
+
 export interface ReglementsEnAttente {
   ventes: VenteResume[];
   enAttente: number;
@@ -458,30 +513,40 @@ export async function reglementsEnAttente(recherche = ""): Promise<ReglementsEnA
     )
     .orderBy(desc(sales.saleDate));
 
-  const parDevise = new Map<string, number>();
-  let enRetard = 0;
-  const maintenant = Date.now();
-  for (const l of lignes) {
-    parDevise.set(l.currency ?? "", (parDevise.get(l.currency ?? "") ?? 0) + nb(l.amountDue));
-    if (l.dueDate && l.dueDate.getTime() < maintenant) enRetard += 1;
-  }
+  const ventes: VenteResume[] = lignes.map((l) => ({
+    id: l.id,
+    reference: l.reference,
+    client: l.client ?? null,
+    statut: l.statut,
+    total: nb(l.total),
+    resteAPayer: nb(l.amountDue),
+    devise: l.currency ?? "",
+    date: l.saleDate ?? null,
+    echeance: l.dueDate ?? null,
+    joursDeRetard: joursDeRetard(l.dueDate ?? null),
+  }));
+
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ LE RETARD PASSE DEVANT, ET LE PLUS ANCIEN EN TÊTE.                     │
+  // │                                                                        │
+  // │ Cet écran ne se lit pas, il se TRAITE : on descend la liste et on       │
+  // │ appelle. Trier par date de vente met en tête la facture la plus         │
+  // │ récente, c'est-à-dire celle qu'on relance en dernier, et enterre sous   │
+  // │ elle celle qui traîne depuis trois semaines. Le décompte « En retard »  │
+  // │ désignait d'ailleurs des factures que rien ne montrait dans la liste.   │
+  // └────────────────────────────────────────────────────────────────────────┘
+  ventes.sort((a, b) => {
+    const ra = a.joursDeRetard ?? 0;
+    const rb = b.joursDeRetard ?? 0;
+    if (ra !== rb) return rb - ra;
+    return (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0);
+  });
 
   return {
     enAttente: lignes.filter((l) => l.statut === "pending").length,
     partiellementPayees: lignes.filter((l) => l.statut === "partially_paid").length,
-    enRetard,
-    duParDevise: [...parDevise.entries()]
-      .map(([devise, montant]) => ({ devise, montant }))
-      .sort((a, b) => a.devise.localeCompare(b.devise)),
-    ventes: lignes.map((l) => ({
-      id: l.id,
-      reference: l.reference,
-      client: l.client ?? null,
-      statut: l.statut,
-      total: nb(l.total),
-      resteAPayer: nb(l.amountDue),
-      devise: l.currency ?? "",
-      date: l.saleDate ?? null,
-    })),
+    enRetard: ventes.filter((v) => (v.joursDeRetard ?? 0) > 0).length,
+    duParDevise: duParDevise(ventes),
+    ventes,
   };
 }

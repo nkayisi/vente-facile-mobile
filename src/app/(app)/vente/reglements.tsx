@@ -10,6 +10,23 @@
  * table tirée, elle, ne bouge pas. Sans cette lecture du journal, le caissier
  * verrait la facture inchangée et l'encaisserait une seconde fois - avec deux
  * reçus, deux numéros, et un client qui a payé une fois.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CET ÉCRAN NE SE LIT PAS, IL SE TRAITE.                                   │
+ * │                                                                          │
+ * │ On y descend la liste et on appelle. Il était présenté comme un rapport :│
+ * │ un cadran de QUATRE décomptes dont trois disaient la même chose          │
+ * │ (« Factures » = « En attente » + « Partielles »), et un quatrième,       │
+ * │ « En retard », qui ne menait NULLE PART - aucune ligne ne portait son    │
+ * │ échéance, et la liste était triée par date de vente, donc la facture qui │
+ * │ traîne depuis trois semaines se trouvait tout en bas.                    │
+ * │                                                                          │
+ * │ Les décomptes deviennent des FILTRES : un nombre qui appelle une action  │
+ * │ doit être là où l'on tape (c'est la règle déjà posée sur les tuiles du   │
+ * │ hub). Le retard passe devant, le plus ancien en tête, et chaque ligne    │
+ * │ dit de combien elle est en retard. Reste au-dessus le seul chiffre qui   │
+ * │ n'est pas un filtre, parce qu'il n'a pas de liste à ouvrir : l'argent.   │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { useState } from "react";
 import { View } from "react-native";
@@ -18,27 +35,46 @@ import { formatDateFr } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
-import { STATUT_VENTE, reglementsEnAttente, type VenteResume } from "@/data/ventes";
+import {
+  STATUT_VENTE,
+  duParDevise,
+  reglementsEnAttente,
+  type VenteResume,
+} from "@/data/ventes";
 import { ventesAvecReglementEnAttente } from "@/features/ventes/actes";
 import {
   AppBar,
   Badge,
   Card,
+  Chip,
+  ChipRow,
   DataList,
   DataRow,
   MultiCurrencyTotal,
   Screen,
   SearchInput,
-  StatStrip,
-  StatStripItem,
   Text,
 } from "@/ui";
 
 const TABLES = ["sales", "customers"];
 
+type Filtre = "toutes" | "attente" | "partielles" | "retard";
+
+/**
+ * « d'1 j » et non « de 1 j ».
+ *
+ * Le nombre est petit et la phrase courte : l'élision s'entend, et une faute
+ * sur un écran qu'on lit dix fois par jour finit par être la seule chose qu'on
+ * y voit.
+ */
+function libelleRetard(jours: number): string {
+  return jours === 1 ? "En retard d'1 j" : `En retard de ${jours} j`;
+}
+
 export default function Reglements() {
   const money = useMonnaie();
   const [recherche, setRecherche] = useState("");
+  const [filtre, setFiltre] = useState<Filtre>("toutes");
 
   const { donnees } = useLecture(() => reglementsEnAttente(recherche), {
     tables: TABLES,
@@ -48,83 +84,126 @@ export default function Reglements() {
     tables: ["outbox_operations"],
   });
 
-  const ventes = donnees?.ventes ?? [];
+  const toutes = donnees?.ventes ?? [];
+  const LIBELLES_FILTRE: Record<Filtre, string> = {
+    toutes: "factures",
+    attente: "factures en attente",
+    partielles: "factures partielles",
+    retard: "factures en retard",
+  };
+  const ventes = toutes.filter((v) => {
+    if (filtre === "attente") return v.statut === "pending";
+    if (filtre === "partielles") return v.statut === "partially_paid";
+    if (filtre === "retard") return (v.joursDeRetard ?? 0) > 0;
+    return true;
+  });
 
   const enTete = (
-    <View className="gap-4 px-4 pb-3 pt-2">
+    <View className="gap-3 px-4 pb-3 pt-2">
       {/* L'ARGENT D'ABORD. Cet écran répond à « combien reste-t-il à
-          encaisser » ; les quatre décomptes disent ensuite comment ce montant
-          se répartit. Le total arrivait TROISIÈME, sous quatre nombres sans
+          encaisser » ; les filtres disent ensuite comment ce montant se
+          répartit. Le total arrivait TROISIÈME, sous quatre nombres sans
           unité, à l'endroit où l'œil ne cherche pas un montant. */}
       <Card>
+        {/* LE TOTAL SUIT LE FILTRE. Au-dessus d'une liste filtrée, un montant
+            global annonce une somme que rien à l'écran ne compose : le
+            marchand qui tape « En retard » veut savoir combien est en retard,
+            pas combien reste à encaisser en tout. Le libellé dit toujours sur
+            quoi il porte, et sur combien de pièces. */}
         <Text variant="caption" className="mb-1">
-          Restant dû
+          {ventes.length === 0
+            ? "Restant dû"
+            : `Restant dû sur ${ventes.length} ${
+                ventes.length > 1
+                  ? LIBELLES_FILTRE[filtre]
+                  : LIBELLES_FILTRE[filtre].replace("factures", "facture")
+              }`}
         </Text>
         {/* Neutre, comme au back-office. Ce total n'est pas une anomalie :
             c'est le chiffre d'affaires qui reste à rentrer, sur un écran où
             TOUT est en attente. Peindre en rouge la raison d'être de l'écran
             use le rouge, et il ne reste plus rien pour le vrai retard - qui
-            est, lui, compté juste en dessous. */}
+            est, lui, à un doigt de là, sur sa puce. */}
         <MultiCurrencyTotal
-          lignes={donnees?.duParDevise ?? []}
+          lignes={duParDevise(ventes)}
           money={money.money}
           vide="Rien à encaisser"
         />
       </Card>
-
-      <StatStrip>
-        <StatStripItem
-          label="Factures"
-          value={String(ventes.length)}
-          icon="Receipt"
-        />
-        <StatStripItem
-          label="En attente"
-          value={String(donnees?.enAttente ?? 0)}
-          icon="Clock"
-        />
-        <StatStripItem
-          label="Partielles"
-          value={String(donnees?.partiellementPayees ?? 0)}
-          icon="Coins"
-        />
-        <StatStripItem
-          label="En retard"
-          value={String(donnees?.enRetard ?? 0)}
-          icon="AlertTriangle"
-          tone={donnees?.enRetard ? "alert" : undefined}
-        />
-      </StatStrip>
 
       <SearchInput
         valeur={recherche}
         onChange={setRecherche}
         placeholder="Rechercher par référence ou client..."
       />
+
+      {/* Les décomptes PORTENT le filtre : on tape sur le nombre qui inquiète.
+          « En retard » garde sa place même à zéro - une puce qui disparaît
+          quand tout va bien laisse croire que le filtre n'existe pas, et c'est
+          celui qu'on cherche en premier le jour où il compte. */}
+      <ChipRow>
+        <Chip
+          label={`Toutes (${toutes.length})`}
+          actif={filtre === "toutes"}
+          onPress={() => setFiltre("toutes")}
+        />
+        <Chip
+          label={`En attente (${donnees?.enAttente ?? 0})`}
+          actif={filtre === "attente"}
+          onPress={() => setFiltre("attente")}
+        />
+        <Chip
+          label={`Partielles (${donnees?.partiellementPayees ?? 0})`}
+          actif={filtre === "partielles"}
+          onPress={() => setFiltre("partielles")}
+        />
+        <Chip
+          label={`En retard (${donnees?.enRetard ?? 0})`}
+          icon="AlertTriangle"
+          actif={filtre === "retard"}
+          onPress={() => setFiltre("retard")}
+        />
+      </ChipRow>
     </View>
   );
 
   const rendu = (v: VenteResume) => {
     const s = STATUT_VENTE[v.statut];
     const enFile = dejaEnFile?.has(v.id) ?? false;
+    const retard = v.joursDeRetard ?? 0;
     return (
       <DataRow
         principal={v.reference}
-        secondaire={[v.client ?? "Client anonyme", v.date ? formatDateFr(v.date) : null]
+        // L'ÉCHÉANCE prime sur la date de vente : c'est elle qui décide s'il
+        // faut appeler aujourd'hui. Une facture sans échéance retombe sur sa
+        // date de vente, qui est ce que le serveur prend lui aussi pour
+        // mesurer l'ancienneté.
+        secondaire={[
+          v.client ?? "Client anonyme",
+          v.echeance
+            ? `échéance le ${formatDateFr(v.echeance)}`
+            : v.date
+              ? formatDateFr(v.date)
+              : null,
+        ]
           .filter(Boolean)
           .join(" · ")}
+        // Un seul badge, et c'est le plus actionnable : ce qui attend son envoi
+        // d'abord (le caissier ne doit pas réencaisser), puis le retard, puis
+        // le statut - que « sur X » dit déjà à demi-mot.
         badge={
           enFile ? (
-            <Badge tone="warning">Règlement en attente d'envoi</Badge>
+            <Badge tone="warning">Règlement en attente d&apos;envoi</Badge>
+          ) : retard > 0 ? (
+            <Badge tone="destructive">{libelleRetard(retard)}</Badge>
           ) : s ? (
             <Badge tone={s.ton}>{s.label}</Badge>
           ) : undefined
         }
         valeur={
           // Orange, comme le « Reste à payer » du back-office et comme la
-          // liste du hub. Le rouge y était déclaré depuis toujours et ne
-          // s'était jamais VU : `text-destructive` passé en `className`
-          // perdait contre la couleur de la variante (voir `ui/classes.ts`).
+          // liste du hub. Le rouge est réservé au retard : tout est dû ici, et
+          // un écran entièrement rouge ne désigne plus rien.
           <Text numeric variant="body" className="font-sans-medium text-warning">
             {money.money(v.resteAPayer, v.devise)}
           </Text>
@@ -147,11 +226,34 @@ export default function Reglements() {
         rendu={rendu}
         enTete={enTete}
         vide={{
-          icon: "CheckCircle2",
-          titre: "Rien à encaisser",
-          message: recherche
-            ? "Aucune facture ne correspond à votre recherche."
-            : "Toutes les factures sont soldées.",
+          // Une coche verte dit « tout est soldé ». C'est vrai sans filtre, et
+          // FAUX sous un filtre vide : deux factures attendent toujours, et
+          // annoncer le contraire ferait fermer l'écran.
+          icon: recherche ? "Search" : filtre === "toutes" ? "CheckCircle2" : "Filter",
+          titre:
+            recherche
+              ? "Aucune facture ne correspond"
+              : filtre === "retard"
+                ? "Aucune facture en retard"
+                : filtre === "attente"
+                  ? "Aucune facture entièrement impayée"
+                  : filtre === "partielles"
+                    ? "Aucune facture partiellement payée"
+                    : "Rien à encaisser",
+          // Un état vide sous un filtre ne dit PAS que tout est soldé : il dit
+          // que ce filtre-là est vide, et il rend le chemin du retour.
+          message:
+            recherche
+              ? "Essayez une autre référence ou un autre nom de client."
+              : filtre === "toutes"
+                ? "Toutes les factures sont soldées."
+                : `Aucune facture dans ce filtre, sur les ${toutes.length} qui restent à encaisser.`,
+          action:
+            recherche
+              ? { label: "Effacer la recherche", onPress: () => setRecherche("") }
+              : filtre === "toutes"
+                ? undefined
+                : { label: "Voir toutes les factures", onPress: () => setFiltre("toutes") },
         }}
       />
     </Screen>
