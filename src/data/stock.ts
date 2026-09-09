@@ -12,6 +12,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { products, stockLocations, stocks, warehouses } from "@/db/schema";
+import { etatDuRayon } from "@/data/etats-stock";
 
 const nb = (v: string | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -63,12 +64,30 @@ export async function relevesStock(): Promise<RelevesStock> {
     unites += q;
     // « avg_cost, sinon cost_price » : la règle vit ici et nulle part ailleurs.
     valeur += q * (nb(l.avgCost) || nb(l.costPrice));
-    if (q <= 0) rupture += 1;
-    // Le critere du serveur est `quantity <= product.reorder_point` ET
-    // `track_inventory`, SANS exclure le zero (`inventory/views.py::low_stock`).
-    // Un produit epuise compte donc dans les DEUX releves. Ecrire `else if`
-    // ici faisait sortir « Stock bas 0 » la ou le back-office affiche 1.
-    if (l.trackInventory && l.reorderPoint != null && q <= l.reorderPoint) bas += 1;
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ « STOCK BAS » ET « EN RUPTURE » NE SE RECOUVRENT PAS.              │
+    // │                                                                    │
+    // │ Le relevé suivait `low_stock` du serveur, qui est une ALERTE et    │
+    // │ compte donc aussi les rayons vides. Posé À CÔTÉ d'« En rupture »   │
+    // │ dans le même cadran, cela affichait « Stock bas 2 · En rupture 2 » │
+    // │ pour DEUX rayons : le marchand y lit quatre choses à traiter.      │
+    // │                                                                    │
+    // │ Pire, le chiffre MÈNE quelque part - `/rayon?etat=bas` - et cette  │
+    // │ liste, elle, range en cases exclusives : on tapait sur « 2 » pour  │
+    // │ arriver sur une liste vide. Un relevé doit compter ce que sa       │
+    // │ destination montre.                                                │
+    // │                                                                    │
+    // │ `etatDuRayon` est donc la SEULE règle, ici comme dans la liste et  │
+    // │ dans le document exporté. Elle est le miroir de `low_only` /       │
+    // │ `healthy` du serveur, ceux qui partitionnent.                      │
+    // └────────────────────────────────────────────────────────────────────┘
+    const etat = etatDuRayon({
+      total: q,
+      seuil: Number(l.reorderPoint ?? 0),
+      suitLeStock: Boolean(l.trackInventory),
+    });
+    if (etat === "rupture") rupture += 1;
+    if (etat === "bas") bas += 1;
   }
 
   return {

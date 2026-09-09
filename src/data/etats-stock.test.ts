@@ -48,3 +48,49 @@ describe("l'état d'un rayon", () => {
     }
   });
 });
+
+describe("les relevés du concentrateur ne se recouvrent pas", () => {
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ « STOCK BAS 2 · EN RUPTURE 2 » POUR DEUX RAYONS.                     │
+  // │                                                                      │
+  // │ `relevesStock` suivait `low_stock` du serveur, qui est une ALERTE et │
+  // │ compte donc aussi les rayons vides. Posés côte à côte dans le même   │
+  // │ cadran, les deux nombres se lisaient comme quatre choses à traiter.  │
+  // │                                                                      │
+  // │ Et le chiffre MÈNE quelque part - `/rayon?etat=bas` - où la liste    │
+  // │ range en cases exclusives : on tapait sur « 2 » pour arriver sur une │
+  // │ liste vide. Relevé à l'écran sur les données de développement.       │
+  // │                                                                      │
+  // │ Ce test tient l'invariant à la source : `etatDuRayon` range dans UNE │
+  // │ case, donc un rayon ne peut plus compter deux fois. Le vérifier ici  │
+  // │ plutôt que dans `data/stock` est ce qui le rend testable : ce module │
+  // │ ouvre la base SQLite au chargement.                                  │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const RAYONS = [
+    { total: 0, seuil: 10, suitLeStock: true }, // vide ET sous le seuil
+    { total: 0, seuil: 0, suitLeStock: true }, // vide, sans seuil
+    { total: 4, seuil: 10, suitLeStock: true }, // bas
+    { total: 40, seuil: 10, suitLeStock: true }, // sain
+    { total: 4, seuil: 10, suitLeStock: false }, // non suivi
+  ];
+
+  it("compte chaque rayon UNE fois et une seule", () => {
+    const etats = RAYONS.map(etatDuRayon);
+    const rupture = etats.filter((e) => e === "rupture").length;
+    const bas = etats.filter((e) => e === "bas").length;
+    const ok = etats.filter((e) => e === "ok").length;
+    expect(rupture + bas + ok).toBe(RAYONS.length);
+    // Un rayon VIDE et sous son seuil est une rupture, jamais les deux.
+    expect(rupture).toBe(2);
+    expect(bas).toBe(1);
+    expect(ok).toBe(2);
+  });
+
+  it("ne compte JAMAIS un rayon vide comme « bas »", () => {
+    // C'est le recouvrement lui-même : le nombre affiché à côté d'« En
+    // rupture » ne doit pas reprendre les mêmes rayons.
+    for (const seuil of [0, 1, 10, 999]) {
+      expect(etatDuRayon({ total: 0, seuil, suitLeStock: true })).not.toBe("bas");
+    }
+  });
+});

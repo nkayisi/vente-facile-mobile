@@ -53,16 +53,24 @@ const TABLES = ["stock_transfers", "stock_transfer_items", "warehouses", "produc
 /** Ce qui est proposé, selon l'état, et avec quelle permission. */
 const ACTIONS: Record<
   TransitionTransfert,
-  { label: string; depuis: string[]; permission: string; question: string }
+  {
+    label: string;
+    icone: "Check" | "Truck" | "Boxes" | "XCircle";
+    depuis: string[];
+    permission: string;
+    question: string;
+  }
 > = {
   approve: {
     label: "Approuver",
+    icone: "Check",
     depuis: ["draft"],
     permission: "stock_transfers.ship",
     question: "Le transfert passera en attente d'expédition. Le stock ne bouge pas encore.",
   },
   ship: {
     label: "Expédier",
+    icone: "Truck",
     depuis: ["draft", "pending"],
     permission: "stock_transfers.ship",
     question:
@@ -70,13 +78,18 @@ const ACTIONS: Record<
   },
   receive: {
     label: "Réceptionner",
+    icone: "Boxes",
     depuis: ["in_transit"],
     permission: "stock_transfers.receive",
+    // ⚠ Ne plus écrire que la réception partielle « se saisit depuis le
+    // back-office » : la feuille la saisit ici, canal par canal, et les champs
+    // y sont préremplis de l'expédié.
     question:
-      "Les quantités expédiées entrent dans l'entrepôt de destination. Une réception partielle se saisit depuis le back-office.",
+      "Les quantités que vous avez saisies entrent dans l'entrepôt de destination.",
   },
   cancel: {
     label: "Annuler",
+    icone: "XCircle",
     depuis: ["draft", "pending", "in_transit"],
     permission: "stock_transfers.cancel",
     question:
@@ -153,8 +166,68 @@ export default function DetailTransfertEcran() {
     }
   };
 
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ LES TRANSITIONS DESCENDENT DANS UNE BARRE FIXE.                        │
+  // │                                                                        │
+  // │ Elles s'empilaient en TÊTE de page : elles repoussaient les lignes du  │
+  // │ transfert sous la ligne de flottaison, et « Réceptionner » sortait de  │
+  // │ l'écran dès qu'on descendait lire CE QU'ON RÉCEPTIONNE, c'est-à-dire   │
+  // │ au moment précis où l'on décide. Le haut d'un écran de six pouces est  │
+  // │ hors de portée du pouce ; la barre, elle, est toujours là.             │
+  // │                                                                        │
+  // │ Les boutons restent AFFICHÉS quand une opération est en file, fermés   │
+  // │ et accompagnés de leur motif : un bouton absent est un cul-de-sac, un  │
+  // │ bouton fermé qui dit pourquoi n'en est pas un.                         │
+  // └────────────────────────────────────────────────────────────────────────┘
+  const progressifs = possibles.filter((a) => a !== "cancel");
+  // Le plus AVANCÉ prend la place primaire, à droite, où tombe le pouce :
+  // depuis un brouillon on peut approuver ou expédier, et c'est l'expédition
+  // qui fait avancer le transfert.
+  const principal = progressifs.at(-1);
+  const secondaires = progressifs.slice(0, -1);
+  const barreActions =
+    progressifs.length === 0 ? undefined : (
+      <View className="gap-2.5">
+        {enFile ? (
+          <Text variant="caption" className="text-muted-foreground">
+            {envoiEnFile === "bloque"
+              ? "Une opération sur ce transfert attend un droit : elle repartira dès que l'abonnement sera réglé ou la permission accordée."
+              : "Une opération sur ce transfert est déjà en file. Les actions rouvriront après la prochaine synchronisation."}
+          </Text>
+        ) : null}
+        <View className="flex-row gap-2">
+          {secondaires.map((a) => (
+            <Button
+              key={a}
+              variant="outline"
+              size="lg"
+              className="flex-1"
+              leftIcon={ACTIONS[a].icone}
+              disabled={enFile || envoi}
+              onPress={() => setConfirmation(a)}
+            >
+              {ACTIONS[a].label}
+            </Button>
+          ))}
+          {principal ? (
+            <Button
+              size="lg"
+              className="flex-1"
+              leftIcon={ACTIONS[principal].icone}
+              disabled={enFile || envoi}
+              onPress={() =>
+                principal === "receive" ? setReception(true) : setConfirmation(principal)
+              }
+            >
+              {ACTIONS[principal].label}
+            </Button>
+          ) : null}
+        </View>
+      </View>
+    );
+
   return (
-    <Screen scroll padded={false}>
+    <Screen scroll padded={false} pied={barreActions}>
       <AppBar
         title={t.reference}
         subtitle={`${t.source ?? "?"} → ${t.destination ?? "?"}`}
@@ -168,32 +241,25 @@ export default function DetailTransfertEcran() {
           consequence="Le statut ci-dessus ne changera qu'après, et les actions restent fermées d'ici là pour ne pas expédier deux fois."
         />
 
-        {possibles.length > 0 && !enFile ? (
-          <View className="gap-2">
-            {possibles
-              .filter((a) => a !== "cancel")
-              .map((a) => (
-                <Button
-                  key={a}
-                  fullWidth
-                  size="lg"
-                  onPress={() => (a === "receive" ? setReception(true) : setConfirmation(a))}
-                  leftIcon={a === "ship" ? "Truck" : a === "receive" ? "Boxes" : "Check"}
-                >
-                  {ACTIONS[a].label}
-                </Button>
-              ))}
-            {possibles.includes("cancel") ? (
-              <Button
-                variant="destructive"
-                fullWidth
-                leftIcon="XCircle"
-                onPress={() => setConfirmation("cancel")}
-              >
-                Annuler le transfert
-              </Button>
-            ) : null}
-          </View>
+        {/* ┌──────────────────────────────────────────────────────────────────┐
+            │ LE GESTE RARE ET LOURD RESTE ICI, LOIN DU POUCE.                 │
+            │                                                                  │
+            │ Annuler un transfert déjà expédié fait revenir la marchandise à  │
+            │ la source : c'est un geste qu'on ne fait pas deux fois par jour, │
+            │ et l'éloigner du bas de l'écran n'est pas un oubli. Les          │
+            │ transitions qui FONT AVANCER le transfert, elles, descendent     │
+            │ dans la barre fixe. Même partage que sur la fiche de vente.      │
+            └──────────────────────────────────────────────────────────────────┘ */}
+        {possibles.includes("cancel") ? (
+          <Button
+            variant="destructive"
+            fullWidth
+            leftIcon="XCircle"
+            disabled={enFile || envoi}
+            onPress={() => setConfirmation("cancel")}
+          >
+            Annuler le transfert
+          </Button>
         ) : null}
 
         <Card>

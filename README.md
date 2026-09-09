@@ -159,6 +159,22 @@ pnpm lint
 | Le build Android échoue sur un module natif | l'arbre `node_modules` a été installé par npm ou yarn : `rm -rf node_modules && pnpm install` |
 | Un module natif ajouté n'est pas trouvé | il faut reconstruire : `pnpm android`, pas `pnpm start` |
 | La base locale refuse de migrer | désinstaller l'application efface la base et repart de zéro (les opérations non poussées sont PERDUES) |
+| Un bandeau rouge SANS TEXTE au démarrage | c'est LogBox, et le défaut n'est pas chez nous : voir ci-dessous |
+
+⚠ **Le bandeau rouge vide du démarrage vient d'`expo-router`, pas de ce dépôt.**
+C'est la notification LogBox de l'avertissement React « Can't perform a React
+state update on a component that hasn't mounted yet », dont le texte ne se rend
+pas. Établi en capturant la pile : elle tombe dans
+`node_modules/expo-router/build/fork/useLinking.native.js`, où `getInitialState`
+appelle `onUnhandledLinking` depuis le `.then` d'une promesse, avant que le
+conteneur de navigation ne soit monté.
+
+Il ne se produit **que lorsque l'application est ouverte par un LIEN PROFOND**,
+c'est-à-dire par la commande `adb` ci-dessus, et seulement quand le chargement du
+bundle est lent, donc au premier démarrage à froid après une reconstruction. Un
+marchand qui touche l'icône ne le rencontre jamais, et **LogBox n'existe pas en
+production**. Ouvrir l'application par son icône plutôt que par le lien suffit à
+ne plus le voir. Ne pas rustiner `node_modules` pour ça.
 
 Les dossiers `ios/` et `android/` ne sont pas versionnés : ils se régénèrent par
 `npx expo prebuild --clean`. Cette commande **écrase** toute modification faite à

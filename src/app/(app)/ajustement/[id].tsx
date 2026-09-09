@@ -26,7 +26,7 @@ import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   AlertDialog, AppBar, Badge, Button, Card, CardHeader, Divider,
-  EmptyState, Screen, Spinner, StatValue, Text, useToast,
+  EmptyState, Mesure, Screen, Spinner, StatValue, Text, useToast,
 } from "@/ui";
 
 const TABLES = ["stock_adjustments", "stock_adjustment_items", "warehouses", "products"];
@@ -72,7 +72,9 @@ export default function DetailAjustementEcran() {
   const s = STATUT_AJUSTEMENT[a.statut];
   const envoiEnFile = attente?.ajustements.get(a.id);
   const enFile = envoiEnFile !== undefined;
-  const decidable = a.statut === "draft" && can("stock_adjustments.approve") && !enFile;
+  // ⚠ `enFile` ne sort PLUS de `decidable` : les boutons restent affichés,
+  // fermés, avec leur motif. Un bouton absent est un cul-de-sac.
+  const decidable = a.statut === "draft" && can("stock_adjustments.approve");
 
   const executer = async (transition: "approve" | "reject") => {
     if (envoi) return;
@@ -88,8 +90,67 @@ export default function DetailAjustementEcran() {
     }
   };
 
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ LA DÉCISION VIT DANS UNE BARRE FIXE, PAS AU MILIEU DE LA PAGE.         │
+  // │                                                                        │
+  // │ Les deux boutons étaient posés entre la carte de l'écart et celle des  │
+  // │ articles : ils défilaient hors de l'écran au moment précis où l'on     │
+  // │ descend LIRE ce qu'on approuve. Même correctif que sur la fiche d'un   │
+  // │ retour.                                                                 │
+  // │                                                                        │
+  // │ « REJETER » N'EST PAS L'ACTION DESTRUCTRICE, et le rouge mentait.      │
+  // │ Rejeter ne bouge NI le stock NI la caisse : c'est le refus d'un        │
+  // │ changement, l'état le plus prudent des deux. C'est APPROUVER qui       │
+  // │ applique les écarts au rayon, et qui ne se défait pas. Le rouge vit    │
+  // │ donc dans le DIALOGUE de confirmation, sur l'acte irréversible.        │
+  // └────────────────────────────────────────────────────────────────────────┘
+  const barreActions = decidable ? (
+    <View className="gap-2.5">
+      {/* LA VALEUR QUE LA DÉCISION ENGAGE, juste au-dessus des boutons : elle
+          est dans une carte en tête de page, c'est-à-dire hors de l'écran dès
+          qu'on descend lire les lignes. */}
+      <View className="flex-row items-baseline justify-between gap-3">
+        <Text variant="bodySmall" className="text-muted-foreground">
+          Valeur de l&apos;écart
+        </Text>
+        <Mesure
+          value={formatPrice(a.valeurEcart)}
+          tone={a.valeurEcart < 0 ? "destructive" : a.valeurEcart > 0 ? "success" : "foreground"}
+        />
+      </View>
+
+      {enFile ? (
+        <Text variant="caption" className="text-muted-foreground">
+          {envoiEnFile === "bloque"
+            ? "La décision attend un droit : elle repartira dès que l'abonnement sera réglé ou la permission accordée."
+            : "La décision est déjà en file. Les boutons rouvriront après la prochaine synchronisation."}
+        </Text>
+      ) : null}
+
+      <View className="flex-row gap-2">
+        <Button
+          variant="outline"
+          className="flex-1"
+          leftIcon="XCircle"
+          disabled={enFile || envoi}
+          onPress={() => setConfirmation("reject")}
+        >
+          Rejeter
+        </Button>
+        <Button
+          className="flex-1"
+          leftIcon="Check"
+          disabled={enFile || envoi}
+          onPress={() => setConfirmation("approve")}
+        >
+          Approuver
+        </Button>
+      </View>
+    </View>
+  ) : undefined;
+
   return (
-    <Screen scroll padded={false}>
+    <Screen scroll padded={false} pied={barreActions}>
       <AppBar
         title={a.reference}
         subtitle={[a.typeLabel, a.entrepot].filter(Boolean).join(" · ")}
@@ -120,27 +181,6 @@ export default function DetailAjustementEcran() {
             </View>
           ) : null}
         </Card>
-
-        {decidable ? (
-          <View className="gap-2">
-            <Button
-              fullWidth
-              size="lg"
-              leftIcon="Check"
-              onPress={() => setConfirmation("approve")}
-            >
-              Approuver et appliquer
-            </Button>
-            <Button
-              variant="destructive"
-              fullWidth
-              leftIcon="XCircle"
-              onPress={() => setConfirmation("reject")}
-            >
-              Rejeter
-            </Button>
-          </View>
-        ) : null}
 
         <Card>
           <CardHeader title={`Articles (${a.lignes.length})`} />
@@ -196,7 +236,11 @@ export default function DetailAjustementEcran() {
         }
         confirmer={confirmation === "approve" ? "Appliquer" : "Rejeter"}
         annuler="Revenir"
-        destructif={confirmation === "reject"}
+        // ⚠ C'EST APPROUVER QUI EST DESTRUCTIF, PAS REJETER. Rejeter ne bouge
+        // ni le stock ni la caisse ; approuver applique les écarts au rayon et
+        // écrit des mouvements, et cela ne se défait pas. Le drapeau était à
+        // l'envers, et le rouge disait donc le contraire du risque.
+        destructif={confirmation === "approve"}
         enCours={envoi}
         onConfirmer={() => confirmation && void executer(confirmation)}
         onAnnuler={() => setConfirmation(null)}
