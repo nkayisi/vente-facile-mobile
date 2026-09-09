@@ -34,7 +34,8 @@ export function Banner({
   tone?: BannerTone;
   title: string;
   message?: string;
-  action?: { label: string; onPress: () => void };
+  /** `loading` bloque l'appui ET le dit : un second envoi n'est pas un second cycle. */
+  action?: { label: string; onPress: () => void; loading?: boolean };
 }) {
   const t = BANNER[tone];
   return (
@@ -51,7 +52,7 @@ export function Banner({
         ) : null}
         {action ? (
           <View className="mt-2">
-            <Button size="sm" variant="outline" onPress={action.onPress}>
+            <Button size="sm" variant="outline" loading={action.loading} onPress={action.onPress}>
               {action.label}
             </Button>
           </View>

@@ -1,5 +1,5 @@
 /**
- * Détail d'un retour.
+ * Détail d'un retour, et sa décision.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ APPROUVER UN RETOUR ÉTEINT D'ABORD LA DETTE, ET NE REMBOURSE QUE LE     │
@@ -9,6 +9,33 @@
  * │ ordre, il rendait le produit ET continuait de devoir la totalité,        │
  * │ pendant qu'on lui remboursait en espèces de l'argent jamais encaissé.    │
  * │ Le dialogue le dit AVANT, parce que l'opération ne se défait pas.        │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA DÉCISION VIT DANS UNE BARRE FIXE, PAS AU MILIEU DE LA PAGE.          │
+ * │                                                                          │
+ * │ Les deux boutons étaient posés entre la carte des montants et celle des  │
+ * │ articles : ils défilaient hors de l'écran au moment précis où l'on       │
+ * │ descend LIRE ce qu'on approuve. Le gérant regardait la liste des         │
+ * │ articles, puis devait remonter pour décider - et décider, ici, engage    │
+ * │ du stock et de la caisse.                                                │
+ * │                                                                          │
+ * │ Ils descendent dans le `pied` de `Screen`, avec au-dessus d'eux le       │
+ * │ montant que la décision engage : c'est le chiffre qu'on annonce au       │
+ * │ client, il doit être sous les yeux quand on appuie. Même grammaire que   │
+ * │ la fiche de vente, qui porte son reste dû au-dessus d'« Encaisser ».     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ « REJETER » N'EST PAS L'ACTION DESTRUCTRICE, ET LE ROUGE MENTAIT.       │
+ * │                                                                          │
+ * │ Rejeter ne bouge NI le stock NI la caisse : c'est le refus d'un          │
+ * │ changement, l'état le plus prudent des deux. C'est APPROUVER qui fait    │
+ * │ revenir de la marchandise en rayon et sortir de l'argent du tiroir, et   │
+ * │ qui ne se défait pas. Peindre le refus en rouge et l'engagement en       │
+ * │ orange dit exactement l'inverse du risque ; à force, le rouge ne veut    │
+ * │ plus rien dire là où il compte. Le poids de l'acte est porté par le      │
+ * │ dialogue de confirmation, qui nomme ses conséquences.                    │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { useCallback, useState } from "react";
@@ -29,13 +56,28 @@ import {
   enAttenteRetoursDevis,
   transitionRetour,
 } from "@/features/ventes/retours-devis";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   AlertDialog, AppBar, Badge, Banner, Button, Card, CardHeader, Divider,
-  EmptyState, Screen, Spinner, StatValue, Text, useToast,
+  EmptyState, Icon, Mesure, Screen, Skeleton, StatStrip, StatStripItem, Text,
+  useToast,
 } from "@/ui";
 
-const TABLES = ["sale_returns", "sale_return_items", "sales", "products"];
+const TABLES = ["sale_returns", "sale_return_items", "sales", "sale_items", "products", "customers", "users"];
+
+function Paire({ label, valeur }: { label: string; valeur: string }) {
+  return (
+    <View className="flex-row items-baseline justify-between gap-3 py-1">
+      <Text variant="bodySmall" numberOfLines={1} className="min-w-0 flex-1 text-muted-foreground">
+        {label}
+      </Text>
+      <Text variant="bodySmall" numeric className="shrink-0 font-sans-medium">
+        {valeur}
+      </Text>
+    </View>
+  );
+}
 
 export default function DetailRetourEcran() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -67,12 +109,16 @@ export default function DetailRetourEcran() {
       reference: "Référence à venir",
       venteId: attente.venteId,
       venteReference: null,
+      client: null,
+      clientId: null,
       statut: "draft",
       montant: attente.montant,
       rembourse: attente.montant,
-      devise: "",
+      devise: money.primaryCode,
       motif: attente.motif,
       date: attente.date,
+      creePar: null,
+      approuvePar: null,
       approuveLe: null,
       lignes: attente.lignes.map((l, i) => ({
         id: `${id}-${i}`,
@@ -83,8 +129,11 @@ export default function DetailRetourEcran() {
         remisEnStock: l.remisEnStock,
       })),
     };
-  }, [id]);
-  const { donnees: r, chargement } = useLecture(charger, {
+    // `primaryCode` n'est qu'un repli d'affichage pour une vente qui n'est
+    // pas descendue : il ne déclenche aucune relecture, `useLecture` ne
+    // dépendant que de l'identifiant.
+  }, [id, money.primaryCode]);
+  const { donnees: r, chargement, recharger } = useLecture(charger, {
     tables: [...TABLES, "outbox_operations"],
     deps: [id],
   });
@@ -94,10 +143,14 @@ export default function DetailRetourEcran() {
 
   if (chargement && !r) {
     return (
-      <Screen>
+      <Screen scroll padded={false}>
         <AppBar title="Retour" />
-        <View className="flex-1 items-center justify-center">
-          <Spinner />
+        {/* Un squelette à la FORME de la fiche : un tourniquet centré ne dit
+            pas ce qui arrive, et l'écran se réorganise ensuite sous les yeux. */}
+        <View className="gap-4 p-4">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
         </View>
       </Screen>
     );
@@ -111,7 +164,7 @@ export default function DetailRetourEcran() {
           icon="PackageX"
           title="Retour introuvable"
           message="Il n'est pas encore descendu sur ce terminal, ou il a été supprimé."
-          action={{ label: "Retour", onPress: () => router.back() }}
+          action={{ label: "Revenir", onPress: () => router.back() }}
         />
       </Screen>
     );
@@ -122,9 +175,16 @@ export default function DetailRetourEcran() {
   // sur ce terminal : on se replie sur la principale plutôt que d'écrire un
   // montant SANS SYMBOLE, qui ne dirait pas dans quoi le client est remboursé.
   const devise = r.devise || money.primaryCode;
-  const enFile = attente?.retours.has(r.id) ?? false;
-  const aCreer = attente?.creations.has(r.id) ?? false;
+  const envoiEnFile = attente?.retours.get(r.id);
+  const envoiCreation = attente?.creations.get(r.id);
+  const enFile = envoiEnFile !== undefined;
+  const aCreer = envoiCreation !== undefined;
   const decidable = r.statut === "draft" && can("sale_returns.approve") && !enFile;
+
+  // Ce que la décision engage, dit avant qu'on appuie. Sur un brouillon, le
+  // serveur n'a encore rien arrêté : `refund_amount` vaut le montant rendu, et
+  // l'imputation sur la dette se fera À l'approbation.
+  const remisEnRayon = r.lignes.filter((l) => l.remisEnStock).length;
 
   const executer = async (transition: "approve" | "reject") => {
     if (envoi) return;
@@ -141,7 +201,44 @@ export default function DetailRetourEcran() {
   };
 
   return (
-    <Screen scroll padded={false}>
+    <Screen
+      scroll
+      padded={false}
+      onRefresh={recharger}
+      refreshing={chargement && r !== null}
+      pied={
+        decidable ? (
+          <View className="gap-2.5">
+            {/* Le MONTANT au-dessus des boutons : c'est ce qu'on annonce au
+                client au moment de décider, il ne doit pas être quinze
+                centimètres plus haut. */}
+            <View className="flex-row items-baseline justify-between gap-3">
+              <Text variant="bodySmall" className="text-muted-foreground">
+                Marchandise rendue
+              </Text>
+              <Mesure value={money.money(r.montant, devise)} />
+            </View>
+            <View className="flex-row gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                leftIcon="XCircle"
+                onPress={() => setConfirmation("reject")}
+              >
+                Rejeter
+              </Button>
+              <Button
+                className="flex-1"
+                leftIcon="Check"
+                onPress={() => setConfirmation("approve")}
+              >
+                Approuver
+              </Button>
+            </View>
+          </View>
+        ) : undefined
+      }
+    >
       <AppBar
         title={r.reference}
         subtitle={r.venteReference ? `Sur ${r.venteReference}` : undefined}
@@ -150,107 +247,149 @@ export default function DetailRetourEcran() {
 
       <View className="gap-4 p-4">
         {aCreer ? (
-          <Banner
-            tone="warning"
-            title="Ce retour attend son envoi"
-            message="Il n'existe encore que sur ce terminal. Sa référence définitive et son approbation viendront après la synchronisation."
+          <BandeauEnvoi
+            envoi={envoiCreation}
+            titre="Ce retour attend son envoi"
+            consequence="Il n'existe encore que sur ce terminal ; sa référence définitive et son approbation viendront après."
           />
-        ) : enFile ? (
+        ) : (
+          <BandeauEnvoi
+            envoi={envoiEnFile}
+            titre="Une décision attend son envoi"
+            consequence="Le statut ne changera qu'après."
+          />
+        )}
+
+        {/* CE QUI EST DÉJÀ ARRIVÉ, dit une fois pour toutes en tête : sans
+            cela, un retour approuvé ressemble à un retour en attente auquel
+            manqueraient ses boutons. */}
+        {r.statut === "approved" ? (
           <Banner
-            tone="warning"
-            title="Une décision attend son envoi"
-            message="Le statut ne changera qu'après synchronisation."
+            tone="success"
+            title="Retour approuvé"
+            message={[
+              r.approuveLe ? `Le ${formatDateTimeFr(r.approuveLe)}` : null,
+              r.approuvePar ? `par ${r.approuvePar}` : null,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .concat(
+                remisEnRayon > 0
+                  ? `. ${remisEnRayon} article${remisEnRayon > 1 ? "s sont revenus" : " est revenu"} en stock.`
+                  : ". Aucun article n'est revenu en stock."
+              )}
+          />
+        ) : r.statut === "rejected" ? (
+          <Banner
+            tone="info"
+            title="Retour rejeté"
+            message="Ni le stock ni la caisse n'ont bougé. La marchandise reste au nom du client sur sa facture."
           />
         ) : null}
 
-        <Card>
-          <Text variant="caption" className="mb-1">
-            Marchandise rendue
+        {/* LE CADRAN : deux lectures, et deux seulement. Ce qui est rendu, et
+            ce qui sort de la caisse. Deux `StatValue` empilés dans une même
+            carte donnaient deux titres de même poids sans dire lequel
+            répondait à quoi. */}
+        <StatStrip>
+          <StatStripItem
+            label="Marchandise rendue"
+            icon="PackageX"
+            value={money.money(r.montant, devise)}
+          />
+          <StatStripItem
+            label={r.statut === "approved" ? "Remboursé en espèces" : "À rembourser"}
+            icon="Banknote"
+            // Le remboursement n'est pas une alerte : c'est le montant normal
+            // d'un retour. Il ne se colore que s'il diffère de la marchandise
+            // rendue, là où il y a quelque chose à comprendre.
+            tone={r.rembourse !== r.montant ? "warn" : "neutral"}
+            value={money.money(r.rembourse, devise)}
+          />
+        </StatStrip>
+
+        {r.rembourse !== r.montant ? (
+          // La différence a éteint de la dette : c'est la règle de l'ordre
+          // d'imputation, et la dire évite de croire à une erreur de calcul.
+          <Text variant="caption" className="-mt-2">
+            {`La différence, ${money.money(r.montant - r.rembourse, devise)}, a éteint la dette du client sur cette facture : elle n'est pas sortie de la caisse.`}
           </Text>
-          <StatValue value={money.money(r.montant, devise)} />
-          {r.rembourse !== r.montant ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Remboursé en espèces
-              </Text>
-              <StatValue value={money.money(r.rembourse, devise)} tone="destructive" />
-              {/* La différence a éteint de la dette : c'est la règle de l'ordre
-                  d'imputation, et la dire évite de croire à une erreur. */}
-              <Text variant="caption" className="mt-1">
-                Le reste a éteint la dette du client sur cette facture.
-              </Text>
-            </View>
-          ) : null}
-          {r.motif ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Motif
-              </Text>
-              <Text variant="bodySmall">{r.motif}</Text>
-            </View>
-          ) : null}
-        </Card>
-
-        {decidable ? (
-          <View className="gap-2">
-            <Button
-              fullWidth
-              size="lg"
-              leftIcon="Check"
-              onPress={() => setConfirmation("approve")}
-            >
-              Approuver le retour
-            </Button>
-            <Button
-              variant="destructive"
-              fullWidth
-              leftIcon="XCircle"
-              onPress={() => setConfirmation("reject")}
-            >
-              Rejeter
-            </Button>
-          </View>
         ) : null}
 
-        <Card>
-          <CardHeader title={`Articles (${r.lignes.length})`} />
-          <View>
-            {r.lignes.map((l, i) => (
-              <View key={l.id}>
-                {i > 0 ? <Divider /> : null}
-                <View className="flex-row items-start justify-between gap-3 py-3">
-                  <View className="min-w-0 flex-1">
-                    <Text variant="bodySmall" className="font-sans-medium">
-                      {l.produit}
-                    </Text>
-                    <Text variant="caption">
-                      {`${l.quantite} × ${money.money(l.prixUnitaire, devise)}`}
-                      {/* Ne PAS remettre en stock est le cas particulier : un
-                          article cassé ne retourne pas en rayon. */}
-                      {l.remisEnStock ? "" : "  ·  non remis en stock"}
-                    </Text>
-                  </View>
-                  <Text variant="bodySmall" numeric className="shrink-0 font-sans-medium">
-                    {money.money(l.total, devise)}
-                  </Text>
-                </View>
-              </View>
-            ))}
+        <Card className="p-0">
+          <View className="p-4 pb-0">
+            <CardHeader
+              title={`Articles rendus (${r.lignes.length})`}
+              subtitle={
+                remisEnRayon === r.lignes.length
+                  ? "Tous reviennent en stock."
+                  : remisEnRayon === 0
+                    ? "Aucun ne revient en stock."
+                    : `${remisEnRayon} sur ${r.lignes.length} reviennent en stock.`
+              }
+            />
           </View>
+          {r.lignes.map((l, i) => (
+            <View key={l.id}>
+              {i > 0 ? <Divider /> : null}
+              <View className="flex-row items-start justify-between gap-3 px-4 py-3">
+                <View className="min-w-0 flex-1">
+                  <Text variant="bodySmall" className="font-sans-medium">
+                    {l.produit}
+                  </Text>
+                  <Text variant="caption">
+                    {`${l.quantite} × ${money.money(l.prixUnitaire, devise)}`}
+                  </Text>
+                  {/* ┌──────────────────────────────────────────────────────┐
+                      │ « NON REMIS EN STOCK » ÉTAIT UNE INCISE DE LÉGENDE.  │
+                      │                                                      │
+                      │ Il se lisait « 2 × 12 500 $  ·  non remis en stock », │
+                      │ à la même graisse et à la même couleur que la        │
+                      │ quantité. C'est pourtant la seule ligne qui décide   │
+                      │ si de la marchandise revient en rayon ou part à la   │
+                      │ casse : elle a droit à sa pastille.                  │
+                      └──────────────────────────────────────────────────────┘ */}
+                  {!l.remisEnStock ? (
+                    <View className="mt-1.5 flex-row">
+                      <Badge tone="warning">Ne revient pas en stock</Badge>
+                    </View>
+                  ) : null}
+                </View>
+                <Mesure value={money.money(l.total, devise)} />
+              </View>
+            </View>
+          ))}
         </Card>
 
         <Card>
           <CardHeader title="Informations" />
-          <View className="gap-0.5">
-            <Text variant="caption">
-              {`Créé le ${r.date ? formatDateTimeFr(r.date) : "—"}`}
-            </Text>
+          <View>
+            {r.client ? <Paire label="Client" valeur={r.client} /> : null}
+            <Paire
+              label="Enregistré le"
+              valeur={r.date ? formatDateTimeFr(r.date) : "—"}
+            />
+            {r.creePar ? <Paire label="Par" valeur={r.creePar} /> : null}
             {r.approuveLe ? (
-              <Text variant="caption">{`Approuvé le ${formatDateTimeFr(r.approuveLe)}`}</Text>
+              <Paire
+                label={r.statut === "rejected" ? "Décidé le" : "Approuvé le"}
+                valeur={formatDateTimeFr(r.approuveLe)}
+              />
             ) : null}
+            {r.approuvePar ? <Paire label="Décidé par" valeur={r.approuvePar} /> : null}
           </View>
-          {r.venteId ? (
+
+          {r.motif ? (
             <View className="mt-3">
+              <Text variant="caption" className="mb-1">
+                Motif du retour
+              </Text>
+              <Text variant="bodySmall">{r.motif}</Text>
+            </View>
+          ) : null}
+
+          {r.venteId ? (
+            <View className="mt-4">
               <Button
                 variant="outline"
                 fullWidth
@@ -262,6 +401,19 @@ export default function DetailRetourEcran() {
             </View>
           ) : null}
         </Card>
+
+        {/* La raison pour laquelle il n'y a PAS de boutons, quand il n'y en a
+            pas : un écran qui se tait laisse chercher où l'on approuve. */}
+        {!decidable && r.statut === "draft" ? (
+          <View className="flex-row items-start gap-2 px-1">
+            <Icon name="Info" size={16} color="mutedForeground" />
+            <Text variant="caption" className="min-w-0 flex-1">
+              {enFile || aCreer
+                ? "La décision sera possible une fois ce retour arrivé au serveur."
+                : "Approuver ou rejeter un retour demande une permission que votre compte n'a pas. Demandez-le au gérant."}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <AlertDialog
@@ -276,7 +428,10 @@ export default function DetailRetourEcran() {
         }
         confirmer={confirmation === "approve" ? "Approuver" : "Rejeter"}
         annuler="Revenir"
-        destructif={confirmation === "reject"}
+        // Le poids est sur l'ACTE IRRÉVERSIBLE, pas sur le refus : approuver
+        // fait revenir de la marchandise et sortir de l'argent, rejeter ne
+        // touche à rien.
+        destructif={confirmation === "approve"}
         enCours={envoi}
         onConfirmer={() => confirmation && void executer(confirmation)}
         onAnnuler={() => setConfirmation(null)}

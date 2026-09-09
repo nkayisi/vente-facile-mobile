@@ -15,20 +15,39 @@
  * **Trois formes.**
  *
  *   `ligne`   pleine largeur : pastille, titre, description, chevron.
- *   `grille`  deux par rangée, pour un concentrateur qui EXPLIQUE ses
- *             destinations. Sans description, elle se replie sur une seule
- *             ligne, pastille à gauche du titre - empiler une pastille au
- *             dessus d'un titre qu'aucune description ne suit laisse un vide au
- *             milieu, et ce vide se lit comme une donnée manquante.
+ *   `grille`  deux par rangée : pastille À GAUCHE du titre, sur une seule
+ *             ligne. La description n'y est PAS dessinée.
  *   `action`  trois par rangée, sur la carte commune : pastille ronde centrée,
  *             libellé d'un mot dessous, décompte en pastille de coin.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ EN `grille`, LA PASTILLE EST À CÔTÉ DU TITRE, PAS AU-DESSUS.             │
+ * │                                                                          │
+ * │ Elle empilait pastille, titre et description : cent dix points de haut   │
+ * │ par tuile, donc plus de deux cent trente pour les quatre raccourcis de   │
+ * │ « Gestion de stock », qui repoussaient les entrepôts hors de l'écran.    │
+ * │ Alignés, les mêmes quatre tiennent en cent cinquante.                    │
+ * │                                                                          │
+ * │ La description part avec l'empilement, et ce n'est pas un oubli : une    │
+ * │ cellule de deux par rangée laisse QUATRE-VINGT-DIX-SEPT points au texte  │
+ * │ sur un écran de 390, où « D'un entrepôt à l'autre » se casse en deux     │
+ * │ lignes ou se tronque en « D'un entrepôt à… ». Une explication illisible  │
+ * │ n'explique rien, et elle coûte la hauteur qu'on venait chercher. Elle    │
+ * │ reste dans l'étiquette d'ACCESSIBILITÉ, comme en `action` : c'est le     │
+ * │ lecteur d'écran qui en a le plus besoin, lui qui n'a pas la pastille de  │
+ * │ couleur pour situer la rubrique.                                         │
+ * │                                                                          │
+ * │ La forme `ligne`, elle, GARDE sa description : en pleine largeur le      │
+ * │ texte dispose de deux cent soixante points, et elle y tient sur une      │
+ * │ ligne.                                                                   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ `action` EXISTE PARCE QU'UNE TUILE ENCADRÉE SE LIT COMME UN RELEVÉ.      │
  * │                                                                          │
- * │ La forme `grille` sans description donne un rectangle à bordure, à fond  │
- * │ de carte, portant une icône, un libellé et - pour « Règlements en        │
- * │ attente » - un NOMBRE. C'est trait pour trait la grammaire d'une cellule │
+ * │ La forme `grille` donne un rectangle à bordure, à fond de carte,        │
+ * │ portant une icône, un libellé et - pour « Règlements en attente » - un   │
+ * │ NOMBRE. C'est trait pour trait la grammaire d'une cellule                │
  * │ de `StatStrip`, posée quarante points sous un `StatStrip`. La frontière  │
  * │ que le dépôt a payé cher (« deux registres, deux formes ») tenait alors  │
  * │ au seul intitulé de section, ce qui ne suffit pas : on lit une forme     │
@@ -82,11 +101,12 @@ export function ActionTile({
   href: string;
   title: string;
   /**
-   * Omise en `grille` quand la destination se passe d'explication.
+   * Dessinée en `ligne` seulement.
    *
-   * En `action` elle n'est PAS dessinée - la cellule fait cent dix points de
-   * large : elle complète le libellé lu par le lecteur d'écran, à qui
-   * « Règlements » seul ne dit pas de quels règlements il s'agit.
+   * En `grille` comme en `action`, la cellule est trop étroite pour l'accueillir
+   * sans la casser ou la tronquer : elle n'y est pas dessinée et complète le
+   * libellé lu par le lecteur d'écran, à qui « Règlements » seul ne dit pas de
+   * quels règlements il s'agit.
    */
   description?: string;
   icon: IconName;
@@ -107,8 +127,6 @@ export function ActionTile({
   const desactive = Boolean(raison);
   const grille = forme === "grille";
   const compte = badge && badge > 0 ? badge : null;
-  // Sans description, rien ne justifie d'empiler : voir l'en-tête de fichier.
-  const empile = grille && Boolean(description);
 
   const aller = desactive ? undefined : () => router.push(href as never);
   const etiquette = [
@@ -202,20 +220,13 @@ export function ActionTile({
         disabled={desactive}
         accessibilityRole="link"
         accessibilityLabel={etiquette}
-        className={`rounded-xl border border-border bg-card p-3.5${
-          empile ? "" : " flex-row items-center gap-3"
-        }${desactive ? " opacity-50" : ""}`}
+        className={`flex-row items-center gap-3 rounded-xl border border-border bg-card p-3.5${
+          desactive ? " opacity-50" : ""
+        }`}
         pressedClassName="active:opacity-90 active:scale-[0.98]"
       >
-        {empile ? (
-          <View className="flex-row items-start justify-between">
-            {pastille}
-            {decompte}
-          </View>
-        ) : (
-          pastille
-        )}
-        <View className={empile ? "mt-2.5" : "min-w-0 flex-1"}>
+        {pastille}
+        <View className="min-w-0 flex-1">
           <Text
             variant="bodySmall"
             numberOfLines={2}
@@ -223,13 +234,14 @@ export function ActionTile({
           >
             {title}
           </Text>
-          {description ? (
+          {/* Voir l'en-tête : la description ne se dessine qu'en pleine largeur. */}
+          {description && !grille ? (
             <Text variant="caption" numberOfLines={2}>
               {description}
             </Text>
           ) : null}
         </View>
-        {empile ? null : decompte}
+        {decompte}
         {/* Le chevron est le repère de direction de la forme PLEINE LARGEUR.
             Dans une cellule de grille il mangerait la largeur du titre, et la
             tuile entière dit déjà qu'elle mène ailleurs. */}

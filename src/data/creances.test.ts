@@ -114,8 +114,54 @@ describe("chargerCreances", () => {
         echu: 9923.43,
         nbFactures: 2,
         plusAncienneJours: 9,
+        // Le rapport ne porte AUCUN numéro, et c'est juste : un rapport n'a
+        // pas à transporter un annuaire. L'écran le joint depuis la base
+        // locale, après coup.
+        telephone: null,
       },
     ]);
+  });
+
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ LES DEUX SEULS CHIFFRES CONVERTIS DU RAPPORT ÉTAIENT JETÉS.            │
+   * │                                                                        │
+   * │ Le serveur rend `total_primary` et `overdue_primary` ; cette lecture ne │
+   * │ les prenait pas, et l'écran n'avait donc aucune réponse à « combien     │
+   * │ me doit-on ». Il fallait additionner les cartes par devise de tête,     │
+   * │ c'est-à-dire faire soi-même l'addition inter-devises que tout le reste  │
+   * │ de l'écran interdit.                                                    │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  it("lit les deux chiffres convertis, et la devise dans laquelle ils sont", async () => {
+    mockGet.mockResolvedValue({ ...REPONSE, overdue_primary: "9000.00" });
+
+    const c = await chargerCreances(CONTEXTE);
+    expect(c.totalPrincipal).toBe(9923.43);
+    expect(c.echuPrincipal).toBe(9000);
+    expect(c.devisePrincipale).toBe("USD");
+  });
+
+  it("lit la date d'arrêté : sans elle, on relance sur des chiffres d'avant-hier", async () => {
+    mockGet.mockResolvedValue(REPONSE);
+    expect((await chargerCreances(CONTEXTE)).arreteAu).toBe("2026-09-01");
+  });
+
+  it("une devise principale absente retombe sur celle du contexte, jamais sur du vide", async () => {
+    // `money(x, "")` rend un montant SANS SYMBOLE, en silence : dans une
+    // application multi-devise, « 9 923,43 » ne veut rien dire.
+    mockGet.mockResolvedValue({ ...REPONSE, primary_currency: "" });
+    expect((await chargerCreances(CONTEXTE)).devisePrincipale).toBe("USD");
+  });
+
+  it("une réponse tronquée ne fabrique ni date ni montant", async () => {
+    // Un rapport amputé doit se lire comme amputé, pas comme un rapport à zéro
+    // dont l'arrêté serait aujourd'hui.
+    mockGet.mockResolvedValue({});
+    const c = await chargerCreances(CONTEXTE);
+    expect(c.arreteAu).toBeNull();
+    expect(c.totalPrincipal).toBe(0);
+    expect(c.parDevise).toEqual([]);
   });
 
   it("une réponse sans débiteur ne fabrique pas de ligne", async () => {

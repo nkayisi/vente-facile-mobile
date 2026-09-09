@@ -142,6 +142,16 @@ export interface LigneTransfert {
   expedie: number | null;
   recu: number | null;
   facteur: number | null;
+  /**
+   * Le partage ENREGISTRÉ de la ligne, canal par canal.
+   *
+   * ⚠ Il est LU, jamais redivisé : `expedie / facteur` redécouperait au
+   * facteur du jour un envoi préparé sous un autre. `null` des deux côtés
+   * quand aucun partage n'a été enregistré - il n'y a alors rien à proposer
+   * par canal, et l'inventer serait pire que ne rien offrir.
+   */
+  contenantsExpedies: number | null;
+  vracExpedie: number | null;
 }
 
 export interface DetailTransfert {
@@ -227,6 +237,8 @@ export async function detailTransfert(id: string): Promise<DetailTransfert | nul
         expedie: l.quantityShipped != null ? nb(l.quantityShipped) : null,
         recu: l.quantityReceived != null ? nb(l.quantityReceived) : null,
         facteur: cond ? facteur : null,
+        contenantsExpedies: l.packageQuantity != null ? paquets : null,
+        vracExpedie: l.looseQuantity != null ? vrac : null,
       };
     }),
   };

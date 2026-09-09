@@ -23,9 +23,12 @@
  */
 import * as Crypto from "expo-crypto";
 
-import { enAttenteParType, enqueue } from "@/sync";
+import { enAttenteParType, enqueue, type EtatEnvoi } from "@/sync";
+
+import { pireEnvoiOuRien } from "@/features/sync/attente";
 
 import { PREFIXE, prochainNumero } from "@/features/pos/numerotation";
+import { deviseOuPrincipale } from "@/data/devise-principale";
 
 /** Ce qu'un règlement ajouté à une facture transporte. */
 export interface SaisieReglement {
@@ -107,8 +110,14 @@ export interface EnAttenteSurVente {
   reglements: { id: string; montant: number; devise: string; numeroRecu: string }[];
   /** Somme des règlements en attente, par devise. */
   totalParDevise: { devise: string; montant: number }[];
-  /** Une annulation attend son tour. */
-  annulationEnAttente: boolean;
+  /**
+   * Où en est l'annulation qui attend, s'il y en a une.
+   *
+   * Un booléen ne disait pas si elle partira seule : une annulation BLOQUÉE
+   * attend une décision, et annoncer « attend son envoi » enverrait le
+   * caissier chercher un réseau déjà là.
+   */
+  annulationEnAttente: EtatEnvoi | undefined;
 }
 
 /**
@@ -126,13 +135,15 @@ export async function enAttenteSurVente(venteId: string): Promise<EnAttenteSurVe
       currency?: string;
       receipt_number?: string;
     }>("sale.add_payment"),
-    enAttenteParType<{ sale: string }>("sale.cancel"),
+    // `avecBloquees` : une annulation bloquée doit continuer de fermer le
+    // bouton, sinon le caissier en met une seconde en file.
+    enAttenteParType<{ sale: string }>("sale.cancel", { avecBloquees: true }),
   ]);
 
   const miens = reglements.filter((o) => o.payload.sale === venteId);
   const parDevise = new Map<string, number>();
   for (const o of miens) {
-    const d = o.payload.currency ?? "";
+    const d = deviseOuPrincipale(o.payload.currency);
     parDevise.set(d, (parDevise.get(d) ?? 0) + Number(o.payload.tendered_amount ?? 0));
   }
 
@@ -140,11 +151,13 @@ export async function enAttenteSurVente(venteId: string): Promise<EnAttenteSurVe
     reglements: miens.map((o) => ({
       id: o.id,
       montant: Number(o.payload.tendered_amount ?? 0),
-      devise: o.payload.currency ?? "",
+      devise: deviseOuPrincipale(o.payload.currency),
       numeroRecu: o.payload.receipt_number ?? "",
     })),
     totalParDevise: [...parDevise.entries()].map(([devise, montant]) => ({ devise, montant })),
-    annulationEnAttente: annulations.some((o) => o.payload.sale === venteId),
+    annulationEnAttente: pireEnvoiOuRien(
+      annulations.filter((o) => o.payload.sale === venteId).map((o) => o.envoi)
+    ),
   };
 }
 

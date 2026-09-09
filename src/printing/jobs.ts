@@ -77,6 +77,29 @@ function construire(
   }
 }
 
+/**
+ * Version des données rangées.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA VERSION 1 PORTE SES MONTANTS EN DEVISE PRINCIPALE.                   │
+ * │                                                                          │
+ * │ Le ticket de vente rangeait les totaux du panier en devise PRINCIPALE    │
+ * │ sous l'étiquette de la devise de FACTURE. La version 2 range les vrais   │
+ * │ montants de facture. Les deux se distinguent par ce champ, et par lui    │
+ * │ seul : rien dans les données elles-mêmes ne dit dans quelle devise elles │
+ * │ sont, puisque `currency` annonçait déjà la facture dans les deux cas.    │
+ * │                                                                          │
+ * │ TOUTE LECTURE QUI CONVERTIT DOIT LE CONSULTER. Un document rangé avant   │
+ * │ la mise à jour et pas encore poussé - c'est-à-dire précisément ceux que  │
+ * │ le tableau de bord et le hub des ventes lisent - serait sinon converti   │
+ * │ une seconde fois, et sur un établissement multi-devise le chiffre        │
+ * │ d'affaires du jour partirait d'un facteur deux mille huit cents.         │
+ * │                                                                          │
+ * │ L'absence du champ vaut 1 : les lignes déjà en base n'en portent aucun.  │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export const VERSION_DONNEES = 2;
+
 /** Range un document, sans l'imprimer. Rend son identifiant local. */
 export async function enregistrerDocument(options: {
   kind: GenreDocument;
@@ -101,7 +124,7 @@ export async function enregistrerDocument(options: {
     kind: options.kind,
     documentNumber: options.documentNumber,
     label: options.label,
-    data: JSON.stringify(options.donnees),
+    data: JSON.stringify({ ...options.donnees, schemaVersion: VERSION_DONNEES }),
     printCount: options.dejaImprime ? 1 : 0,
     createdAt: new Date(),
   });

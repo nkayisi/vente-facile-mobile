@@ -32,6 +32,7 @@ import { inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { sales } from "@/db/schema";
 import { ventesEnAttente } from "@/features/ventes/attente";
+import { deviseOuPrincipale } from "./devise-principale";
 
 export interface CompteursSession {
   nbVentes: number;
@@ -75,7 +76,7 @@ export async function compteursDeSessions(
     if (!e) continue;
     dejaTirees.add(v.reference);
     e.nb += 1;
-    const devise = v.currency ?? "";
+    const devise = deviseOuPrincipale(v.currency);
     if (devise === "") {
       e.sansMontant += 1;
       continue;

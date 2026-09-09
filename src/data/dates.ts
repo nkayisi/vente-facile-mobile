@@ -33,6 +33,22 @@ export function dateHeureCourteFr(d: Date): string {
 }
 
 /**
+ * « 06 septembre 2026 », quantième sur DEUX chiffres.
+ *
+ * C'est la forme que le back-office compose par
+ * `toLocaleDateString("fr-CD", { day: "2-digit", month: "long", year: "numeric" })`,
+ * et qu'on ne peut pas recopier : `Intl` est proscrit ici, Hermes n'embarquant
+ * pas l'ICU complète - une locale qu'il ne reconnaît pas ne LÈVE PAS, elle se
+ * replie sur l'anglais, donc jamais sur la machine du développeur.
+ *
+ * Les deux chiffres ne sont pas du zèle : ils alignent les noms de sessions
+ * d'inventaire quand on les lit en liste.
+ */
+export function dateLongueFr(d: Date): string {
+  return `${deux(d.getDate())} ${monthLong(d.getMonth())} ${d.getFullYear()}`;
+}
+
+/**
  * « Lundi 31 août », première lettre en capitale.
  *
  * Le jour de la semaine est en tête parce que c'est ce qu'un marchand vérifie
@@ -42,4 +58,40 @@ export function dateHeureCourteFr(d: Date): string {
 export function jourEnLettresFr(d: Date): string {
   const s = `${weekdayLong(d.getDay())} ${d.getDate()} ${monthLong(d.getMonth())}`;
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * « 2026-08-31 », le jour au format que le serveur attend.
+ *
+ * Les composantes sont LOCALES : `toISOString()` bascule en UTC, et un acte
+ * saisi à 23 h 30 à Kinshasa s'y daterait du lendemain - il tomberait alors
+ * dans le rapport du mauvais jour, et personne ne le verrait.
+ */
+export function jourISO(d: Date): string {
+  const deux = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
+}
+
+/**
+ * L'inverse de `jourISO` : « 2026-09-02 » vers une date LOCALE.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `new Date("2026-09-02")` N'EST PAS LE 2 SEPTEMBRE PARTOUT.              │
+ * │                                                                          │
+ * │ La forme courte est interprétée en UTC par la spécification, si bien que │
+ * │ la date obtenue est minuit UTC : sur un fuseau en retard sur Greenwich   │
+ * │ elle se rend « 01 sept. ». L'arrêté d'un rapport daterait donc de la     │
+ * │ veille, et le marchand conclurait que ses créances n'ont pas été mises à │
+ * │ jour. Kinshasa étant en avance, le défaut ne se verrait jamais ici - ce  │
+ * │ qui est précisément ce qui le rend dangereux à laisser.                  │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Rend `null` sur une chaîne qui n'est pas une date : un rapport dont l'arrêté
+ * est illisible ne doit pas afficher « Invalid Date » au marchand.
+ */
+export function dateDepuisJourISO(iso: string | null | undefined): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((iso ?? "").trim());
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? null : d;
 }

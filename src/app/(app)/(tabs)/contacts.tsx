@@ -14,7 +14,6 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
-import { formatPrice } from "@vente-facile/core";
 
 import { listeClients, listeFournisseurs, relevesContacts, type ClientResume } from "@/data/contacts";
 import { useMonnaie } from "@/data/devises";
@@ -33,6 +32,7 @@ import {
   Screen,
   SearchInput,
   Segmented,
+  Mesure,
   StatValue,
   Text,
 } from "@/ui";
@@ -148,7 +148,6 @@ export default function Contacts() {
           <MultiCurrencyTotal
             lignes={r?.creances ?? []}
             money={money.money}
-            vide={formatPrice(0)}
           />
         </CarteReleve>
       </View>
@@ -209,6 +208,9 @@ export default function Contacts() {
                     lignes={c.soldes}
                     money={money.money}
                     tone={c.soldePrincipal > 0 ? "destructive" : "chart2"}
+                    // L'échelle d'une RANGÉE : c'est le nom du client qui la
+                    // porte, le solde l'accompagne.
+                    taille="mesure"
                   />
                 ) : undefined
               }
@@ -261,7 +263,7 @@ export default function Contacts() {
             }
             valeur={
               f.solde !== 0 ? (
-                <StatValue value={money.money(f.solde, f.devise ?? "")} tone="primary" />
+                <Mesure value={money.money(f.solde, f.devise)} tone="primary" />
               ) : undefined
             }
             sousValeur={f.solde !== 0 ? "Solde" : null}

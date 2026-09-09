@@ -52,7 +52,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
-import { formatPrice, formatTimeFr } from "@vente-facile/core";
+import { formatTimeFr } from "@vente-facile/core";
 
 import { jourEnLettresFr } from "@/data/dates";
 import { useMonnaie } from "@/data/devises";
@@ -60,6 +60,7 @@ import { useLecture } from "@/data/live";
 import { STATUT_VENTE, depuis, relevesVentes, sessionOuverteResume } from "@/data/ventes";
 import { useSession } from "@/session/provider";
 import { libelleEnvoi } from "@/data/envoi";
+import { ETAT_SESSION } from "@/features/caisse/apparence";
 import {
   ActionTile,
   Badge,
@@ -176,31 +177,34 @@ export default function Ventes() {
           // │ qui redevient actif) se remet correctement. C'est propre au  │
           // │ style de bordure, pas à toute classe conditionnelle.         │
           // └──────────────────────────────────────────────────────────────┘
+          // ┌──────────────────────────────────────────────────────────────┐
+          // │ UNE COCHE VERTE SUR « ATTEND SON ENVOI » DIT LE CONTRAIRE    │
+          // │ DU TEXTE.                                                    │
+          // │                                                              │
+          // │ Le bandeau ne changeait de couleur que pour le BLOCAGE : une │
+          // │ ouverture encore en file sortait en vert sous un             │
+          // │ `CheckCircle2`, à côté des mots « Attend son envoi ». La     │
+          // │ coche est le signal le plus fort de l'écran et elle affirme  │
+          // │ « c'est fait » ; on lit une forme avant de lire un mot.      │
+          // │                                                              │
+          // │ Trois états, trois traitements, et la MÊME table que le parc │
+          // │ de caisses : `features/caisse/apparence.ts`. Deux écrans qui │
+          // │ ne montrent pas la même chose de la même session font douter │
+          // │ qu'il s'agisse de la même.                                   │
+          // └──────────────────────────────────────────────────────────────┘
           className={
             session
-              ? envoiSession?.ton === "warning"
-                ? "flex-row items-center gap-3 rounded-xl border border-solid border-warning/30 bg-warning/10 p-3.5"
-                : "flex-row items-center gap-3 rounded-xl border border-solid border-success/30 bg-success/10 p-3.5"
+              ? `flex-row items-center gap-3 rounded-xl border border-solid p-3.5 ${
+                  ETAT_SESSION[session.envoi].boite
+                }`
               : "flex-row items-center gap-3 rounded-xl border border-dashed border-border bg-card p-3.5"
           }
           pressedClassName="active:opacity-90 active:scale-[0.98]"
         >
           <Icon
-            name={
-              session
-                ? envoiSession?.ton === "warning"
-                  ? "AlertTriangle"
-                  : "CheckCircle2"
-                : "Clock"
-            }
+            name={session ? ETAT_SESSION[session.envoi].icone : "Clock"}
             size={20}
-            color={
-              session
-                ? envoiSession?.ton === "warning"
-                  ? "warning"
-                  : "success"
-                : "mutedForeground"
-            }
+            color={session ? ETAT_SESSION[session.envoi].couleur : "mutedForeground"}
           />
           <View className="min-w-0 flex-1">
             <Text variant="label" numberOfLines={1}>
@@ -248,7 +252,6 @@ export default function Ventes() {
             <MultiCurrencyTotal
               lignes={r?.totalParDevise ?? []}
               money={money.money}
-              vide={formatPrice(0)}
             />
           </StatStripItem>
           <StatStripItem
@@ -260,7 +263,6 @@ export default function Ventes() {
             <MultiCurrencyTotal
               lignes={r?.panierMoyenParDevise ?? []}
               money={money.money}
-              vide={formatPrice(0)}
             />
           </StatStripItem>
           <StatStripItem
@@ -276,7 +278,6 @@ export default function Ventes() {
               lignes={r?.aEncaisserParDevise ?? []}
               money={money.money}
               tone={aEncaisser > 0 ? "warning" : "foreground"}
-              vide={formatPrice(0)}
             />
           </StatStripItem>
         </StatStrip>

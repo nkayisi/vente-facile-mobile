@@ -13,7 +13,7 @@
  * qui a bougé depuis - et l'écart mesurerait alors les ventes de la journée
  * plutôt que le manquant.
  */
-import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import {
   formatPackagedDifference,
@@ -24,9 +24,11 @@ import {
 
 import { db } from "@/db/client";
 import {
+  categories,
   inventoryCounts,
   inventorySessions,
   products,
+  stocks,
   units,
   warehouses,
 } from "@/db/schema";
@@ -99,13 +101,35 @@ export async function listeSessions(
     .orderBy(desc(inventorySessions.createdAt))
     .limit(f.limite ?? 100);
 
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ L'AGRÉGAT EST BORNÉ AUX SESSIONS LISTÉES, ET IL DESCEND EN SQL.       │
+  // │                                                                        │
+  // │ Il balayait TOUTES les lignes de comptage de la base - sans filtre,    │
+  // │ sans agrégation, en les rapatriant une par une pour les compter en     │
+  // │ mémoire. Une organisation qui a inventorié tout son catalogue une      │
+  // │ dizaine de fois en porte des dizaines de milliers, relues à chaque     │
+  // │ frappe dans la recherche, sur l'écran d'un terminal.                   │
+  // │                                                                        │
+  // │ Les sessions affichées sont au plus `limite` : c'est à elles seules    │
+  // │ que l'avancement se rapporte.                                          │
+  // └────────────────────────────────────────────────────────────────────────┘
+  const ids = lignes.map((l) => l.id);
   const total = new Map<string, number>();
   const comptees = new Map<string, number>();
-  for (const c of await db
-    .select({ id: inventoryCounts.sessionId, compte: inventoryCounts.isCounted })
-    .from(inventoryCounts)) {
-    total.set(c.id, (total.get(c.id) ?? 0) + 1);
-    if (c.compte) comptees.set(c.id, (comptees.get(c.id) ?? 0) + 1);
+  if (ids.length > 0) {
+    const agregats = await db
+      .select({
+        id: inventoryCounts.sessionId,
+        lignes: sql<number>`count(*)`,
+        comptees: sql<number>`sum(case when ${inventoryCounts.isCounted} then 1 else 0 end)`,
+      })
+      .from(inventoryCounts)
+      .where(inArray(inventoryCounts.sessionId, ids))
+      .groupBy(inventoryCounts.sessionId);
+    for (const a of agregats) {
+      total.set(a.id, Number(a.lignes));
+      comptees.set(a.id, Number(a.comptees ?? 0));
+    }
   }
 
   const elements = lignes.map((s) => ({
@@ -265,4 +289,162 @@ export async function detailSession(id: string): Promise<DetailSession | null> {
     comptees: rendues.filter((l) => l.estCompte).length,
     valeurEcart: nb(se.totalDifferenceValue),
   };
+}
+
+/**
+ * Les quatre relevés du cadran, comptés sur TOUTE la table.
+ *
+ * ⚠ Le back-office les calcule sur `sessions.filter(...)`, c'est-à-dire sur
+ * les vingt lignes de la page affichée : ses chiffres sont faux dès la page 2,
+ * et un cadran qui ne compte que ce qu'on voit ne sert à rien - c'est
+ * précisément ce qu'on vient y chercher quand la liste est longue. On copie
+ * l'intention, pas le défaut.
+ */
+export async function relevesInventaire(): Promise<{
+  enCours: number;
+  enRevision: number;
+  brouillons: number;
+  valides: number;
+}> {
+  const lignes = await db
+    .select({ statut: inventorySessions.status, n: sql<number>`count(*)` })
+    .from(inventorySessions)
+    .where(eq(inventorySessions.isDeleted, false))
+    .groupBy(inventorySessions.status);
+
+  const par = (code: string) =>
+    Number(lignes.find((l) => l.statut === code)?.n ?? 0);
+
+  return {
+    enCours: par("in_progress"),
+    enRevision: par("review"),
+    brouillons: par("draft"),
+    valides: par("validated"),
+  };
+}
+
+// ------------------------------------------------- périmètre d'une session
+
+/**
+ * Le stock DISPONIBLE d'un entrepôt, en condition SQL.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE SERVEUR OPPOSE `quantity > reserved_quantity`, PAS `quantity > 0`.    │
+ * │                                                                          │
+ * │ `InventorySessionCreateSerializer.validate` le fait trois fois : sur     │
+ * │ l'entrepôt, sur les catégories et sur les produits. S'en écarter ici     │
+ * │ ferait proposer un choix que le serveur refusera, et le magasinier       │
+ * │ découvrirait le refus après coup, en quarantaine.                        │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+const disponibleDans = (entrepot: string) =>
+  and(
+    eq(stocks.warehouseId, entrepot),
+    sql`cast(${stocks.quantity} as real) > cast(coalesce(${stocks.reservedQuantity}, 0) as real)`
+  );
+
+/** Un entrepôt porte-t-il de quoi inventorier ? Le serveur refuse sinon. */
+export async function entrepotADuStock(entrepot: string): Promise<boolean> {
+  const [{ n } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(stocks)
+    .where(disponibleDans(entrepot));
+  return n > 0;
+}
+
+/**
+ * Une entrée du périmètre, prête pour `ListeChoixMultiple`.
+ *
+ * `detail` porte ce qui lève l'ambiguïté : le nombre d'articles pour une
+ * catégorie, le code pour un produit. Les deux lectures rendent la MÊME forme,
+ * pour que le panneau de choix n'ait pas à savoir laquelle il affiche.
+ */
+export interface OptionPerimetre {
+  id: string;
+  nom: string;
+  detail?: string;
+}
+
+/**
+ * Les catégories qui ont du stock disponible dans cet entrepôt.
+ *
+ * Miroir de `getCategories(..., { warehouse, with_stock: true })` du
+ * back-office. Une catégorie sans stock ici est refusée par le serveur avec
+ * « Certaines catégories sélectionnées n'ont aucun produit en stock » : ne pas
+ * la proposer vaut mieux que de la faire refuser.
+ */
+export async function categoriesInventoriables(
+  entrepot: string
+): Promise<OptionPerimetre[]> {
+  const lignes = await db
+    .select({
+      id: categories.id,
+      nom: categories.name,
+      articles: sql<number>`count(distinct ${products.id})`,
+    })
+    .from(stocks)
+    .innerJoin(products, eq(products.id, stocks.productId))
+    .innerJoin(categories, eq(categories.id, products.categoryId))
+    .where(and(disponibleDans(entrepot), eq(products.isDeleted, false)))
+    .groupBy(categories.id, categories.name)
+    .orderBy(asc(categories.name));
+
+  return lignes.map((l) => {
+    const n = Number(l.articles);
+    return {
+      id: l.id,
+      nom: l.nom,
+      detail: `${n} ${n === 1 ? "article" : "articles"} en stock`,
+    };
+  });
+}
+
+/**
+ * Les articles qui ont du stock disponible dans cet entrepôt.
+ *
+ * Le back-office cherche côté serveur avec un débat de 350 ms ; ici la
+ * recherche est LOCALE, donc instantanée, et il n'y a rien à débattre. La
+ * borne existe pour la même raison que partout : une liste de mille lignes ne
+ * se parcourt pas au pouce.
+ */
+export async function articlesInventoriables(
+  entrepot: string,
+  recherche = "",
+  limite = 40
+): Promise<OptionPerimetre[]> {
+  const terme = recherche.trim().toLowerCase();
+  const motif = `%${terme}%`;
+
+  const lignes = await db
+    .select({
+      id: products.id,
+      nom: products.name,
+      sku: products.sku,
+      quantite: stocks.quantity,
+    })
+    .from(stocks)
+    .innerJoin(products, eq(products.id, stocks.productId))
+    .where(
+      and(
+        disponibleDans(entrepot),
+        eq(products.isDeleted, false),
+        terme
+          ? or(
+              like(sql`lower(coalesce(${products.name}, ''))`, motif),
+              like(sql`lower(coalesce(${products.sku}, ''))`, motif),
+              like(sql`lower(coalesce(${products.barcode}, ''))`, motif)
+            )
+          : undefined
+      )
+    )
+    .orderBy(asc(products.name))
+    .limit(limite);
+
+  // Le SKU plutôt qu'un compteur : sur un article, c'est ce qui lève
+  // l'ambiguïté entre deux libellés voisins.
+  return lignes.map((l) => ({
+    id: l.id,
+    nom: l.nom,
+    ...(l.sku ? { detail: l.sku } : {}),
+  }));
 }

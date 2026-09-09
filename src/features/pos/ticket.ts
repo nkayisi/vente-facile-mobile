@@ -15,8 +15,8 @@
  */
 import {
   looseQuantityOf,
-  lineGross,
   packagingFactorOf,
+  type SaleCurrencyTotals,
 } from "@vente-facile/core/pos";
 import { getPackaging, pluralizeUnit } from "@vente-facile/core";
 import type {
@@ -80,15 +80,21 @@ export interface ContexteTicket {
   reference: string;
   date: Date;
   etat: EtatPanier;
-  /** Totaux du panier, calculés par le paquet partagé. */
+  /**
+   * Totaux du panier, calculés par le paquet partagé.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ SEULE `facture` S'IMPRIME. Les champs en devise PRINCIPALE ne sont là  │
+   * │ que pour la monnaie rendue et la fidélité, qui se tiennent dans cette  │
+   * │ devise-là.                                                             │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
   totaux: {
-    sousTotal: number;
-    taxe: number;
-    remiseLignes: number;
-    remiseGlobale: number;
+    /** Ventilation dans la devise de FACTURE : c'est ce que le client lit. */
+    facture: SaleCurrencyTotals;
+    /** Remise fidélité, en devise PRINCIPALE (`point_value` y est libellé). */
     remiseFidelite: number;
-    total: number;
-    totalFacture: number;
+    /** Monnaie rendue, dans la devise choisie pour la rendre. */
     monnaie: number;
   };
   deviseFacture: string;
@@ -112,15 +118,34 @@ export interface ContexteTicket {
  */
 export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
   const { etat, totaux } = contexte;
+  const { facture } = totaux;
 
-  const items: SaleReceiptItem[] = etat.lignes.map((ligne) => ({
-    name: ligne.product.name,
-    quantity: ligne.quantity,
-    quantityLabel: libelleQuantite(ligne),
-    unitPrice: ligne.unit_price,
-    discountPercentage: ligne.discount_percentage || undefined,
-    total: lineGross(ligne),
-  }));
+  // ┌──────────────────────────────────────────────────────────────────────────┐
+  // │ CHAQUE LIGNE VIENT DE LA VENTILATION, DANS L'ORDRE.                     │
+  // │                                                                          │
+  // │ `lineGross(ligne)` et `ligne.unit_price` sont en devise PRINCIPALE : les │
+  // │ imprimer sous l'étiquette de la facture donnait des lignes qui ne        │
+  // │ sommaient pas leur propre total. `facture.lines` porte les deux valeurs  │
+  // │ déjà converties ET arrondies ligne à ligne, dans l'ordre exact du        │
+  // │ panier, comme le serveur les recalculera.                                │
+  // └──────────────────────────────────────────────────────────────────────────┘
+  const items: SaleReceiptItem[] = etat.lignes.map((ligne, i) => {
+    const l = facture.lines[i];
+    return {
+      name: ligne.product.name,
+      quantity: ligne.quantity,
+      quantityLabel: libelleQuantite(ligne),
+      // Le prix qui se lit sous le nom est celui du CONTENANT dès que la ligne
+      // en porte un : c'est ce que le client a acheté, et le tarif de gros
+      // n'est pas le prix unitaire multiplié par le contenu.
+      unitPrice:
+        packagingFactorOf(ligne.product) && ligne.packageQuantity > 0
+          ? l.packageUnitPrice
+          : l.unitPrice,
+      discountPercentage: ligne.discount_percentage || undefined,
+      total: l.gross,
+    };
+  });
 
   return {
     kind: contexte.aCredit ? "credit_sale" : "sale",
@@ -132,17 +157,20 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
     chrome: chromeDeLaSession(contexte.snapshot),
     warehouseName: contexte.warehouseName,
     items,
-    subtotal: totaux.sousTotal,
-    taxAmount: totaux.taxe,
+    subtotal: facture.subtotal,
+    taxAmount: facture.tax,
     // La remise affichée réunit les remises de ligne, la remise globale et la
     // part payée en points ; `loyaltyRedemptionAmount` en isole la fidélité
     // pour que le client voie que ses points ont payé, au lieu de lire une
-    // remise anonyme.
-    discountAmount: totaux.remiseLignes + totaux.remiseGlobale + totaux.remiseFidelite,
-    globalDiscountAmount: totaux.remiseGlobale || undefined,
-    loyaltyRedemptionAmount: totaux.remiseFidelite || undefined,
-    total: totaux.total - totaux.remiseFidelite,
-    currency: contexte.deviseFacture,
+    // remise anonyme. Les trois sont pris dans la devise de FACTURE : la
+    // ventilation y a déjà converti la remise fidélité, qui se saisit en
+    // principale.
+    discountAmount:
+      facture.itemDiscount + facture.globalDiscount + facture.loyaltyDiscount,
+    globalDiscountAmount: facture.globalDiscount || undefined,
+    loyaltyRedemptionAmount: facture.loyaltyDiscount || undefined,
+    total: facture.total,
+    currency: facture.currency,
     payments: etat.reglements.map((r) => ({
       method: r.method,
       amount: Number(r.amount) || 0,

@@ -16,6 +16,7 @@
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
+import { deviseOuPrincipale } from "./devise-principale";
 import {
   customerBalances,
   customerLoyalty,
@@ -320,7 +321,15 @@ export interface DetailFournisseur {
   siteWeb: string | null;
   adresse: string | null;
   numeroImpot: string | null;
-  devise: string | null;
+  /**
+   * La devise du solde. **Jamais vide, jamais `null`.**
+   *
+   * Elle valait `null` quand la colonne était vide, et les deux écrans qui
+   * l'affichaient la dénormalisaient aussitôt en `?? ""` - c'est-à-dire en un
+   * montant SANS SYMBOLE. Le repli est désormais posé ici, une fois, sur la
+   * devise principale de l'établissement.
+   */
+  devise: string;
   solde: number;
   banque: string | null;
   compteBancaire: string | null;
@@ -349,7 +358,7 @@ export async function detailFournisseur(id: string): Promise<DetailFournisseur |
     siteWeb: s.website?.trim() || null,
     adresse: s.address?.trim() || null,
     numeroImpot: s.taxId?.trim() || null,
-    devise: s.currency?.trim() || null,
+    devise: deviseOuPrincipale(s.currency),
     solde: nb(s.currentBalance),
     banque: s.bankName?.trim() || null,
     compteBancaire: s.bankAccount?.trim() || null,

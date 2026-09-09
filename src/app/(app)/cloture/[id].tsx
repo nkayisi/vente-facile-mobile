@@ -27,6 +27,7 @@ import { sessionACloturer } from "@/data/caisse";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { cloturerSession, enAttenteCaisse } from "@/features/caisse/actes";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { PREFIXE, prochainNumero } from "@/features/pos/numerotation";
 import { chromeDeLaSession } from "@/features/pos/ticket";
 import { enregistrerEtImprimer } from "@/printing/jobs";
@@ -88,7 +89,8 @@ export default function ClotureCaisse() {
     );
   }
 
-  const enFile = attente?.clotures.has(s.id) ?? false;
+  const envoiCloture = attente?.clotures.get(s.id);
+  const enFile = envoiCloture !== undefined;
 
   const lignes = s.soldes.map((l) => {
     const saisi = comptages[l.devise];
@@ -166,13 +168,11 @@ export default function ClotureCaisse() {
       <AppBar title="Clôture de caisse" subtitle={`${s.caisse} · ${s.nbVentes} ventes`} />
 
       <View className="gap-4 p-4">
-        {enFile ? (
-          <Banner
-            tone="warning"
-            title="Une clôture attend son envoi"
-            message="La session ne se fermera qu'après synchronisation."
-          />
-        ) : null}
+        <BandeauEnvoi
+          envoi={envoiCloture}
+          titre="Une clôture attend son envoi"
+          consequence="La session ne se fermera qu'après."
+        />
 
         {lignes.map((l) => (
           <Card key={l.devise}>

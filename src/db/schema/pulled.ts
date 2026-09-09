@@ -884,7 +884,10 @@ export const inventorySessions = sqliteTable("inventory_sessions", {
   totalCountedQuantity: text("total_counted_quantity").notNull(),
   totalDifferenceQuantity: text("total_difference_quantity").notNull(),
   totalDifferenceValue: text("total_difference_value").notNull(),
-});
+}, (t) => [
+    index("inventory_sessions_status_idx").on(t.status),
+    index("inventory_sessions_warehouse_id_idx").on(t.warehouseId),
+]);
 
 export type InventorySessionsRow =
   typeof inventorySessions.$inferSelect;
@@ -909,7 +912,9 @@ export const inventoryCounts = sqliteTable("inventory_counts", {
   countedById: text("counted_by_id"),
   countedAt: integer("counted_at", { mode: "timestamp_ms" }),
   notes: text("notes").notNull(),
-});
+}, (t) => [
+    index("inventory_counts_session_id_idx").on(t.sessionId),
+]);
 
 export type InventoryCountsRow =
   typeof inventoryCounts.$inferSelect;

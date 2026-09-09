@@ -9,10 +9,13 @@
  * recevoir le fichier). On le teste, et à défaut on ouvre la feuille
  * d'impression du système, qui existe partout.
  */
+import { File, Paths } from "expo-file-system";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
 import type { Block } from "@vente-facile/core/receipt";
+
+import { nomDeFichier } from "@vente-facile/core/report";
 
 import type { ContexteImpression, PiloteImpression } from "../driver";
 import { rendreHtml } from "../render-html";
@@ -34,7 +37,7 @@ export const pilotePdf: PiloteImpression = {
     });
 
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, {
+      await Sharing.shareAsync(await renommer(uri, contexte.nom), {
         mimeType: "application/pdf",
         UTI: "com.adobe.pdf",
         dialogTitle: contexte.nom,
@@ -44,3 +47,41 @@ export const pilotePdf: PiloteImpression = {
     await Print.printAsync({ uri });
   },
 };
+
+/**
+ * Donne au fichier le NOM du document avant de le partager.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `expo-print` NOMME LE FICHIER, ET IL LE NOMME EN UUID.                  │
+ * │                                                                          │
+ * │ Relevé sur l'émulateur : la feuille de partage annonçait                 │
+ * │ « e5891941-bd78-4375-83cb-c2781f27dd6e.pdf ». `contexte.nom` ne servait  │
+ * │ que de titre au DIALOGUE, qui disparaît dès qu'on a choisi l'application.│
+ * │ Ce qui reste au marchand, c'est le fichier - et trois exports, ou trois  │
+ * │ reçus, arrivaient indiscernables dans ses téléchargements. Un reçu qu'on │
+ * │ ne sait pas retrouver n'a pas été partagé, il a été perdu.               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Le renommage est une COPIE et non un déplacement : `printToFileAsync` gère
+ * son propre dossier de cache, et le vider sous ses pieds inviterait un défaut
+ * que personne ne saurait rattacher à l'impression. Le système purge ce cache.
+ *
+ * Un échec de copie ne fait pas échouer le partage : on repart de l'original.
+ * Un nom de fichier est un confort, un reçu est un dû.
+ */
+async function renommer(uri: string, nom: string): Promise<string> {
+  const propre = nomDeFichier(nom);
+  if (!propre) return uri;
+
+  try {
+    const source = new File(uri);
+    const cible = new File(Paths.cache, `${propre}.pdf`);
+    // Un export refait dans la même minute doit écraser le précédent, pas
+    // échouer : le marchand vient de demander celui-ci.
+    if (cible.exists) cible.delete();
+    source.copy(cible);
+    return cible.uri;
+  } catch {
+    return uri;
+  }
+}

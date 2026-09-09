@@ -27,9 +27,12 @@
  */
 import * as Crypto from "expo-crypto";
 
-import { enAttenteParType, enqueue } from "@/sync";
+import { enAttenteParType, enqueue, type EtatEnvoi } from "@/sync";
+
+import { pireEnvoiOuRien } from "@/features/sync/attente";
 
 import { PREFIXE, prochainNumero } from "@/features/pos/numerotation";
+import { deviseOuPrincipale } from "@/data/devise-principale";
 
 export interface SaisieClient {
   nom: string;
@@ -170,8 +173,12 @@ export async function ajusterSolde(
 export interface EnAttenteSurClient {
   encaissements: { id: string; montant: number; devise: string; numeroRecu: string }[];
   ajustements: { id: string; montant: number; devise: string }[];
-  /** Le client lui-même n'a pas encore été créé côté serveur. */
-  creationEnAttente: boolean;
+  /**
+   * Où en est la création du client, si elle attend encore.
+   *
+   * Un booléen ne disait pas si elle partira seule. Voir `data/envoi.ts`.
+   */
+  creationEnAttente: EtatEnvoi | undefined;
 }
 
 export async function enAttenteSurClient(clientId: string): Promise<EnAttenteSurClient> {
@@ -185,7 +192,7 @@ export async function enAttenteSurClient(clientId: string): Promise<EnAttenteSur
     enAttenteParType<{ customer: string; amount?: string; currency?: string }>(
       "customer.adjust_balance"
     ),
-    enAttenteParType<{ id: string }>("customer.create"),
+    enAttenteParType<{ id: string }>("customer.create", { avecBloquees: true }),
   ]);
 
   return {
@@ -194,7 +201,7 @@ export async function enAttenteSurClient(clientId: string): Promise<EnAttenteSur
       .map((o) => ({
         id: o.id,
         montant: Number(o.payload.amount ?? 0),
-        devise: o.payload.currency ?? "",
+        devise: deviseOuPrincipale(o.payload.currency),
         numeroRecu: o.payload.receipt_number ?? "",
       })),
     ajustements: ajustements
@@ -202,9 +209,11 @@ export async function enAttenteSurClient(clientId: string): Promise<EnAttenteSur
       .map((o) => ({
         id: o.id,
         montant: Number(o.payload.amount ?? 0),
-        devise: o.payload.currency ?? "",
+        devise: deviseOuPrincipale(o.payload.currency),
       })),
-    creationEnAttente: creations.some((o) => o.payload.id === clientId),
+    creationEnAttente: pireEnvoiOuRien(
+      creations.filter((o) => o.payload.id === clientId).map((o) => o.envoi)
+    ),
   };
 }
 

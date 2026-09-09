@@ -30,7 +30,7 @@ import {
   PageHeader,
   Screen,
   SearchInput,
-  StatValue,
+  Mesure,
   Text,
 } from "@/ui";
 
@@ -117,7 +117,7 @@ export default function Articles() {
       principal={a.nom}
       secondaire={[a.sku, a.categorie].filter(Boolean).join(" · ") || null}
       badge={a.actif ? undefined : <Badge tone="neutral">Inactif</Badge>}
-      valeur={a.prix ? <StatValue value={formatPrice(a.prix)} tone="primary" /> : undefined}
+      valeur={a.prix ? <Mesure value={formatPrice(a.prix)} tone="primary" /> : undefined}
       // `null` ne se lit JAMAIS comme zéro : un produit non suivi affiche « - »,
       // comme le back-office, et surtout pas « 0 » qui affirmerait une rupture.
       sousValeur={a.stockAffiche ?? (a.suitLeStock ? "—" : "Non suivi")}

@@ -21,6 +21,29 @@
  * │ liste s'affiche, elle rame, et la cause se cherche trois mois plus tard.  │
  * │ L'en-tête de page passe donc par `enTete`.                               │
  * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ PAS D'EN-TÊTE COLLANT : `stickyHeaderIndices` RENDAIT L'EN-TÊTE DEUX     │
+ * │ FOIS.                                                                    │
+ * │                                                                          │
+ * │ Mesuré sur l'émulateur, historique des ventes sur trente jours : arrivé  │
+ * │ en butée de liste, « Lundi 24 août · 2 ventes · 15 350,4 $ » s'affichait │
+ * │ DEUX FOIS, l'un sous l'autre à environ soixante-dix points d'écart -     │
+ * │ l'exemplaire collant, et le vrai que la bibliothèque ne masque pas.      │
+ * │ Un en-tête de journée doublé se lit comme une donnée dupliquée, sur un   │
+ * │ écran dont l'objet est de compter des ventes.                            │
+ * │                                                                          │
+ * │ Piste écartée par la mesure : `StickyHeaders.js` ajoute `firstItemOffset`│
+ * │ pour l'en-tête SUIVANT et pas pour la recherche du COURANT, ce qui       │
+ * │ laissait soupçonner notre en-tête de page, haut d'environ 470 points.    │
+ * │ Vérifié en le retirant : le doublon PERSISTE. Ce n'est donc pas notre    │
+ * │ mise en page, et rien de ce que nous écrivons ici ne le corrige.         │
+ * │                                                                          │
+ * │ Les en-têtes de journée restent DANS le flux : ils sont distincts par    │
+ * │ leur fond et leur filet, et la chronologie se lit sans eux collés.       │
+ * │ `getItemType` reste indispensable, lui, sans quoi la virtualisation      │
+ * │ recycle un en-tête en rangée.                                            │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { RefreshControl, View } from "react-native";
 import { FlashList } from "@shopify/flash-list";
@@ -46,6 +69,8 @@ export function DataList<T>({
   refreshing = false,
   onFin,
   separateur = true,
+  basDeListe = 96,
+  typeElement,
 }: {
   donnees: T[];
   cle: (item: T) => string;
@@ -59,6 +84,25 @@ export function DataList<T>({
   /** Défilement infini : appelé à l'approche du bas. */
   onFin?: () => void;
   separateur?: boolean;
+  /**
+   * Ce qui reste sous la dernière ligne.
+   *
+   * Quatre-vingt-seize points par défaut : c'est la place d'un `Fab`, qui
+   * flotte au-dessus de la liste et masquerait sinon la dernière rangée. Un
+   * écran qui porte une barre d'actions FIXE (`Screen pied`) n'en a pas
+   * besoin - la barre est un frère du défilement, rien ne passe dessous - et
+   * ces points y deviendraient un vide au-dessus d'elle.
+   */
+  basDeListe?: number;
+  /**
+   * La FAMILLE d'un élément, quand la liste en mêle plusieurs (un en-tête de
+   * journée et une rangée de vente, par exemple).
+   *
+   * Sans elle, la virtualisation recycle un en-tête en rangée et l'inverse :
+   * les hauteurs sautent au défilement, et rien n'avertit. C'est ce que
+   * `FlashList` appelle `getItemType`.
+   */
+  typeElement?: (item: T, index: number) => string;
 }) {
   const primary = useColor("primary");
 
@@ -68,6 +112,7 @@ export function DataList<T>({
       keyExtractor={cle}
       renderItem={({ item }) => rendu(item)}
       ListHeaderComponent={enTete}
+      getItemType={typeElement}
       ListFooterComponent={pied}
       ItemSeparatorComponent={separateur ? () => <Divider /> : undefined}
       ListEmptyComponent={
@@ -91,8 +136,46 @@ export function DataList<T>({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={primary} colors={[primary]} />
         ) : undefined
       }
-      contentContainerStyle={{ paddingBottom: 96 }}
+      contentContainerStyle={{ paddingBottom: basDeListe }}
     />
+  );
+}
+
+/**
+ * En-tête de section : ce qui coupe une liste en tranches qui ont un sens.
+ *
+ * Il se distingue d'une rangée par son FOND et sa hauteur, pas par une nuance
+ * de gris : quand il reste collé en haut, il passe devant les rangées qui
+ * défilent dessous et doit rester opaque, sans quoi le texte de la liste
+ * transparaît au travers.
+ *
+ * La mesure est à droite comme sur `DataRow` : les deux s'alignent, et l'oeil
+ * descend une seule colonne de montants.
+ */
+export function DataSection({
+  label,
+  meta,
+  valeur,
+}: {
+  label: string;
+  /** Ce que la section compte. Jamais un montant : celui-ci va dans `valeur`. */
+  meta?: string | null;
+  valeur?: React.ReactNode;
+}) {
+  return (
+    <View className="flex-row items-center gap-3 border-b border-border bg-muted px-4 py-2">
+      <View className="min-w-0 flex-1">
+        <Text variant="caption" numberOfLines={1} className="font-sans-medium text-foreground">
+          {label}
+        </Text>
+        {meta ? (
+          <Text variant="caption" numberOfLines={1}>
+            {meta}
+          </Text>
+        ) : null}
+      </View>
+      {valeur ? <View className="shrink-0 items-end">{valeur}</View> : null}
+    </View>
   );
 }
 

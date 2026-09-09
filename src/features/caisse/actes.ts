@@ -16,7 +16,15 @@
  */
 import * as Crypto from "expo-crypto";
 
+import { jourISO } from "@/data/dates";
 import { enAttenteParType, enqueue } from "@/sync";
+
+import {
+  attentesPar,
+  lotEnAttente,
+  type Attentes,
+  type LotEnAttente,
+} from "@/features/sync/attente";
 
 export interface SaisieDepense {
   categorie: string;
@@ -54,12 +62,6 @@ export async function creerDepense(saisie: SaisieDepense): Promise<string> {
     notes: saisie.notes ?? "",
   });
   return id;
-}
-
-/** « 2026-08-31 » sans passer par `Intl`, qui est proscrit (voir `data/dates`). */
-function jourISO(d: Date): string {
-  const deux = (n: number) => (n < 10 ? `0${n}` : String(n));
-  return `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
 }
 
 export interface SaisieMouvementCaisse {
@@ -136,20 +138,30 @@ export async function cloturerSession(
   return id;
 }
 
-/** Ce que le journal retient pour la caisse. */
+/**
+ * Ce que le journal retient pour la caisse.
+ *
+ * ⚠ Les clôtures sont lues `avecBloquees` : une clôture bloquée ferme le
+ * tiroir tout autant. Le caissier a compté, imprimé son Z et rangé ; que le
+ * serveur ne l'ait pas encore acceptée ne rouvre pas la caisse.
+ */
 export async function enAttenteCaisse(): Promise<{
-  depenses: number;
-  mouvements: number;
-  clotures: Set<string>;
+  depenses: LotEnAttente;
+  mouvements: LotEnAttente;
+  clotures: Attentes;
 }> {
   const [depenses, mouvements, clotures] = await Promise.all([
     enAttenteParType<{ id: string }>("expense.create"),
     enAttenteParType<{ id: string }>("cash_movement.create"),
-    enAttenteParType<{ session: string }>("register_session.close"),
+    enAttenteParType<{ session: string }>("register_session.close", {
+      avecBloquees: true,
+    }),
   ]);
   return {
-    depenses: depenses.length,
-    mouvements: mouvements.length,
-    clotures: new Set(clotures.map((o) => o.payload.session)),
+    depenses: lotEnAttente(depenses),
+    mouvements: lotEnAttente(mouvements),
+    clotures: attentesPar(
+      clotures.map((o) => ({ id: o.payload.session, envoi: o.envoi }))
+    ),
   };
 }

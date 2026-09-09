@@ -18,6 +18,8 @@ import * as Crypto from "expo-crypto";
 
 import { enAttenteParType, enqueue } from "@/sync";
 
+import { attentesPar, type Attentes } from "@/features/sync/attente";
+
 export interface LigneRetourSaisie {
   /** La ligne de VENTE d'origine. Sans elle, rien ne dit ce qui est rendu. */
   ligneVente: string;
@@ -303,33 +305,38 @@ export async function detailEnAttente(id: string): Promise<{
  * une approbation que personne n'a demandée.
  */
 export async function enAttenteRetoursDevis(): Promise<{
-  retours: Set<string>;
-  devis: Set<string>;
-  creations: Set<string>;
+  retours: Attentes;
+  devis: Attentes;
+  creations: Attentes;
 }> {
+  // `avecBloquees` : ces cartes ferment des boutons de décision et écrivent
+  // une phrase, elles n'affirment aucun acquis. Sans elles, une approbation
+  // bloquée sort de la carte, le bouton se rouvre, et le gérant met en file
+  // une seconde décision qui finira en quarantaine.
+  const avecBloquees = { avecBloquees: true } as const;
   const [creationsR, transitionsR, creationsD, conversions] = await Promise.all([
-    enAttenteParType<{ id: string }>("sale_return.create"),
+    enAttenteParType<{ id: string }>("sale_return.create", avecBloquees),
     Promise.all(
       (["approve", "reject"] as const).map((t) =>
-        enAttenteParType<{ sale_return: string }>(`sale_return.${t}`)
+        enAttenteParType<{ sale_return: string }>(`sale_return.${t}`, avecBloquees)
       )
     ),
-    enAttenteParType<{ id: string }>("quotation.create"),
-    enAttenteParType<{ quotation: string }>("quotation.convert"),
+    enAttenteParType<{ id: string }>("quotation.create", avecBloquees),
+    enAttenteParType<{ quotation: string }>("quotation.convert", avecBloquees),
   ]);
 
   return {
-    retours: new Set([
-      ...creationsR.map((o) => o.payload.id),
-      ...transitionsR.flat().map((o) => o.payload.sale_return),
+    retours: attentesPar([
+      ...creationsR.map((o) => ({ id: o.payload.id, envoi: o.envoi })),
+      ...transitionsR.flat().map((o) => ({ id: o.payload.sale_return, envoi: o.envoi })),
     ]),
-    devis: new Set([
-      ...creationsD.map((o) => o.payload.id),
-      ...conversions.map((o) => o.payload.quotation),
+    devis: attentesPar([
+      ...creationsD.map((o) => ({ id: o.payload.id, envoi: o.envoi })),
+      ...conversions.map((o) => ({ id: o.payload.quotation, envoi: o.envoi })),
     ]),
-    creations: new Set([
-      ...creationsR.map((o) => o.payload.id),
-      ...creationsD.map((o) => o.payload.id),
+    creations: attentesPar([
+      ...creationsR.map((o) => ({ id: o.payload.id, envoi: o.envoi })),
+      ...creationsD.map((o) => ({ id: o.payload.id, envoi: o.envoi })),
     ]),
   };
 }

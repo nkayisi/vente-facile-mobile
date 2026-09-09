@@ -67,7 +67,12 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   // et l'oublier laisserait le rapport de caisse en arrière d'une écriture.
   "customer.adjust_balance": ["customers", "customer_balances",
                               "customer_transactions", "cash_movements"],
-  "stock_movement.create": ["stocks", "stock_movements"],
+  // ⚠ `products` EN FAIT PARTIE, et ce n'est pas du zèle : le report des prix
+  // (`update_product_prices`) écrit la FICHE PRODUIT dans la même transaction
+  // que le mouvement (`ProductPricingService.apply`). Sans cette entrée, le
+  // terminal ne relit jamais la fiche : le prochain préremplissage ressortirait
+  // l'ANCIEN prix, et le comptoir vendrait au tarif d'avant.
+  "stock_movement.create": ["stocks", "stock_movements", "products"],
   "stock.unpack": ["stocks", "stock_movements"],
   "stock_transfer.create": ["stock_transfers"],
   "stock_transfer.approve": ["stock_transfers"],

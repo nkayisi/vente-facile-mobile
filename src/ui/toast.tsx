@@ -14,10 +14,10 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { HAUTEUR_ONGLETS } from "@/navigation/metriques";
+
 import { Icon, type IconName } from "./icon";
 import { Text } from "./text";
-/** Hauteur de la barre d'onglets Android, hors zone sûre. */
-const HAUTEUR_ONGLETS = 56;
 
 type TonToast = "succes" | "erreur" | "info";
 

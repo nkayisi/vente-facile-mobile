@@ -31,6 +31,7 @@ import {
   detailEnAttente,
   enAttenteRetoursDevis,
 } from "@/features/ventes/retours-devis";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   AlertDialog, AppBar, Badge, Banner, Button, Card, CardHeader, Divider,
@@ -135,10 +136,19 @@ export default function DetailDevisEcran() {
   }
 
   const s = STATUT_DEVIS[d.statut];
-  const enFile = attente?.devis.has(d.id) ?? false;
-  const aCreer = attente?.creations.has(d.id) ?? false;
+  const envoiEnFile = attente?.devis.get(d.id);
+  const envoiCreation = attente?.creations.get(d.id);
+  const enFile = envoiEnFile !== undefined;
+  const aCreer = envoiCreation !== undefined;
+  // ⚠ `d.perime` N'ENTRE PAS dans cette garde. `convert_quotation` ne refuse
+  // que `status == 'expired'`, un statut que RIEN dans le dépôt n'assigne
+  // jamais : un devis dont la validité est passée reste `sent` et se convertit
+  // sans broncher. Le fermer en annonçant un refus serveur qui n'existe pas
+  // faisait d'un devis convertible un cul-de-sac, sans dérogation - le client
+  // accepte ce matin un devis valable jusqu'à hier, et il faut tout ressaisir.
+  // La péremption s'AFFICHE (pastille, bandeau) et se décide au comptoir.
   const convertible =
-    d.statut !== "converted" && !d.perime && can("sales.create") && !enFile;
+    d.statut !== "converted" && can("sales.create") && !enFile;
 
   const convertir = async () => {
     if (envoi) return;
@@ -169,25 +179,28 @@ export default function DetailDevisEcran() {
       />
 
       <View className="gap-4 p-4">
+        {/* Une CRÉATION et une CONVERSION ne disent pas la même chose : la
+            première annonce une pièce qui n'existe pas encore côté serveur, la
+            seconde une décision sur une pièce qui existe. */}
         {aCreer ? (
-          <Banner
-            tone="warning"
-            title="Ce devis attend son envoi"
-            message="Il n'existe encore que sur ce terminal. Sa référence définitive viendra après la synchronisation, et il ne pourra être converti qu'ensuite."
+          <BandeauEnvoi
+            envoi={envoiCreation}
+            titre="Ce devis attend son envoi"
+            consequence="Il n'existe encore que sur ce terminal ; sa référence définitive et sa conversion viendront après."
           />
-        ) : enFile ? (
-          <Banner
-            tone="warning"
-            title="Une conversion attend son envoi"
-            message="Le devis ne changera d'état qu'après synchronisation."
+        ) : (
+          <BandeauEnvoi
+            envoi={envoiEnFile}
+            titre="Une conversion attend son envoi"
+            consequence="Le devis ne changera d'état qu'après."
           />
-        ) : null}
+        )}
 
         {d.perime && d.statut !== "converted" ? (
           <Banner
             tone="warning"
             title="Ce devis est périmé"
-            message={`Sa validité s'est arrêtée le ${d.valideJusquau ? formatDateFr(d.valideJusquau) : "—"}. Le serveur refusera de le convertir : refaites-en un.`}
+            message={`Sa validité s'est arrêtée le ${d.valideJusquau ? formatDateFr(d.valideJusquau) : "—"}. Vous pouvez toujours le convertir, aux prix du jour où il a été établi ; sinon, refaites-en un.`}
           />
         ) : null}
 

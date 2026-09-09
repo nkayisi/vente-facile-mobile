@@ -46,6 +46,14 @@ export interface SessionDeCaisse {
   nbVentes: number;
   encaisseParDevise: { devise: string; montant: number }[];
   /**
+   * Ventes comptées dont le montant est INCONNU, faute de ticket retrouvé.
+   *
+   * Un total présenté comme complet alors qu'un ticket manque se compare au
+   * tiroir et tombe faux. La carte l'écrit (« +1 sans montant ») plutôt que de
+   * laisser croire que la somme est celle de la journée.
+   */
+  sansMontant: number;
+  /**
    * Où en est l'ouverture : acceptée, en file, ou BLOQUÉE.
    *
    * Une ouverture bloquée reste une session : elle partira dès que
@@ -55,6 +63,22 @@ export interface SessionDeCaisse {
   envoi: EtatEnvoi;
 }
 
+/**
+ * Ce que la dernière clôture a laissé dans le tiroir.
+ *
+ * C'est ce dont le serveur HÉRITE quand une nouvelle session s'ouvre sans
+ * fonds saisi. L'écran d'ouverture l'annonce : sans lui, « laissez vide pour
+ * reprendre le tiroir » demande au caissier de faire confiance à un chiffre
+ * qu'il ne voit pas.
+ *
+ * `compte` à `null` n'est PAS zéro : une session close sans comptage
+ * enregistré n'est pas une session à tiroir vide.
+ */
+export interface DerniereCloture {
+  le: Date | null;
+  compte: number | null;
+}
+
 export interface CaisseParc {
   id: string;
   nom: string;
@@ -62,6 +86,9 @@ export interface CaisseParc {
   entrepot: string | null;
   actif: boolean;
   session: SessionDeCaisse | null;
+  /** Combien de clôtures sont descendues sur ce terminal, pour cette caisse. */
+  nbClotures: number;
+  derniereCloture: DerniereCloture | null;
 }
 
 export interface ParcDeCaisses {
@@ -128,6 +155,41 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
   ];
   const compteurs = await compteursDeSessions(idsSessions);
 
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LES CLÔTURES PASSÉES, EN UNE SEULE LECTURE POUR TOUT LE PARC.        │
+  // │                                                                      │
+  // │ Elles servent deux fois : le compteur de la carte, qui dit ce qu'on  │
+  // │ trouvera derrière le chevron, et le FONDS HÉRITÉ que l'écran         │
+  // │ d'ouverture annonce. Une requête par comptoir ferait autant          │
+  // │ d'allers-retours SQLite qu'il y a de caisses, pour deux nombres.     │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const fermetures = await db
+    .select({
+      registerId: registerSessions.registerId,
+      closedAt: registerSessions.closedAt,
+      compte: registerSessions.countedBalance,
+    })
+    .from(registerSessions)
+    .where(eq(registerSessions.status, "closed"))
+    .orderBy(desc(registerSessions.closedAt));
+
+  const nbClotures = new Map<string, number>();
+  const derniere = new Map<string, DerniereCloture>();
+  for (const f of fermetures) {
+    if (!f.closedAt) continue;
+    nbClotures.set(f.registerId, (nbClotures.get(f.registerId) ?? 0) + 1);
+    // La requête est déjà triée du plus récent au plus ancien : la PREMIÈRE
+    // rencontrée est la dernière clôture.
+    if (!derniere.has(f.registerId)) {
+      derniere.set(f.registerId, {
+        le: f.closedAt,
+        // `null` ne se lit jamais zéro : une session close sans comptage
+        // enregistré n'est pas une session à tiroir vide.
+        compte: f.compte === null ? null : nb(f.compte),
+      });
+    }
+  }
+
   const sessionDe = (registerId: string): SessionDeCaisse | null => {
     const s = ouvertes.find((x) => x.registerId === registerId);
     if (s) {
@@ -139,6 +201,7 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
         parQui: qui || null,
         nbVentes: agg.nbVentes,
         encaisseParDevise: agg.encaisseParDevise,
+        sansMontant: agg.sansMontant,
         envoi: "envoye",
       };
     }
@@ -151,13 +214,20 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
       parQui: null,
       nbVentes: agg.nbVentes,
       encaisseParDevise: agg.encaisseParDevise,
+      sansMontant: agg.sansMontant,
       envoi: attente.envoi,
     };
   };
 
   const terme = recherche.trim().toLowerCase();
   const caisses = lignes
-    .map((l) => ({ ...l, entrepot: l.entrepot ?? null, session: sessionDe(l.id) }))
+    .map((l) => ({
+      ...l,
+      entrepot: l.entrepot ?? null,
+      session: sessionDe(l.id),
+      nbClotures: nbClotures.get(l.id) ?? 0,
+      derniereCloture: derniere.get(l.id) ?? null,
+    }))
     .filter(
       (c) =>
         !terme ||

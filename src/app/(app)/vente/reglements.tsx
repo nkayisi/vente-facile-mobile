@@ -125,7 +125,6 @@ export default function Reglements() {
           <MultiCurrencyTotal
             lignes={duParDevise(toutes)}
             money={money.money}
-            vide="Rien à encaisser"
           />
         </StatStripItem>
         <StatStripItem
@@ -139,7 +138,6 @@ export default function Reglements() {
             lignes={duParDevise(enRetard)}
             money={money.money}
             tone={enRetard.length > 0 ? "destructive" : "foreground"}
-            vide="Rien en retard"
           />
         </StatStripItem>
       </StatStrip>

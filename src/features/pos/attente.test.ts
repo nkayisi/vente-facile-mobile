@@ -170,8 +170,14 @@ describe("Reprise", () => {
   });
 
   it("conserve la remise de ligne", () => {
-    let etat = ajouter(PANIER_VIDE, casier, 1, 0);
-    etat = reducteurPanier(etat, { type: "remiseLigne", index: 0, pourcentage: 10 });
+    // La remise se pose ICI directement : l'action `remiseLigne` a été retirée
+    // faute d'appelant, mais le CHAMP reste - il voyage dans le corps de la
+    // vente, et un panier rangé avant ce retrait peut encore en porter un.
+    const base = ajouter(PANIER_VIDE, casier, 1, 0);
+    const etat = {
+      ...base,
+      lignes: [{ ...base.lignes[0], discount_percentage: 10 }],
+    };
 
     const { lignes } = restaurerLignes(serialiser(etat), carte(casier));
     expect(lignes[0].discount_percentage).toBe(10);

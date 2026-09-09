@@ -19,6 +19,7 @@ import {
   catalogueEnAttente,
   creerReferentiel,
 } from "@/features/inventaire/actes";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Button, DataList, DataRow, Fab, FormField, Input, Screen,
@@ -94,10 +95,16 @@ export default function Referentiels() {
         valeur={genre}
         onChange={(v) => setGenre(v as Genre)}
       />
-      {(attente?.referentiels ?? 0) > 0 ? (
-        <Text variant="caption">
-          {`${attente?.referentiels} entrée(s) attendent leur envoi et n'apparaissent pas encore ici.`}
-        </Text>
+      {attente && attente.referentiels.nombre > 0 ? (
+        <BandeauEnvoi
+          envoi={attente.referentiels.envoi}
+          titre={
+            attente.referentiels.nombre === 1
+              ? "Une entrée attend son envoi"
+              : `${attente.referentiels.nombre} entrées attendent leur envoi`
+          }
+          consequence="Elles n'apparaissent pas encore dans cette liste."
+        />
       ) : null}
     </View>
   );

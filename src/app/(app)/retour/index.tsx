@@ -6,7 +6,7 @@
  * crée depuis la vente concernée, jamais d'ici : il faut savoir CE QUI est
  * rendu, et cela se lit sur la facture.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
@@ -20,7 +20,7 @@ import {
 } from "@/features/ventes/retours-devis";
 import {
   AppBar, Badge, Banner, Chip, ChipRow, DataList, DataRow, Screen,
-  SearchInput, StatValue,
+  SearchInput, Mesure,
 } from "@/ui";
 
 const TABLES = ["sale_returns", "sale_return_items", "sales"];
@@ -34,9 +34,23 @@ export default function Retours() {
     () => listeRetours({ recherche, statut }),
     [recherche, statut]
   );
-  const { donnees, chargement } = useLecture(charger, {
+  const { donnees, chargement, recharger } = useLecture(charger, {
     tables: TABLES,
     deps: [recherche, statut],
+  });
+
+  // Le décompte des puces ignore le filtre de STATUT et suit la recherche :
+  // c'est ce qui rend « Approuvé (4) » lisible pendant qu'on regarde les
+  // brouillons. Calculé AVEC le filtre, tout tomberait à zéro sauf l'actif -
+  // et une puce à zéro se lit « il n'y en a pas », pas « vous ne les
+  // regardez pas ».
+  const chargerTous = useCallback(
+    () => listeRetours({ recherche, statut: null }),
+    [recherche]
+  );
+  const { donnees: tous } = useLecture(chargerTous, {
+    tables: TABLES,
+    deps: [recherche],
   });
   const { donnees: attente } = useLecture(enAttenteRetoursDevis, {
     tables: ["outbox_operations"],
@@ -61,12 +75,20 @@ export default function Retours() {
       statut: "draft",
       montant: c.montant,
       rembourse: c.montant,
-      devise: "",
+      devise: money.primaryCode,
       motif: c.motif,
       date: c.date,
     }));
 
   const retours = [...nonSynchronises, ...(donnees ?? [])];
+
+  const decomptes = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of tous ?? []) m.set(r.statut, (m.get(r.statut) ?? 0) + 1);
+    return m;
+  }, [tous]);
+  const totalTousStatuts = (tous?.length ?? 0) + nonSynchronises.length;
+  const aDecider = (decomptes.get("draft") ?? 0) + nonSynchronises.length;
 
   const enTete = (
     <View className="gap-3 px-4 pb-3 pt-2">
@@ -76,20 +98,44 @@ export default function Retours() {
         placeholder="Rechercher une référence..."
       />
       <ChipRow>
-        <Chip label="Tous" actif={statut === null} onPress={() => setStatut(null)} />
-        {Object.entries(STATUT_RETOUR).map(([code, s]) => (
-          <Chip
-            key={code}
-            label={s.label}
-            actif={statut === code}
-            onPress={() => setStatut(code)}
-          />
-        ))}
+        <Chip
+          label={`Tous (${totalTousStatuts})`}
+          actif={statut === null}
+          onPress={() => setStatut(null)}
+        />
+        {Object.entries(STATUT_RETOUR).map(([code, s]) => {
+          const n = code === "draft" ? aDecider : (decomptes.get(code) ?? 0);
+          // La puce ACTIVE reste, même vidée par la recherche : la faire
+          // disparaître sous le doigt laisserait une liste filtrée sans aucun
+          // moyen de savoir par quoi.
+          if (n === 0 && statut !== code) return null;
+          return (
+            <Chip
+              key={code}
+              label={`${s.label} (${n})`}
+              actif={statut === code}
+              onPress={() => setStatut(code)}
+            />
+          );
+        })}
       </ChipRow>
+      {/* ┌──────────────────────────────────────────────────────────────────┐
+          │ CE BANDEAU DISAIT OÙ ALLER SANS Y MENER.                        │
+          │                                                                  │
+          │ « Ouvrez la vente concernée » est le bon conseil, et c'était un  │
+          │ cul-de-sac : il n'y a aucun bouton « Nouveau » sur cet écran, et │
+          │ pour cause - un retour se crée depuis sa facture. Restait à      │
+          │ retrouver la vente à la main, en repassant par le hub. Le        │
+          │ bandeau y conduit désormais.                                     │
+          └──────────────────────────────────────────────────────────────────┘ */}
       <Banner
         tone="info"
         title="Un retour se crée depuis sa vente"
-        message="Il faut savoir ce qui est rendu, et cela se lit sur la facture. Ouvrez la vente concernée, puis « Enregistrer un retour »."
+        message="Il faut savoir ce qui est rendu, et cela se lit sur la facture. Ouvrez la vente concernée, puis « Retour article »."
+        action={{
+          label: "Chercher une vente",
+          onPress: () => router.push("/vente/historique"),
+        }}
       />
     </View>
   );
@@ -112,7 +158,7 @@ export default function Retours() {
             <Badge tone={s.ton}>{s.label}</Badge>
           ) : undefined
         }
-        valeur={<StatValue value={money.money(r.montant, devise)} />}
+        valeur={<Mesure value={money.money(r.montant, devise)} />}
         // Le REMBOURSÉ n'apparaît que s'il diffère du montant rendu : sur un
         // retour qui a éteint une dette, rien n'est sorti de la caisse.
         sousValeur={
@@ -133,6 +179,7 @@ export default function Retours() {
         cle={(r) => r.id}
         rendu={rendu}
         enTete={enTete}
+        onRefresh={recharger}
         chargement={chargement && retours.length === 0}
         vide={{
           icon: "PackageX",

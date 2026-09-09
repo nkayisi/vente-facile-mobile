@@ -11,6 +11,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
+import { NOMS_ONGLETS } from "./onglets";
+
 /**
  * NE JAMAIS remettre ce fichier dans `src/app/` : c'est le dossier de routes
  * d'expo-router, et Metro tente d'empaqueter TOUT ce qui s'y trouve, y compris
@@ -145,6 +147,58 @@ describe("cibles de navigation", () => {
       const attendu = nom === "index" ? "/" : `/${nom}`;
       expect(routes.has(attendu)).toBe(true);
     }
+  });
+});
+
+/**
+ * UN RACCOURCI NE MÈNE JAMAIS À UN ONGLET SANS BOUTON.
+ *
+ * On n'ARRIVE pas sur un onglet, on BASCULE dessus : la pile ne bouge pas, donc
+ * il n'y a pas de flèche de retour, et un onglet déclaré `href: null` n'a pas
+ * non plus de bouton dans la barre pour dire où l'on se trouve. Une tuile qui y
+ * mène est un cul-de-sac : on y entre, et le seul chemin de sortie est un
+ * onglet qui ne parle pas de ce qu'on regarde.
+ *
+ * C'est ce qui est arrivé à la liste des mouvements de stock, seule destination
+ * de « Gestion de stock » à vivre dans `(tabs)` : ses trois voisines -
+ * `/rayon`, `/transfert`, `/ajustement` - sont dans la pile et portent la
+ * flèche d'`AppBar`.
+ *
+ * Un onglet qui a SON bouton reste une cible légitime : la barre du bas le
+ * montre en surbrillance, et c'est elle qui dit où l'on est.
+ */
+describe("les raccourcis ne mènent pas dans un cul-de-sac", () => {
+  /** Route -> son fichier est-il dans le groupe `(tabs)` ? */
+  const dansLesOnglets = new Map<string, boolean>();
+  for (const f of fichiers(APP)) {
+    const route = cheminDeRoute(f);
+    if (route === null) continue;
+    dansLesOnglets.set(route, relative(APP, f).replace(/\\/g, "/").includes("(tabs)/"));
+  }
+
+  const cibles: { fichier: string; href: string }[] = [];
+  for (const f of fichiers(APP)) {
+    for (const m of readFileSync(f, "utf8").matchAll(/href="([^"]+)"/g)) {
+      cibles.push({ fichier: relative(APP, f), href: m[1] });
+    }
+  }
+
+  it("le balayage MORD", () => {
+    // Sans cette assertion, une expression qui ne trouve aucune tuile ferait
+    // passer le test suivant sans rien démontrer.
+    expect(cibles.length).toBeGreaterThan(5);
+  });
+
+  it("aucune tuile ne vise un onglet privé de bouton", () => {
+    const culsDeSac = cibles
+      .filter(({ href }) => {
+        const route = normaliser(href);
+        if (!dansLesOnglets.get(route)) return false;
+        const nom = route === "/" ? "index" : route.slice(1);
+        return !NOMS_ONGLETS.includes(nom);
+      })
+      .map(({ fichier, href }) => `${fichier} -> ${href}`);
+    expect(culsDeSac).toEqual([]);
   });
 });
 

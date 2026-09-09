@@ -23,9 +23,10 @@ import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { depuis } from "@/data/ventes";
 import { libelleEnvoi } from "@/data/envoi";
+import { ETAT_SESSION, motifClotureFermee } from "@/features/caisse/apparence";
 import {
   AppBar, Badge, Banner, Button, Card, CardHeader, Divider, EmptyState, Icon,
-  Pressable, Screen, Spinner, Text,
+  MultiCurrencyTotal, Pressable, Screen, Spinner, Text,
 } from "@/ui";
 
 const TABLES = ["registers", "register_sessions", "warehouses", "sales", "users"];
@@ -187,22 +188,33 @@ export default function DetailCaisse() {
           <CardHeader title="État" />
           {c.session ? (
             <View className="gap-3">
-              <View className="gap-1">
+              {/* La MÊME apparence qu'au parc de caisses, et pour la même
+                  raison : une coche verte sur « attend son envoi » affirme le
+                  contraire du texte. Voir `features/caisse/apparence.ts`. */}
+              <View
+                className={`rounded-lg border border-solid p-3 ${
+                  ETAT_SESSION[c.session.envoi].boite
+                }`}
+              >
                 <View className="flex-row items-center gap-2">
                   <Icon
-                    name={c.session.envoi === "bloque" ? "AlertTriangle" : "CheckCircle2"}
+                    name={ETAT_SESSION[c.session.envoi].icone}
                     size={18}
-                    color={c.session.envoi === "bloque" ? "warning" : "success"}
+                    color={ETAT_SESSION[c.session.envoi].couleur}
                   />
+                  {/* Le titre dit l'ACQUIS : la session est ouverte, on vend
+                      dessus. Ce qui ne l'est pas encore va juste dessous. */}
                   <Text variant="bodySmall" className="font-sans-medium">
-                    {libelleEnvoi(c.session.envoi)?.court ?? "Session ouverte"}
+                    Session ouverte
                   </Text>
                 </View>
-                {/* Le POURQUOI, là où il y a la place de l'écrire : sans lui,
-                    le marchand cherche du réseau qui ne débloquera rien. */}
+                {/* L'ÉTAT ici, la CONSÉQUENCE sous le bouton. Porter le détail
+                    aux deux endroits faisait dire deux fois « à la prochaine
+                    synchronisation » sur la même carte, et une phrase répétée
+                    finit par n'être lue ni la première ni la seconde fois. */}
                 {libelleEnvoi(c.session.envoi) ? (
-                  <Text variant="caption" className="text-muted-foreground">
-                    {libelleEnvoi(c.session.envoi)?.detail}
+                  <Text variant="caption" className="mt-1">
+                    {libelleEnvoi(c.session.envoi)?.court}
                   </Text>
                 ) : null}
               </View>
@@ -216,23 +228,53 @@ export default function DetailCaisse() {
                 ) : null}
                 <Paire label="Ventes" valeur={String(c.session.nbVentes)} />
               </View>
-              <View className="flex-row gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  leftIcon="Calculator"
-                  disabled={c.session.envoi !== "envoye"}
-                  onPress={() => router.push(`/cloture/${c.session?.id}`)}
-                >
-                  Clôturer
-                </Button>
-                <Button
-                  className="flex-1"
-                  leftIcon="ShoppingCart"
-                  onPress={() => router.push("/vendre")}
-                >
-                  Continuer
-                </Button>
+              {/* L'ENCAISSÉ manquait ici alors que le parc le rend : le
+                  caissier venu chercher son chiffre avant de compter son
+                  tiroir le trouvait sur la liste et pas sur la fiche. Une
+                  ligne PAR DEVISE, jamais leur somme. */}
+              <View className="flex-row items-start justify-between gap-3 border-t border-border pt-3">
+                <Text variant="bodySmall" className="text-muted-foreground">
+                  Encaissé
+                </Text>
+                <View className="min-w-0 items-end">
+                  <MultiCurrencyTotal
+                    lignes={c.session.encaisseParDevise}
+                    money={money.money}
+                    taille="mesure"
+                  />
+                  {c.session.sansMontant > 0 ? (
+                    <Text variant="caption" className="mt-0.5">
+                      {`+${c.session.sansMontant} sans montant`}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+              <View>
+                <View className="flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    leftIcon="Calculator"
+                    disabled={c.session.envoi !== "envoye"}
+                    onPress={() => router.push(`/cloture/${c.session?.id}`)}
+                  >
+                    Clôturer
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    leftIcon="ShoppingCart"
+                    onPress={() => router.push("/vendre")}
+                  >
+                    Continuer
+                  </Button>
+                </View>
+                {/* Un bouton mort qui ne dit pas pourquoi laisse le caissier
+                    appuyer sans rien obtenir, son tiroir déjà compté. */}
+                {motifClotureFermee(c.session.envoi) ? (
+                  <Text variant="caption" className="mt-2">
+                    {motifClotureFermee(c.session.envoi)}
+                  </Text>
+                ) : null}
               </View>
             </View>
           ) : (

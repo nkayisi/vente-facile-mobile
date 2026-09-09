@@ -12,34 +12,46 @@
  */
 import * as Crypto from "expo-crypto";
 
-import { enAttenteParType, enqueue } from "@/sync";
+import { pireEnvoi } from "@/data/envoi";
+import { lotEnAttente, type LotEnAttente } from "@/features/sync/attente";
+import { enAttenteParType, enqueue, type EtatEnvoi } from "@/sync";
 
+// Le corps de l'acte vit dans le module PUR : ce fichier importe `@/sync`, qui
+// ouvre la base SQLite au chargement, et le contrat de transport ne serait
+// alors éprouvable sur aucune machine sans appareil. C'est le motif déjà
+// retenu pour `payload-mouvement.ts`.
+import {
+  type ActeEnFile,
+  type TransitionSession,
+} from "./apparence";
+import {
+  corpsDeLaSession,
+  type SaisieSession,
+} from "./nouvelle-session";
 import { slugifier } from "./slug";
 
-export interface SaisieSession {
-  nom: string;
-  entrepot: string;
-  perimetre: "full" | "category" | "product";
-  categories?: string[];
-  produits?: string[];
-  notes?: string;
-}
+export type { SaisieSession };
+// Le type vit dans `apparence.ts`, module PUR : ce fichier ouvre SQLite au
+// chargement. Le réexport garde les appelants en place.
+export type { ActeEnFile, TransitionSession };
 
+/**
+ * Met une session d'inventaire en file.
+ *
+ * ⚠ Le nom se compose ICI, à l'instant de l'envoi, et non au montage de
+ * l'écran : un formulaire laissé ouvert passé minuit doit enregistrer la date
+ * qu'il affichera après, pas celle qu'il affichait avant.
+ */
 export async function creerSession(saisie: SaisieSession): Promise<string> {
   const id = Crypto.randomUUID();
   await enqueue(id, "inventory_session.create", {
     id,
-    name: saisie.nom,
-    warehouse: saisie.entrepot,
-    scope_type: saisie.perimetre,
-    ...(saisie.categories?.length ? { categories: saisie.categories } : {}),
-    ...(saisie.produits?.length ? { products: saisie.produits } : {}),
-    notes: saisie.notes ?? "",
+    ...corpsDeLaSession(saisie, new Date()),
   });
   return id;
 }
 
-export type TransitionSession = "start" | "submit" | "validate" | "cancel";
+const TRANSITIONS: TransitionSession[] = ["start", "submit", "validate", "cancel"];
 
 export async function transitionSession(
   sessionId: string,
@@ -97,11 +109,21 @@ export interface ComptageEnAttente {
   total: number;
   contenants: number | null;
   vrac: number | null;
+  /**
+   * Où en est l'envoi de CE comptage.
+   *
+   * Un comptage bloqué reste affiché - c'est du travail fait dans le rayon, le
+   * masquer ferait recompter - mais il n'ouvre pas la soumission : il
+   * n'arrivera pas au serveur, qui verrait une feuille incomplète.
+   */
+  envoi: EtatEnvoi;
 }
 
 export async function comptagesEnAttente(
   sessionId: string
 ): Promise<Map<string, ComptageEnAttente>> {
+  // `avecBloquees` : voir `ComptageEnAttente.envoi`. La lecture ne peut ici
+  // que RESSERRER - elle ferme une porte, elle n'affirme aucun acquis.
   const ops = await enAttenteParType<{
     session: string;
     counts?: {
@@ -110,7 +132,7 @@ export async function comptagesEnAttente(
       counted_package_quantity?: string;
       counted_loose_quantity?: string;
     }[];
-  }>("inventory_session.count");
+  }>("inventory_session.count", { avecBloquees: true });
 
   // Le DERNIER comptage d'une ligne gagne : le magasinier recompte quand il
   // doute, et c'est sa dernière lecture qui vaut.
@@ -126,6 +148,9 @@ export async function comptagesEnAttente(
             : null,
         vrac:
           c.counted_loose_quantity != null ? Number(c.counted_loose_quantity) : null,
+        // L'état retenu est celui de l'opération retenue, pas le pire : c'est
+        // la valeur que le magasinier vient de saisir.
+        envoi: o.envoi,
       });
     }
   }
@@ -138,6 +163,9 @@ export interface SessionEnAttente {
   nom: string;
   entrepot: string;
   perimetre: string;
+  envoi: EtatEnvoi;
+  /** Quand elle a été mise en file. */
+  le: Date;
 }
 
 /**
@@ -147,6 +175,12 @@ export interface SessionEnAttente {
  * « introuvable » par sa propre fiche : elle n'est PAS dans la table tirée, et
  * elle ne doit pas y être. C'est la contrepartie systématique de la règle
  * « on n'écrit rien dans une table tirée ».
+ *
+ * ⚠ `avecBloquees` est OBLIGATOIRE ici. Sans lui, une session créée puis
+ * bloquée - abonnement expiré, droit manquant - disparaît de la liste ET de sa
+ * propre fiche, qui la déclare « introuvable » alors que l'opération est
+ * vivante et s'appliquera dès le déblocage. Rien n'est pour autant présenté
+ * comme acquis : le badge dit « en attente d'un droit ».
  */
 export async function creationsEnAttente(): Promise<SessionEnAttente[]> {
   const ops = await enAttenteParType<{
@@ -154,29 +188,103 @@ export async function creationsEnAttente(): Promise<SessionEnAttente[]> {
     name?: string;
     warehouse?: string;
     scope_type?: string;
-  }>("inventory_session.create");
+  }>("inventory_session.create", { avecBloquees: true });
   return ops.map((o) => ({
     id: o.payload.id,
     nom: o.payload.name ?? "Session",
     entrepot: o.payload.warehouse ?? "",
     perimetre: o.payload.scope_type ?? "full",
+    envoi: o.envoi,
+    le: o.occurredAt,
   }));
 }
 
-/** Sessions dont une transition attend son envoi. */
-export async function sessionsEnAttente(): Promise<Set<string>> {
-  const [creations, transitions] = await Promise.all([
-    enAttenteParType<{ id: string }>("inventory_session.create"),
+/** L'acte qu'une session attend d'envoyer, et où il en est. */
+export interface AttenteSession {
+  /** Le plus RÉCENT : c'est le dernier geste du magasinier. */
+  acte: ActeEnFile;
+  /**
+   * Le PIRE état de tous les actes en file pour cette session.
+   *
+   * Un comptage en file plus une soumission bloquée, ce n'est pas « attend son
+   * envoi » : c'est bloqué, et proposer de synchroniser ferait attendre un
+   * réseau qui ne débloquera rien.
+   */
+  envoi: EtatEnvoi;
+  le: Date;
+}
+
+/**
+ * Ce que chaque session attend d'envoyer.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN `Set` NE DISAIT NI QUOI, NI DANS QUEL ÉTAT.                          │
+ * │                                                                          │
+ * │ Les cinq actes étaient aplatis en identifiants : l'écran savait qu'« une │
+ * │ opération » attendait, jamais laquelle, et surtout jamais si elle était  │
+ * │ BLOQUÉE. Il annonçait donc « attend son envoi » sur une opération qui    │
+ * │ attend une décision, et le marchand cherchait du réseau des jours        │
+ * │ durant.                                                                  │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ `avecBloquees` est OBLIGATOIRE, et ce n'est pas une lecture optimiste :
+ * elle ne fait que FERMER une porte. Sans lui, un `start` bloqué sort de la
+ * carte, « Démarrer le comptage » redevient actif, et le magasinier met en
+ * file un SECOND démarrage. `unblockAll` les libère tous deux : le premier
+ * s'applique, le second part en quarantaine avec « session déjà démarrée », et
+ * il découvre un refus qu'il n'a jamais provoqué. C'est mot pour mot le défaut
+ * de la seconde session de caisse (`features/pos/caisse.ts`).
+ *
+ * Un `inventory_session.count` n'y entre PAS : un comptage n'est pas une
+ * transition d'état, et l'y mêler ferait dire « une opération attend son
+ * envoi » à chaque ligne saisie, sur toute la feuille, en permanence. Les
+ * comptages se lisent ligne par ligne, dans `comptagesEnAttente`.
+ */
+export async function sessionsEnAttente(): Promise<Map<string, AttenteSession>> {
+  const [creations, parTransition] = await Promise.all([
+    enAttenteParType<{ id: string }>("inventory_session.create", {
+      avecBloquees: true,
+    }),
     Promise.all(
-      (["start", "submit", "validate", "cancel"] as const).map((t) =>
-        enAttenteParType<{ session: string }>(`inventory_session.${t}`)
-      )
+      TRANSITIONS.map(async (t) => ({
+        acte: t as ActeEnFile,
+        ops: await enAttenteParType<{ session: string }>(
+          `inventory_session.${t}`,
+          { avecBloquees: true }
+        ),
+      }))
     ),
   ]);
-  return new Set([
-    ...creations.map((o) => o.payload.id),
-    ...transitions.flat().map((o) => o.payload.session),
-  ]);
+
+  const actes = [
+    ...creations.map((o) => ({
+      session: o.payload.id,
+      acte: "create" as ActeEnFile,
+      envoi: o.envoi,
+      le: o.occurredAt,
+    })),
+    ...parTransition.flatMap(({ acte, ops }) =>
+      ops.map((o) => ({
+        session: o.payload.session,
+        acte,
+        envoi: o.envoi,
+        le: o.occurredAt,
+      }))
+    ),
+  ];
+
+  const par = new Map<string, AttenteSession>();
+  for (const a of actes) {
+    if (!a.session) continue;
+    const deja = par.get(a.session);
+    const plusRecent = !deja || a.le >= deja.le;
+    par.set(a.session, {
+      acte: plusRecent ? a.acte : deja.acte,
+      le: plusRecent ? a.le : deja.le,
+      envoi: pireEnvoi([deja?.envoi, a.envoi]),
+    });
+  }
+  return par;
 }
 
 // ------------------------------------------------------------------ catalogue
@@ -249,7 +357,7 @@ export async function creerReferentiel(
 /** Ce que le catalogue attend d'envoyer, par genre. */
 export async function catalogueEnAttente(): Promise<{
   articles: { id: string; nom: string; sku: string }[];
-  referentiels: number;
+  referentiels: LotEnAttente;
 }> {
   const [articles, cats, marques, unites] = await Promise.all([
     enAttenteParType<{ id: string; name: string; sku: string }>("product.create"),
@@ -263,7 +371,7 @@ export async function catalogueEnAttente(): Promise<{
       nom: o.payload.name,
       sku: o.payload.sku,
     })),
-    referentiels: cats.length + marques.length + unites.length,
+    referentiels: lotEnAttente([...cats, ...marques, ...unites]),
   };
 }
 

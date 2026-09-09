@@ -8,33 +8,36 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatDateFr } from "@vente-facile/core";
 
 import {
   PERIMETRE_INVENTAIRE,
   STATUT_INVENTAIRE,
   listeSessions,
+  relevesInventaire,
   type SessionResume,
 } from "@/data/inventaire";
+import { libelleEnvoi, pireEnvoi } from "@/data/envoi";
 import { useLecture } from "@/data/live";
 import { creationsEnAttente, sessionsEnAttente } from "@/features/inventaire/actes";
+import { FeuilleNouvelInventaire } from "@/features/inventaire/feuille-session";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   Badge, Chip, ChipRow, DataList, DataRow, Fab, PageHeader, Screen,
-  SearchInput, Text,
+  SearchInput, StatStrip, StatStripItem, Text,
 } from "@/ui";
 
 const TABLES = ["inventory_sessions", "inventory_counts", "warehouses"];
 
-/** Hauteur de la barre d'onglets, hors zone sûre. Mesurée sur l'émulateur. */
-const HAUTEUR_ONGLETS = 56;
-
 export default function Inventaire() {
   const { can } = useSession();
-  const insets = useSafeAreaInsets();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
+  // La feuille est rendue CONDITIONNELLEMENT : chaque ouverture est un
+  // montage, donc un formulaire vierge, sans effet de remise à zéro à tenir en
+  // phase avec les champs qu'on ajoutera.
+  const [creation, setCreation] = useState(false);
 
   const charger = useCallback(
     () => listeSessions({ recherche, statut }),
@@ -49,6 +52,9 @@ export default function Inventaire() {
   });
   const { donnees: creations } = useLecture(creationsEnAttente, {
     tables: ["outbox_operations"],
+  });
+  const { donnees: releves } = useLecture(relevesInventaire, {
+    tables: ["inventory_sessions"],
   });
 
   // Les sessions créées ici ne sont PAS dans la table tirée. Sans cette
@@ -70,12 +76,58 @@ export default function Inventaire() {
     }));
   const elements = [...nonSynchronisees, ...(donnees?.elements ?? [])];
 
+  /**
+   * L'état d'envoi le PIRE de toutes les sessions qui attendent.
+   *
+   * Un seul bandeau, en tête, et pas un bouton par rangée : vingt boutons
+   * « Synchroniser » dans une liste sont vingt fois le même geste. Et c'est le
+   * pire qui s'annonce - dire « attend son envoi » sur un lot dont une pièce
+   * est bloquée ferait attendre un réseau qui ne débloquera rien.
+   */
+  const attentes = [...(enFile?.values() ?? [])].map((a) => a.envoi);
+  const envoiGlobal = attentes.length > 0 ? pireEnvoi(attentes) : undefined;
+
   const enTete = (
     <View className="gap-3 px-4 pb-3 pt-2">
       <PageHeader
         title="Inventaire"
         subtitle="Gérez vos sessions d'inventaire et comptages de stock"
       />
+      <BandeauEnvoi
+        envoi={envoiGlobal}
+        titre={
+          attentes.length === 1
+            ? "Une session attend son envoi"
+            : `${attentes.length} sessions attendent leur envoi`
+        }
+        consequence="Leur statut ne changera qu'après."
+      />
+      {/* Les quatre relevés du back-office, mais comptés sur TOUTE la table :
+          les siens portent sur la page affichée et sont faux dès la page 2. */}
+      <StatStrip>
+        <StatStripItem
+          label="En cours"
+          value={String(releves?.enCours ?? 0)}
+          icon="Activity"
+          tone={releves?.enCours ? "accent" : "neutral"}
+        />
+        <StatStripItem
+          label="En révision"
+          value={String(releves?.enRevision ?? 0)}
+          icon="Eye"
+          tone={releves?.enRevision ? "warn" : "neutral"}
+        />
+        <StatStripItem
+          label="Brouillons"
+          value={String(releves?.brouillons ?? 0)}
+          icon="Clock"
+        />
+        <StatStripItem
+          label="Validés"
+          value={String(releves?.valides ?? 0)}
+          icon="CheckCircle2"
+        />
+      </StatStrip>
       <SearchInput
         valeur={recherche}
         onChange={setRecherche}
@@ -97,6 +149,10 @@ export default function Inventaire() {
 
   const rendu = (s: SessionResume) => {
     const st = STATUT_INVENTAIRE[s.statut];
+    // « En attente d'envoi » était écrit en orange EN DUR : sur une opération
+    // bloquée, c'était le mot faux dans la couleur fausse. Une file est
+    // normale et partira seule ; un blocage attend une décision.
+    const envoi = libelleEnvoi(enFile?.get(s.id)?.envoi);
     return (
       <DataRow
         principal={s.nom}
@@ -104,8 +160,10 @@ export default function Inventaire() {
           .filter(Boolean)
           .join(" · ")}
         badge={
-          enFile?.has(s.id) ? (
-            <Badge tone="warning">En attente d&apos;envoi</Badge>
+          envoi ? (
+            <Badge tone={envoi.ton === "warning" ? "warning" : "neutral"}>
+              {envoi.court}
+            </Badge>
           ) : st ? (
             <Badge tone={st.ton}>{st.label}</Badge>
           ) : undefined
@@ -131,26 +189,45 @@ export default function Inventaire() {
         rendu={rendu}
         enTete={enTete}
         chargement={chargement && elements.length === 0}
-        vide={{
-          icon: "ClipboardList",
-          titre: "Aucune session",
-          message: recherche
-            ? "Aucune session ne correspond à votre recherche."
-            : "Créez une session pour compter votre stock, rayon par rayon.",
-        }}
+        vide={
+          recherche || statut
+            ? {
+                icon: "Filter",
+                titre: "Aucun résultat",
+                message: recherche
+                  ? "Aucun inventaire ne correspond à votre recherche."
+                  : "Aucun inventaire dans cet état.",
+                action: {
+                  label: "Voir tous les inventaires",
+                  onPress: () => {
+                    setRecherche("");
+                    setStatut(null);
+                  },
+                },
+              }
+            : {
+                icon: "ClipboardList",
+                titre: "Aucun inventaire",
+                message:
+                  "Créez un inventaire pour compter votre stock, rayon par rayon.",
+              }
+        }
       />
       {can("inventory.create") ? (
         <Fab
           icon="Plus"
-          label="Nouvelle"
-          // La barre d'onglets, plus la zone sûre QU'ELLE PORTE : sur un
-          // iPhone, elle s'étire de l'indicateur d'accueil et mesure donc
-          // trente-quatre points de plus qu'ici. Poser 56 en dur y placerait
-          // le bouton SUR les onglets. `Screen` n'y peut rien : un écran
-          // d'onglet passe `edges={[]}`, sans quoi il laisserait une bande
-          // vide au-dessus de la barre.
-          offsetBas={HAUTEUR_ONGLETS + insets.bottom}
-          onPress={() => router.push("/comptage/nouveau")}
+          label="Nouvel inventaire"
+          onPress={() => setCreation(true)}
+        />
+      ) : null}
+
+      {creation ? (
+        <FeuilleNouvelInventaire
+          onFermer={() => setCreation(false)}
+          onCree={(id) => {
+            setCreation(false);
+            router.push(`/comptage/${id}`);
+          }}
         />
       ) : null}
     </Screen>

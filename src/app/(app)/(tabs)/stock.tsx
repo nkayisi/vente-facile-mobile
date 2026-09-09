@@ -8,9 +8,11 @@
  * **Les relevés sont réels**, lus dans les tables tirées : l'écran est juste
  * hors ligne. Depuis le lot 7, les actions d'écriture y sont branchées.
  *
- * Écart au web assumé : les quatre raccourcis sont en UNE colonne. Le web écrit
- * `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`, donc à 390 points il rend lui
- * aussi une seule colonne : c'est la parité exacte, pas une simplification.
+ * Les quatre raccourcis sont DEUX PAR RANGÉE, pastille alignée sur le titre. Le
+ * web les écrit en `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`, donc une seule
+ * colonne à 390 points ; on s'en écarte sciemment, une cellule de tuile étant
+ * ici deux fois moins haute qu'une ligne du back-office. Ce qui est repris mot
+ * pour mot, c'est le TITRE de la section et les quatre libellés.
  */
 import { View } from "react-native";
 import { router } from "expo-router";
@@ -18,6 +20,7 @@ import { formatNumber, formatPrice } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
 import { entrepots, relevesStock } from "@/data/stock";
+import { FeuilleNouveauMouvement } from "@/features/stock/feuille-mouvement";
 import { useSession } from "@/session/provider";
 import {
   ActionTile,
@@ -42,6 +45,7 @@ const TABLES = ["stocks", "products", "warehouses"];
 export default function Stock() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
+  const [feuilleMouvement, setFeuilleMouvement] = useState(false);
   const { donnees: r } = useLecture(relevesStock, { tables: TABLES });
   const { donnees: liste } = useLecture(entrepots, { tables: TABLES });
 
@@ -62,7 +66,7 @@ export default function Stock() {
               variant="outline"
               size="sm"
               leftIcon="Activity"
-              onPress={() => router.push("/mouvement/nouveau")}
+              onPress={() => setFeuilleMouvement(true)}
             >
               Entrée de stock
             </Button>
@@ -120,7 +124,7 @@ export default function Stock() {
           />
           <ActionTile
             forme="grille"
-            href="/mouvements"
+            href="/mouvement"
             title="Mouvements"
             description="Entrées et sorties"
             icon="ClipboardList"
@@ -223,6 +227,17 @@ export default function Stock() {
           </View>
         )}
       </View>
+
+      {/* Le raccourci « Entrée de stock » ouvre une FEUILLE par-dessus le
+          concentrateur, plutôt que de pousser un écran : c'est un raccourci,
+          et on revient forcément ici. Rendue conditionnellement, donc vierge à
+          chaque ouverture - voir la docstring de la feuille. */}
+      {feuilleMouvement ? (
+        <FeuilleNouveauMouvement
+          onFermer={() => setFeuilleMouvement(false)}
+          onCree={() => setFeuilleMouvement(false)}
+        />
+      ) : null}
     </Screen>
   );
 }

@@ -127,6 +127,10 @@ const INDEXES = {
   expenses: [["expense_date"], ["status"]],
   register_sessions: [["register_id"], ["status"]],
   categories: [["parent_id"]],
+  // La feuille de comptage se lit et s'agrège TOUJOURS par session : le détail
+  // filtre dessus, et la liste y agrège l'avancement de chaque ligne affichée.
+  inventory_counts: [["session_id"]],
+  inventory_sessions: [["status"], ["warehouse_id"]],
   organization_currencies: [["currency_id"]],
 };
 

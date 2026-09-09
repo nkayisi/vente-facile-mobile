@@ -8,10 +8,10 @@
  * pour les transporter. Un panier en CDF à sept chiffres perd ses unités en
  * virgule flottante.
  */
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
-import { products, stocks, warehouses } from "@/db/schema";
+import { products, stockLocations, stocks, warehouses } from "@/db/schema";
 
 const nb = (v: string | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -89,6 +89,16 @@ export interface EntrepotResume {
   parDefaut: boolean;
   actif: boolean;
   valeurStock: number;
+  /**
+   * Le dépôt tolère un solde négatif.
+   *
+   * C'est LUI qui décide, jamais le produit : le serveur tranche au niveau de
+   * l'entrepôt partout en aval (`assert_sealed_available`, `Stock.save`), et
+   * lire le champ du produit était un bug corrigé au lot 4. Quand il est vrai,
+   * aucun avertissement de disponible n'a lieu d'être : le serveur n'oppose
+   * alors rien à l'expédition.
+   */
+  stockNegatifAutorise: boolean;
 }
 
 /** Entrepôts, avec la valeur du stock qu'ils portent. */
@@ -118,6 +128,7 @@ export async function entrepots(): Promise<EntrepotResume[]> {
     parDefaut: Boolean(w.isDefault),
     actif: Boolean(w.isActive),
     valeurStock: valeurs.get(w.id) ?? 0,
+    stockNegatifAutorise: Boolean(w.allowNegativeStock),
   }));
 }
 
@@ -130,8 +141,6 @@ export interface DetailEntrepot extends EntrepotResume {
    *  honnête à faire d'une donnée qu'on n'a pas. Ils reviendront au lot 10,
    *  avec les utilisateurs. */
   responsableId: string | null;
-  /** Le dépôt accepte-t-il de descendre sous zéro ? */
-  stockNegatifAutorise: boolean;
   /** Nombre de lignes de stock, produits distincts. */
   produits: number;
   unitesAuTotal: number;
@@ -189,4 +198,35 @@ export async function detailEntrepot(id: string): Promise<DetailEntrepot | null>
     stockBas: bas,
     enRupture: rupture,
   };
+}
+
+export interface EmplacementStock {
+  id: string;
+  nom: string;
+  code: string;
+}
+
+/**
+ * Les emplacements ACTIFS d'un entrepôt. Miroir de
+ * `GET /stock-locations/by-warehouse/{id}/`.
+ *
+ * `stock_locations` descend au tirage avec `warehouse_path='warehouse_id'` : le
+ * terminal n'a que celles de ses entrepôts, exactement le périmètre que le
+ * serveur autoriserait. Sans entrepôt, aucune liste : proposer les emplacements
+ * d'un dépôt qu'on n'a pas choisi ferait ranger une réception au mauvais rayon.
+ */
+export async function emplacementsDeLEntrepot(
+  entrepot: string | null
+): Promise<EmplacementStock[]> {
+  if (!entrepot) return [];
+  const lignes = await db
+    .select({
+      id: stockLocations.id,
+      nom: stockLocations.name,
+      code: stockLocations.code,
+    })
+    .from(stockLocations)
+    .where(and(eq(stockLocations.warehouseId, entrepot), eq(stockLocations.isActive, true)))
+    .orderBy(stockLocations.name);
+  return lignes.map((l) => ({ id: l.id, nom: l.nom, code: l.code }));
 }

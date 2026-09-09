@@ -117,18 +117,6 @@ describe("Panier", () => {
     expect(apres).toBe(plein);
   });
 
-  it("borne la remise de ligne au plafond du marchand, jamais à cent", () => {
-    // Cette assertion disait « au plus 100 » : c'était la borne du comptoir, et
-    // elle n'a jamais été celle du serveur, qui oppose le réglage de
-    // l'organisation (défaut 50). Voir la section « plafond de remise de
-    // ligne » plus bas pour la règle complète.
-    let etat = ajouter(PANIER_VIDE, detail, 0, 1);
-    etat = reducteurPanier(etat, { type: "remiseLigne", index: 0, pourcentage: 150 });
-    expect(etat.lignes[0].discount_percentage).toBe(PANIER_VIDE.plafondRemise);
-    etat = reducteurPanier(etat, { type: "remiseLigne", index: 0, pourcentage: -5 });
-    expect(etat.lignes[0].discount_percentage).toBe(0);
-  });
-
   it("retire du client ce qui n'a de sens qu'avec lui", () => {
     let etat = ajouter(PANIER_VIDE, detail, 0, 1);
     etat = reducteurPanier(etat, {
@@ -172,79 +160,27 @@ describe("Panier", () => {
   });
 });
 
-/**
- * Le plafond de remise vient du MARCHAND, pas du comptoir.
+/*
+ * LA REMISE PAR LIGNE A ÉTÉ RETIRÉE, ET AVEC ELLE SON PLAFOND.
  *
- * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ LE COMPTOIR BORNAIT À 100, LE SERVEUR À 50 PAR DÉFAUT.                  │
- * │                                                                          │
- * │ Le réglage vit dans les paramètres de l'organisation. Un marchand qui    │
- * │ l'abaisse à 20 voyait la caisse accepter 45 %, annoncer le prix, imprimer │
- * │ le ticket, puis le serveur refuser la vente ENTIÈRE : le refus arrivait  │
- * │ après le client. Dans l'autre sens, un marchand qui relève son plafond   │
- * │ à 80 ne pouvait pas saisir la remise qu'il avait lui-même autorisée.     │
- * └──────────────────────────────────────────────────────────────────────────┘
+ * Les actions `remiseLigne` et `prixLigne` n'avaient AUCUN appelant : aucun
+ * écran ne les dispatchait, seuls ces tests les maintenaient en vie. Le plafond
+ * du marchand (`organization.max_sale_discount_percent`) ne bornait qu'elles,
+ * et ne s'appliquait donc plus à rien.
+ *
+ * Ce qui RESTE, et qui doit rester : `discount_percentage` sur la ligne, qui
+ * voyage dans le corps de la vente et se restaure d'un panier mis en attente
+ * (voir `attente.test.ts`). Un panier rangé avant ce retrait peut encore en
+ * porter un, et la ligne « Remises de ligne » du comptoir l'affiche toujours -
+ * la retirer rendrait un total inexplicable.
+ *
+ * Le jour où un écran de saisie existera, le plafond sera à reposer : il est
+ * exposé résolu par le serveur sur `GET /organizations/` comme sur le détail,
+ * et le serveur l'oppose dans `validate_discount_percentage`. Le borner à 100
+ * au comptoir - ce que faisait le code d'origine - laisse saisir 45 % à un
+ * marchand qui a fermé à 20, imprimer le ticket, puis le serveur refuse la
+ * vente ENTIÈRE, après le client.
  */
-describe("plafond de remise de ligne", () => {
-  const avecPlafond = (pct: number): EtatPanier =>
-    reducteurPanier(ajouter(PANIER_VIDE, casier, 1, 0), {
-      type: "plafondRemise",
-      pourcentage: pct,
-    });
-
-  const remiser = (etat: EtatPanier, pct: number) =>
-    reducteurPanier(etat, { type: "remiseLigne", index: 0, pourcentage: pct }).lignes[0]
-      .discount_percentage;
-
-  it("borne la remise au plafond de l'organisation", () => {
-    expect(remiser(avecPlafond(20), 45)).toBe(20);
-  });
-
-  it("laisse passer une remise SOUS le plafond", () => {
-    expect(remiser(avecPlafond(20), 15)).toBe(15);
-  });
-
-  it("laisse passer une remise que le marchand a RELEVÉE", () => {
-    // La borne à 100 n'était pas seulement trop permissive : couplée au défaut
-    // serveur à 50, elle laissait saisir ce que le serveur refusait ensuite.
-    expect(remiser(avecPlafond(80), 70)).toBe(70);
-  });
-
-  it("applique le défaut SERVEUR tant que la session n'a rien dit", () => {
-    expect(remiser(ajouter(PANIER_VIDE, casier, 1, 0), 90)).toBe(50);
-  });
-
-  it("refuse une remise négative", () => {
-    expect(remiser(avecPlafond(20), -5)).toBe(0);
-  });
-
-  it("retombe sur le défaut serveur pour un réglage ABERRANT", () => {
-    // Le serveur borne pareil : une valeur illisible ou négative rend le
-    // défaut, jamais zéro. Zéro fermerait toute remise en silence.
-    expect(avecPlafond(Number.NaN).plafondRemise).toBe(50);
-    expect(avecPlafond(-10).plafondRemise).toBe(50);
-    expect(avecPlafond(250).plafondRemise).toBe(100);
-  });
-
-  it("SURVIT au vidage du panier", () => {
-    // Le plafond est du jour, pas du panier. Le rendre au défaut à chaque
-    // vente rouvrirait la remise que le marchand a fermée, sans que rien ne
-    // le signale : la vente suivante repasserait à 50 %.
-    const vide = reducteurPanier(avecPlafond(20), { type: "vider" });
-    expect(vide.plafondRemise).toBe(20);
-    expect(vide.lignes).toEqual([]);
-  });
-
-  it("SURVIT à la reprise d'un panier mis en attente", () => {
-    // Même règle que pour les prix et le stock, relus à la reprise : un panier
-    // rangé hier ne rouvre pas une remise fermée depuis.
-    const repris = reducteurPanier(avecPlafond(20), {
-      type: "restaurer",
-      etat: { ...PANIER_VIDE, plafondRemise: 90 },
-    });
-    expect(repris.plafondRemise).toBe(20);
-  });
-});
 
 /**
  * Le motif opposé au caissier, dans l'ordre du serveur.

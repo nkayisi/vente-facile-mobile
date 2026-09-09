@@ -53,23 +53,11 @@ export interface EtatPanier {
   /** Vente portée au compte du client plutôt qu'encaissée intégralement. */
   aCredit: boolean;
   echeance: string | null;
-  /**
-   * Plafond de remise par ligne, en pourcentage, tel que le MARCHAND l'a réglé.
-   *
-   * Il vient du snapshot de session (`organization.max_sale_discount_percent`),
-   * donc du serveur, qui l'oppose de son côté dans `validate_discount_percentage`.
-   * Le comptoir bornait à 100 : un marchand ayant abaissé son plafond à 20
-   * voyait la caisse accepter 45 %, imprimer le ticket, puis la vente ENTIÈRE
-   * refusée. Le refus arrivait après le client.
-   */
-  plafondRemise: number;
 }
 
 export type ActionPanier =
   | { type: "ajouter"; article: ArticlePos; saisie: Saisie; prix: number }
   | { type: "modifier"; index: number; saisie: Saisie }
-  | { type: "remiseLigne"; index: number; pourcentage: number }
-  | { type: "prixLigne"; index: number; prix: number }
   | { type: "retirer"; index: number }
   | { type: "remiseGlobale"; montant: number }
   | { type: "client"; client: ClientPos | null }
@@ -78,7 +66,6 @@ export type ActionPanier =
   | { type: "points"; points: number }
   | { type: "reglements"; reglements: Reglement[] }
   | { type: "credit"; actif: boolean; echeance?: string | null }
-  | { type: "plafondRemise"; pourcentage: number }
   | { type: "restaurer"; etat: EtatPanier }
   | { type: "vider" };
 
@@ -92,9 +79,6 @@ export const PANIER_VIDE: EtatPanier = {
   reglements: [],
   aCredit: false,
   echeance: null,
-  // Défaut SERVEUR (`DEFAULT_MAX_SALE_DISCOUNT_PERCENT`), employé tant que le
-  // snapshot n'a rien dit. Ce n'est pas une constante du comptoir.
-  plafondRemise: 50,
 };
 
 /**
@@ -194,25 +178,6 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
       return { ...etat, lignes };
     }
 
-    case "remiseLigne": {
-      const lignes = [...etat.lignes];
-      const courante = lignes[action.index];
-      if (!courante) return etat;
-      lignes[action.index] = {
-        ...courante,
-        discount_percentage: Math.min(etat.plafondRemise, Math.max(0, action.pourcentage)),
-      };
-      return { ...etat, lignes };
-    }
-
-    case "prixLigne": {
-      const lignes = [...etat.lignes];
-      const courante = lignes[action.index];
-      if (!courante) return etat;
-      lignes[action.index] = { ...courante, unit_price: Math.max(0, action.prix) };
-      return { ...etat, lignes };
-    }
-
     case "retirer":
       return { ...etat, lignes: etat.lignes.filter((_, i) => i !== action.index) };
 
@@ -237,15 +202,6 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
     case "reglements":
       return { ...etat, reglements: action.reglements };
 
-    case "plafondRemise": {
-      // Borné comme le serveur le borne : un réglage aberrant retombe sur son
-      // défaut plutôt que d'ouvrir la remise à 100 % ou de la fermer à zéro.
-      const brut = Number(action.pourcentage);
-      const plafond =
-        Number.isFinite(brut) && brut >= 0 ? Math.min(100, brut) : PANIER_VIDE.plafondRemise;
-      return { ...etat, plafondRemise: plafond };
-    }
-
     case "credit":
       return {
         ...etat,
@@ -259,14 +215,10 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
     // les contrôles de stock une seconde fois, sur des lignes qui viennent
     // justement de les passer.
     case "restaurer":
-      // Le plafond COURANT prime sur celui rangé avec le panier : c'est la même
-      // règle que pour les prix et le stock, relus à la reprise. Un panier
-      // rangé hier ne doit pas rouvrir une remise fermée depuis.
-      return { ...action.etat, plafondRemise: etat.plafondRemise };
+      return action.etat;
 
     case "vider":
-      // Vider un panier ne rend pas au comptoir le réglage par défaut.
-      return { ...PANIER_VIDE, plafondRemise: etat.plafondRemise };
+      return PANIER_VIDE;
   }
 }
 

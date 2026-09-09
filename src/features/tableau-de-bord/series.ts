@@ -32,93 +32,19 @@
  */
 import { monthShort, weekdayLong } from "@vente-facile/core";
 
-export type Periode = "day" | "week" | "month" | "year";
+import { bornes, type Fenetre } from "@/data/periodes";
 
 /**
- * Bornes des deux périodes, RECOPIÉES du serveur
- * (`apps/organizations/views.py::_periode_glissante`).
+ * La fenêtre glissante du tableau de bord.
  *
- * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ LES QUATRE PÉRIODES SONT GLISSANTES, ET C'EST LA SEULE FAÇON DE LES      │
- * │ EMBOÎTER.                                                                │
- * │                                                                          │
- * │ Elles ne parlaient pas la même langue : `week` était glissante           │
- * │ (`today - 6`), `month` et `year` calendaires (le 1er du mois, le 1er     │
- * │ janvier). Le 1er septembre, « Mois » couvrait donc UNE SEULE JOURNÉE     │
- * │ pendant que « Semaine » remontait au 26 août : une vente du 28 août      │
- * │ figurait dans « Semaine » et dans « Année », et disparaissait de         │
- * │ « Mois ». Le marchand y lisait une perte de données, et le défaut        │
- * │ revenait les six premiers jours de CHAQUE mois.                          │
- * │                                                                          │
- * │ Tout passer en calendaire n'aurait rien réglé : le 1er septembre, la     │
- * │ semaine calendaire commence le 31 août et déborde encore du mois. Seul   │
- * │ le glissant garantit `jour ⊆ semaine ⊆ mois ⊆ année`, quel que soit le   │
- * │ quantième - et c'est ce qu'un marchand attend, la semaine faisant partie │
- * │ du mois.                                                                 │
- * └──────────────────────────────────────────────────────────────────────────┘
- *
- * L'ANNÉE part du 1er d'un mois et non de `aujourdhui - 364` : le graphique
- * groupe par mois, et une fenêtre à cheval rendrait treize seaux dont deux
- * partiels, avec deux étiquettes « sept. » sur le même axe.
- *
- * La borne haute est TOUJOURS aujourd'hui inclus, jamais le futur ; `fin` est
- * donc exclusive et vaut demain. La période précédente s'arrête la veille du
- * début de la courante et a la même longueur, sans quoi la variation
- * comparerait deux fenêtres inégales et inventerait une hausse.
- *
- * `aujourdhui` n'est là que pour les tests : le décalage se prouve sur des
- * quantièmes choisis, dont le 1er d'un mois.
+ * Le type et la règle vivent dans `data/periodes`, qui appartient aux DEUX
+ * surfaces : le tableau de bord et l'historique des ventes. Ils ont vécu ici
+ * pendant que l'historique en gardait une copie CALENDAIRE, et la copie a
+ * dérivé - c'est tout le motif du déplacement. Le nom reste `Periode` pour les
+ * appelants de ce module, qui n'ont aucune raison de changer.
  */
-const LONGUEUR_EN_JOURS: Record<Exclude<Periode, "year">, number> = {
-  day: 1,
-  week: 7,
-  month: 30,
-};
-
-export function bornes(
-  p: Periode,
-  aujourdhui: Date = new Date()
-): {
-  debut: Date;
-  fin: Date;
-  debutPrecedent: Date;
-  finPrecedent: Date;
-} {
-  const jour = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const plus = (d: Date, j: number) => {
-    const r = new Date(d);
-    r.setDate(r.getDate() + j);
-    return r;
-  };
-  /** Le 1er du mois situé `mois` mois avant celui de `d`. */
-  const premierDuMoisRecule = (d: Date, mois: number) =>
-    new Date(d.getFullYear(), d.getMonth() - mois, 1);
-
-  const debutDuJour = jour(aujourdhui);
-  // Borne haute exclusive : « jusqu'à aujourd'hui inclus » vaut « avant demain ».
-  const fin = plus(debutDuJour, 1);
-
-  if (p === "year") {
-    const debut = premierDuMoisRecule(debutDuJour, 11);
-    return {
-      debut,
-      fin,
-      debutPrecedent: premierDuMoisRecule(debutDuJour, 23),
-      finPrecedent: debut,
-    };
-  }
-
-  const jours = LONGUEUR_EN_JOURS[p] ?? LONGUEUR_EN_JOURS.month;
-  const debut = plus(debutDuJour, -(jours - 1));
-  return {
-    debut,
-    fin,
-    // `finPrecedent` est EXCLUSIVE ici, là où le serveur nomme un dernier jour
-    // inclus : elle vaut donc le début de la période courante.
-    debutPrecedent: plus(debut, -jours),
-    finPrecedent: debut,
-  };
-}
+export type Periode = Fenetre;
+export { bornes };
 
 export interface Seau {
   /** Clé de regroupement, stable et comparable. */

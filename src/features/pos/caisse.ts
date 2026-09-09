@@ -165,7 +165,10 @@ export async function sessionOuverte(): Promise<SessionCaisse | null> {
     registerId: derniere.payload.register,
     registerName: caisse?.name ?? "Caisse",
     warehouseId: caisse?.warehouseId ?? null,
-    openingBalance: derniere.payload.opening_balance ?? "0",
+    // Absent quand le caissier n'a rien écrit : le serveur héritera alors du
+    // tiroir de la dernière clôture. `"0"` par défaut affirmerait un tiroir
+    // vide que personne n'a compté.
+    openingBalance: derniere.payload.opening_balance ?? null,
     openedAt: derniere.occurredAt,
     envoi: derniere.envoi,
   };
@@ -186,14 +189,29 @@ export async function sessionOuverte(): Promise<SessionCaisse | null> {
  */
 export async function ouvrirSession(
   registerId: string,
-  fondDeCaisse: string
+  fondDeCaisse: number | null
 ): Promise<SessionCaisse> {
   const id = Crypto.randomUUID();
 
   await enqueue(id, "register_session.open", {
     id,
     register: registerId,
-    opening_balance: fondDeCaisse || "0",
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ LE CHAMP ABSENT N'EST PAS UN CHAMP À ZÉRO.                          │
+    // │                                                                      │
+    // │ `open_register_session` hérite le fonds de la dernière clôture,      │
+    // │ devise par devise, PUIS laisse `opening_balance` écraser la devise   │
+    // │ principale. L'écran envoyait « 0 » dès que le champ était vide :     │
+    // │ l'héritage sautait en principale et lui seul, le tiroir repartait de │
+    // │ zéro, et le Z du soir annonçait un excédent égal à ce que la veille  │
+    // │ y avait laissé. Les devises secondaires, elles, restaient héritées - │
+    // │ deux règles pour le même tiroir.                                     │
+    // │                                                                      │
+    // │ Ne rien envoyer, c'est dire « reprends la clôture précédente ».      │
+    // │ Envoyer « 0 » reste possible : le caissier l'écrit, et c'est alors   │
+    // │ une affirmation, pas un défaut de formulaire.                        │
+    // └──────────────────────────────────────────────────────────────────────┘
+    ...(fondDeCaisse === null ? {} : { opening_balance: String(fondDeCaisse) }),
   });
 
   const [caisse] = await db
@@ -207,7 +225,7 @@ export async function ouvrirSession(
     registerId,
     registerName: caisse?.name ?? "Caisse",
     warehouseId: caisse?.warehouseId ?? null,
-    openingBalance: fondDeCaisse || "0",
+    openingBalance: fondDeCaisse === null ? null : String(fondDeCaisse),
     openedAt: new Date(),
     // Elle vient d'entrer au journal : rien n'a encore pu la bloquer.
     envoi: "en_attente",

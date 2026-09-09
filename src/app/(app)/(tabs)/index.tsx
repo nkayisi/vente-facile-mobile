@@ -82,9 +82,39 @@ import {
 } from "@/ui";
 
 const PERIODES: Periode[] = ["day", "week", "month", "year"];
-const TABLES_RELEVES = ["sales", "sale_items", "customers"];
-const TABLES_GRAPHES = ["sales", "payments", "payment_methods"];
-const TABLES_PRODUITS = ["sales", "sale_items", "products", "units"];
+// ┌──────────────────────────────────────────────────────────────────────────┐
+// │ `outbox_operations` EST SURVEILLÉ, ET IL FAUT QU'IL LE SOIT.             │
+// │                                                                          │
+// │ Le tableau de bord compte désormais les ventes encore dans le journal.   │
+// │ Sans cette table dans la liste, l'écran ne se relirait qu'au prochain    │
+// │ TIRAGE : le caissier encaisse, revient à l'accueil, et son chiffre du    │
+// │ jour n'a pas bougé - le défaut qu'on vient de refermer, par l'autre bout.│
+// └──────────────────────────────────────────────────────────────────────────┘
+const TABLES_RELEVES = [
+  "sales",
+  "sale_items",
+  "customers",
+  "outbox_operations",
+  "print_jobs",
+];
+const TABLES_GRAPHES = [
+  "sales",
+  "payments",
+  "payment_methods",
+  "outbox_operations",
+  "print_jobs",
+];
+// Le journal en est : `topProduits` fusionne désormais les ventes en attente
+// d'envoi, et sans ces deux tables la section ne se relirait qu'au prochain
+// tirage - donc pas après l'encaissement qui vient de la remplir.
+const TABLES_PRODUITS = [
+  "sales",
+  "sale_items",
+  "products",
+  "units",
+  "outbox_operations",
+  "print_jobs",
+];
 const TABLES_STOCK = ["stocks", "products"];
 
 /**

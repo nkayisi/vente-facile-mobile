@@ -5,11 +5,12 @@
  * le back-office : « ↗ 100 % vs période précédente ». Une variation sans point
  * de comparaison ne dit rien.
  */
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { getPackaging } from "@vente-facile/core";
 
 import { db } from "@/db/client";
+import { deviseOuPrincipale } from "./devise-principale";
 import {
   customers,
   paymentMethods,
@@ -20,6 +21,12 @@ import {
   stocks,
   units,
 } from "@/db/schema";
+import { ventesEnAttenteDetaillees } from "@/features/ventes/attente";
+import {
+  fusionnerVentesEnFile,
+  type Fusion,
+} from "@/features/tableau-de-bord/en-file";
+import { referencesDejaTirees } from "./deja-tirees";
 import {
   cumulerProduits,
   libelleQuantite,
@@ -98,6 +105,65 @@ export const LABELS_PERIODE: Record<Periode, { bouton: string; phrase: string }>
   year: { bouton: "12 mois", phrase: "Les 12 derniers mois" },
 };
 
+/**
+ * Les ventes du journal, prêtes à être fusionnées aux tables tirées.
+ *
+ * La mise en forme, les conversions et le dédoublonnage vivent dans le module
+ * PUR `features/tableau-de-bord/en-file`, avec leurs tests. Ici on ne fait que
+ * LIRE : le journal, les références déjà tirées, et le catalogue local d'où
+ * viennent le facteur de conditionnement et le prix d'achat.
+ */
+async function ventesEnFile(): Promise<Fusion> {
+  const attente = await ventesEnAttenteDetaillees();
+  if (attente.length === 0) return { ventes: [], lignes: [], reglements: [] };
+
+  const dejaTirees = await referencesDejaTirees(attente.map((v) => v.reference));
+
+  const facteurs = new Map<string, number | null>();
+  const couts = new Map<string, number>();
+  for (const p of await db
+    .select({
+      id: products.id,
+      cost: products.costPrice,
+      sellingMode: products.sellingMode,
+      unitsPerPackage: products.unitsPerPackage,
+    })
+    .from(products)) {
+    // Le facteur du catalogue est celui d'AUJOURD'HUI, là où une ligne tirée
+    // porte celui qui était figé le jour de la vente. L'écart est nul ici : une
+    // vente encore en file a été encaissée il y a quelques minutes ou quelques
+    // heures, et le facteur n'a pas pu changer entre-temps sans que le stock du
+    // comptoir change aussi. C'est la seule source disponible avant la poussée.
+    facteurs.set(
+      p.id,
+      getPackaging({
+        selling_mode: p.sellingMode,
+        units_per_package: p.unitsPerPackage,
+      })?.factor ?? null
+    );
+    couts.set(p.id, nb(p.cost));
+  }
+
+  return fusionnerVentesEnFile({ ventes: attente, dejaTirees, facteurs, couts });
+}
+
+/** La forme d'une vente, qu'elle vienne du tirage ou du journal. */
+interface VenteTiree {
+  id: string;
+  total: string | null;
+  exchangeRate: string | null;
+  saleDate: Date | null;
+  status: string | null;
+  isDeleted: boolean | null;
+}
+
+/** Une ligne, qu'elle vienne du tirage ou du journal. Coût DÉJÀ multiplié. */
+interface LigneRetenue {
+  saleId: string;
+  quantite: number;
+  cout: number;
+}
+
 export interface CarteReleve {
   /** Chiffre d'affaires de la période, EN DEVISE PRINCIPALE. */
   ventes: number;
@@ -136,7 +202,20 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
     })
     .from(sales);
 
-  const retenues = toutes.filter(
+  const enFile = await ventesEnFile();
+  const duJournal: VenteTiree[] = enFile.ventes.map((v) => ({
+    id: v.id,
+    // Le total est DÉJÀ en principale : le taux a été appliqué par le module de
+    // fusion, qui seul sait si le ticket était rangé en principale (version 1)
+    // ou en devise de facture (version 2). Le repasser par `enPrincipale`
+    // le convertirait une seconde fois.
+    total: v.totalPrincipal === null ? null : String(v.totalPrincipal),
+    exchangeRate: "1",
+    saleDate: v.date,
+    status: v.status,
+    isDeleted: false,
+  }));
+  const retenues = [...toutes, ...duJournal].filter(
     (v) => v.status === "completed" && !v.isDeleted && v.saleDate
   );
   const dansPeriode = retenues.filter((v) => v.saleDate! >= debut && v.saleDate! < fin);
@@ -146,19 +225,46 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
 
   const idsPeriode = new Set(dansPeriode.map((v) => v.id));
   const idsAvant = new Set(avant.map((v) => v.id));
-  const lignes = await db
-    .select({
-      saleId: saleItems.saleId,
-      quantity: saleItems.quantity,
-      costPrice: saleItems.costPrice,
-    })
-    .from(saleItems);
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ UN MONTANT INCONNU N'ENTRE NI EN RECETTE NI EN COÛT.                  │
+  // │                                                                        │
+  // │ Une vente du journal dont le ticket est introuvable a des unités       │
+  // │ CERTAINES - elles viennent du corps de l'opération - mais une recette  │
+  // │ inconnue. Compter son coût sans sa recette ferait plonger le bénéfice  │
+  // │ d'un montant que rien à l'écran n'explique, et la marge avec lui. Ses  │
+  // │ unités comptent, son argent non : c'est « null ne se lit jamais comme  │
+  // │ zéro » appliqué aux deux bouts de la soustraction.                     │
+  // └────────────────────────────────────────────────────────────────────────┘
+  const idsChiffrables = new Set(
+    dansPeriode.filter((v) => v.total !== null).map((v) => v.id)
+  );
+  const lignes: LigneRetenue[] = [
+    ...(await db
+      .select({
+        saleId: saleItems.saleId,
+        quantity: saleItems.quantity,
+        costPrice: saleItems.costPrice,
+      })
+      .from(saleItems)).map((l) => ({
+        saleId: l.saleId,
+        quantite: nb(l.quantity),
+        cout: nb(l.costPrice) * nb(l.quantity),
+      })),
+    // Les lignes du journal portent leur coût DÉJÀ multiplié par la quantité :
+    // le module de fusion le tire du catalogue local, une vente en file n'ayant
+    // aucun `cost_price` sur ses lignes - le serveur le pose à la création.
+    ...enFile.lignes.map((l) => ({
+      saleId: l.saleId,
+      quantite: l.quantite,
+      cout: l.cout,
+    })),
+  ];
 
   let unites = 0;
   let unitesAvant = 0;
   let cout = 0;
   for (const l of lignes) {
-    const q = nb(l.quantity);
+    const q = l.quantite;
     if (idsPeriode.has(l.saleId)) {
       unites += q;
       // ┌──────────────────────────────────────────────────────────────────┐
@@ -169,7 +275,7 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
       // │ saisi. Lui appliquer le taux d'une vente en francs le diviserait │
       // │ par deux mille huit cents, et la marge afficherait 100 %.        │
       // └──────────────────────────────────────────────────────────────────┘
-      cout += nb(l.costPrice) * q;
+      if (idsChiffrables.has(l.saleId)) cout += l.cout;
     } else if (idsAvant.has(l.saleId)) {
       unitesAvant += q;
     }
@@ -278,14 +384,31 @@ export async function graphesTableauDeBord(
     lt(sales.saleDate, fin)
   );
 
-  const lignesVentes = await db
-    .select({
-      total: sales.total,
-      exchangeRate: sales.exchangeRate,
-      date: sales.saleDate,
-    })
-    .from(sales)
-    .where(dansLaPeriode);
+  // La courbe compte les ventes du JOURNAL comme les autres : sans elles, une
+  // journée encaissée hors ligne dessine un zéro, ce qui se lit comme un
+  // effondrement et non comme un retard de synchronisation.
+  const enFile = await ventesEnFile();
+  const lignesVentes = [
+    ...(await db
+      .select({
+        total: sales.total,
+        exchangeRate: sales.exchangeRate,
+        date: sales.saleDate,
+      })
+      .from(sales)
+      .where(dansLaPeriode)),
+    ...enFile.ventes
+      .filter(
+        (v) =>
+          v.status === "completed" && v.date && v.date >= debut && v.date < fin
+      )
+      .map((v) => ({
+        // Déjà en principale, d'où le taux neutre : voir `duJournal` plus haut.
+        total: v.totalPrincipal === null ? null : String(v.totalPrincipal),
+        exchangeRate: "1",
+        date: v.date,
+      })),
+  ];
 
   // Les seaux VIDES sont posés d'abord : une journée sans vente doit se voir
   // comme un zéro, pas disparaître de l'axe. Voir `features/tableau-de-bord/series`.
@@ -322,11 +445,53 @@ export async function graphesTableauDeBord(
     .leftJoin(paymentMethods, eq(paymentMethods.id, payments.paymentMethodId))
     .where(and(dansLaPeriode, eq(payments.status, "completed")));
 
+  // ┌──────────────────────────────────────────────────────────────────────────┐
+  // │ LES RÈGLEMENTS DU JOURNAL EN SONT, SINON DEUX CARTES SE CONTREDISENT.   │
+  // │                                                                          │
+  // │ `payments` est une table TIRÉE : une vente encaissée hors ligne n'y a    │
+  // │ aucune ligne. La courbe « facturé » comptait donc la vente et l'anneau   │
+  // │ « encaissé » l'ignorait, sur le même écran, après le même geste. Le      │
+  // │ marchand lisait deux chiffres pour une seule journée sans rien pour      │
+  // │ trancher.                                                                │
+  // │                                                                          │
+  // │ Le nom du moyen se joint par son identifiant : le corps de l'opération   │
+  // │ le nomme, comme le serializer l'attend, et le catalogue local en donne   │
+  // │ le libellé.                                                              │
+  // └──────────────────────────────────────────────────────────────────────────┘
+  const nomsDesMoyens = new Map<string, string>();
+  for (const m of await db
+    .select({ id: paymentMethods.id, nom: paymentMethods.name })
+    .from(paymentMethods)) {
+    nomsDesMoyens.set(m.id, m.nom);
+  }
+  const ventesRetenues = new Set(
+    enFile.ventes
+      .filter((v) => v.status === "completed" && v.date && v.date >= debut && v.date < fin)
+      .map((v) => v.id)
+  );
+  const reglementsEnFile = enFile.reglements
+    .filter((r) => ventesRetenues.has(r.saleId))
+    .map((r) => ({
+      montant: null,
+      remis: String(r.natif),
+      devise: r.devise,
+      tauxVente: null,
+      nom: r.methodeId ? (nomsDesMoyens.get(r.methodeId) ?? null) : null,
+      // Déjà ramené en principale par les DEUX taux figés de l'opération, celui
+      // du règlement puis celui de la vente. Voir `en-file.ts`.
+      principalDejaCalcule: r.principal,
+    }));
+
   const parMoyen = new Map<string, TranchePaiement>();
   const parDevise = new Map<string, TrancheDevise>();
   let totalEncaisse = 0;
-  for (const l of lignesPaiements) {
-    const principal = enPrincipale({ total: l.montant, exchangeRate: l.tauxVente });
+  for (const l of [
+    ...lignesPaiements.map((l) => ({ ...l, principalDejaCalcule: null as number | null })),
+    ...reglementsEnFile,
+  ]) {
+    const principal =
+      l.principalDejaCalcule ??
+      enPrincipale({ total: l.montant, exchangeRate: l.tauxVente });
 
     // « Non défini » est le libellé du serveur pour un règlement dont la
     // méthode a été supprimée. Le taire ferait manquer de l'argent à l'anneau.
@@ -336,7 +501,7 @@ export async function graphesTableauDeBord(
     t.nombre += 1;
     parMoyen.set(nom, t);
 
-    const code = l.devise || "";
+    const code = deviseOuPrincipale(l.devise);
     const d = parDevise.get(code) ?? { code, natif: 0, principal: 0, nombre: 0 };
     // `tendered_amount` est nullable pour compatibilité : les anciennes lignes
     // mono-devise sont backfillées à `amount`, et le repli n'est juste que dans
@@ -448,6 +613,79 @@ export async function topProduits(p: Periode, limite = 10): Promise<ProduitVendu
       tauxVente: nb(l.tauxVente),
     };
   });
+
+  // ┌──────────────────────────────────────────────────────────────────────────┐
+  // │ LES VENTES DU JOURNAL COMPTENT ICI AUSSI.                               │
+  // │                                                                          │
+  // │ `sale_items` est une table TIRÉE : après une journée hors ligne, la      │
+  // │ section restait vide pendant que le chiffre d'affaires, lui, bougeait.   │
+  // │ Un « aucun produit vendu » sous une recette non nulle se lit comme une   │
+  // │ panne, pas comme un retard de synchronisation.                           │
+  // │                                                                          │
+  // │ Le nom et le conditionnement viennent du catalogue local ; le facteur    │
+  // │ est celui d'aujourd'hui, et non celui figé sur la ligne, parce qu'une    │
+  // │ vente en file n'a pas encore de ligne serveur. Voir `ventesEnFile`.      │
+  // └──────────────────────────────────────────────────────────────────────────┘
+  const enFile = await ventesEnFile();
+  const idsRetenus = new Set(
+    enFile.ventes
+      .filter(
+        (v) => v.status === "completed" && v.date && v.date >= debut && v.date < fin
+      )
+      .map((v) => v.id)
+  );
+  const lignesEnFile = enFile.lignes.filter(
+    (l) => idsRetenus.has(l.saleId) && l.produitId
+  );
+
+  if (lignesEnFile.length > 0) {
+    const ids = [...new Set(lignesEnFile.map((l) => l.produitId as string))];
+    const fiches = await db
+      .select({
+        id: products.id,
+        nom: products.name,
+        sku: products.sku,
+        sellingMode: products.sellingMode,
+        unitsPerPackage: products.unitsPerPackage,
+        unite: uniteDetail.name,
+        uniteContenant: uniteContenant.name,
+      })
+      .from(products)
+      .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+      .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+      .where(inArray(products.id, ids));
+
+    const parId = new Map(fiches.map((f) => [f.id, f]));
+    for (const l of lignesEnFile) {
+      const f = parId.get(l.produitId as string);
+      if (!f) continue;
+      if (!conditionnements.has(f.id)) {
+        unites.set(f.id, f.unite);
+        conditionnements.set(
+          f.id,
+          getPackaging({
+            selling_mode: f.sellingMode,
+            units_per_package: f.unitsPerPackage,
+            unit_name: f.unite,
+            packaging_unit_name: f.uniteContenant,
+          })
+        );
+      }
+      brutes.push({
+        produitId: f.id,
+        nom: f.nom,
+        sku: f.sku,
+        quantite: l.quantite,
+        contenants: l.contenants,
+        facteurLigne: conditionnements.get(f.id)?.factor ?? null,
+        // Déjà en principale, d'où le taux neutre. `null` - ticket introuvable -
+        // ne fabrique pas de recette : la quantité, elle, est certaine, elle
+        // vient du corps de l'opération.
+        total: l.revenuPrincipal ?? 0,
+        tauxVente: 1,
+      });
+    }
+  }
 
   return cumulerProduits(brutes)
     .slice(0, limite)

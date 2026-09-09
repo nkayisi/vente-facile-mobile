@@ -22,9 +22,10 @@ import { formatDateTimeFr, formatPrice } from "@vente-facile/core";
 import { useLecture } from "@/data/live";
 import { STATUT_AJUSTEMENT, detailAjustement } from "@/data/stock-operations";
 import { enAttenteSurStock, transitionAjustement } from "@/features/stock/actes";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
-  AlertDialog, AppBar, Badge, Banner, Button, Card, CardHeader, Divider,
+  AlertDialog, AppBar, Badge, Button, Card, CardHeader, Divider,
   EmptyState, Screen, Spinner, StatValue, Text, useToast,
 } from "@/ui";
 
@@ -69,7 +70,8 @@ export default function DetailAjustementEcran() {
   }
 
   const s = STATUT_AJUSTEMENT[a.statut];
-  const enFile = attente?.ajustements.has(a.id) ?? false;
+  const envoiEnFile = attente?.ajustements.get(a.id);
+  const enFile = envoiEnFile !== undefined;
   const decidable = a.statut === "draft" && can("stock_adjustments.approve") && !enFile;
 
   const executer = async (transition: "approve" | "reject") => {
@@ -95,13 +97,11 @@ export default function DetailAjustementEcran() {
       />
 
       <View className="gap-4 p-4">
-        {enFile ? (
-          <Banner
-            tone="warning"
-            title="Une décision attend son envoi"
-            message="Le statut ne changera qu'après synchronisation."
-          />
-        ) : null}
+        <BandeauEnvoi
+          envoi={envoiEnFile}
+          titre="Une décision attend son envoi"
+          consequence="Le statut ne changera qu'après."
+        />
 
         <Card>
           <Text variant="caption" className="mb-1">

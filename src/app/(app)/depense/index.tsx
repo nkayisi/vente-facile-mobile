@@ -1,7 +1,6 @@
 /**
  * Dépenses. Miroir de `app/dashboard/cashbook/expenses/page.tsx`.
  */
-import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
@@ -10,9 +9,10 @@ import { STATUT_DEPENSE, listeDepenses, type DepenseResume } from "@/data/caisse
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { enAttenteCaisse } from "@/features/caisse/actes";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
-  AppBar, Badge, DataList, DataRow, Fab, Screen, StatValue, Text,
+  AppBar, Badge, DataList, DataRow, Fab, Screen, Mesure,
 } from "@/ui";
 
 const TABLES = ["expenses", "expense_categories"];
@@ -36,7 +36,7 @@ export default function Depenses() {
           .filter(Boolean)
           .join(" · ")}
         badge={s ? <Badge tone={s.ton}>{s.label}</Badge> : undefined}
-        valeur={<StatValue value={money.money(d.montant, d.devise)} tone="destructive" />}
+        valeur={<Mesure value={money.money(d.montant, d.devise)} tone="destructive" />}
         onPress={() => router.push(`/depense/${d.id}`)}
       />
     );
@@ -50,11 +50,17 @@ export default function Depenses() {
         cle={(d) => d.id}
         rendu={rendu}
         enTete={
-          (attente?.depenses ?? 0) > 0 ? (
+          attente && attente.depenses.nombre > 0 ? (
             <View className="px-4 pt-2">
-              <Text variant="caption">
-                {`${attente?.depenses} dépense(s) attendent leur envoi et n'apparaissent pas encore ici.`}
-              </Text>
+              <BandeauEnvoi
+                envoi={attente.depenses.envoi}
+                titre={
+                  attente.depenses.nombre === 1
+                    ? "Une dépense attend son envoi"
+                    : `${attente.depenses.nombre} dépenses attendent leur envoi`
+                }
+                consequence="Elles n'apparaissent pas encore dans cette liste."
+              />
             </View>
           ) : undefined
         }

@@ -136,14 +136,54 @@ describe("historiqueVentes", () => {
    * │ dans l'historique, qui ne lisait que la table.                         │
    * └────────────────────────────────────────────────────────────────────────┘
    */
-  beforeEach(() => {
+
+  /**
+   * Les réponses SQL dans l'ORDRE où `historiqueVentes` les demande.
+   *
+   * Deux de ces requêtes sont CONDITIONNELLES, et s'y tromper décale toute la
+   * file sans rien casser de visible : la lecture consomme alors la réponse
+   * d'une autre requête et le test passe en mesurant autre chose. D'où ce
+   * constructeur unique, qui ne pousse que ce qui sera réellement consommé.
+   */
+  function reponses(opts: {
+    /** Références déjà tirées, pour le dédoublonnage. Interrogé si le journal a des ventes. */
+    dejaTirees?: string[];
+    /** Agrégat par devise : compteur et deux sommes, en une passe. */
+    agregats?: { devise: string; n: number; total: number; du: number }[];
+    /** Décompte par statut, calculé SANS le filtre de statut. */
+    parStatut?: { statut: string; n: number }[];
+    /** Les lignes de la page. */
+    page?: Record<string, unknown>[];
+    /** Nombre de lignes par vente, pour la page. */
+    nbLignes?: { saleId: string; n: number }[];
+  }) {
     mockResultats.length = 0;
-    // Le compte, puis la page.
-    mockResultats.push([{ n: 0 }], []);
+    if (mockAttente.length > 0) {
+      mockResultats.push((opts.dejaTirees ?? []).map((reference) => ({ reference })));
+    }
+    mockResultats.push(opts.agregats ?? []);
+    mockResultats.push(opts.parStatut ?? []);
+    const page = opts.page ?? [];
+    mockResultats.push(page);
+    if (page.length > 0) mockResultats.push(opts.nbLignes ?? []);
+  }
+
+  const ligneTiree = (patch: Record<string, unknown> = {}) => ({
+    id: "s1",
+    reference: "VT-1",
+    statut: "completed",
+    total: "100",
+    amountDue: "0",
+    currency: "USD",
+    saleDate: ce_matin,
+    dueDate: null,
+    client: null,
+    ...patch,
   });
 
   it("retrouve la vente hors ligne d'un jour PRÉCÉDENT", async () => {
     mockAttente.push(enAttente({ date: avantHier, reference: "VT-VIEILLE" }));
+    reponses({});
 
     const page = await historiqueVentes({ periode: "semaine" });
     expect(page.elements.map((v) => v.reference)).toEqual(["VT-VIEILLE"]);
@@ -155,6 +195,7 @@ describe("historiqueVentes", () => {
 
   it("lui applique les MÊMES filtres qu'au SQL", async () => {
     mockAttente.push(enAttente({ date: avantHier, reference: "VT-VIEILLE" }));
+    reponses({});
 
     // Bornée au jour : la vente d'avant-hier sort, comme elle sortirait du SQL.
     const page = await historiqueVentes({ periode: "jour" });
@@ -164,20 +205,30 @@ describe("historiqueVentes", () => {
 
   it("la retrouve par sa RÉFÉRENCE, comme le caissier la cherche", async () => {
     mockAttente.push(enAttente({ reference: "VT-20260901-Q5L8-0007" }));
+    reponses({});
 
     const page = await historiqueVentes({ recherche: "0007" });
     expect(page.elements).toHaveLength(1);
   });
 
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ LE DÉDOUBLONNAGE SE FAIT CONTRE LA TABLE, PAS CONTRE LA PAGE.         │
+   * │                                                                        │
+   * │ Il se faisait contre les références de la page rendue. Avec une seule  │
+   * │ page cela suffisait ; avec le défilement infini, une vente poussée      │
+   * │ dont la ligne tirée tombe en page trois reviendrait en tête de la page │
+   * │ une, comme si elle n'était jamais partie - et son montant compterait   │
+   * │ DEUX FOIS dans des relevés qui, eux, portent sur toute la table.       │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
   it("ne la rend pas DEUX fois une fois poussée", async () => {
-    mockResultats.length = 0;
-    mockResultats.push([{ n: 1 }], [
-      {
-        id: "s1", reference: "VT-1", statut: "completed", total: "100",
-        amountDue: "0", currency: "USD", saleDate: ce_matin, client: null,
-      },
-    ]);
     mockAttente.push(enAttente({ reference: "VT-1" }));
+    reponses({
+      dejaTirees: ["VT-1"],
+      agregats: [{ devise: "USD", n: 1, total: 100, du: 0 }],
+      page: [ligneTiree()],
+    });
 
     // La fenêtre où l'opération est appliquée et la ligne déjà tirée : la
     // table fait foi, sinon la vente se compte deux fois le temps que le
@@ -186,7 +237,119 @@ describe("historiqueVentes", () => {
     expect(page.elements).toHaveLength(1);
     expect(page.elements[0].envoi).toBeUndefined();
     expect(page.total).toBe(1);
+    expect(page.releves.totalParDevise).toEqual([{ devise: "USD", montant: 100 }]);
   });
+
+  it("dédoublonne même quand la ligne tirée n'est PAS sur la page demandée", async () => {
+    mockAttente.push(enAttente({ reference: "VT-1" }));
+    // Le serveur a la vente (l'agrégat en compte trois), mais la page rendue
+    // ne porte que les deux autres : c'est le cas de la deuxième page.
+    reponses({
+      dejaTirees: ["VT-1"],
+      agregats: [{ devise: "USD", n: 3, total: 300, du: 0 }],
+      page: [ligneTiree({ id: "s2", reference: "VT-2" })],
+    });
+
+    const page = await historiqueVentes();
+    expect(page.elements.map((v) => v.reference)).toEqual(["VT-2"]);
+    expect(page.total).toBe(3);
+  });
+
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ LES RELEVÉS PORTENT LA PÉRIODE, PAS LA PAGE.                          │
+   * │                                                                        │
+   * │ Les sommer sur `elements` donnerait le poids des cinquante premières   │
+   * │ ventes sous un compteur qui en annonce trois cent quarante. Un total   │
+   * │ faux qui a l'air juste est pire que pas de total.                      │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  it("somme TOUT le périmètre, même hors de la page rendue", async () => {
+    reponses({
+      agregats: [{ devise: "USD", n: 340, total: 51000, du: 1200 }],
+      page: [ligneTiree()],
+    });
+
+    const page = await historiqueVentes({ limite: 1 });
+    expect(page.elements).toHaveLength(1);
+    expect(page.total).toBe(340);
+    expect(page.releves.totalParDevise).toEqual([{ devise: "USD", montant: 51000 }]);
+    expect(page.releves.resteParDevise).toEqual([{ devise: "USD", montant: 1200 }]);
+    // Il reste des ventes derrière : sans ce drapeau, la liste s'arrête en
+    // silence et le caissier conclut que sa vente a disparu.
+    expect(page.aPlus).toBe(true);
+  });
+
+  it("ne somme JAMAIS entre devises", async () => {
+    reponses({
+      agregats: [
+        { devise: "USD", n: 2, total: 150, du: 50 },
+        { devise: "CDF", n: 1, total: 280000, du: 0 },
+      ],
+      page: [ligneTiree()],
+    });
+
+    const page = await historiqueVentes();
+    expect(page.releves.totalParDevise).toEqual([
+      { devise: "CDF", montant: 280000 },
+      { devise: "USD", montant: 150 },
+    ]);
+    expect(page.releves.transactions).toBe(3);
+  });
+
+  /**
+   * Un ticket introuvable rend un montant INCONNU. Le compter zéro ferait
+   * baisser la recette du jour sans que rien ne le dise ; la vente reste
+   * comptée comme transaction, et l'écran annonce le manque.
+   */
+  it("compte la vente sans ticket, sans l'ajouter à aucune somme", async () => {
+    mockAttente.push(enAttente({ total: null, devise: null, resteAPayer: 0 }));
+    reponses({ agregats: [{ devise: "USD", n: 1, total: 100, du: 0 }], page: [ligneTiree()] });
+
+    const page = await historiqueVentes();
+    expect(page.total).toBe(2);
+    expect(page.releves.transactions).toBe(2);
+    expect(page.releves.sansMontant).toBe(1);
+    expect(page.releves.totalParDevise).toEqual([{ devise: "USD", montant: 100 }]);
+  });
+
+  /**
+   * Une puce à zéro se lit « il n'y en a pas ». Calculer les décomptes SOUS le
+   * filtre de statut les mettrait tous à zéro sauf l'actif, et le marchand
+   * conclurait que son terminal n'a jamais rien annulé.
+   */
+  it("compte les statuts SANS le filtre de statut", async () => {
+    reponses({
+      agregats: [{ devise: "USD", n: 1, total: 100, du: 0 }],
+      parStatut: [
+        { statut: "completed", n: 12 },
+        { statut: "cancelled", n: 1 },
+      ],
+      page: [ligneTiree()],
+    });
+
+    const page = await historiqueVentes({ statut: "cancelled" });
+    expect(page.parStatut).toEqual({ completed: 12, cancelled: 1 });
+    // La puce « Tous » ouvre les treize, pas la seule annulée : `total` porte
+    // la LISTE affichée, `totalTousStatuts` porte ce que la puce ouvrirait.
+    expect(page.total).toBe(1);
+    expect(page.totalTousStatuts).toBe(13);
+  });
+
+  it("porte le nombre d'articles et l'échéance sur les lignes tirées", async () => {
+    const hier = new Date(ce_matin);
+    hier.setDate(hier.getDate() - 1);
+    reponses({
+      agregats: [{ devise: "USD", n: 1, total: 100, du: 40 }],
+      page: [ligneTiree({ amountDue: "40", dueDate: hier })],
+      nbLignes: [{ saleId: "s1", n: 3 }],
+    });
+
+    const page = await historiqueVentes();
+    expect(page.elements[0].nbArticles).toBe(3);
+    expect(page.elements[0].joursDeRetard).toBe(1);
+  });
+
 });
 
 /**

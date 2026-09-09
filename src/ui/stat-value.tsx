@@ -70,3 +70,66 @@ const TON: Partial<Record<keyof Palette, string>> = {
   warning: "text-warning",
   accentForeground: "text-accent-foreground",
 };
+
+/**
+ * Mesure d'une RANGÉE de liste. Même doctrine que `StatValue`, autre échelle.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN CADRAN ET UNE RANGÉE N'ONT PAS LE MÊME SUJET.                        │
+ * │                                                                          │
+ * │ Dans une cellule de `StatStrip`, le NOMBRE est le contenu : il porte      │
+ * │ toute la cellule, et `text-2xl` gras est sa juste place. Dans une         │
+ * │ rangée, le contenu est l'IDENTITÉ - la référence de la vente, le nom du   │
+ * │ produit - et le montant en est la mesure. Employer l'échelle du cadran    │
+ * │ y écrit « 84 $ » à vingt-quatre points en gras à côté d'une référence à   │
+ * │ quatorze : le montant crie, la référence disparaît, et une liste de       │
+ * │ vingt lignes devient une colonne de chiffres qu'on ne peut plus relier    │
+ * │ à rien.                                                                   │
+ * │                                                                          │
+ * │ C'était le cas sur SIX écrans-listes, `StatValue` ayant été repris tel    │
+ * │ quel là où il n'était pas chez lui.                                       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * **La règle qui ne change pas : quand la place manque, c'est la TAILLE qui
+ * cède, jamais le nombre de chiffres.** Un montant en CDF à sept chiffres tient
+ * quinze caractères, et le tronquer en ferait un faux montant - c'est la règle
+ * du ticket imprimé, et `DataRow` la porte déjà en laissant l'identité se
+ * tronquer plutôt que la mesure. L'échelle est simplement celle d'une rangée :
+ * elle part du corps de texte et non d'un titre.
+ */
+const PALIERS_MESURE: { max: number; classe: string }[] = [
+  { max: 12, classe: "text-base" },
+  { max: 16, classe: "text-sm" },
+  { max: Number.POSITIVE_INFINITY, classe: "text-xs" },
+];
+
+/** Classe de taille d'une mesure de rangée. Exportée pour les tests. */
+export function mesureSize(valeur: string): string {
+  return PALIERS_MESURE.find((p) => valeur.length <= p.max)?.classe ?? "text-xs";
+}
+
+export function Mesure({
+  value,
+  tone = "foreground",
+  className,
+}: {
+  value: string;
+  tone?: keyof Palette;
+  /** Jamais une classe de TAILLE : elle annulerait la réduction progressive. */
+  className?: string;
+}) {
+  return (
+    <Text
+      numeric
+      numberOfLines={1}
+      // `font-sans-medium` et non `bold` : dans une rangée, c'est la référence
+      // qui porte déjà une graisse. Deux gras côte à côte n'en font ressortir
+      // aucun.
+      className={`font-sans-medium ${mesureSize(value)} ${TON[tone] ?? "text-foreground"}${
+        className ? ` ${className}` : ""
+      }`}
+    >
+      {value}
+    </Text>
+  );
+}

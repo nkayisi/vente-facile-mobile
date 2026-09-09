@@ -23,11 +23,11 @@ import { formatDateTimeFr, formatPrice, pluralizeUnit } from "@vente-facile/core
 import { useLecture } from "@/data/live";
 import { ETAT_STOCK, detailNiveau } from "@/data/stock-niveaux";
 import { deconditionner, enAttenteSurStock } from "@/features/stock/actes";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   AppBar,
   Badge,
-  Banner,
   Button,
   Card,
   CardHeader,
@@ -101,7 +101,7 @@ export default function DetailRayon() {
   const e = ETAT_STOCK[r.etat];
   const peutDeconditionner =
     r.facteur != null && r.contenants > 0 && can("stock_movements.create");
-  const enFile = attente?.deconditionnements.has(r.id) ?? false;
+  const envoiEnFile = attente?.deconditionnements.get(r.id);
 
   const valider = async () => {
     const n = Number(contenants.replace(",", ".")) || 0;
@@ -131,13 +131,11 @@ export default function DetailRayon() {
       />
 
       <View className="gap-4 p-4">
-        {enFile ? (
-          <Banner
-            tone="info"
-            title="Déconditionnement en attente d'envoi"
-            message="Le rayon ci-dessous ne le prendra en compte qu'après synchronisation."
-          />
-        ) : null}
+        <BandeauEnvoi
+          envoi={envoiEnFile}
+          titre="Un déconditionnement attend son envoi"
+          consequence="Le rayon ci-dessous ne le prendra en compte qu'après."
+        />
 
         <Card>
           <Text variant="caption" className="mb-1">

@@ -103,6 +103,7 @@ import Tag from "lucide-react-native/icons/tag";
 import Ruler from "lucide-react-native/icons/ruler";
 import FileText from "lucide-react-native/icons/file-text";
 import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
+import Table from "lucide-react-native/icons/table";
 import MapPin from "lucide-react-native/icons/map-pin";
 import Truck from "lucide-react-native/icons/truck";
 import Receipt from "lucide-react-native/icons/receipt";
@@ -188,6 +189,7 @@ export const LUCIDE = {
   Ruler,
   FileText,
   FileSpreadsheet,
+  Table,
   MapPin,
   Truck,
   Receipt,

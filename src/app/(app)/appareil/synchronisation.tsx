@@ -6,23 +6,15 @@
  * tirage de 20 000 articles en 3G, la différence décide si le caissier attend
  * ou s'il redémarre l'application au milieu.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { View } from "react-native";
 
 import { router } from "expo-router";
 
-import { ApiError } from "@/api/errors";
+import { useLecture } from "@/data/live";
 import { labelFor } from "@/features/sync/labels";
-import {
-  countByState,
-  pullAll,
-  pushAll,
-  readAllStates,
-  unblockAll,
-  type OutboxState,
-  type PullProgress,
-} from "@/sync";
-import { useSession } from "@/session/provider";
+import { useSynchronisation } from "@/features/sync/provider";
+import { countByState, readAllStates, type OutboxState } from "@/sync";
 import type { SyncStateRow } from "@/db/schema";
 import {
   Badge,
@@ -47,89 +39,40 @@ function formatDate(value: Date | null): string {
 }
 
 export default function Sync() {
-  const [progress, setProgress] = useState<PullProgress | null>(null);
-  const [states, setStates] = useState<SyncStateRow[]>([]);
-  const [outbox, setOutbox] = useState<Record<OutboxState, number> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const abort = useRef<AbortController | null>(null);
+  // Le cycle vit dans le fournisseur, partagé avec les bandeaux de tous les
+  // écrans : il n'y a qu'un verrou, donc qu'une synchronisation à la fois.
+  const { enCours, origine, progression, erreur, lancer, annuler } = useSynchronisation();
 
-  const { snapshot, refresh: rafraichirSession } = useSession();
-
-  const refresh = useCallback(async () => {
-    setStates(await readAllStates());
-    setOutbox(await countByState());
-  }, []);
+  /**
+   * Les compteurs se relisent SEULS.
+   *
+   * Ils vivaient dans un `useState` rechargé à la main dans le `finally` du
+   * cycle, ce qui obligeait à rappeler la relecture à chaque nouvel appelant -
+   * et le cycle a désormais deux points de départ, cet écran et les bandeaux.
+   * `useLecture` écoute les tables : la progression par table et la file
+   * d'attente se mettent à jour PENDANT le tirage, plus seulement à la fin.
+   */
+  const { donnees: states } = useLecture<SyncStateRow[]>(readAllStates, {
+    tables: ["sync_state"],
+  });
+  const { donnees: outbox } = useLecture<Record<OutboxState, number>>(countByState, {
+    tables: ["outbox_operations"],
+  });
 
   useEffect(() => {
-    void refresh();
     // Quitter l'écran interrompt proprement : le point de reprise reste sur la
-    // dernière page réussie, rien n'est rejoué ni sauté.
-    return () => abort.current?.abort();
-  }, [refresh]);
-
-  const lancer = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    abort.current = new AbortController();
-
-    try {
-      // On ENVOIE d'abord. Ce que le terminal porte est la seule chose que le
-      // serveur ne connaît pas ; le tirage qui suit en rapporte le résultat
-      // autoritatif.
-      await pushAll(snapshot?.device?.id);
-      await pullAll({
-        signal: abort.current.signal,
-        onProgress: setProgress,
-      });
-
-      // ┌──────────────────────────────────────────────────────────────────┐
-      // │ LE DROIT AUSSI DOIT REDESCENDRE, ET IL NE LE FAISAIT JAMAIS.     │
-      // │                                                                  │
-      // │ `refresh` était exposé par le fournisseur de session et n'avait  │
-      // │ AUCUN APPELANT : permissions, devises, programme de fidélité et  │
-      // │ réglages de l'établissement restaient figés à l'enrôlement,      │
-      // │ indéfiniment. Un gérant pouvait accorder une permission au       │
-      // │ back-office sans qu'elle atteigne jamais le terminal.            │
-      // │                                                                  │
-      // │ D'où l'enchaînement : on rafraîchit l'instantané, PUIS on rend   │
-      // │ leur chance aux opérations bloquées. Dans cet ordre, sinon elles │
-      // │ repartiraient avec les droits d'hier et se feraient rebloquer.   │
-      // │ Un échec n'est pas une erreur de synchronisation : les données   │
-      // │ sont passées, c'est l'essentiel.                                 │
-      // └──────────────────────────────────────────────────────────────────┘
-      try {
-        await rafraichirSession();
-        await unblockAll();
-      } catch {
-        // Le terminal garde l'instantané qu'il avait : c'est la règle du
-        // lot 1, ouvrir l'application sans réseau ne doit jamais enfermer
-        // l'utilisateur dehors.
-      }
-    } catch (e) {
-      setError(
-        e instanceof ApiError && e.kind === "network"
-          ? "Serveur injoignable. Les données déjà reçues sont conservées, la reprise partira de là."
-          : e instanceof Error
-            ? e.message
-            : "La synchronisation a échoué."
-      );
-    } finally {
-      setBusy(false);
-      setProgress(null);
-      await refresh();
-    }
-  };
+    // dernière page réussie, rien n'est rejoué ni sauté. `annuler` ne mord que
+    // sur le cycle que CET écran a lancé : quitter pendant qu'un bandeau
+    // synchronise ne l'interrompt donc pas.
+    return () => annuler("ecran");
+  }, [annuler]);
 
   const pct =
-    progress?.expectedTotal && progress.expectedTotal > 0
-      ? Math.min(100, Math.round((progress.receivedTotal / progress.expectedTotal) * 100))
+    progression?.expectedTotal && progression.expectedTotal > 0
+      ? Math.min(100, Math.round((progression.receivedTotal / progression.expectedTotal) * 100))
       : null;
 
-  const totalLignes = states.reduce((n, s) => n + s.rowCount, 0);
+  const totalLignes = (states ?? []).reduce((n, s) => n + s.rowCount, 0);
 
   return (
     <Screen scroll>
@@ -142,26 +85,20 @@ export default function Sync() {
         </Text>
       </View>
 
-      {error ? (
+      {erreur ? (
         <View className="mb-4">
-          <Banner tone="destructive" title="Interrompue" message={error} />
+          <Banner tone="destructive" title="Interrompue" message={erreur} />
         </View>
       ) : null}
 
-      {notice ? (
-        <View className="mb-4">
-          <Banner tone="info" title={notice} />
-        </View>
-      ) : null}
-
-      {progress ? (
+      {progression ? (
         <Card className="mb-4">
-          <Text variant="label">{labelFor(progress.table)}</Text>
+          <Text variant="label">{labelFor(progression.table)}</Text>
           <Text variant="caption" className="mt-1">
-            Table {progress.index} sur {progress.tableCount}
-            {progress.expected != null
-              ? ` · ${progress.received} / ${progress.expected}`
-              : ` · ${progress.received} lignes`}
+            Table {progression.index} sur {progression.tableCount}
+            {progression.expected != null
+              ? ` · ${progression.received} / ${progression.expected}`
+              : ` · ${progression.received} lignes`}
           </Text>
 
           {pct != null ? (
@@ -170,7 +107,7 @@ export default function Sync() {
                 <View className="h-full bg-primary" style={{ width: `${pct}%` }} />
               </View>
               <Text variant="caption" className="mt-1.5" numeric>
-                {progress.receivedTotal} / {progress.expectedTotal} lignes · {pct} %
+                {progression.receivedTotal} / {progression.expectedTotal} lignes · {pct} %
               </Text>
             </>
           ) : null}
@@ -205,15 +142,22 @@ export default function Sync() {
         <Button
           fullWidth
           size="lg"
-          loading={busy}
+          loading={enCours}
           leftIcon="CloudDownload"
-          onPress={lancer}
+          onPress={() => void lancer("ecran")}
         >
-          {busy ? "Synchronisation en cours" : "Synchroniser maintenant"}
+          {/* Un bouton grisé sans raison est un cul-de-sac : quand le cycle
+              vient d'un bandeau, on le DIT plutôt que de laisser croire à une
+              panne. */}
+          {!enCours
+            ? "Synchroniser maintenant"
+            : origine === "ecran"
+              ? "Synchronisation en cours"
+              : "Synchronisation lancée ailleurs"}
         </Button>
       </View>
 
-      {states.length > 0 ? (
+      {states && states.length > 0 ? (
         <Section title="État par table">
           <Card className="overflow-hidden p-0">
             {states

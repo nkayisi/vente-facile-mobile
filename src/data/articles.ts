@@ -7,8 +7,15 @@
  * Redécouper au facteur du jour donnerait « 10 casiers » pour cinq casiers plus
  * cent vingt bouteilles, et le facteur a pu changer depuis.
  */
-import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
-import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
+import { and, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
+import {
+  availableSplit,
+  formatPackagedSplit,
+  getPackaging,
+  pluralizeUnit,
+  type Packaging,
+} from "@vente-facile/core";
 
 import { db } from "@/db/client";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
@@ -412,4 +419,253 @@ export async function nomsDeProduits(
     .from(products)
     .where(inArray(products.id, uniques));
   return new Map(lignes.map((l) => [l.id, l.name]));
+}
+
+/** Un article, tel que la SAISIE D'UN MOUVEMENT en a besoin. */
+export interface ArticlePourMouvement {
+  id: string;
+  nom: string;
+  sku: string | null;
+  conditionnement: Packaging | null;
+  aUneDatePeremption: boolean;
+  /** Les quatre prix de la FICHE, en chaînes : ils ne servent qu'à préremplir. */
+  coutDetail: string | null;
+  coutContenant: string | null;
+  prixDetail: string | null;
+  prixGros: string | null;
+}
+
+/**
+ * Le catalogue ENTIER, pour la saisie d'un mouvement de stock.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE N'EST PAS `chercherArticles`, ET LA DIFFÉRENCE EST DU MÉTIER.        │
+ * │                                                                          │
+ * │ Celui-là sert le COMPTOIR : il borne à `is_sellable`, joint le stock de  │
+ * │ l'entrepôt de la session, applique le verrou d'inventaire et retranche   │
+ * │ la réserve des ventes en file. Un consommable ou une matière première    │
+ * │ n'y figure donc PAS - et c'est précisément ce qu'un magasinier           │
+ * │ approvisionne. La recherche du back-office ne demande, elle, que         │
+ * │ `is_active` : aucune condition de vendabilité.                           │
+ * │                                                                          │
+ * │ ⚠ Ce n'est pas non plus ce que fait `full_catalog=true` côté serveur, et │
+ * │ la confusion est facile : ce drapeau lève le PÉRIMÈTRE ENTREPÔT, pas la  │
+ * │ vendabilité. Il n'a d'équivalent à chercher nulle part ici, la table     │
+ * │ `products` descendant entière au tirage.                                 │
+ * │                                                                          │
+ * │ Aucune jointure sur `stocks` : une entrée est légitime sur un article    │
+ * │ qui n'a encore aucune ligne dans ce dépôt - c'est même le cas du         │
+ * │ « stock initial ».                                                       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export async function chercherArticlesPourMouvement(
+  terme: string,
+  limite = 30
+): Promise<ArticlePourMouvement[]> {
+  // DEUX ALIAS D'UNITÉ, et il en faut deux : une seule jointure ferait porter
+  // au contenant le nom de l'unité de détail, et tout article conditionné
+  // s'afficherait « 2 bouteilles + 3 bouteilles ». Défaut déjà payé, et
+  // documenté dans `features/pos/catalogue.ts`.
+  const uniteDetail = alias(units, "unite_detail_mvt");
+  const uniteContenant = alias(units, "unite_contenant_mvt");
+
+  const motif = terme.trim();
+  const conditions = [
+    eq(products.isActive, true),
+    or(eq(products.isDeleted, false), isNull(products.isDeleted))!,
+  ];
+  if (motif) {
+    const m = `%${motif.toLowerCase()}%`;
+    conditions.push(
+      or(
+        like(sql`lower(coalesce(${products.name}, ''))`, m),
+        like(sql`lower(coalesce(${products.sku}, ''))`, m),
+        like(sql`lower(coalesce(${products.barcode}, ''))`, m)
+      )!
+    );
+  }
+
+  const lignes = await db
+    .select({
+      id: products.id,
+      nom: products.name,
+      sku: products.sku,
+      sellingMode: products.sellingMode,
+      unitsPerPackage: products.unitsPerPackage,
+      uniteDetail: uniteDetail.name,
+      uniteContenant: uniteContenant.name,
+      coutDetail: products.costPrice,
+      coutContenant: products.packageCostPrice,
+      prixDetail: products.sellingPrice,
+      prixGros: products.wholesalePrice,
+      perissable: products.hasExpiryDate,
+    })
+    .from(products)
+    .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+    .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .where(and(...conditions))
+    .orderBy(products.name)
+    .limit(limite);
+
+  return lignes.map((l) => ({
+    id: l.id,
+    nom: l.nom,
+    sku: l.sku || null,
+    // `getPackaging` et JAMAIS un `unitsPerPackage > 1` maison : lui seul
+    // impose le facteur >= 2 et rend `null` sur un article vendu au détail
+    // seul. Le back-office écrit la condition à la main et perd cette garde.
+    conditionnement: getPackaging({
+      selling_mode: l.sellingMode,
+      units_per_package: l.unitsPerPackage,
+      unit_name: l.uniteDetail,
+      packaging_unit_name: l.uniteContenant,
+    }),
+    aUneDatePeremption: Boolean(l.perissable),
+    coutDetail: l.coutDetail || null,
+    coutContenant: l.coutContenant || null,
+    prixDetail: l.prixDetail || null,
+    prixGros: l.prixGros || null,
+  }));
+}
+
+/** Un article, tel que la saisie d'un TRANSFERT en a besoin. */
+export interface ArticlePourTransfert {
+  id: string;
+  nom: string;
+  sku: string | null;
+  conditionnement: Packaging | null;
+  /**
+   * Ce que porte l'entrepôt SOURCE, réservations imputées comme au comptoir.
+   * `null` quand aucune ligne de stock n'existe pour ce dépôt : ce n'est PAS
+   * zéro, et l'écran doit le dire autrement.
+   */
+  disponible: { contenants: number; vrac: number; total: number } | null;
+  /** Le partage BRUT du rayon, réservations comprises. Pour le rappel « en rayon ». */
+  rayon: { contenants: number; vrac: number; total: number } | null;
+}
+
+/**
+ * Le catalogue, pour la saisie d'un TRANSFERT depuis un entrepôt donné.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE N'EST PAS `chercherArticles` DU COMPTOIR, ET LA DIFFÉRENCE EST DU     │
+ * │ MÉTIER.                                                                  │
+ * │                                                                          │
+ * │ Celui-là borne à `is_sellable`, applique le VERROU D'INVENTAIRE et       │
+ * │ retranche la réserve des ventes en file. Aucune de ces trois règles n'a  │
+ * │ sa place ici : un consommable ou une matière première se transfère entre │
+ * │ dépôts sans jamais se vendre, un inventaire en cours dans un magasin ne  │
+ * │ dit rien de ce qu'on peut expédier depuis la réserve, et une vente en    │
+ * │ file n'est pas une expédition. Le serveur ne pose d'ailleurs aucune de   │
+ * │ ces conditions sur un transfert.                                         │
+ * │                                                                          │
+ * │ C'est le même écart que celui trouvé au lot des mouvements, sur l'autre  │
+ * │ formulaire d'entrepôt : `chercherArticlesPourMouvement` a été écrit pour │
+ * │ la même raison. Il ne convient pas ici pour autant : un transfert a      │
+ * │ besoin du DISPONIBLE de la source, qu'un mouvement d'entrée ignore.      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * La jointure sur `stocks` est un LEFT JOIN, borné au dépôt : un article sans
+ * ligne dans ce dépôt reste trouvable, et son disponible vaut `null` - qui ne
+ * se lit jamais comme zéro.
+ */
+export async function chercherArticlesPourTransfert(
+  entrepotSource: string,
+  terme: string,
+  limite = 30
+): Promise<ArticlePourTransfert[]> {
+  // DEUX ALIAS D'UNITÉ, et il en faut deux : une seule jointure ferait porter
+  // au contenant le nom de l'unité de détail, et tout article conditionné
+  // s'afficherait « 2 bouteilles + 3 bouteilles ».
+  const uniteDetail = alias(units, "unite_detail_trf");
+  const uniteContenant = alias(units, "unite_contenant_trf");
+
+  const motif = terme.trim();
+  const conditions = [
+    eq(products.isActive, true),
+    or(eq(products.isDeleted, false), isNull(products.isDeleted))!,
+  ];
+  if (motif) {
+    const m = `%${motif.toLowerCase()}%`;
+    conditions.push(
+      or(
+        like(sql`lower(coalesce(${products.name}, ''))`, m),
+        like(sql`lower(coalesce(${products.sku}, ''))`, m),
+        like(sql`lower(coalesce(${products.barcode}, ''))`, m)
+      )!
+    );
+  }
+
+  const lignes = await db
+    .select({
+      id: products.id,
+      nom: products.name,
+      sku: products.sku,
+      sellingMode: products.sellingMode,
+      unitsPerPackage: products.unitsPerPackage,
+      uniteDetail: uniteDetail.name,
+      uniteContenant: uniteContenant.name,
+      quantite: stocks.quantity,
+      reserve: stocks.reservedQuantity,
+      contenants: stocks.packageQuantity,
+      vrac: stocks.looseQuantity,
+    })
+    .from(products)
+    .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+    .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .leftJoin(
+      stocks,
+      and(eq(stocks.productId, products.id), eq(stocks.warehouseId, entrepotSource))
+    )
+    .where(and(...conditions))
+    .orderBy(products.name)
+    .limit(limite);
+
+  return lignes.map((l) => {
+    // `getPackaging` et JAMAIS un `unitsPerPackage > 1` maison : lui seul
+    // impose le facteur >= 2 et rend `null` sur un article vendu au détail
+    // seul.
+    const conditionnement = getPackaging({
+      selling_mode: l.sellingMode,
+      units_per_package: l.unitsPerPackage,
+      unit_name: l.uniteDetail,
+      packaging_unit_name: l.uniteContenant,
+    });
+
+    // Pas de ligne de stock dans ce dépôt : on ne fabrique pas un zéro.
+    if (l.quantite == null) {
+      return { id: l.id, nom: l.nom, sku: l.sku || null, conditionnement, disponible: null, rayon: null };
+    }
+
+    const total = Number(l.quantite ?? 0);
+    const reserve = Number(l.reserve ?? 0);
+    const contenants = Number(l.contenants ?? 0);
+    const vrac = Number(l.vrac ?? 0);
+
+    // La MÊME imputation des réservations que le contrôle de vente : ce qui
+    // s'affiche comme disponible est exactement ce que le serveur opposera à
+    // l'expédition (`available_split`).
+    const dispo = availableSplit(
+      {
+        quantity: total,
+        reserved_quantity: reserve,
+        package_quantity: contenants,
+        loose_quantity: vrac,
+      },
+      conditionnement?.factor ?? null
+    );
+
+    return {
+      id: l.id,
+      nom: l.nom,
+      sku: l.sku || null,
+      conditionnement,
+      disponible: {
+        contenants: dispo.packages,
+        vrac: dispo.loose,
+        total: Math.max(0, total - reserve),
+      },
+      rayon: { contenants, vrac, total },
+    };
+  });
 }

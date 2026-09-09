@@ -50,6 +50,13 @@
       "when": 1788111115197,
       "tag": "0006_retours_et_devis",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788657639920,
+      "tag": "0007_index_inventaire",
+      "breakpoints": true
     }
   ]
 }

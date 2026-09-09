@@ -10,17 +10,27 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 
 import { db } from "@/db/client";
+import { deviseOuPrincipale } from "./devise-principale";
 import {
   customers,
   products,
   quotationItems,
   quotations,
+  saleItems,
   saleReturnItems,
   saleReturns,
   sales,
+  users,
 } from "@/db/schema";
+
+/** « Nelson Kayisi », ou `null` quand l'utilisateur n'est pas descendu. */
+const nomComplet = (
+  prenom: string | null | undefined,
+  nom: string | null | undefined
+): string | null => `${prenom ?? ""} ${nom ?? ""}`.trim() || null;
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -109,7 +119,7 @@ export async function listeRetours(
     statut: r.statut,
     montant: nb(r.montant),
     rembourse: nb(r.rembourse),
-    devise: r.devise ?? "",
+    devise: deviseOuPrincipale(r.devise),
     motif: r.motif ?? "",
     date: r.date ?? null,
   }));
@@ -127,23 +137,54 @@ export interface LigneRetour {
 
 export interface DetailRetour extends RetourResume {
   venteId: string | null;
+  /** Le client de la facture d'origine : c'est LUI qu'on rembourse. */
+  client: string | null;
+  clientId: string | null;
+  creePar: string | null;
+  approuvePar: string | null;
   approuveLe: Date | null;
   lignes: LigneRetour[];
 }
 
 export async function detailRetour(id: string): Promise<DetailRetour | null> {
+  const auteur = alias(users, "auteur_retour");
+  const decideur = alias(users, "decideur_retour");
+
   const [r] = await db
     .select({
       retour: saleReturns,
       venteReference: sales.reference,
       devise: sales.currency,
+      clientId: sales.customerId,
+      client: customers.name,
+      creeParPrenom: auteur.firstName,
+      creeParNom: auteur.lastName,
+      decideParPrenom: decideur.firstName,
+      decideParNom: decideur.lastName,
     })
     .from(saleReturns)
     .leftJoin(sales, eq(sales.id, saleReturns.originalSaleId))
+    .leftJoin(customers, eq(customers.id, sales.customerId))
+    .leftJoin(auteur, eq(auteur.id, saleReturns.createdById))
+    .leftJoin(decideur, eq(decideur.id, saleReturns.approvedById))
     .where(eq(saleReturns.id, id))
     .limit(1);
   if (!r) return null;
 
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ CHAQUE LIGNE S'APPELAIT « ARTICLE DE LA VENTE ».                     │
+  // │                                                                      │
+  // │ La jointure allait de `original_item_id` vers `products.id`. Or ce   │
+  // │ champ désigne une LIGNE DE FACTURE (`SaleItem`), pas un produit :    │
+  // │ elle ne trouvait donc jamais rien, et le repli tenait lieu de nom    │
+  // │ sur toutes les lignes de tous les retours. Un écran qui doit dire ce │
+  // │ qui est rendu ne disait rien du tout, et c'est précisément le        │
+  // │ premier renseignement qu'on vient y chercher avant d'approuver.      │
+  // │                                                                      │
+  // │ Le chemin est en deux sauts : `sale_return_items` → `sale_items` →   │
+  // │ `products`. `description` de la ligne de facture sert de repli, car  │
+  // │ c'est ce que le ticket a imprimé le jour de la vente.                │
+  // └──────────────────────────────────────────────────────────────────────┘
   const lignes = await db
     .select({
       id: saleReturnItems.id,
@@ -152,9 +193,11 @@ export async function detailRetour(id: string): Promise<DetailRetour | null> {
       total: saleReturnItems.total,
       restock: saleReturnItems.restock,
       produit: products.name,
+      description: saleItems.description,
     })
     .from(saleReturnItems)
-    .leftJoin(products, eq(products.id, saleReturnItems.originalItemId))
+    .leftJoin(saleItems, eq(saleItems.id, saleReturnItems.originalItemId))
+    .leftJoin(products, eq(products.id, saleItems.productId))
     .where(eq(saleReturnItems.saleReturnId, id))
     .orderBy(asc(saleReturnItems.createdAt));
 
@@ -167,16 +210,19 @@ export async function detailRetour(id: string): Promise<DetailRetour | null> {
     statut: s.status,
     montant: nb(s.totalAmount),
     rembourse: nb(s.refundAmount),
-    devise: r.devise ?? "",
+    devise: deviseOuPrincipale(r.devise),
     motif: s.reason ?? "",
     date: s.returnDate ?? null,
+    client: r.client ?? null,
+    clientId: r.clientId ?? null,
+    creePar: nomComplet(r.creeParPrenom, r.creeParNom),
+    approuvePar: nomComplet(r.decideParPrenom, r.decideParNom),
     approuveLe: s.approvedAt ?? null,
     lignes: lignes.map((l) => ({
       id: l.id,
-      // La ligne de retour désigne la ligne de VENTE, pas le produit : le nom
-      // n'est donc pas joignable directement. On le dit plutôt que d'afficher
-      // un identifiant.
-      produit: l.produit ?? "Article de la vente",
+      // Le nom du produit, sinon ce que le TICKET a imprimé le jour de la
+      // vente, sinon un repli honnête : jamais un identifiant.
+      produit: l.produit ?? (l.description || "Article de la vente"),
       quantite: nb(l.quantity),
       prixUnitaire: nb(l.unitPrice),
       total: nb(l.total),

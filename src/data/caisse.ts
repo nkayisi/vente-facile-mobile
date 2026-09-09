@@ -9,6 +9,7 @@
 import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 
 import { db } from "@/db/client";
+import { deviseOuPrincipale } from "./devise-principale";
 import {
   cashMovements,
   expenseCategories,
@@ -68,7 +69,7 @@ export async function relevesCaisse(): Promise<RelevesCaisse> {
 
   for (const m of tous) {
     if (m.isCancelled) continue;
-    const d = m.currency ?? "";
+    const d = deviseOuPrincipale(m.currency);
     const v = nb(m.amount);
     const signe = m.direction === "in" ? 1 : -1;
     solde.set(d, (solde.get(d) ?? 0) + signe * v);
@@ -118,7 +119,7 @@ export async function mouvementsCaisse(limite = 50): Promise<MouvementCaisse[]> 
     type: m.movementType,
     description: m.description ?? null,
     montant: nb(m.amount),
-    devise: m.currency ?? "",
+    devise: deviseOuPrincipale(m.currency),
     date: m.movementDate ?? null,
     annule: Boolean(m.isCancelled),
   }));
@@ -176,7 +177,7 @@ export async function listeDepenses(limite = 50): Promise<DepenseResume[]> {
     categorie: e.categorie ?? null,
     couleur: e.couleur ?? null,
     montant: nb(e.amount),
-    devise: e.currency ?? "",
+    devise: deviseOuPrincipale(e.currency),
     statut: e.status,
     date: e.expenseDate ?? null,
   }));
@@ -276,7 +277,7 @@ export async function sessionACloturer(
   const entrees = new Map<string, number>();
   const parMoyen = new Map<string, { moyen: string; devise: string; montant: number }>();
   for (const p of reglements) {
-    const devise = p.currency ?? "";
+    const devise = deviseOuPrincipale(p.currency);
     // Le MONTANT REMIS, pas le montant imputé : c'est ce qui est entré au
     // tiroir. Le serveur emploie `coalesce(tendered_amount, amount)`.
     const montant = nb(p.tendered ?? p.amount);
@@ -306,7 +307,7 @@ export async function sessionACloturer(
     .from(cashMovements)
     .where(eq(cashMovements.sessionId, sessionId))) {
     if (m.annule || m.direction !== "out") continue;
-    const d = m.currency ?? "";
+    const d = deviseOuPrincipale(m.currency);
     sorties.set(d, (sorties.get(d) ?? 0) + nb(m.amount));
   }
 

@@ -7,10 +7,11 @@
  * un montant converti à un montant de facture est le défaut que le back-office
  * a dû corriger sur ses règlements.
  */
-import { desc, eq, like, or, sql } from "drizzle-orm";
+import { desc, inArray, like, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { customerBalances, customers, suppliers } from "@/db/schema";
+import { deviseOuPrincipale } from "./devise-principale";
 
 const nb = (v: string | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -87,7 +88,15 @@ export interface FournisseurResume {
   code: string | null;
   contact: string | null;
   telephone: string | null;
-  devise: string | null;
+  /**
+   * La devise du solde. **Jamais vide, jamais `null`.**
+   *
+   * Elle valait `null` quand la colonne était vide, et les deux écrans qui
+   * l'affichaient la dénormalisaient aussitôt en `?? ""` - c'est-à-dire en un
+   * montant SANS SYMBOLE. Le repli est désormais posé ici, une fois, sur la
+   * devise principale de l'établissement.
+   */
+  devise: string;
   actif: boolean;
   solde: number;
 }
@@ -125,7 +134,7 @@ export async function listeFournisseurs(
       code: s.code ?? null,
       contact: s.contactPerson?.trim() || null,
       telephone: s.phone?.trim() || null,
-      devise: s.currency ?? null,
+      devise: deviseOuPrincipale(s.currency),
       actif: Boolean(s.isActive),
       solde: nb(s.currentBalance),
     })),
@@ -195,9 +204,45 @@ export async function relevesContacts(): Promise<RelevesContacts> {
       code: s.code ?? null,
       contact: s.contactPerson?.trim() || null,
       telephone: s.phone?.trim() || null,
-      devise: s.currency ?? null,
+      devise: deviseOuPrincipale(s.currency),
       actif: Boolean(s.isActive),
       solde: nb(s.currentBalance),
     })),
   };
+}
+
+/**
+ * Les téléphones d'un lot de clients, en UNE requête.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN NUMÉRO PAR LIGNE DE LISTE COÛTERAIT UNE REQUÊTE PAR LIGNE.           │
+ * │                                                                          │
+ * │ C'est le motif déjà retenu partout ailleurs (les soldes d'une liste de   │
+ * │ clients, les compteurs d'une liste de sessions) : on lit le lot, on      │
+ * │ range dans une `Map`, et l'appelant assemble. Deux cents débiteurs       │
+ * │ feraient sinon deux cents ouvertures de curseur pendant que le doigt     │
+ * │ fait défiler.                                                            │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Un client absent de la table - créé sur un autre terminal et pas encore
+ * descendu - n'a simplement pas d'entrée : l'appelant retire alors le bouton
+ * d'appel plutôt que de composer un numéro vide.
+ */
+export async function telephonesDesClients(
+  ids: string[]
+): Promise<Map<string, string>> {
+  const uniques = [...new Set(ids.filter(Boolean))];
+  if (uniques.length === 0) return new Map();
+
+  const lignes = await db
+    .select({ id: customers.id, phone: customers.phone })
+    .from(customers)
+    .where(inArray(customers.id, uniques));
+
+  const par = new Map<string, string>();
+  for (const l of lignes) {
+    const t = (l.phone ?? "").trim();
+    if (t) par.set(l.id, t);
+  }
+  return par;
 }

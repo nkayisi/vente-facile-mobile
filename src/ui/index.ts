@@ -11,6 +11,16 @@ export { Pressable, type PressableProps, type HapticKind } from "./pressable";
 export { Icon, type IconName, type IconProps } from "./icon";
 export { Button, IconButton, type ButtonVariant, type ButtonSize } from "./button";
 export { Input, FormField, type InputProps } from "./input";
+export { ChampDate } from "./champ-date";
+export {
+  ChampSelect,
+  DeclencheurSelect,
+  ListeChoix,
+  ListeChoixMultiple,
+  type OptionSelect,
+  type DemandeChoix,
+  type ApparenceSelect,
+} from "./champ-select";
 export { Card, CardHeader, Section } from "./card";
 export { ListItem, type ListItemProps } from "./list-item";
 export { Divider } from "./divider";
@@ -49,7 +59,7 @@ export {
 export { AppBar } from "./app-bar";
 export { TopBar } from "./top-bar";
 export { PageHeader, type PageHeaderProps } from "./page-header";
-export { StatValue, statValueSize } from "./stat-value";
+export { StatValue, statValueSize, Mesure, mesureSize } from "./stat-value";
 export { StatStrip, StatStripItem, type StatTone } from "./stat-strip";
 export { ActionTile, type AccentTuile } from "./action-tile";
 export { Chip, ChipRow, BoutonFiltres } from "./chip";
@@ -57,12 +67,14 @@ export { Segmented, type OptionSegment } from "./segmented";
 export { Switch } from "./switch";
 export { SearchInput, BarreRecherche } from "./search-input";
 export { Avatar, initiales } from "./avatar";
-export { ProgressBar } from "./progress";
+export { ProgressBar, BarreEmpilee } from "./progress";
 export { Sheet } from "./sheet";
 export { Dialog, AlertDialog } from "./dialog";
 export { ToastProvider, useToast } from "./toast";
-export { Fab } from "./fab";
-export { DataList, DataRow } from "./data-list";
+export { Fab, type ActionSecondaire } from "./fab";
+export { Apparition } from "./apparition";
+export { DataList, DataRow, DataSection } from "./data-list";
+export { Tableau, Rang, type ColonneTableau } from "./tableau";
 export { Stepper } from "./stepper";
 export { TuileChoix } from "./tuile-choix";
 export { HorsLigneBloquant } from "./hors-ligne";
@@ -70,6 +82,6 @@ export { MultiCurrencyTotal, CarteReleve } from "./multi-currency-total";
 export { IconBrute } from "./icon";
 
 // --- Lot 9 : le tableau de bord ---
-export { BarChart, type PointGraphe } from "./bar-chart";
+export { BarChart, BarChartHorizontal, type PointGraphe } from "./bar-chart";
 export { AreaChart, type PointAire } from "./area-chart";
 export { DonutChart, couleurDeSerie, type TrancheDonut } from "./donut-chart";

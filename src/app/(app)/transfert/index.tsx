@@ -13,6 +13,7 @@ import {
   type TransfertResume,
 } from "@/data/stock-operations";
 import { enAttenteSurStock } from "@/features/stock/actes";
+import { FeuilleNouveauTransfert } from "@/features/stock/feuille-transfert";
 import { useSession } from "@/session/provider";
 import {
   AppBar,
@@ -33,6 +34,7 @@ export default function Transferts() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
+  const [feuille, setFeuille] = useState(false);
 
   const charger = useCallback(
     () => listeTransferts({ recherche, statut }),
@@ -115,7 +117,19 @@ export default function Transferts() {
         }}
       />
       {can("stock_transfers.create") ? (
-        <Fab icon="Plus" label="Nouveau" onPress={() => router.push("/transfert/nouveau")} />
+        <Fab icon="Plus" label="Nouveau transfert" onPress={() => setFeuille(true)} />
+      ) : null}
+
+      {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
+          formulaire vierge. Voir la docstring de la feuille. */}
+      {feuille ? (
+        <FeuilleNouveauTransfert
+          onFermer={() => setFeuille(false)}
+          onCree={(id) => {
+            setFeuille(false);
+            router.push(`/transfert/${id}`);
+          }}
+        />
       ) : null}
     </Screen>
   );

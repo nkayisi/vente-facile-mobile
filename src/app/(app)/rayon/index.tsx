@@ -14,7 +14,9 @@ import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
+import { jourISO } from "@/data/dates";
 import { useLecture } from "@/data/live";
+import { useEnLigne } from "@/data/reseau";
 import {
   ETAT_STOCK,
   niveauxDeStock,
@@ -22,6 +24,14 @@ import {
   type LigneNiveau,
 } from "@/data/stock-niveaux";
 import { entrepots } from "@/data/stock";
+import { ApiError } from "@/api/errors";
+import { FeuilleFormat } from "@/features/export/feuille-format";
+import {
+  telechargerDocument,
+  type FormatExport,
+} from "@/features/export/telecharger";
+import { statutServeur } from "@/features/stock/statut-stock";
+import { useSession } from "@/session/provider";
 import {
   AppBar,
   Badge,
@@ -29,10 +39,12 @@ import {
   ChipRow,
   DataList,
   DataRow,
+  IconButton,
   Screen,
   SearchInput,
-  StatValue,
+  Mesure,
   Text,
+  useToast,
 } from "@/ui";
 
 const TABLES = ["stocks", "products", "warehouses", "categories", "units"];
@@ -49,9 +61,14 @@ export default function Niveaux() {
   // à refaire le tri à la main, et il ne retrouve pas forcément les mêmes
   // produits : c'est la règle « chaque alerte mène quelque part ».
   const params = useLocalSearchParams<{ etat?: string }>();
+  const { can } = useSession();
+  const toast = useToast();
+  const enLigne = useEnLigne();
   const [recherche, setRecherche] = useState("");
   const [entrepot, setEntrepot] = useState<string | null>(null);
   const [etat, setEtat] = useState<EtatStock>(() => etatDemande(params.etat));
+  const [feuilleFormat, setFeuilleFormat] = useState(false);
+  const [envoiExport, setEnvoiExport] = useState(false);
 
   const charger = useCallback(
     () => niveauxDeStock({ recherche, entrepot, etat, limite: 300 }),
@@ -110,13 +127,61 @@ export default function Niveaux() {
         principal={l.produit}
         secondaire={[l.sku, l.entrepot].filter(Boolean).join(" · ") || null}
         badge={l.etat !== "ok" ? <Badge tone={e.ton}>{e.label}</Badge> : undefined}
-        valeur={<StatValue value={l.disponibleAffiche} />}
+        valeur={<Mesure value={l.disponibleAffiche} />}
         // Le total brut n'apparaît QUE s'il diffère de la lecture affichée :
         // « 12 au total » sous « 12 pièces » est du bruit.
         sousValeur={l.facteur ? `${l.total} au total` : null}
         onPress={() => router.push(`/rayon/${l.id}`)}
       />
     );
+  };
+
+  // Le serveur garde cette lecture derrière `stock.view`, et NON
+  // `stock_movements.view` : fermer le bouton sur le mauvais droit ferait
+  // répondre 403 après le choix du format, ce qu'on lirait comme une panne.
+  const peutVoir = can("stock.view");
+  const raisonExport = !enLigne
+    ? "L'export est fabriqué par le serveur : il demande une connexion."
+    : envoiExport
+      ? "Export en cours…"
+      : lignes.length === 0
+        ? "Aucun rayon à exporter."
+        : undefined;
+
+  /**
+   * La situation de stock, fabriquée par le SERVEUR comme tous les documents.
+   *
+   * ⚠ `statutServeur` ET NON une correspondance écrite ici : `low` du serveur
+   * contient les ruptures et `available` les stocks bas, quand les trois états
+   * de cet écran s'excluent. Une traduction naïve rendrait un document plus
+   * large que la liste qui l'a déclenché, sans que rien ne le signale.
+   */
+  const exporter = async (format: FormatExport) => {
+    setFeuilleFormat(false);
+    setEnvoiExport(true);
+    try {
+      await telechargerDocument(
+        "/stocks/export/",
+        {
+          search: recherche || undefined,
+          warehouse: entrepot ?? undefined,
+          status: statutServeur(etat),
+          // Le défaut du back-office : les sous-totaux par catégorie sont ce
+          // qu'on vient chercher dans une situation de stock.
+          group_by: "category",
+        },
+        format,
+        `Niveaux de stock ${jourISO(new Date())}`
+      );
+    } catch (erreur) {
+      toast.erreur(
+        erreur instanceof ApiError
+          ? erreur.message
+          : "L'export n'a pas pu être produit."
+      );
+    } finally {
+      setEnvoiExport(false);
+    }
   };
 
   return (
@@ -127,6 +192,17 @@ export default function Niveaux() {
           etat === "bas"
             ? "Produits en stock bas"
             : "Vue d'ensemble de tout le stock"
+        }
+        right={
+          peutVoir ? (
+            <IconButton
+              name="Download"
+              label="Exporter les niveaux de stock"
+              variant="ghost"
+              onPress={() => setFeuilleFormat(true)}
+              disabled={Boolean(raisonExport)}
+            />
+          ) : undefined
         }
       />
       <DataList
@@ -142,6 +218,14 @@ export default function Niveaux() {
             ? "Aucun produit ne correspond à vos critères."
             : "Aucune ligne de stock sur ce périmètre.",
         }}
+      />
+
+      <FeuilleFormat
+        ouvert={feuilleFormat}
+        onFermer={() => setFeuilleFormat(false)}
+        onChoisir={(f) => void exporter(f)}
+        titre="Exporter les niveaux de stock"
+        envoi={envoiExport}
       />
     </Screen>
   );

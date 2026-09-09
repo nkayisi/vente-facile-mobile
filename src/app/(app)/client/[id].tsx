@@ -30,6 +30,8 @@ import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { STATUT_VENTE } from "@/data/ventes";
 import { enAttenteSurClient } from "@/features/clients/actes";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
+import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
 import {
   AppBar,
@@ -109,6 +111,7 @@ export default function FicheClient() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const money = useMonnaie();
   const { can, snapshot } = useSession();
+  const { enCours: enCoursSync, lancer: lancerSync } = useSynchronisation();
 
   // Le plafond et le crédit disponible sont des cumuls CONVERTIS, exprimés
   // dans la devise principale de l'établissement : ils viennent de
@@ -165,23 +168,26 @@ export default function FicheClient() {
       />
 
       <View className="gap-4 p-4">
-        {attente?.creationEnAttente ? (
-          <Banner
-            tone="info"
-            title="Client pas encore synchronisé"
-            message="Il a été créé sur ce terminal et attend d'être envoyé. Vous pouvez déjà lui vendre et l'encaisser."
-          />
-        ) : null}
+        <BandeauEnvoi
+          envoi={attente?.creationEnAttente}
+          titre="Ce client attend son envoi"
+          consequence="Il n'existe encore que sur ce terminal ; vous pouvez déjà lui vendre et l'encaisser."
+        />
 
         {attente && attente.encaissements.length > 0 ? (
           <Banner
             tone="info"
             title={
               attente.encaissements.length > 1
-                ? `${attente.encaissements.length} encaissements en attente d'envoi`
-                : "Un encaissement en attente d'envoi"
+                ? `${attente.encaissements.length} encaissements attendent leur envoi`
+                : "Un encaissement attend son envoi"
             }
             message="Les reçus sont imprimés. Le solde ci-dessous ne les prendra en compte qu'après synchronisation."
+            action={{
+              label: enCoursSync ? "Synchronisation…" : "Synchroniser",
+              loading: enCoursSync,
+              onPress: () => void lancerSync("bandeau"),
+            }}
           />
         ) : null}
 

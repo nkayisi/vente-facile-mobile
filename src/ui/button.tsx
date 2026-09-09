@@ -95,25 +95,39 @@ export function Button({
         inactive ? "opacity-50" : ""
       } ${fullWidth ? "w-full" : "self-start"} ${className}`}
     >
+      {/* ┌──────────────────────────────────────────────────────────────────┐
+          │ LA ROUE PREND LA PLACE DE L'ICÔNE, PAS CELLE DU LIBELLÉ.        │
+          │                                                                  │
+          │ Elle remplaçait tout le contenu. Deux conséquences, mesurées sur │
+          │ l'émulateur :                                                    │
+          │                                                                  │
+          │  - un bouton qui n'est pas pleine largeur se RÉTRÉCIT à la       │
+          │    taille de la roue. Dans un bandeau, « Synchroniser » devient  │
+          │    une pastille de vingt points qui ne dit plus rien de ce qui   │
+          │    se passe ;                                                    │
+          │  - le libellé de chargement n'était JAMAIS rendu. Trois écrans   │
+          │    en écrivaient pourtant un - « Synchronisation en cours »,     │
+          │    « Clôture… », « Enregistrement… » - et personne ne l'a jamais │
+          │    lu. Un texte écrit pour être vu et qui ne l'est pas est une   │
+          │    information perdue deux fois : à l'écriture et à la lecture.  │
+          └──────────────────────────────────────────────────────────────────┘ */}
       {loading ? (
-        <ActivityIndicator size="small" color={colors[v.icon]} />
-      ) : (
-        <>
-          {leftIcon ? (
-            <View className="mr-2">
-              <Icon name={leftIcon} size={18} color={v.icon} />
-            </View>
-          ) : null}
-          <Text variant={s.text} className={v.label}>
-            {children}
-          </Text>
-          {rightIcon ? (
-            <View className="ml-2">
-              <Icon name={rightIcon} size={18} color={v.icon} />
-            </View>
-          ) : null}
-        </>
-      )}
+        <View className="mr-2">
+          <ActivityIndicator size="small" color={colors[v.icon]} />
+        </View>
+      ) : leftIcon ? (
+        <View className="mr-2">
+          <Icon name={leftIcon} size={18} color={v.icon} />
+        </View>
+      ) : null}
+      <Text variant={s.text} className={v.label}>
+        {children}
+      </Text>
+      {rightIcon && !loading ? (
+        <View className="ml-2">
+          <Icon name={rightIcon} size={18} color={v.icon} />
+        </View>
+      ) : null}
     </Pressable>
   );
 }

@@ -27,12 +27,16 @@ import {
   transitionTransfert,
   type TransitionTransfert,
 } from "@/features/stock/actes";
+import {
+  FeuilleReception,
+  type LigneRecue,
+} from "@/features/stock/feuille-reception";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   AlertDialog,
   AppBar,
   Badge,
-  Banner,
   Button,
   Card,
   CardHeader,
@@ -85,6 +89,10 @@ export default function DetailTransfertEcran() {
   const toast = useToast();
   const { can } = useSession();
   const [confirmation, setConfirmation] = useState<TransitionTransfert | null>(null);
+  // ⚠ La RÉCEPTION n'est pas une simple confirmation : une réception partielle
+  // est le cas ordinaire, et le magasinier doit pouvoir dire ce qu'il a
+  // réellement déchargé. Les trois autres transitions n'ont rien à saisir.
+  const [reception, setReception] = useState(false);
   const [envoi, setEnvoi] = useState(false);
 
   const charger = useCallback(() => detailTransfert(id), [id]);
@@ -119,17 +127,22 @@ export default function DetailTransfertEcran() {
   }
 
   const s = STATUT_TRANSFERT[t.statut];
-  const enFile = attente?.transferts.has(t.id) ?? false;
+  const envoiEnFile = attente?.transferts.get(t.id);
+  const enFile = envoiEnFile !== undefined;
   const possibles = (Object.keys(ACTIONS) as TransitionTransfert[]).filter(
     (a) => ACTIONS[a].depuis.includes(t.statut) && can(ACTIONS[a].permission)
   );
 
-  const executer = async (transition: TransitionTransfert) => {
+  const executer = async (
+    transition: TransitionTransfert,
+    recues?: LigneRecue[]
+  ) => {
     if (envoi) return;
     setEnvoi(true);
     try {
-      await transitionTransfert(t.id, transition);
+      await transitionTransfert(t.id, transition, recues);
       setConfirmation(null);
+      setReception(false);
       toast.succes("Opération mise en file. Elle partira à la prochaine synchronisation.");
     } catch (e) {
       toast.erreur(
@@ -149,13 +162,11 @@ export default function DetailTransfertEcran() {
       />
 
       <View className="gap-4 p-4">
-        {enFile ? (
-          <Banner
-            tone="warning"
-            title="Une opération attend son envoi"
-            message="Le statut ci-dessus ne changera qu'après synchronisation. Les actions sont fermées d'ici là, pour ne pas expédier deux fois."
-          />
-        ) : null}
+        <BandeauEnvoi
+          envoi={envoiEnFile}
+          titre="Une opération attend son envoi"
+          consequence="Le statut ci-dessus ne changera qu'après, et les actions restent fermées d'ici là pour ne pas expédier deux fois."
+        />
 
         {possibles.length > 0 && !enFile ? (
           <View className="gap-2">
@@ -166,7 +177,7 @@ export default function DetailTransfertEcran() {
                   key={a}
                   fullWidth
                   size="lg"
-                  onPress={() => setConfirmation(a)}
+                  onPress={() => (a === "receive" ? setReception(true) : setConfirmation(a))}
                   leftIcon={a === "ship" ? "Truck" : a === "receive" ? "Boxes" : "Check"}
                 >
                   {ACTIONS[a].label}
@@ -242,6 +253,19 @@ export default function DetailTransfertEcran() {
           </View>
         </Card>
       </View>
+
+      {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
+          préremplissage frais depuis l'expédié, sans effet de remise à zéro à
+          tenir en phase avec les champs. Même motif que la feuille de retour. */}
+      {reception ? (
+        <FeuilleReception
+          lignes={t.lignes}
+          ouvert
+          onFermer={() => setReception(false)}
+          enCours={envoi}
+          onConfirmer={(recues) => void executer("receive", recues)}
+        />
+      ) : null}
 
       <AlertDialog
         ouvert={confirmation !== null}

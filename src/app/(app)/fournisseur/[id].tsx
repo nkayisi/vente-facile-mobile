@@ -78,7 +78,7 @@ export default function FicheFournisseur() {
               {f.solde > 0 ? "Dû au fournisseur" : "Avance versée"}
             </Text>
             <StatValue
-              value={money.money(Math.abs(f.solde), f.devise ?? "")}
+              value={money.money(Math.abs(f.solde), f.devise)}
               tone={f.solde > 0 ? "destructive" : "chart2"}
             />
           </Card>

@@ -16,6 +16,8 @@ import { customers, saleItems, sales } from "@/db/schema";
 
 import { depuisQuand, type Periode } from "./periodes";
 import { compteursDeSessions, compteursVides } from "./sessions";
+import { deviseOuPrincipale } from "./devise-principale";
+import { referencesDejaTirees } from "./deja-tirees";
 
 export type { Periode };
 
@@ -39,6 +41,15 @@ export interface VenteResume {
   client: string | null;
   statut: string;
   total: number;
+  /**
+   * Faux quand le ticket rangé n'a pas été retrouvé : le montant est INCONNU.
+   *
+   * `total` vaut alors zéro faute de mieux, et ce zéro n'entre dans AUCUNE
+   * somme d'argent - il fausserait la journée sans rien signaler. L'écran le
+   * dit plutôt que de présenter un total comme complet. Absent pour une vente
+   * tirée : le serveur a arrêté ses montants.
+   */
+  montantConnu?: boolean;
   resteAPayer: number;
   devise: string;
   date: Date | null;
@@ -170,7 +181,7 @@ export async function relevesVentes(): Promise<RelevesVentes> {
       statut: v.resteAPayer > 0 ? "partially_paid" : "completed",
       total: v.total ?? 0,
       resteAPayer: v.resteAPayer,
-      devise: v.devise ?? "",
+      devise: deviseOuPrincipale(v.devise),
       date: v.date,
       nbArticles: v.nbArticles ?? undefined,
       envoi: v.envoi,
@@ -182,7 +193,7 @@ export async function relevesVentes(): Promise<RelevesVentes> {
       statut: l.statut,
       total: nb(l.total),
       resteAPayer: nb(l.amountDue),
-      devise: l.currency ?? "",
+      devise: deviseOuPrincipale(l.currency),
       date: l.saleDate ?? null,
       nbArticles: compte.get(l.id) ?? 0,
     })),
@@ -273,15 +284,9 @@ export async function sessionOuverteResume(): Promise<SessionOuverte | null> {
   };
 }
 
-/** Libellés et tons des statuts, repris du back-office mot pour mot. */
-export const STATUT_VENTE: Record<string, { label: string; ton: "neutral" | "warning" | "success" | "primary" | "destructive" }> = {
-  draft: { label: "Brouillon", ton: "neutral" },
-  pending: { label: "En attente", ton: "warning" },
-  completed: { label: "Terminée", ton: "success" },
-  partially_paid: { label: "Partiel", ton: "primary" },
-  cancelled: { label: "Annulée", ton: "destructive" },
-  refunded: { label: "Remboursée", ton: "neutral" },
-};
+// Les libellés vivent dans un module PUR : les garder ici obligeait tout
+// module qui veut seulement NOMMER un statut à charger la base SQLite.
+export { STATUT_VENTE, type TonStatut } from "./statuts-vente";
 
 /**
  * Jours de retard d'une échéance, en jours CIVILS locaux.
@@ -320,13 +325,103 @@ export interface FiltresHistorique {
   /** Code de statut, ou `null` pour tous. */
   statut?: string | null;
   periode?: Periode;
+  /**
+   * Combien de ventes tirées rendre. Le défilement infini l'AGRANDIT, il ne
+   * demande pas la page suivante.
+   *
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │ UN RANG DE DÉPART NE SURVIVRAIT PAS À LA LECTURE RÉACTIVE.           │
+   * │                                                                      │
+   * │ Cet écran se recharge tout seul dès qu'une table bouge - une         │
+   * │ synchronisation, une vente encaissée au comptoir - et la lecture      │
+   * │ remplace alors ses données EN BLOC. Des pages accumulées dans l'état  │
+   * │ de l'écran seraient perdues à chaque tirage, et la liste sauterait    │
+   * │ toute seule à son début pendant qu'on la parcourt.                    │
+   * │                                                                      │
+   * │ Pire, un rang fige une POSITION dans un classement qui bouge : une    │
+   * │ vente insérée par la synchronisation décale tout ce qui suit, et la   │
+   * │ page suivante répète une ligne ou en saute une. Agrandir la fenêtre   │
+   * │ depuis le début est la seule forme qui reste juste sous une écriture  │
+   * │ concurrente, et le surcoût est une relecture locale de quelques       │
+   * │ dizaines de lignes indexées sur `sale_date`.                         │
+   * └──────────────────────────────────────────────────────────────────────┘
+   */
   limite?: number;
+}
+
+/**
+ * Ce que pèse le périmètre affiché.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LES RELEVÉS SE CALCULENT EN SQL, SUR TOUT LE PÉRIMÈTRE FILTRÉ.          │
+ * │                                                                          │
+ * │ Les sommer sur `elements` donnerait le poids de la PAGE et non celui de  │
+ * │ la période : « 12 400 $ » sous un compteur qui annonce trois cent        │
+ * │ quarante ventes, sans que rien ne dise que le chiffre ne porte que sur   │
+ * │ les cinquante premières. C'est le défaut exact que le back-office a dû   │
+ * │ corriger sur ses niveaux de stock, où l'export ne couvrait pas le même   │
+ * │ périmètre que l'écran ; ici il serait pire, parce qu'un total faux a     │
+ * │ l'air juste.                                                             │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export interface RelevesHistorique {
+  /** Une entrée par devise : on ne somme jamais entre devises. */
+  totalParDevise: { devise: string; montant: number }[];
+  /** Ce qu'il reste à encaisser sur ce périmètre, ventilé lui aussi. */
+  resteParDevise: { devise: string; montant: number }[];
+  /** Nombre de ventes, devises confondues : un décompte n'est pas un montant. */
+  transactions: number;
+  /**
+   * Ventes comptées dont le montant est INCONNU (ticket introuvable).
+   *
+   * Elles pèsent dans `transactions` et dans aucune somme d'argent : un zéro
+   * inventé fausserait le total sans rien signaler. L'écran le DIT plutôt que
+   * de présenter un total comme complet.
+   */
+  sansMontant: number;
 }
 
 export interface PageVentes {
   elements: VenteResume[];
   /** Nombre total AVANT la limite : c'est lui que le sous-titre annonce. */
   total: number;
+  /** Il reste des ventes au-delà de cette page. */
+  aPlus: boolean;
+  releves: RelevesHistorique;
+  /**
+   * Nombre de ventes de la période et de la recherche, TOUS STATUTS.
+   *
+   * `total` porte la liste affichée, donc le statut filtré : la puce « Tous »
+   * annoncerait sinon le décompte de la puce ACTIVE, et taper « Annulée (3) »
+   * ferait afficher « Tous (3) » à côté. Les deux chiffres sont différents dès
+   * qu'un statut est choisi, et c'est le second qui dit ce que « Tous » ouvre.
+   */
+  totalTousStatuts: number;
+  /**
+   * Nombre de ventes par statut, calculé SANS le filtre de statut.
+   *
+   * Le calculer avec ferait afficher zéro sur toutes les puces sauf l'active,
+   * et une puce à zéro se lit « il n'y en a pas » alors qu'elle voudrait dire
+   * « vous ne les regardez pas ».
+   */
+  parStatut: Record<string, number>;
+}
+
+/** Additionne par devise, en écartant ce dont la devise est inconnue. */
+function parDevise(
+  lignes: { devise: string; montant: number }[]
+): { devise: string; montant: number }[] {
+  const m = new Map<string, number>();
+  for (const l of lignes) {
+    // Une devise vide donnerait un montant SANS SYMBOLE, en silence, dans une
+    // application où le même chiffre vaut soit trois dollars, soit trois
+    // francs. La vente reste comptée comme transaction, jamais comme argent.
+    if (l.devise === "" || l.montant === 0) continue;
+    m.set(l.devise, (m.get(l.devise) ?? 0) + l.montant);
+  }
+  return [...m.entries()]
+    .map(([devise, montant]) => ({ devise, montant }))
+    .sort((a, b) => a.devise.localeCompare(b.devise));
 }
 
 /**
@@ -342,6 +437,7 @@ export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageV
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
   const borne = depuisQuand(f.periode ?? "tout");
+  const limite = f.limite ?? 50;
 
   // ┌────────────────────────────────────────────────────────────────────────┐
   // │ L'HISTORIQUE FUSIONNE LE JOURNAL, LUI AUSSI.                           │
@@ -356,9 +452,46 @@ export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageV
   // └────────────────────────────────────────────────────────────────────────┘
   const attente = await ventesEnAttente();
 
-  const conditions = [
+  // Le dédoublonnage se fait contre la TABLE, jamais contre la page rendue :
+  // avec le défilement infini, une vente poussée dont la ligne tirée tombe en
+  // page trois reviendrait en tête de la page une, et son montant se compterait
+  // deux fois dans les relevés, qui portent sur toute la table. Voir
+  // `data/deja-tirees.ts`, que le tableau de bord consomme aussi.
+  const dejaTirees = await referencesDejaTirees(attente.map((v) => v.reference));
+
+  // Les mêmes filtres que le SQL, appliqués aux ventes du journal. Elles sont
+  // peu nombreuses par construction - ce qui n'a pas encore été poussé - et
+  // les filtrer en mémoire ne tronque rien, contrairement à un filtrage
+  // appliqué après une page déjà limitée.
+  const enFile: VenteResume[] = attente
+    .filter((v) => !dejaTirees.has(v.reference))
+    .map((v) => ({
+      id: v.id,
+      reference: v.reference,
+      client: v.client,
+      // Le statut se déduit du restant dû, comme le serveur le posera.
+      statut: v.resteAPayer > 0 ? "partially_paid" : "completed",
+      // `null` du ticket se lit INCONNU : `montantConnu` le porte, et le total
+      // à zéro n'entre dans aucune somme. Voir `parDevise`.
+      total: v.total ?? 0,
+      montantConnu: v.total !== null,
+      resteAPayer: v.resteAPayer,
+      devise: deviseOuPrincipale(v.devise),
+      date: v.date,
+      nbArticles: v.nbArticles ?? undefined,
+      envoi: v.envoi,
+    }));
+  const dansLaPeriode = enFile.filter((v) => !borne || (v.date && v.date >= borne));
+  const dansLaRecherche = dansLaPeriode.filter(
+    (v) =>
+      !terme ||
+      v.reference.toLowerCase().includes(terme) ||
+      (v.client ?? "").toLowerCase().includes(terme)
+  );
+  const enAttente = dansLaRecherche.filter((v) => !f.statut || v.statut === f.statut);
+
+  const cadre = [
     borne ? gte(sales.saleDate, borne) : undefined,
-    f.statut ? eq(sales.status, f.statut) : undefined,
     terme
       ? or(
           like(sql`lower(${sales.reference})`, motif),
@@ -366,13 +499,32 @@ export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageV
         )
       : undefined,
   ].filter(Boolean);
+  const conditions = [...cadre, f.statut ? eq(sales.status, f.statut) : undefined].filter(Boolean);
   const filtre = conditions.length > 0 ? and(...conditions) : undefined;
+  const filtreSansStatut = cadre.length > 0 ? and(...cadre) : undefined;
 
-  const [{ n: total } = { n: 0 }] = await db
-    .select({ n: sql<number>`count(*)` })
+  // UNE requête pour le compteur ET les deux totaux : le décompte et les
+  // sommes se lisent côte à côte, ils doivent venir du même balayage. Les
+  // montants sont stockés en TEXTE (les décimales voyagent en chaîne), d'où
+  // le `cast` - sans lui SQLite additionnerait des chaînes.
+  const agregats = await db
+    .select({
+      devise: sales.currency,
+      n: sql<number>`count(*)`,
+      total: sql<number>`sum(cast(${sales.total} as real))`,
+      du: sql<number>`sum(cast(${sales.amountDue} as real))`,
+    })
     .from(sales)
     .leftJoin(customers, eq(customers.id, sales.customerId))
-    .where(filtre);
+    .where(filtre)
+    .groupBy(sales.currency);
+
+  const parStatutTire = await db
+    .select({ statut: sales.status, n: sql<number>`count(*)` })
+    .from(sales)
+    .leftJoin(customers, eq(customers.id, sales.customerId))
+    .where(filtreSansStatut)
+    .groupBy(sales.status);
 
   const lignes = await db
     .select({
@@ -383,60 +535,79 @@ export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageV
       amountDue: sales.amountDue,
       currency: sales.currency,
       saleDate: sales.saleDate,
+      dueDate: sales.dueDate,
       client: customers.name,
     })
     .from(sales)
     .leftJoin(customers, eq(customers.id, sales.customerId))
     .where(filtre)
     .orderBy(desc(sales.saleDate))
-    .limit(f.limite ?? 50);
+    .limit(limite);
 
-  // Les mêmes filtres que le SQL, appliqués aux ventes du journal. Elles sont
-  // peu nombreuses par construction - ce qui n'a pas encore été poussé - et
-  // les filtrer en mémoire ne tronque rien, contrairement à un filtrage
-  // appliqué après une page déjà limitée.
-  const dejaTirees = new Set(lignes.map((l) => l.reference));
-  const enAttente = attente
-    .filter((v) => !dejaTirees.has(v.reference))
-    .map((v) => ({
-      id: v.id,
-      reference: v.reference,
-      client: v.client,
-      // Le statut se déduit du restant dû, comme le serveur le posera.
-      statut: v.resteAPayer > 0 ? "partially_paid" : "completed",
-      total: v.total ?? 0,
-      resteAPayer: v.resteAPayer,
-      devise: v.devise ?? "",
-      date: v.date,
-      nbArticles: v.nbArticles ?? undefined,
-      envoi: v.envoi,
-    }))
-    .filter((v) => {
-      if (borne && v.date < borne) return false;
-      if (f.statut && v.statut !== f.statut) return false;
-      if (!terme) return true;
-      return (
-        v.reference.toLowerCase().includes(terme) ||
-        (v.client ?? "").toLowerCase().includes(terme)
-      );
-    });
+  // Le nombre de LIGNES par vente, en UNE requête groupée pour la page. Le
+  // relire vente par vente ferait cinquante lectures par page, sur un écran
+  // qu'on fait défiler.
+  const nbLignes = new Map<string, number>();
+  if (lignes.length > 0) {
+    const parVente = await db
+      .select({ saleId: saleItems.saleId, n: sql<number>`count(*)` })
+      .from(saleItems)
+      .where(inArray(saleItems.saleId, lignes.map((l) => l.id)))
+      .groupBy(saleItems.saleId);
+    for (const c of parVente) nbLignes.set(c.saleId, Number(c.n) || 0);
+  }
+
+  const totalTire = agregats.reduce((n, a) => n + (Number(a.n) || 0), 0);
+  const total = totalTire + enAttente.length;
+
+  const parStatut: Record<string, number> = {};
+  for (const l of parStatutTire) parStatut[l.statut] = Number(l.n) || 0;
+  for (const v of dansLaRecherche) parStatut[v.statut] = (parStatut[v.statut] ?? 0) + 1;
+
+  const releves: RelevesHistorique = {
+    totalParDevise: parDevise([
+      ...agregats.map((a) => ({ devise: deviseOuPrincipale(a.devise), montant: Number(a.total) || 0 })),
+      ...enAttente.map((v) => ({ devise: v.devise, montant: v.montantConnu ? v.total : 0 })),
+    ]),
+    resteParDevise: parDevise([
+      ...agregats.map((a) => ({ devise: deviseOuPrincipale(a.devise), montant: Number(a.du) || 0 })),
+      ...enAttente.map((v) => ({ devise: v.devise, montant: v.resteAPayer })),
+    ]),
+    transactions: total,
+    sansMontant: enAttente.filter((v) => v.montantConnu === false).length,
+  };
+
+  const page: VenteResume[] = lignes.map((l) => ({
+    id: l.id,
+    reference: l.reference,
+    client: l.client ?? null,
+    statut: l.statut,
+    total: nb(l.total),
+    montantConnu: true,
+    resteAPayer: nb(l.amountDue),
+    devise: deviseOuPrincipale(l.currency),
+    date: l.saleDate ?? null,
+    nbArticles: nbLignes.get(l.id) ?? 0,
+    echeance: l.dueDate ?? null,
+    joursDeRetard: joursDeRetard(l.dueDate ?? null),
+  }));
 
   return {
     // Le compteur porte la liste RÉELLE : l'annoncer sans les ventes en file
     // ferait dire « 3 ventes » au-dessus de quatre lignes.
-    total: total + enAttente.length,
+    total,
+    totalTousStatuts: Object.values(parStatut).reduce((n, v) => n + v, 0),
+    // La fenêtre n'a pas tout ramené : il reste des ventes derrière, et la
+    // liste doit le dire plutôt que de s'arrêter en silence.
+    aPlus: lignes.length < totalTire,
+    releves,
+    parStatut,
     elements: [
+      // Les ventes en file sont toujours en tête : elles sont peu nombreuses
+      // par construction - c'est ce qui n'a pas encore été poussé - et la
+      // fenêtre part du début, donc elles ne se dédoublent jamais.
       ...enAttente,
-      ...lignes.map((l) => ({
-        id: l.id,
-        reference: l.reference,
-        client: l.client ?? null,
-        statut: l.statut,
-        total: nb(l.total),
-        resteAPayer: nb(l.amountDue),
-        devise: l.currency ?? "",
-        date: l.saleDate ?? null,
-      })),
+      ...page,
     ].sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0)),
   };
 }
@@ -520,7 +691,7 @@ export async function reglementsEnAttente(recherche = ""): Promise<ReglementsEnA
     statut: l.statut,
     total: nb(l.total),
     resteAPayer: nb(l.amountDue),
-    devise: l.currency ?? "",
+    devise: deviseOuPrincipale(l.currency),
     date: l.saleDate ?? null,
     echeance: l.dueDate ?? null,
     joursDeRetard: joursDeRetard(l.dueDate ?? null),

@@ -13,6 +13,7 @@ import {
   type AjustementResume,
 } from "@/data/stock-operations";
 import { enAttenteSurStock } from "@/features/stock/actes";
+import { FeuilleNouvelAjustement } from "@/features/stock/feuille-ajustement";
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Chip, ChipRow, DataList, DataRow, Fab, Screen, SearchInput, Text,
@@ -23,6 +24,7 @@ const TABLES = ["stock_adjustments", "stock_adjustment_items", "warehouses"];
 export default function Ajustements() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
+  const [feuille, setFeuille] = useState(false);
   const [statut, setStatut] = useState<string | null>(null);
 
   const charger = useCallback(
@@ -106,7 +108,19 @@ export default function Ajustements() {
         }}
       />
       {can("stock_adjustments.create") ? (
-        <Fab icon="Plus" label="Nouveau" onPress={() => router.push("/ajustement/nouveau")} />
+        <Fab icon="Plus" label="Nouvel ajustement" onPress={() => setFeuille(true)} />
+      ) : null}
+
+      {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
+          formulaire vierge. Voir la docstring de la feuille. */}
+      {feuille ? (
+        <FeuilleNouvelAjustement
+          onFermer={() => setFeuille(false)}
+          onCree={(id) => {
+            setFeuille(false);
+            router.push(`/ajustement/${id}`);
+          }}
+        />
       ) : null}
     </Screen>
   );

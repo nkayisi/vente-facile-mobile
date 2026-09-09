@@ -31,7 +31,7 @@
  * la place qu'il lui faut sans dépasser 90 % de la hauteur, se ferme au voile
  * et au bouton retour d'Android, et laisse le clavier la pousser.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
@@ -44,22 +44,49 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Icon } from "./icon";
+import { Pressable } from "./pressable";
 import { Text } from "./text";
 
 export function Sheet({
   ouvert,
   onFermer,
   titre,
+  retour,
   children,
 }: {
   ouvert: boolean;
   onFermer: () => void;
   titre?: string;
+  /**
+   * Revenir d'un PANNEAU vers le précédent, sans fermer la feuille.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ UNE FEUILLE DANS UNE FEUILLE N'EST PAS UNE OPTION.                     │
+   * │                                                                        │
+   * │ `Sheet` est un `Modal` de React Native ; en empiler un second par      │
+   * │ dessus donne un voile sur un voile, deux `onRequestClose` qui se       │
+   * │ disputent le bouton retour d'Android, et sur certaines versions rien   │
+   * │ qui monte du tout. Un formulaire qui a besoin de choisir un client     │
+   * │ puis un article échange donc le CONTENU de sa feuille, et cette flèche │
+   * │ est ce qui rend le chemin réversible.                                  │
+   * │                                                                        │
+   * │ Quand elle est là, le voile et le bouton retour reculent d'un panneau  │
+   * │ au lieu de tout fermer : c'est à l'appelant de câbler `onFermer` en    │
+   * │ conséquence, et c'est ce qui évite de perdre une saisie d'un geste     │
+   * │ destiné à revenir en arrière.                                          │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  retour?: () => void;
   children: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const glissement = useRef(new Animated.Value(0)).current;
+  // `useState` d'initialisation paresseuse plutôt qu'un `useRef` : la valeur
+  // animée est LUE au rendu (elle part dans le style), et un ref lu au rendu
+  // est ce que `react-hooks/refs` interdit. L'identité ne change jamais, comme
+  // celle d'un ref. Quatre erreurs de lint de moins, aucun comportement changé.
+  const [glissement] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     // `useNativeDriver` sur une translation : l'animation tourne sur le fil UI
@@ -124,7 +151,26 @@ export function Sheet({
                 gap: 16,
               }}
             >
-              {titre ? <Text variant="h4">{titre}</Text> : null}
+              {titre || retour ? (
+                <View className="flex-row items-center gap-2">
+                  {retour ? (
+                    <Pressable
+                      onPress={retour}
+                      accessibilityRole="button"
+                      accessibilityLabel="Revenir au panneau précédent"
+                      className="-ml-2 h-11 w-11 items-center justify-center rounded-lg"
+                      pressedClassName="active:opacity-60"
+                    >
+                      <Icon name="ArrowLeft" size={20} color="foreground" />
+                    </Pressable>
+                  ) : null}
+                  {titre ? (
+                    <Text variant="h4" numberOfLines={1} className="min-w-0 flex-1">
+                      {titre}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
               {children}
             </ScrollView>
           </Animated.View>

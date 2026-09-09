@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 
 import { useDeviseParDefaut } from "@/data/devises";
 import { PanierProvider } from "@/features/pos/panier";
+import { SynchronisationProvider } from "@/features/sync/provider";
 import { ToastProvider } from "@/ui";
 
 /**
@@ -30,6 +31,14 @@ import { ToastProvider } from "@/ui";
  * "none" } })` selon le segment courant. C'est fragile - la barre reste masquée
  * si on revient par le geste système - et cela s'écrit dans un `useEffect` que
  * personne ne relit.
+ *
+ * `SynchronisationProvider` est hissé pour la même raison, et à sa place : SOUS
+ * `ToastProvider`, dont il émet les retours, et AU-DESSUS de toute la pile,
+ * pour qu'un bandeau de n'importe quel écran lance le cycle sans quitter sa
+ * page. Il n'y a alors qu'un seul verrou, donc qu'un seul cycle : deux tirages
+ * concurrents écriraient deux fois les mêmes pages dans trente et une tables.
+ * Comme `PanierProvider`, il ne fait aucun travail au montage, ce qui est la
+ * condition du démarrage à froid sans réseau.
  */
 export default function AppLayout() {
   // Avant tout écran : sans cela, `formatPrice` écrit en francs congolais
@@ -38,13 +47,15 @@ export default function AppLayout() {
 
   return (
     <ToastProvider>
-      <PanierProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
-          <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
-        </Stack>
-      </PanierProvider>
+      <SynchronisationProvider>
+        <PanierProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
+            <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
+          </Stack>
+        </PanierProvider>
+      </SynchronisationProvider>
     </ToastProvider>
   );
 }

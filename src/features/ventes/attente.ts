@@ -69,7 +69,60 @@ interface TicketRange {
   total?: number;
   currency?: string;
   amountDue?: number;
-  items?: unknown[];
+  items?: { total?: number }[];
+  /**
+   * Version des données rangées. Absente = 1, où les montants du ticket sont
+   * en devise PRINCIPALE malgré l'étiquette de facture. Voir
+   * `printing/jobs.ts::VERSION_DONNEES`.
+   */
+  schemaVersion?: number;
+}
+
+/**
+ * Le corps d'une vente, tel qu'il part au serveur.
+ *
+ * On ne déclare que ce que les écrans lisent. Le corps est le seul endroit où
+ * vivent les TAUX - celui de la facture et celui de chaque règlement - et le
+ * seul à nommer les produits : le ticket, lui, porte des libellés.
+ */
+export interface CorpsVente {
+  id: string;
+  reference?: string;
+  session?: string;
+  currency?: string;
+  /** Devise principale pour une unité de la devise de facture. */
+  exchange_rate?: number;
+  items?: {
+    product?: string;
+    /** Absent pour un produit CONDITIONNÉ : voir `quantiteVendue`. */
+    quantity?: number | string;
+    package_quantity?: number | string;
+    loose_quantity?: number | string;
+  }[];
+  payments?: {
+    payment_method?: string;
+    /** Le billet REÇU, dans `currency`. */
+    tendered_amount?: number | string;
+    currency?: string;
+    /** Devise de facture pour une unité de la devise du règlement. */
+    exchange_rate?: number;
+  }[];
+}
+
+/**
+ * Une vente du journal, avec ce qu'il faut pour l'AGRÉGER et non seulement
+ * l'afficher : son corps, et la version des montants de son ticket.
+ *
+ * Le hub et l'historique n'en ont pas besoin - ils montrent un total et une
+ * devise. Le tableau de bord, lui, ventile par produit et par moyen de
+ * paiement, et convertit : il lui faut les taux figés et les identifiants.
+ */
+export interface VenteEnAttenteDetaillee extends VenteEnAttente {
+  corps: CorpsVente;
+  /** 1 = montants du ticket en devise PRINCIPALE. */
+  versionDonnees: number;
+  /** Brut de chaque ligne du ticket, dans l'ordre du corps. */
+  brutsTicket: (number | null)[];
 }
 
 /**
@@ -78,15 +131,40 @@ interface TicketRange {
  * L'ordre suit celui du journal (`seq`), donc celui de l'encaissement.
  */
 export async function ventesEnAttente(): Promise<VenteEnAttente[]> {
+  return (await lireVentesDuJournal()).map(({ vue }) => vue);
+}
+
+/**
+ * Les mêmes, avec leur corps et la version de leur ticket.
+ *
+ * Même lecture, même requête : deux lecteurs du journal des ventes finiraient
+ * par diverger sur ce qu'ils retiennent - le lot précédent en avait trois, et
+ * c'est celui du tableau de bord qui avait le plus de règles en moins.
+ */
+export async function ventesEnAttenteDetaillees(): Promise<VenteEnAttenteDetaillee[]> {
+  return (await lireVentesDuJournal()).map(({ vue, corps, ticket }) => ({
+    ...vue,
+    corps,
+    // L'absence du champ vaut 1 : les documents rangés avant la correction de
+    // la devise du ticket n'en portent aucun, et leurs montants sont en devise
+    // PRINCIPALE. Les convertir une seconde fois multiplierait le chiffre
+    // d'affaires du jour par le taux.
+    versionDonnees: typeof ticket?.schemaVersion === "number" ? ticket.schemaVersion : 1,
+    brutsTicket: (ticket?.items ?? []).map((i) =>
+      typeof i?.total === "number" ? i.total : null
+    ),
+  }));
+}
+
+async function lireVentesDuJournal(): Promise<
+  { vue: VenteEnAttente; corps: CorpsVente; ticket: TicketRange | undefined }[]
+> {
   // Les ventes BLOQUÉES en sont, et elles y comptent doublement : elles ont
   // été encaissées et imprimées comme les autres, et leur blocage dure - le
   // temps qu'un abonnement soit réglé. Les taire ferait relire au caissier
   // « Ventes du jour (0) » après une journée de comptoir, c'est-à-dire le
   // défaut exact que ce module referme, sur la période où il fait le plus mal.
-  const ops = await enAttenteParType<{ id: string; reference?: string; session?: string }>(
-    "sale.create",
-    { avecBloquees: true }
-  );
+  const ops = await enAttenteParType<CorpsVente>("sale.create", { avecBloquees: true });
   if (ops.length === 0) return [];
 
   const references = ops.map((o) => o.payload.reference).filter(Boolean) as string[];
@@ -110,18 +188,50 @@ export async function ventesEnAttente(): Promise<VenteEnAttente[]> {
     const reference = o.payload.reference ?? "";
     const t = tickets.get(reference);
     return {
-      id: o.payload.id,
-      reference,
-      client: t?.customerName ?? null,
-      // `undefined` du ticket se lit INCONNU, jamais zéro : un montant nul
-      // fabriqué fausserait le total de la journée sans rien signaler.
-      total: typeof t?.total === "number" ? t.total : null,
-      resteAPayer: typeof t?.amountDue === "number" ? t.amountDue : 0,
-      devise: t?.currency ?? null,
-      date: o.occurredAt,
-      nbArticles: Array.isArray(t?.items) ? t.items.length : null,
-      session: o.payload.session ?? null,
-      envoi: o.envoi,
+      vue: {
+        id: o.payload.id,
+        reference,
+        client: t?.customerName ?? null,
+        // `undefined` du ticket se lit INCONNU, jamais zéro : un montant nul
+        // fabriqué fausserait le total de la journée sans rien signaler.
+        total: typeof t?.total === "number" ? t.total : null,
+        resteAPayer: typeof t?.amountDue === "number" ? t.amountDue : 0,
+        devise: t?.currency ?? null,
+        date: o.occurredAt,
+        nbArticles: Array.isArray(t?.items) ? t.items.length : null,
+        session: o.payload.session ?? null,
+        envoi: o.envoi,
+      },
+      corps: o.payload,
+      ticket: t,
     };
   });
+}
+
+/**
+ * Une vente du journal, par son identifiant.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ SA PROPRE LISTE Y MENAIT, ET LA FICHE RÉPONDAIT « VENTE INTROUVABLE ».  │
+ * │                                                                          │
+ * │ `detailVente` ne lit que `sales`, la table TIRÉE. Une vente encaissée    │
+ * │ hors ligne y est absente par construction, si bien que le hub et         │
+ * │ l'historique la listaient - c'est tout leur objet - et que taper dessus  │
+ * │ annonçait qu'elle n'existait pas. Le caissier tient le ticket dans une   │
+ * │ main et son terminal dans l'autre : il ne peut que conclure à une perte, │
+ * │ et rien à l'écran ne le détrompe.                                        │
+ * │                                                                          │
+ * │ La fiche ne peut pas TOUT montrer - les lignes et les règlements sont    │
+ * │ dans le corps de l'opération, pas dans une table lisible - et elle le    │
+ * │ DIT plutôt que d'afficher des sections vides, qui se lisent comme une    │
+ * │ vente sans articles. Ce qu'elle peut faire, elle le fait : le ticket est │
+ * │ rangé dans `print_jobs`, donc il se réimprime.                           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * `null` quand l'identifiant n'est pas non plus dans le journal : la vente
+ * n'existe nulle part sur ce terminal, et là « introuvable » est la vérité.
+ */
+export async function venteEnAttenteParId(id: string): Promise<VenteEnAttente | null> {
+  const toutes = await ventesEnAttente();
+  return toutes.find((v) => v.id === id) ?? null;
 }

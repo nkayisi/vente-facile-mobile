@@ -32,7 +32,15 @@ import { useLecture } from "@/data/live";
 import { detailVente, type LigneVente } from "@/data/vente-detail";
 import { STATUT_VENTE } from "@/data/ventes";
 import { annulerVente, enAttenteSurVente } from "@/features/ventes/actes";
+import { venteEnAttenteParId, type VenteEnAttente } from "@/features/ventes/attente";
+import { libelleEnvoi } from "@/data/envoi";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
+import { useSynchronisation } from "@/features/sync/provider";
 import { imprimerTicketVente } from "@/features/ventes/reimpression";
+import { documentParNumero, imprimerDocument } from "@/printing/jobs";
+import { FeuilleRetour } from "@/features/ventes/feuille-retour";
+import { renduDeLaVente, resteARendre } from "@/features/ventes/rendu";
+import { STATUT_RETOUR } from "@/data/retours-devis";
 import { useSession } from "@/session/provider";
 import {
   AlertDialog,
@@ -42,9 +50,11 @@ import {
   Button,
   Card,
   CardHeader,
+  DataRow,
   Divider,
   EmptyState,
   Icon,
+  Mesure,
   Screen,
   Spinner,
   Text,
@@ -94,7 +104,16 @@ function Paire({
   );
 }
 
-function LigneArticle({ ligne, devise }: { ligne: LigneVente; devise: string }) {
+function LigneArticle({
+  ligne,
+  devise,
+  rendu = 0,
+}: {
+  ligne: LigneVente;
+  devise: string;
+  /** Quantité déjà rendue sur cette ligne, retours en file compris. */
+  rendu?: number;
+}) {
   const money = useMonnaie();
   return (
     <View className="py-3">
@@ -126,6 +145,23 @@ function LigneArticle({ ligne, devise }: { ligne: LigneVente; devise: string }) 
           </Text>
         ) : null}
       </View>
+      {/* ┌──────────────────────────────────────────────────────────────────┐
+          │ CE QUI EST RENDU SE LIT SUR LA LIGNE, PAS AILLEURS.             │
+          │                                                                  │
+          │ La facture ne portait aucune trace de ses retours : elle         │
+          │ affichait « 5 × 1 000 » sur une ligne dont trois unités étaient  │
+          │ revenues et avaient été remboursées. Le commerçant qui la relit  │
+          │ pour comprendre un écart de stock ou de caisse n'y trouvait rien.│
+          └──────────────────────────────────────────────────────────────────┘ */}
+      {rendu > 0 ? (
+        <View className="mt-1.5 flex-row">
+          <Badge tone={rendu >= ligne.quantiteTotale ? "warning" : "neutral"}>
+            {rendu >= ligne.quantiteTotale
+              ? "Entièrement rendu"
+              : `${rendu} rendu${rendu > 1 ? "s" : ""} sur ${ligne.quantiteTotale}`}
+          </Badge>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -135,8 +171,13 @@ export default function DetailVenteEcran() {
   const money = useMonnaie();
   const toast = useToast();
   const { can, snapshot } = useSession();
+  // Le bandeau des règlements en file offre son issue SUR PLACE : le caissier
+  // a le client devant lui, il ne doit pas quitter la facture pour la mettre à
+  // jour.
+  const { enCours: enCoursSync, lancer: lancerSync } = useSynchronisation();
 
   const [feuilleReglement, setFeuilleReglement] = useState(false);
+  const [feuilleRetour, setFeuilleRetour] = useState(false);
   const [dialogueAnnulation, setDialogueAnnulation] = useState(false);
   const [annulationEnCours, setAnnulationEnCours] = useState(false);
   const [impression, setImpression] = useState(false);
@@ -146,9 +187,26 @@ export default function DetailVenteEcran() {
     tables: TABLES,
     deps: [id],
   });
+  // Cherchée dans le JOURNAL quand la table ne la connaît pas : une vente
+  // encaissée hors ligne n'est pas dans `sales`, et sa propre liste y mène.
+  const chargerEnFile = useCallback(() => venteEnAttenteParId(id), [id]);
+  const { donnees: enFile } = useLecture(chargerEnFile, {
+    tables: ["outbox_operations", "print_jobs"],
+    deps: [id],
+  });
+
   const chargerAttente = useCallback(() => enAttenteSurVente(id), [id]);
   const { donnees: attente } = useLecture(chargerAttente, {
     tables: JOURNAL,
+    deps: [id],
+  });
+
+  // Ce qui a DÉJÀ été rendu sur cette facture, table et journal réunis.
+  // Sans cette lecture, l'écran proposait de rendre une marchandise déjà
+  // rendue, et le serveur l'acceptait : voir `features/ventes/rendu.ts`.
+  const chargerRendu = useCallback(() => renduDeLaVente(id), [id]);
+  const { donnees: rendu } = useLecture(chargerRendu, {
+    tables: ["sale_returns", "sale_return_items", "outbox_operations"],
     deps: [id],
   });
 
@@ -164,6 +222,22 @@ export default function DetailVenteEcran() {
   }
 
   if (!vente) {
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ « VENTE INTROUVABLE » ÉTAIT FAUX, ET C'ÉTAIT SA PROPRE LISTE QUI   │
+    // │ Y MENAIT.                                                          │
+    // │                                                                    │
+    // │ Le hub et l'historique fusionnent le journal - c'est tout leur      │
+    // │ objet - et `detailVente` ne lit que la table tirée. Une vente       │
+    // │ encaissée hors ligne se listait donc et se déclarait inexistante    │
+    // │ trois secondes plus tard. Le caissier tient le ticket dans une      │
+    // │ main : il ne peut que conclure à une perte.                        │
+    // │                                                                    │
+    // │ La fiche rend ce qui EXISTE - le papier du client - et dit ce qui  │
+    // │ manque. Afficher des sections d'articles et de règlements vides se  │
+    // │ lirait comme une vente sans articles, ce qui est une autre         │
+    // │ contrevérité.                                                      │
+    // └────────────────────────────────────────────────────────────────────┘
+    if (enFile) return <VenteEnFile vente={enFile} />;
     return (
       <Screen padded={false}>
         <AppBar title="Vente" />
@@ -179,9 +253,26 @@ export default function DetailVenteEcran() {
 
   const statut = STATUT_VENTE[vente.statut];
   const annulable = !["cancelled", "refunded"].includes(vente.statut);
+  // ┌────────────────────────────────────────────────────────────────────┐
+  // │ UNE FACTURE ENTIÈREMENT RENDUE N'A PLUS RIEN À RENDRE.             │
+  // │                                                                    │
+  // │ Le statut ne suffit pas : un retour approuvé ne fait pas passer la │
+  // │ vente en `refunded` tant qu'il est partiel, et rien n'empêchait de │
+  // │ rendre une seconde fois ce qui l'était déjà. Le bouton disparaît   │
+  // │ donc quand chaque ligne est soldée, et la carte des retours dit    │
+  // │ pourquoi - un bouton absent sans explication se lit comme un       │
+  // │ droit manquant.                                                    │
+  // └────────────────────────────────────────────────────────────────────┘
+  const rendablesRestantes = vente.lignes.filter(
+    (l) =>
+      l.produitId !== null &&
+      (!rendu || resteARendre(rendu, l.id, l.quantiteTotale) > 0)
+  );
   // Un retour porte sur une facture ÉMISE : ni un brouillon (rien n'est parti),
   // ni une facture déjà annulée ou remboursée (il n'y a plus rien à rendre).
-  const retournable = !["cancelled", "refunded", "draft"].includes(vente.statut);
+  const retournable =
+    !["cancelled", "refunded", "draft"].includes(vente.statut) &&
+    rendablesRestantes.length > 0;
   const encaissable = vente.statut === "pending" || vente.statut === "partially_paid";
 
   // Le restant dû tient compte de ce qui attend dans le journal, à devise
@@ -280,25 +371,28 @@ export default function DetailVenteEcran() {
       />
 
       <View className="gap-4 p-4">
-        {attente?.annulationEnAttente ? (
-          <Banner
-            tone="warning"
-            title="Annulation en attente"
-            message="Elle partira à la prochaine synchronisation. La facture ne changera qu'une fois le serveur l'a acceptée."
-          />
-        ) : null}
+        <BandeauEnvoi
+          envoi={attente?.annulationEnAttente}
+          titre="Une annulation attend son envoi"
+          consequence="La facture ne changera qu'une fois le serveur l'a acceptée."
+        />
 
         {attente && attente.reglements.length > 0 ? (
           <Banner
             tone="info"
             title={
               attente.reglements.length > 1
-                ? `${attente.reglements.length} règlements en attente d'envoi`
-                : "Un règlement en attente d'envoi"
+                ? `${attente.reglements.length} règlements attendent leur envoi`
+                : "Un règlement attend son envoi"
             }
             message={`${attente.totalParDevise
               .map((t) => money.money(t.montant, t.devise))
               .join(" · ")} déjà encaissés sur ce terminal. Le reçu est imprimé ; la facture ne sera mise à jour qu'après synchronisation.`}
+            action={{
+              label: enCoursSync ? "Synchronisation…" : "Synchroniser",
+              loading: enCoursSync,
+              onPress: () => void lancerSync("bandeau"),
+            }}
           />
         ) : null}
 
@@ -326,7 +420,7 @@ export default function DetailVenteEcran() {
                 variant="destructive"
                 leftIcon="XCircle"
                 className="flex-1"
-                disabled={attente?.annulationEnAttente}
+                disabled={attente?.annulationEnAttente !== undefined}
                 onPress={() => setDialogueAnnulation(true)}
               >
                 Annuler la vente
@@ -337,7 +431,9 @@ export default function DetailVenteEcran() {
                 variant="outline"
                 leftIcon="PackageX"
                 className="flex-1"
-                onPress={() => router.push(`/vente/retour?vente=${vente.id}`)}
+                // Une FEUILLE, pas un écran : la facture reste derrière, et
+                // c'est sur elle qu'on lit ce qui est rendu.
+                onPress={() => setFeuilleRetour(true)}
               >
                 {/* « Retour » tout court, sous une flèche de retour arrière et
                     à côté d'« Annuler », se lit comme « revenir » : le mot
@@ -433,12 +529,68 @@ export default function DetailVenteEcran() {
               vente.lignes.map((l, i) => (
                 <View key={l.id}>
                   {i > 0 ? <Divider /> : null}
-                  <LigneArticle ligne={l} devise={vente.devise} />
+                  <LigneArticle
+                    ligne={l}
+                    devise={vente.devise}
+                    rendu={rendu?.parLigne.get(l.id) ?? 0}
+                  />
                 </View>
               ))
             )}
           </View>
         </Card>
+
+        {/* ┌──────────────────────────────────────────────────────────────┐
+            │ LA FACTURE NE DISAIT RIEN DE SES RETOURS.                    │
+            │                                                              │
+            │ Un retour approuvé fait revenir de la marchandise en stock   │
+            │ et sortir de l'argent de la caisse, et il ne laissait aucune │
+            │ trace ici : la fiche continuait d'annoncer une vente pleine, │
+            │ et proposait d'en rendre le contenu une seconde fois. C'est  │
+            │ la première chose à voir quand on relit une facture pour     │
+            │ comprendre un écart.                                         │
+            │                                                              │
+            │ Les retours ENCORE EN FILE y sont, avec leur mention : ils   │
+            │ comptent déjà dans ce qu'on ne peut plus rendre.             │
+            └──────────────────────────────────────────────────────────────┘ */}
+        {rendu && rendu.retours.length > 0 ? (
+          <Card className="p-0">
+            <View className="p-4 pb-0">
+              <CardHeader
+                title={`Retours (${rendu.retours.length})`}
+                subtitle={
+                  rendablesRestantes.length === 0
+                    ? "Tout ce qui pouvait être rendu l'a été."
+                    : "Touchez un retour pour voir sa décision."
+                }
+              />
+            </View>
+            {rendu.retours.map((r, i) => {
+              const st = STATUT_RETOUR[r.statut];
+              const envoiRetour = libelleEnvoi(r.envoi);
+              return (
+                <View key={r.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <DataRow
+                    principal={r.reference}
+                    secondaire={r.date ? formatDateTimeFr(r.date) : null}
+                    badge={
+                      envoiRetour ? (
+                        <Badge tone={envoiRetour.ton === "warning" ? "warning" : "neutral"}>
+                          {envoiRetour.court}
+                        </Badge>
+                      ) : st ? (
+                        <Badge tone={st.ton}>{st.label}</Badge>
+                      ) : undefined
+                    }
+                    valeur={<Mesure value={money.money(r.montant, vente.devise)} />}
+                    onPress={() => router.push(`/retour/${r.id}`)}
+                  />
+                </View>
+              );
+            })}
+          </Card>
+        ) : null}
 
         {vente.reglements.length > 0 ? (
           <Card>
@@ -492,6 +644,22 @@ export default function DetailVenteEcran() {
         deviceCode={snapshot?.device?.device_code ?? null}
       />
 
+      {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
+          formulaire vierge, sans effet de remise à zéro à tenir en phase avec
+          les champs. Même motif que la feuille de devis. */}
+      {feuilleRetour ? (
+        <FeuilleRetour
+          vente={vente}
+          onFermer={() => setFeuilleRetour(false)}
+          onCree={(retourId) => {
+            setFeuilleRetour(false);
+            // On mène à la FICHE du retour, pas à la liste : le geste suivant
+            // est de l'approuver, et il se fait là.
+            router.push(`/retour/${retourId}`);
+          }}
+        />
+      ) : null}
+
       <AlertDialog
         ouvert={dialogueAnnulation}
         titre="Annuler cette vente ?"
@@ -503,6 +671,106 @@ export default function DetailVenteEcran() {
         onConfirmer={confirmerAnnulation}
         onAnnuler={() => setDialogueAnnulation(false)}
       />
+    </Screen>
+  );
+}
+
+/**
+ * La fiche d'une vente qui n'est pas encore arrivée au serveur.
+ *
+ * Elle ne montre QUE ce dont elle est sûre : le ticket rangé au comptoir, dans
+ * les valeurs exactes que le client a sur son papier. Les lignes et les
+ * règlements vivent dans le corps de l'opération, qui n'est pas une table
+ * lisible ; les inventer ou les laisser vides serait pire que les taire.
+ *
+ * Le ticket, lui, se réimprime : c'est le geste qu'on vient chercher ici quand
+ * un rouleau s'est vidé, et il ne demande aucun réseau. Le numéro ne change
+ * pas, la copie porte la pastille DUPLICATA.
+ */
+function VenteEnFile({ vente }: { vente: VenteEnAttente }) {
+  const money = useMonnaie();
+  const toast = useToast();
+  const [impression, setImpression] = useState(false);
+
+  const reimprimer = async () => {
+    setImpression(true);
+    try {
+      const doc = await documentParNumero(vente.reference);
+      if (!doc) {
+        // Sans document rangé, il n'y a rien à réimprimer et rien à
+        // reconstruire : le corps de l'opération ne porte pas les totaux.
+        toast.erreur("Le ticket de cette vente est introuvable sur ce terminal.");
+        return;
+      }
+      await imprimerDocument(doc.id);
+      toast.succes("Duplicata imprimé");
+    } catch {
+      toast.erreur("Impression impossible");
+    } finally {
+      setImpression(false);
+    }
+  };
+
+  return (
+    <Screen scroll>
+      <AppBar title={vente.reference} />
+      <BandeauEnvoi
+        envoi={vente.envoi}
+        titre="Cette vente attend son envoi"
+        consequence="Elle n'existe encore que sur ce terminal."
+      />
+
+      <Card>
+        <CardHeader title="Ce que porte le ticket" />
+        <Paire label="Client" valeur={vente.client ?? "Client anonyme"} />
+        <Paire label="Encaissée le" valeur={formatDateTimeFr(vente.date)} />
+        {vente.nbArticles !== null ? (
+          <Paire
+            label="Articles"
+            valeur={`${vente.nbArticles} ${vente.nbArticles > 1 ? "lignes" : "ligne"}`}
+          />
+        ) : null}
+        <Divider />
+        {/* « Montant inconnu » et JAMAIS zéro : sans le ticket rangé, on ne
+            sait pas ce que le client a payé, et un zéro se lirait comme une
+            vente offerte. */}
+        <Paire
+          label="Total"
+          fort
+          valeur={
+            vente.total !== null && vente.devise
+              ? money.money(vente.total, vente.devise)
+              : "Montant inconnu"
+          }
+        />
+        {vente.resteAPayer > 0 && vente.devise ? (
+          <Paire
+            label="Reste à payer"
+            ton="destructive"
+            valeur={money.money(vente.resteAPayer, vente.devise)}
+          />
+        ) : null}
+      </Card>
+
+      <Card>
+        <CardHeader title="Ce qui manque encore" />
+        <View className="gap-2 py-2">
+          <Text variant="caption">
+            Le détail des articles et des règlements descendra du serveur une fois
+            cette vente envoyée. Le numéro et les montants, eux, sont définitifs :
+            ce sont ceux du papier remis au client.
+          </Text>
+        </View>
+      </Card>
+
+      <Button
+        variant="outline"
+        leftIcon="Printer"
+        onPress={reimprimer}
+        loading={impression}
+      >
+        Réimprimer le ticket
+      </Button>
     </Screen>
   );
 }

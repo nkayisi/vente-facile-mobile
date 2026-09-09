@@ -27,8 +27,10 @@ import {
   formatPackagedSplit,
   getPackaging,
   pluralizeUnit,
+  type Packaging,
 } from "@vente-facile/core";
 
+import { ETAT_STOCK, etatDuRayon, type EtatStock } from "@/data/etats-stock";
 import { db } from "@/db/client";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
 
@@ -37,17 +39,8 @@ const nb = (v: string | number | null | undefined): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** Les trois états du back-office, mot pour mot. */
-export type EtatStock = "tous" | "bas" | "rupture" | "ok";
-
-export const ETAT_STOCK: Record<
-  Exclude<EtatStock, "tous">,
-  { label: string; ton: "destructive" | "warning" | "success" }
-> = {
-  rupture: { label: "Rupture", ton: "destructive" },
-  bas: { label: "Stock bas", ton: "warning" },
-  ok: { label: "En stock", ton: "success" },
-};
+// Réexportés pour ne casser aucun appelant : leur domicile est le module pur.
+export { ETAT_STOCK, type EtatStock };
 
 export interface LigneNiveau {
   id: string;
@@ -67,6 +60,23 @@ export interface LigneNiveau {
   reserve: number;
   /** Null quand le produit se vend à l'unité seule : rien à ventiler. */
   facteur: number | null;
+  /**
+   * Les deux compteurs du rayon, LUS et jamais redivisés.
+   *
+   * Un ajustement en a besoin pour ventiler son écart par canal : redécouper
+   * `total` au facteur du jour donnerait « 4 casiers + 3 bouteilles » pour un
+   * rayon qui en porte 3 et 27, et l'écart affiché porterait alors sur un
+   * attendu qui n'a jamais existé. C'est le partage que le serveur relève, lui
+   * aussi, à la création (`expected_loose_quantity`).
+   */
+  contenants: number;
+  vrac: number;
+  /**
+   * Le conditionnement du produit, ou `null` s'il se vend à l'unité seule.
+   * Rendu pour que la SAISIE puisse proposer ses deux canaux sans relire le
+   * catalogue.
+   */
+  conditionnement: Packaging | null;
 
   seuilReassort: number;
   etat: Exclude<EtatStock, "tous">;
@@ -97,6 +107,43 @@ function conditionnementDe(l: {
   });
 }
 
+/**
+ * L'état d'un rayon, traduit en conditions SQL.
+ *
+ * `rupture` : rien. `bas` : au-dessus de zéro et sous un seuil RÉEL - un seuil
+ * à zéro ne déclenche rien, un produit sans point de réapprovisionnement n'est
+ * jamais « bas ». `ok` : tout le reste de ce qui reste.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `track_inventory` FAIT PARTIE DU SEUIL, ET IL MANQUAIT.                 │
+ * │                                                                          │
+ * │ `low_only` ET `healthy` du serveur le portent tous deux dans leur        │
+ * │ `sous_le_seuil` (`apps/inventory/filters.py`). Sans lui, un produit non  │
+ * │ suivi ayant gardé un `reorder_point` était « bas » ici et « en stock »   │
+ * │ là-bas : l'écran montrait une ligne que le document omet, ET omettait    │
+ * │ une ligne que le document montre. Le défaut de périmètre que tous les    │
+ * │ exports de ce dépôt ont dû corriger, pris par les deux bouts à la fois.  │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Le critère est celui d'`etatDuRayon`, qui range chaque ligne RENDUE : les
+ * deux doivent dire la même chose, sinon la pastille d'une rangée contredit la
+ * puce qui l'a fait apparaître.
+ */
+function conditionsEtat(etat: EtatStock | undefined) {
+  if (!etat || etat === "tous") return [];
+
+  const quantite = sql`cast(${stocks.quantity} as real)`;
+  const seuil = sql`coalesce(${products.reorderPoint}, 0)`;
+  const suivi = sql`coalesce(${products.trackInventory}, 0) = 1`;
+  const sousLeSeuil = sql`${seuil} > 0 and ${quantite} <= ${seuil} and ${suivi}`;
+
+  // La rupture ne regarde QUE la quantité : `out` du serveur ne teste pas
+  // `track_inventory`, et un rayon vide est vide qu'on le suive ou non.
+  if (etat === "rupture") return [sql`${quantite} <= 0`];
+  if (etat === "bas") return [sql`${quantite} > 0 and ${sousLeSeuil}`];
+  return [sql`${quantite} > 0 and not (${sousLeSeuil})`];
+}
+
 export async function niveauxDeStock(
   f: FiltresNiveaux = {}
 ): Promise<{ elements: LigneNiveau[]; total: number }> {
@@ -108,13 +155,46 @@ export async function niveauxDeStock(
   const conditions = [
     f.entrepot ? eq(stocks.warehouseId, f.entrepot) : undefined,
     f.categorie ? eq(products.categoryId, f.categorie) : undefined,
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ LA RECHERCHE ÉTAIT ACCEPTÉE PUIS JETÉE, EN SILENCE.                 │
+    // │                                                                      │
+    // │ `terme` et `motif` étaient calculés et n'entraient dans AUCUNE       │
+    // │ condition : taper un nom de produit ne changeait rien à la liste, ni │
+    // │ sur l'écran « Niveaux de stock », ni dans le sélecteur d'article     │
+    // │ d'un ajustement. Aucune erreur, aucun journal - la liste répondait,  │
+    // │ simplement elle répondait la même chose.                             │
+    // │                                                                      │
+    // │ Pire, l'export de cet écran passe bien `search` AU SERVEUR : le      │
+    // │ document sortait donc filtré pendant que la liste qui le déclenche   │
+    // │ ne l'était pas. C'est le défaut de périmètre que ce dépôt a déjà     │
+    // │ corrigé sur les niveaux de stock du back-office, pris à l'envers.    │
+    // │                                                                      │
+    // │ Les trois colonnes sont celles de `StockFilter.filter_search` :      │
+    // │ nom, code et code-barres. S'en écarter ferait diverger l'écran du    │
+    // │ document.                                                            │
+    // └──────────────────────────────────────────────────────────────────────┘
     terme
       ? or(
-          like(sql`lower(${products.name})`, motif),
+          like(sql`lower(coalesce(${products.name}, ''))`, motif),
           like(sql`lower(coalesce(${products.sku}, ''))`, motif),
           like(sql`lower(coalesce(${products.barcode}, ''))`, motif)
         )
       : undefined,
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ L'ÉTAT DESCEND EN SQL, ET IL Y DESCEND POUR UNE RAISON.             │
+    // │                                                                      │
+    // │ Il était appliqué en JavaScript APRÈS une lecture bornée à 300       │
+    // │ lignes, alors que la docstring de ce fichier annonce le contraire    │
+    // │ quatre lignes plus haut. Une liste filtrée était donc silencieusement│
+    // │ tronquée - « Stock bas » pouvait n'en montrer que ce qui tenait dans │
+    // │ les 300 premiers rayons par ordre alphabétique - et `total` comptait │
+    // │ la fenêtre au lieu du périmètre.                                     │
+    // │                                                                      │
+    // │ Les trois états sont EXCLUSIFS et partitionnent le stock. Le serveur │
+    // │ dit la même chose depuis `out`, `low_only` et `healthy` : voir       │
+    // │ `statutServeur`, qui garantit que le document couvre cet écran.      │
+    // └──────────────────────────────────────────────────────────────────────┘
+    ...conditionsEtat(f.etat),
   ].filter(Boolean);
 
   const lignes = await db
@@ -128,6 +208,7 @@ export async function niveauxDeStock(
       looseQuantity: stocks.looseQuantity,
       avgCost: stocks.avgCost,
       reorderPoint: products.reorderPoint,
+      trackInventory: products.trackInventory,
       produit: products.name,
       sku: products.sku,
       costPrice: products.costPrice,
@@ -173,8 +254,11 @@ export async function niveauxDeStock(
       cond?.factor ?? null
     );
 
-    const etat: Exclude<EtatStock, "tous"> =
-      total <= 0 ? "rupture" : seuil > 0 && total <= seuil ? "bas" : "ok";
+    const etat = etatDuRayon({
+      total,
+      seuil,
+      suitLeStock: Boolean(l.trackInventory),
+    });
 
     // `avg_cost`, et à défaut `cost_price` : la règle UNIQUE du serveur
     // (`Stock.effective_cost`). Deux formules donnaient deux valeurs au même
@@ -198,6 +282,9 @@ export async function niveauxDeStock(
       total,
       reserve,
       facteur: cond?.factor ?? null,
+      contenants: paquets,
+      vrac,
+      conditionnement: cond,
       seuilReassort: seuil,
       etat,
       coutUnitaire: cout,
@@ -205,10 +292,7 @@ export async function niveauxDeStock(
     };
   });
 
-  const filtrees =
-    !f.etat || f.etat === "tous" ? rendues : rendues.filter((l) => l.etat === f.etat);
-
-  return { elements: filtrees, total: filtrees.length };
+  return { elements: rendues, total: rendues.length };
 }
 
 export interface DetailNiveau extends LigneNiveau {
@@ -218,9 +302,6 @@ export interface DetailNiveau extends LigneNiveau {
   uniteDetail: string | null;
   /** Nom du contenant : casier, carton… Null si le produit n'en a pas. */
   uniteContenant: string | null;
-  /** Contenants scellés et unités isolées, tels qu'enregistrés. */
-  contenants: number;
-  vrac: number;
   emplacement: string | null;
   dernierMouvement: Date | null;
   dernierComptage: Date | null;
@@ -233,6 +314,7 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
     .select({
       stock: stocks,
       reorderPoint: products.reorderPoint,
+      trackInventory: products.trackInventory,
       produit: products.name,
       sku: products.sku,
       barcode: products.barcode,
@@ -301,9 +383,14 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
     reserve,
     contenants: paquets,
     vrac,
+    conditionnement: cond,
     facteur: cond?.factor ?? null,
     seuilReassort: seuil,
-    etat: total <= 0 ? "rupture" : seuil > 0 && total <= seuil ? "bas" : "ok",
+    etat: etatDuRayon({
+      total,
+      seuil,
+      suitLeStock: Boolean(l.trackInventory),
+    }),
     coutUnitaire: cout,
     valeur: total * cout,
     emplacement: null,

@@ -11,8 +11,9 @@
  * attend de lui.
  */
 import { View } from "react-native";
+import { getDefaultCurrency } from "@vente-facile/core";
 
-import { StatValue } from "./stat-value";
+import { Mesure, StatValue } from "./stat-value";
 import { Text } from "./text";
 import type { Palette } from "./tokens";
 
@@ -20,24 +21,65 @@ export function MultiCurrencyTotal({
   lignes,
   money,
   tone = "foreground",
-  vide = "0",
+  vide,
+  taille = "releve",
 }: {
   lignes: { devise: string; montant: number }[];
   /** `money.money` de `@vente-facile/core` : la devise est OBLIGATOIRE.
    *  C'est ce qui rend impossible d'ecrire un montant sans dire dans quoi. */
   money: (montant: number | string, devise: string) => string;
   tone?: keyof Palette;
-  /** Ce qui s'écrit quand il n'y a rien. Jamais une chaîne vide. */
+  /**
+   * Ce qui s'écrit quand il n'y a rien.
+   *
+   * ┌────────────────────────────────────────────────────────────────────┐
+   * │ PAR DÉFAUT, RIEN VAUT ZÉRO - ET ZÉRO EST UN MONTANT.              │
+   * │                                                                    │
+   * │ Les relevés écrivaient des PHRASES : « Aucune vente », « Tout est  │
+   * │ réglé », « Rien en retard ». Un cadran se lit d'un coup d'oeil, en │
+   * │ balayant une colonne de chiffres ; une phrase à la place d'un      │
+   * │ montant casse ce balayage, et deux cellules voisines ne se         │
+   * │ comparent plus. Elle occupe en outre la largeur d'un long montant  │
+   * │ et fait tomber la valeur d'un palier de `statValueSize` dès qu'il  │
+   * │ y en a un.                                                         │
+   * │                                                                    │
+   * │ Le défaut est donc « 0 $ », ou « 0 FC », dans la devise de         │
+   * │ l'établissement. Sept écrans l'écrivaient déjà à la main           │
+   * │ (`formatPrice(0)`, `money.money(0, money.primaryCode)`) et quatre  │
+   * │ non : le rendre par défaut supprime la divergence plutôt que de la │
+   * │ corriger site par site.                                            │
+   * └────────────────────────────────────────────────────────────────────┘
+   *
+   * À ne renseigner QUE lorsque l'absence ne veut pas dire zéro. Le
+   * sous-total d'une journée dont toutes les ventes ont un montant INCONNU
+   * en est le seul cas : y écrire « 0 $ » affirmerait une recette nulle là
+   * où l'on ignore la recette.
+   */
   vide?: string;
+  /**
+   * L'échelle du contexte.
+   *
+   * `releve` pour une cellule de cadran, où le nombre EST le contenu.
+   * `mesure` pour une rangée ou un en-tête de section, où il accompagne une
+   * identité qui doit rester lisible à côté. Voir `Mesure`.
+   */
+  taille?: "releve" | "mesure";
 }) {
-  if (lignes.length === 0) return <StatValue value={vide} tone={tone} />;
+  const Valeur = taille === "mesure" ? Mesure : StatValue;
+  if (lignes.length === 0) {
+    // La devise de l'établissement, posée au démarrage par `useDeviseParDefaut`.
+    // On la lit du noyau plutôt que d'ajouter une dépendance de `ui/` vers
+    // `data/` : c'est la même source, celle que `devisePrincipale()` consulte.
+    const zero = money(0, getDefaultCurrency().code || "CDF");
+    return <Valeur value={vide ?? zero} tone={tone} />;
+  }
   if (lignes.length === 1) {
-    return <StatValue value={money(lignes[0].montant, lignes[0].devise)} tone={tone} />;
+    return <Valeur value={money(lignes[0].montant, lignes[0].devise)} tone={tone} />;
   }
   return (
     <View className="gap-0.5">
       {lignes.map((l) => (
-        <StatValue key={l.devise} value={money(l.montant, l.devise)} tone={tone} />
+        <Valeur key={l.devise} value={money(l.montant, l.devise)} tone={tone} />
       ))}
     </View>
   );

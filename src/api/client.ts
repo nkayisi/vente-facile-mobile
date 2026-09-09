@@ -35,6 +35,18 @@ export function setOrganizationId(id: string | null) {
 }
 
 /**
+ * L'organisation courante, pour les appels qui NE PASSENT PAS par `request`.
+ *
+ * Le téléchargement d'un document se fait par `File.downloadFileAsync`, qui
+ * écrit le flux directement sur le disque et court-circuite donc ce client :
+ * il doit poser l'en-tête de locataire lui-même, et le lire ici plutôt que de
+ * s'en tenir une seconde copie.
+ */
+export function currentOrganizationId(): string | null {
+  return organizationId;
+}
+
+/**
  * Appelée quand la session est DÉFINITIVEMENT perdue : le serveur a répondu et
  * refuse à la fois le jeton de rafraîchissement et le jeton d'appareil.
  * Jamais sur une panne réseau.

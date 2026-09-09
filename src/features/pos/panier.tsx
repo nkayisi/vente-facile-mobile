@@ -24,12 +24,13 @@ import {
   maxUsablePoints,
   minPointsToRedeem,
   tendersIn,
-  totalInSaleCurrency,
+  saleCurrencyTotals,
   verifierAjout,
   MONEY_EPS,
   type BasketLine,
   type CreditVerdict,
   type CurrencyTable,
+  type SaleCurrencyTotals,
   type Saisie,
 } from "@vente-facile/core/pos";
 
@@ -67,6 +68,23 @@ export interface Totaux {
   payeFacture: number;
   restantFacture: number;
   monnaie: number;
+  /**
+   * La facture VENTILÉE, dans sa propre devise.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ C'EST CE BLOC QUE LE TICKET IMPRIME, JAMAIS CELUI DU DESSUS.          │
+   * │                                                                        │
+   * │ Les champs en devise principale servent aux CONTRÔLES - solde du       │
+   * │ client, plafond de crédit, valeur des points, tous tenus en principale │
+   * │ côté serveur. Ceux-ci servent à tout ce que le client LIT. Le ticket   │
+   * │ prenait les premiers en les étiquetant de la devise de facture : sur   │
+   * │ un établissement tenu en dollars qui facture en francs, il imprimait   │
+   * │ un montant deux mille huit cents fois trop petit, sans que rien ne le  │
+   * │ signale - les deux coïncident tant qu'on ne facture que dans sa devise │
+   * │ principale, ce qui est le cas de toutes les données de développement.  │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  facture: SaleCurrencyTotals;
 
   /** Solde de points du client, tel que le dernier tirage l'a déposé. */
   soldePoints: number;
@@ -140,16 +158,6 @@ export function PanierProvider({ children }: { children: ReactNode }) {
   const deviseMonnaie = etat.deviseMonnaie ?? deviseFacture;
   const programme = snapshot?.loyalty_program ?? null;
 
-  // Le plafond de remise est celui du MARCHAND, et il se rafraîchit avec le
-  // snapshot : une valeur figée à l'enrôlement ferait accepter au comptoir une
-  // remise que le serveur refuse depuis. Le réducteur le borne comme le
-  // serveur, et le préserve d'un panier vidé ou repris.
-  const plafondRegle = snapshot?.organization.max_sale_discount_percent;
-  useEffect(() => {
-    if (plafondRegle === undefined || plafondRegle === null) return;
-    envoyer({ type: "plafondRemise", pourcentage: Number(plafondRegle) });
-  }, [plafondRegle]);
-
   // La dette que les ventes à crédit DÉJÀ EN FILE ajouteront au compte de ce
   // client. Elle n'est nulle part dans `customers`, que seul le tirage écrit :
   // sans elle, un client à 40 $ de plafond peut repartir trois fois de suite
@@ -214,13 +222,14 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       globalDiscountAmount: etat.remiseGlobale,
     });
     const remiseFidelite = loyaltyDiscount(brut.total, etat.points, programme);
-    const totalFacture = totalInSaleCurrency({
+    const facture = saleCurrencyTotals({
       lines: etat.lignes,
       currencies: devises,
       invoiceCurrency: deviseFacture,
       globalDiscountAmount: etat.remiseGlobale,
       loyaltyDiscount: remiseFidelite,
     });
+    const totalFacture = facture.total;
     const payeFacture = tendersIn(etat.reglements, devises, deviseFacture);
     const excedent = payeFacture - totalFacture;
 
@@ -252,6 +261,7 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       remiseFidelite,
       net: brut.total - remiseFidelite,
       totalFacture,
+      facture,
       payeFacture,
       restantFacture: Math.max(0, devises.round(-excedent, deviseFacture)),
       monnaie:

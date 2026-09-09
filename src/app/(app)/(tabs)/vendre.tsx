@@ -18,6 +18,8 @@ import {
   chercherArticles,
   type ArticlePos,
 } from "@/features/pos/catalogue";
+import { useMonnaie } from "@/data/devises";
+import { analyserFond } from "@/features/caisse/fond";
 import { compterEnAttente } from "@/features/pos/attente";
 import { libelleEnvoi } from "@/data/envoi";
 import { arreteA } from "@/features/pos/verrou-inventaire";
@@ -25,6 +27,7 @@ import { ouvrirSession, sessionOuverte, caissesDisponibles, type CaissePos, type
 import { CarteArticle } from "@/features/pos/carte-article";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
 import { usePanier } from "@/features/pos/panier";
+import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
 import {
   Banner, Button, EmptyState, FormField, Icon, Input, Pressable, Screen, Spinner, Text,
@@ -301,6 +304,7 @@ function BandeauInventaire({
   articles: ArticlePos[];
   arrete: Date | null;
 }) {
+  const { enCours, lancer } = useSynchronisation();
   const bloques = articles.filter((a) => a.verrou_inventaire !== null);
   if (bloques.length === 0) return null;
 
@@ -322,8 +326,18 @@ function BandeauInventaire({
         } par un inventaire`}
         message={`${references.join(", ")} : état ${quand}. Synchronisez si le comptage est terminé.`}
         action={{
-          label: "Synchroniser",
-          onPress: () => router.push("/appareil/synchronisation"),
+          // ┌──────────────────────────────────────────────────────────────┐
+          // │ ON SYNCHRONISE ICI, ON NE PART PLUS L'ÉCRAN CHERCHER.        │
+          // │                                                              │
+          // │ Le verrou est une donnée TIRÉE : le cycle le lève sur place, │
+          // │ et les articles se dégrisent sous les yeux du caissier, qui  │
+          // │ a un client devant lui. L'aller-retour vers l'écran          │
+          // │ Synchronisation lui faisait perdre sa grille et sa           │
+          // │ recherche, au pire moment.                                   │
+          // └──────────────────────────────────────────────────────────────┘
+          label: enCours ? "Synchronisation…" : "Synchroniser",
+          loading: enCours,
+          onPress: () => void lancer("bandeau"),
         }}
       />
     </View>
@@ -346,9 +360,11 @@ function estEpuise(article: ArticlePos): boolean {
  * une valeur que le gérant corrigera à la clôture.
  */
 function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void }) {
+  const money = useMonnaie();
   const [caisses, setCaisses] = useState<CaissePos[] | null>(null);
   const [choisie, setChoisie] = useState<string | null>(null);
   const [fond, setFond] = useState("");
+  const [erreurFond, setErreurFond] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const verrou = useRef(false);
 
@@ -367,7 +383,18 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
     verrou.current = true;
     setEnCours(true);
     try {
-      onOuverte(await ouvrirSession(choisie, fond));
+      // La saisie passe par le MÊME lecteur que le parc de caisses : une
+      // virgule non normalisée partait telle quelle et le serveur la refusait,
+      // et un champ vide envoyait « 0 », qui écrase le fonds hérité de la
+      // dernière clôture. Deux formulaires pour le même acte doivent lire la
+      // saisie de la même façon, sinon l'un des deux redevient faux tout seul.
+      const lu = analyserFond(fond);
+      if (!lu.ok) {
+        setErreurFond(lu.message);
+        return;
+      }
+      setErreurFond(null);
+      onOuverte(await ouvrirSession(choisie, lu.montant));
     } finally {
       verrou.current = false;
       setEnCours(false);
@@ -437,12 +464,30 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
       ) : null}
 
       <View className="mt-6">
-        <FormField label="Fond de caisse" hint="Corrigeable à la clôture.">
+        {/* La DEVISE est nommée : le montant part en devise principale, ce que
+            rien n'écrivait. Sur un établissement qui compte en dollars et
+            encaisse aussi des francs, « 50 000 » tapé pour des francs ouvre le
+            tiroir à cinquante mille dollars. */}
+        <FormField
+          label={`Fond de caisse (${money.primaryCode})`}
+          error={erreurFond ?? undefined}
+          hint="Laissez vide pour reprendre la dernière clôture, ou écrivez 0 si le tiroir est vide. Corrigeable à la clôture."
+        >
           <Input
             value={fond}
-            onChangeText={setFond}
+            onChangeText={(v) => {
+              setFond(v);
+              if (erreurFond) setErreurFond(null);
+            }}
+            invalid={erreurFond !== null}
             keyboardType="decimal-pad"
             placeholder="0"
+            leading={
+              <Text variant="caption" className="font-sans-medium">
+                {money.symbolOf(money.primaryCode)}
+              </Text>
+            }
+            accessibilityLabel={`Fond de caisse en ${money.primaryCode}`}
           />
         </FormField>
       </View>

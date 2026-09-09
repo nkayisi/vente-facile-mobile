@@ -8,7 +8,6 @@
  */
 import { View } from "react-native";
 import { router } from "expo-router";
-import { formatPrice } from "@vente-facile/core";
 
 import {
   TYPE_MOUVEMENT,
@@ -73,7 +72,6 @@ function CarteSolde({
           }))}
           money={money.money}
           tone={ton ?? "foreground"}
-          vide={formatPrice(0)}
         />
       </View>
     </Card>

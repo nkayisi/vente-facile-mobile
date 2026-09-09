@@ -43,7 +43,6 @@ const ECRANS: { nom: string; titre: string; icon: IconName }[] = [
     titre: e.label,
     icon: e.icon,
   })),
-  { nom: "mouvements", titre: "Mouvements", icon: "ClipboardList" },
   // « Mon profil » n'est pas une entrée du menu, sur le web non plus : il vit
   // dans le menu avatar de l'en-tête, et ici dans le pied du tiroir.
   { nom: "profil", titre: "Mon profil", icon: "User" },
