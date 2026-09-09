@@ -13,6 +13,7 @@
  * unités par casier ferait sinon diverger l'historique à chaque changement.
  */
 import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import {
   formatPackagedDifference,
   formatPackagedSplit,
@@ -30,6 +31,19 @@ import {
   units,
   warehouses,
 } from "@/db/schema";
+
+// ┌──────────────────────────────────────────────────────────────────────────┐
+// │ DEUX ALIAS SUR `units`, ET IL EN FAUT DEUX.                              │
+// │                                                                          │
+// │ Une seule jointure sur `products.unitId` ne rapporte que l'unité de      │
+// │ DÉTAIL : `getPackaging` n'a alors aucun nom de contenant et se replie    │
+// │ sur « contenant ». Le transfert affichait « 2 contenants + 5 AMPOULES »  │
+// │ là où le serveur écrit « 2 BOITES + 5 AMPOULES », et personne n'emploie  │
+// │ ce mot au comptoir. C'est le défaut corrigé au lot 7 sur les niveaux de  │
+// │ stock, jamais reporté sur les transferts ni sur les ajustements.         │
+// └──────────────────────────────────────────────────────────────────────────┘
+const uniteDetail = alias(units, "unite_detail");
+const uniteContenant = alias(units, "unite_contenant");
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -192,11 +206,13 @@ export async function detailTransfert(id: string): Promise<DetailTransfert | nul
       produit: products.name,
       sku: products.sku,
       sellingMode: products.sellingMode,
-      unite: units.name,
+      unite: uniteDetail.name,
+      uniteContenant: uniteContenant.name,
     })
     .from(stockTransferItems)
     .leftJoin(products, eq(products.id, stockTransferItems.productId))
-    .leftJoin(units, eq(units.id, products.unitId))
+    .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+    .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .where(eq(stockTransferItems.transferId, id))
     .orderBy(asc(stockTransferItems.createdAt));
 
@@ -219,6 +235,7 @@ export async function detailTransfert(id: string): Promise<DetailTransfert | nul
               selling_mode: l.sellingMode,
               units_per_package: facteur,
               unit_name: l.unite,
+              packaging_unit_name: l.uniteContenant,
             })
           : null;
       const paquets = nb(l.packageQuantity);
@@ -359,11 +376,13 @@ export async function detailAjustement(id: string): Promise<DetailAjustement | n
       produit: products.name,
       sku: products.sku,
       sellingMode: products.sellingMode,
-      unite: units.name,
+      unite: uniteDetail.name,
+      uniteContenant: uniteContenant.name,
     })
     .from(stockAdjustmentItems)
     .leftJoin(products, eq(products.id, stockAdjustmentItems.productId))
-    .leftJoin(units, eq(units.id, products.unitId))
+    .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+    .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .where(eq(stockAdjustmentItems.adjustmentId, id))
     .orderBy(asc(stockAdjustmentItems.createdAt));
 
@@ -378,6 +397,7 @@ export async function detailAjustement(id: string): Promise<DetailAjustement | n
             selling_mode: l.sellingMode,
             units_per_package: facteur,
             unit_name: l.unite,
+            packaging_unit_name: l.uniteContenant,
           })
         : null;
 
