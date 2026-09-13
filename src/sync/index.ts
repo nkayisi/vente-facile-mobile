@@ -9,6 +9,8 @@ export {
   bloquees,
   discard,
   unblockAll,
+  etatJournal,
+  type EtatJournal,
   purgeDone,
   recoverInflight,
   BATCH_SIZE,

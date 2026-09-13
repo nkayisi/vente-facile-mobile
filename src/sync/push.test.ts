@@ -55,3 +55,40 @@ describe("réconciliation après envoi", () => {
     expect(orphelins).toEqual([]);
   });
 });
+
+/**
+ * Tout acte du journal porte un LIBELLÉ HUMAIN.
+ *
+ * `appareil/operations.tsx` est l'écran « Opérations à corriger » : c'est là
+ * que le marchand décide quoi faire d'une opération refusée ou bloquée. Un acte
+ * sans libellé s'y affiche sous son CODE TECHNIQUE - « expense_category.update »
+ * -, sur l'écran même où l'on attend de lui une décision.
+ *
+ * Le défaut est arrivé pour de vrai : les cinq transitions de dépense,
+ * `cash_movement.cancel` et les deux créations de rubrique étaient dans
+ * `OperationKind` depuis leur lot, et dans aucune table de libellés.
+ */
+function kindsLibelles(): string[] {
+  const code = readFileSync(join(SRC, "app/(app)/appareil/operations.tsx"), "utf8");
+  const debut = code.indexOf("const KIND_LABELS");
+  const bloc = code.slice(debut, code.indexOf("\n};", debut));
+  return [...bloc.matchAll(/"([a-z_]+\.[a-z_]+)":/g)].map((m) => m[1]);
+}
+
+describe("libellés des opérations", () => {
+  it("la table est trouvée", () => {
+    // Sans cela, une expression qui ne trouve rien ferait passer le test
+    // suivant sur un ensemble vide - le piège déjà payé trois fois ici.
+    expect(kindsLibelles().length).toBeGreaterThan(20);
+  });
+
+  it("chaque acte déclaré a un libellé en français", () => {
+    const manquants = kindsDeclares().filter((k) => !kindsLibelles().includes(k));
+    expect(manquants).toEqual([]);
+  });
+
+  it("aucun libellé ne désigne un acte qui n'existe pas", () => {
+    const orphelins = kindsLibelles().filter((k) => !kindsDeclares().includes(k));
+    expect(orphelins).toEqual([]);
+  });
+});

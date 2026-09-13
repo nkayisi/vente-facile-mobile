@@ -18,6 +18,7 @@ import { bloquees, discard, quarantined } from "@/sync";
 import type { OutboxOperation } from "@/db/schema";
 import {
   AlertDialog,
+  AppBar,
   Badge,
   Button,
   Card,
@@ -28,9 +29,9 @@ import {
 } from "@/ui";
 
 /**
- * Le nom de l'acte, en français, pour LES TRENTE-CINQ.
+ * Le nom de l'acte, en français, pour LES TRENTE-HUIT.
  *
- * Neuf y figuraient, pour trente-cinq actes : les vingt-six autres
+ * Neuf y figuraient, pour trente-huit actes : les autres
  * s'affichaient sous leur code technique (« inventory_session.validate »), sur
  * l'écran même où le marchand doit décider quoi faire d'une opération refusée.
  */
@@ -68,8 +69,21 @@ const KIND_LABELS: Record<string, string> = {
   "category.create": "Nouvelle catégorie",
   "brand.create": "Nouvelle marque",
   "unit.create": "Nouvelle unité",
+  "category.update": "Modification de catégorie",
+  "brand.update": "Modification de marque",
+  "unit.update": "Modification d'unité",
   "expense.create": "Dépense",
+  "expense.submit": "Soumission de dépense",
+  "expense.approve": "Approbation de dépense",
+  "expense.reject": "Rejet de dépense",
+  "expense.pay": "Paiement de dépense",
+  "expense.cancel": "Annulation de dépense",
   "cash_movement.create": "Mouvement de caisse",
+  "cash_movement.cancel": "Annulation de mouvement de caisse",
+  "income_category.create": "Nouveau type d'entrée",
+  "expense_category.create": "Nouvelle catégorie de dépense",
+  "income_category.update": "Modification d'un type d'entrée",
+  "expense_category.update": "Modification d'une catégorie de dépense",
 };
 
 /** Ce qu'on peut dire d'une opération sans ouvrir son contenu. */
@@ -79,6 +93,10 @@ function resume(op: OutboxOperation): string | null {
     if (typeof p.reference === "string") return p.reference;
     if (Array.isArray(p.items)) return `${p.items.length} article(s)`;
     if (p.amount) return String(p.amount);
+    // Dernier recours : le NOM. Sans lui, une création de référentiel refusée
+    // s'affichait sans rien qui l'identifie, sur l'écran même où le marchand
+    // doit décider quoi en faire.
+    if (typeof p.name === "string" && p.name) return p.name;
     return null;
   } catch {
     return null;
@@ -120,7 +138,8 @@ export default function Operations() {
 
   if (rows.length === 0 && enBlocage.length === 0) {
     return (
-      <Screen>
+      <Screen padded={false}>
+        <AppBar title="Opérations à corriger" />
         <EmptyState
           icon="CheckCircle2"
           title="Rien à corriger"
@@ -131,120 +150,128 @@ export default function Operations() {
   }
 
   return (
-    <Screen scroll>
-      <View className="mb-5 mt-4">
-        <Text variant="h2">Opérations à corriger</Text>
-        <Text variant="muted">
-          {rows.length > 0
-            ? `Le serveur a refusé ${rows.length} opération${rows.length > 1 ? "s" : ""}. Elles ne repartiront pas d'elles-mêmes.`
-            : "Aucune opération refusée."}
-        </Text>
-      </View>
-
-      {/* ┌────────────────────────────────────────────────────────────────────┐
-          │ BLOQUÉ N'EST PAS REFUSÉ, ET LA DIFFÉRENCE CHANGE CE QU'ON FAIT.   │
-          │                                                                    │
-          │ Une opération refusée est définitive : le serveur la refusera      │
-          │ toujours, il faut la corriger ou l'abandonner. Une opération       │
-          │ bloquée attend un DROIT ou un ABONNEMENT, et repartira d'elle-même │
-          │ dès qu'il sera là. Les confondre ferait abandonner des ventes qui  │
-          │ n'attendaient qu'une permission.                                   │
-          │                                                                    │
-          │ L'écran ne lisait que la quarantaine : une opération bloquée       │
-          │ restait invisible, et le compteur d'attente ne descendait jamais   │
-          │ sans qu'on sache pourquoi.                                         │
-          └────────────────────────────────────────────────────────────────────┘ */}
-      {enBlocage.length > 0 ? (
+    /* `AppBar` plutôt qu'un titre dans le corps : on arrive ici depuis le
+       tiroir ou depuis le bandeau de l'écran Synchronisation, et il n'y avait
+       aucun chemin de retour. Le décompte reste dans le CORPS et non en
+       sous-titre : « Le serveur a refusé 3 opérations. Elles ne repartiront
+       pas d'elles-mêmes. » se ferait tronquer sur la ligne unique d'une barre,
+       et c'est la seconde phrase qui dit quoi faire. */
+    <Screen scroll padded={false}>
+      <AppBar title="Opérations à corriger" />
+      <View className="p-4">
         <View className="mb-5">
-          <Text variant="h4" className="mb-2">
-            {`En attente d'un droit (${enBlocage.length})`}
+          <Text variant="muted">
+            {rows.length > 0
+              ? `Le serveur a refusé ${rows.length} opération${rows.length > 1 ? "s" : ""}. Elles ne repartiront pas d'elles-mêmes.`
+              : "Aucune opération refusée."}
           </Text>
-          <Text variant="muted" className="mb-3">
-            Elles repartiront seules dès que la permission sera accordée ou
-            l'abonnement réglé. Rien n'est perdu.
-          </Text>
-          {enBlocage.map((op, i) => (
-            <View key={op.id} className={i > 0 ? "mt-3" : ""}>
-              <Card>
-                <View className="mb-2 flex-row items-start justify-between">
-                  <View className="flex-1 pr-3">
-                    <Text variant="label">{KIND_LABELS[op.kind] ?? op.kind}</Text>
-                    {resume(op) ? (
-                      <Text variant="caption" className="mt-0.5">
-                        {resume(op)}
-                      </Text>
-                    ) : null}
+        </View>
+
+        {/* ┌────────────────────────────────────────────────────────────────────┐
+            │ BLOQUÉ N'EST PAS REFUSÉ, ET LA DIFFÉRENCE CHANGE CE QU'ON FAIT.   │
+            │                                                                    │
+            │ Une opération refusée est définitive : le serveur la refusera      │
+            │ toujours, il faut la corriger ou l'abandonner. Une opération       │
+            │ bloquée attend un DROIT ou un ABONNEMENT, et repartira d'elle-même │
+            │ dès qu'il sera là. Les confondre ferait abandonner des ventes qui  │
+            │ n'attendaient qu'une permission.                                   │
+            │                                                                    │
+            │ L'écran ne lisait que la quarantaine : une opération bloquée       │
+            │ restait invisible, et le compteur d'attente ne descendait jamais   │
+            │ sans qu'on sache pourquoi.                                         │
+            └────────────────────────────────────────────────────────────────────┘ */}
+        {enBlocage.length > 0 ? (
+          <View className="mb-5">
+            <Text variant="h4" className="mb-2">
+              {`En attente d'un droit (${enBlocage.length})`}
+            </Text>
+            <Text variant="muted" className="mb-3">
+              Elles repartiront seules dès que la permission sera accordée ou
+              l'abonnement réglé. Rien n'est perdu.
+            </Text>
+            {enBlocage.map((op, i) => (
+              <View key={op.id} className={i > 0 ? "mt-3" : ""}>
+                <Card>
+                  <View className="mb-2 flex-row items-start justify-between">
+                    <View className="flex-1 pr-3">
+                      <Text variant="label">{KIND_LABELS[op.kind] ?? op.kind}</Text>
+                      {resume(op) ? (
+                        <Text variant="caption" className="mt-0.5">
+                          {resume(op)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Badge tone="warning">bloquée</Badge>
                   </View>
-                  <Badge tone="warning">bloquée</Badge>
-                </View>
-                <Divider />
-                <Text variant="bodySmall" className="mt-3">
-                  {op.lastError ?? "Motif inconnu."}
-                </Text>
-                <Text variant="caption" className="mt-1">
-                  {dateHeureCourteFr(op.occurredAt)}
-                </Text>
-              </Card>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {rows.map((op, i) => (
-        <View key={op.id} className={i > 0 ? "mt-3" : ""}>
-          <Card>
-            <View className="mb-2 flex-row items-start justify-between">
-              <View className="flex-1 pr-3">
-                <Text variant="label">{KIND_LABELS[op.kind] ?? op.kind}</Text>
-                {resume(op) ? (
-                  <Text variant="caption" className="mt-0.5">
-                    {resume(op)}
+                  <Divider />
+                  <Text variant="bodySmall" className="mt-3">
+                    {op.lastError ?? "Motif inconnu."}
                   </Text>
-                ) : null}
+                  <Text variant="caption" className="mt-1">
+                    {dateHeureCourteFr(op.occurredAt)}
+                  </Text>
+                </Card>
               </View>
-              <Badge tone="destructive">refusée</Badge>
-            </View>
+            ))}
+          </View>
+        ) : null}
 
-            <Divider />
+        {rows.map((op, i) => (
+          <View key={op.id} className={i > 0 ? "mt-3" : ""}>
+            <Card>
+              <View className="mb-2 flex-row items-start justify-between">
+                <View className="flex-1 pr-3">
+                  <Text variant="label">{KIND_LABELS[op.kind] ?? op.kind}</Text>
+                  {resume(op) ? (
+                    <Text variant="caption" className="mt-0.5">
+                      {resume(op)}
+                    </Text>
+                  ) : null}
+                </View>
+                <Badge tone="destructive">refusée</Badge>
+              </View>
 
-            <Text variant="bodySmall" className="mt-3">
-              {op.lastError ?? "Motif inconnu."}
-            </Text>
-            <Text variant="caption" className="mt-1">
-              {dateHeureCourteFr(op.occurredAt)}
-            </Text>
+              <Divider />
 
-            <View className="mt-3">
-              <Button
-                variant="outline"
-                size="sm"
-                leftIcon="Trash2"
-                onPress={() => setAAbandonner(op)}
-              >
-                Abandonner
-              </Button>
-            </View>
-          </Card>
-        </View>
-      ))}
-          <AlertDialog
-        ouvert={aAbandonner !== null}
-        titre="Abandonner cette opération ?"
-        message={
-          aAbandonner
-            ? `${KIND_LABELS[aAbandonner.kind] ?? aAbandonner.kind}` +
-              `${resume(aAbandonner) ? ` · ${resume(aAbandonner)}` : ""}\n\n` +
-              "Elle ne sera jamais envoyée. Si c'était une vente encaissée, " +
-              "le paiement restera sans trace au serveur."
-            : undefined
-        }
-        confirmer="Abandonner"
-        annuler="Garder"
-        destructif
-        enCours={abandonEnCours}
-        onConfirmer={() => void confirmerAbandon()}
-        onAnnuler={() => setAAbandonner(null)}
-      />
-</Screen>
+              <Text variant="bodySmall" className="mt-3">
+                {op.lastError ?? "Motif inconnu."}
+              </Text>
+              <Text variant="caption" className="mt-1">
+                {dateHeureCourteFr(op.occurredAt)}
+              </Text>
+
+              <View className="mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon="Trash2"
+                  onPress={() => setAAbandonner(op)}
+                >
+                  Abandonner
+                </Button>
+              </View>
+            </Card>
+          </View>
+        ))}
+            <AlertDialog
+          ouvert={aAbandonner !== null}
+          titre="Abandonner cette opération ?"
+          message={
+            aAbandonner
+              ? `${KIND_LABELS[aAbandonner.kind] ?? aAbandonner.kind}` +
+                `${resume(aAbandonner) ? ` · ${resume(aAbandonner)}` : ""}\n\n` +
+                "Elle ne sera jamais envoyée. Si c'était une vente encaissée, " +
+                "le paiement restera sans trace au serveur."
+              : undefined
+          }
+          confirmer="Abandonner"
+          annuler="Garder"
+          destructif
+          enCours={abandonEnCours}
+          onConfirmer={() => void confirmerAbandon()}
+          onAnnuler={() => setAAbandonner(null)}
+        />
+      </View>
+    </Screen>
   );
 }

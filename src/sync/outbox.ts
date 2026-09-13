@@ -10,7 +10,7 @@
  * ventes en attente, chaque encaissement ralentissait. Ici on interroge par
  * index, et rien ne balaie la table.
  */
-import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { outboxOperations, type NewOutboxOperation, type OutboxOperation } from "@/db/schema";
@@ -55,6 +55,14 @@ export type OperationKind =
   | "category.create"
   | "brand.create"
   | "unit.create"
+  // MODIFIER un référentiel est un acte : le back-office le fait par un PATCH
+  // sur la vue, et le rejouer par le même serializer est ce qui garde
+  // l'unicité du nom et l'anti-cycle du côté qui en décide. Un refus y est
+  // DÉTERMINISTE (nom déjà pris, fiche introuvable) : quarantaine, jamais un
+  // nouvel essai.
+  | "category.update"
+  | "brand.update"
+  | "unit.update"
   // La CLÔTURE passe par le journal : le Z se tire au comptoir, souvent avant
   // que le réseau ne revienne.
   | "register_session.close"
@@ -67,7 +75,32 @@ export type OperationKind =
   | "quotation.convert"
   | "stock_movement.create"
   | "expense.create"
-  | "cash_movement.create";
+  // Les CINQ transitions d'une dépense, et l'annulation d'un mouvement. Elles
+  // vivaient dans les vues du back-office, donc hors d'atteinte du journal :
+  // un terminal savait créer une dépense, jamais la faire avancer ni corriger
+  // une écriture de caisse. Un refus y est DÉTERMINISTE (« déjà payée »,
+  // « déjà annulé ») et part en quarantaine, jamais en nouvel essai : rejouer
+  // une approbation créerait un SECOND mouvement, et le tiroir sortirait deux
+  // fois la même dépense.
+  | "expense.submit"
+  | "expense.approve"
+  | "expense.reject"
+  | "expense.pay"
+  | "expense.cancel"
+  | "cash_movement.create"
+  | "cash_movement.cancel"
+  // Créer un type d'entrée ou une catégorie de dépense sans quitter la
+  // saisie : le back-office le fait par un bouton « + » à côté de son champ,
+  // et sans lui le caissier doit sortir de son formulaire, donc le perdre.
+  | "income_category.create"
+  | "expense_category.create"
+  // Renommer, recolorer ou DÉSACTIVER une rubrique. La désactivation remplace
+  // la suppression, qui n'existe pas : `ExpenseCategory` est
+  // `PROTECT`-référencée, `IncomeCategory` orphelinerait l'historique en
+  // silence, et surtout aucune des deux tables n'émet de pierre tombale au
+  // tirage - une suppression serveur n'atteindrait donc jamais un terminal.
+  | "income_category.update"
+  | "expense_category.update";
 
 export type OutboxState = OutboxOperation["state"];
 
@@ -152,6 +185,51 @@ export async function countByState(): Promise<Record<OutboxState, number>> {
   } as Record<OutboxState, number>;
   for (const row of rows) counts[row.state] = Number(row.n);
   return counts;
+}
+
+/**
+ * Ce que le planificateur de synchronisation a besoin de savoir du journal.
+ *
+ * Deux nombres, et il faut les deux. `nbPret` dit s'il y a quelque chose à
+ * envoyer MAINTENANT ; `prochaineTentativeAt` dit quand se réveiller pour ce
+ * qui attend encore sa temporisation.
+ *
+ * ⚠ Sans le second, une opération ayant reçu un verdict `retry` n'est JAMAIS
+ * réessayée : `backoffMs` lui pose un `nextAttemptAt` que `readyToSend` filtre,
+ * et rien dans le terminal ne venait relire cette échéance. Elle attendait
+ * qu'un humain appuie sur « Synchroniser », indéfiniment.
+ */
+export interface EtatJournal {
+  /** Opérations en attente dont la temporisation est échue. */
+  nbPret: number;
+  /** La plus proche échéance encore à venir, ou `null` s'il n'y en a aucune. */
+  prochaineTentativeAt: Date | null;
+}
+
+export async function etatJournal(): Promise<EtatJournal> {
+  const now = new Date();
+
+  const [pret] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(outboxOperations)
+    .where(
+      and(
+        eq(outboxOperations.state, "pending"),
+        or(isNull(outboxOperations.nextAttemptAt), lte(outboxOperations.nextAttemptAt, now))
+      )
+    );
+
+  const [suivante] = await db
+    .select({ at: outboxOperations.nextAttemptAt })
+    .from(outboxOperations)
+    .where(and(eq(outboxOperations.state, "pending"), gt(outboxOperations.nextAttemptAt, now)))
+    .orderBy(asc(outboxOperations.nextAttemptAt))
+    .limit(1);
+
+  return {
+    nbPret: Number(pret?.n ?? 0),
+    prochaineTentativeAt: suivante?.at ?? null,
+  };
 }
 
 export async function markInflight(ids: string[], batchId: string): Promise<void> {

@@ -17,6 +17,7 @@ import { useSynchronisation } from "@/features/sync/provider";
 import { countByState, readAllStates, type OutboxState } from "@/sync";
 import type { SyncStateRow } from "@/db/schema";
 import {
+  AppBar,
   Badge,
   Banner,
   Button,
@@ -28,15 +29,7 @@ import {
   Text,
 } from "@/ui";
 
-function formatDate(value: Date | null): string {
-  if (!value) return "jamais";
-  const minutes = Math.round((Date.now() - value.getTime()) / 60000);
-  if (minutes < 1) return "à l'instant";
-  if (minutes < 60) return `il y a ${minutes} min`;
-  const heures = Math.round(minutes / 60);
-  if (heures < 24) return `il y a ${heures} h`;
-  return `il y a ${Math.round(heures / 24)} j`;
-}
+import { ilYA } from "@/data/dates";
 
 export default function Sync() {
   // Le cycle vit dans le fournisseur, partagé avec les bandeaux de tous les
@@ -75,114 +68,140 @@ export default function Sync() {
   const totalLignes = (states ?? []).reduce((n, s) => n + s.rowCount, 0);
 
   return (
-    <Screen scroll>
-      <View className="mb-5 mt-4">
-        <Text variant="h2">Synchronisation</Text>
-        <Text variant="muted">
-          {totalLignes > 0
+    /* `AppBar` plutôt qu'un titre dans le corps : cet écran s'atteint depuis
+       le tiroir ET depuis les bandeaux d'une dizaine d'autres, et il n'avait
+       AUCUN chemin de retour. Le titre remonte dans la barre, sans quoi il
+       s'afficherait deux fois. */
+    <Screen scroll padded={false}>
+      <AppBar
+        title="Synchronisation"
+        subtitle={
+          totalLignes > 0
             ? `${totalLignes} lignes en base locale.`
-            : "Aucune donnée locale pour l'instant."}
-        </Text>
-      </View>
+            : "Aucune donnée locale pour l'instant."
+        }
+      />
+      <View className="p-4">
+        {erreur ? (
+          <View className="mb-4">
+            <Banner tone="destructive" title="Interrompue" message={erreur} />
+          </View>
+        ) : null}
 
-      {erreur ? (
-        <View className="mb-4">
-          <Banner tone="destructive" title="Interrompue" message={erreur} />
-        </View>
-      ) : null}
+        {progression ? (
+          <Card className="mb-4">
+            <Text variant="label">{labelFor(progression.table)}</Text>
+            <Text variant="caption" className="mt-1">
+              Table {progression.index} sur {progression.tableCount}
+              {progression.expected != null
+                ? ` · ${progression.received} / ${progression.expected}`
+                : ` · ${progression.received} lignes`}
+            </Text>
 
-      {progression ? (
-        <Card className="mb-4">
-          <Text variant="label">{labelFor(progression.table)}</Text>
-          <Text variant="caption" className="mt-1">
-            Table {progression.index} sur {progression.tableCount}
-            {progression.expected != null
-              ? ` · ${progression.received} / ${progression.expected}`
-              : ` · ${progression.received} lignes`}
-          </Text>
-
-          {pct != null ? (
-            <>
-              <View className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                <View className="h-full bg-primary" style={{ width: `${pct}%` }} />
-              </View>
-              <Text variant="caption" className="mt-1.5" numeric>
-                {progression.receivedTotal} / {progression.expectedTotal} lignes · {pct} %
-              </Text>
-            </>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {outbox && outbox.quarantined > 0 ? (
-        <View className="mb-4">
-          <Banner
-            tone="destructive"
-            title={`${outbox.quarantined} opération(s) refusée(s)`}
-            message="Elles ne repartiront pas d'elles-mêmes."
-            action={{
-              label: "Voir et corriger",
-              onPress: () => router.push("/(app)/appareil/operations"),
-            }}
-          />
-        </View>
-      ) : null}
-
-      {outbox && outbox.pending > 0 ? (
-        <View className="mb-4">
-          <Banner
-            tone="warning"
-            title={`${outbox.pending} opération(s) en attente`}
-            message="Elles partiront à la prochaine synchronisation."
-          />
-        </View>
-      ) : null}
-
-      <View className="mb-5">
-        <Button
-          fullWidth
-          size="lg"
-          loading={enCours}
-          leftIcon="CloudDownload"
-          onPress={() => void lancer("ecran")}
-        >
-          {/* Un bouton grisé sans raison est un cul-de-sac : quand le cycle
-              vient d'un bandeau, on le DIT plutôt que de laisser croire à une
-              panne. */}
-          {!enCours
-            ? "Synchroniser maintenant"
-            : origine === "ecran"
-              ? "Synchronisation en cours"
-              : "Synchronisation lancée ailleurs"}
-        </Button>
-      </View>
-
-      {states && states.length > 0 ? (
-        <Section title="État par table">
-          <Card className="overflow-hidden p-0">
-            {states
-              .filter((s) => s.rowCount > 0 || s.lastError)
-              .map((s, i) => (
-                <View key={s.table}>
-                  {i > 0 ? <Divider /> : null}
-                  <ListItem
-                    title={labelFor(s.table)}
-                    subtitle={
-                      s.lastError
-                        ? s.lastError
-                        : `Complet ${formatDate(s.lastFullSyncAt)}`
-                    }
-                    value={String(s.rowCount)}
-                    valueTone={s.lastError ? "destructive" : "muted"}
-                    trailing={
-                      s.hasMore ? <Badge tone="warning">partiel</Badge> : undefined
-                    }
-                  />
+            {pct != null ? (
+              <>
+                <View className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                  <View className="h-full bg-primary" style={{ width: `${pct}%` }} />
                 </View>
-              ))}
+                <Text variant="caption" className="mt-1.5" numeric>
+                  {progression.receivedTotal} / {progression.expectedTotal} lignes · {pct} %
+                </Text>
+              </>
+            ) : null}
           </Card>
-        </Section>
-      ) : null}
+        ) : null}
+
+        {outbox && outbox.quarantined > 0 ? (
+          <View className="mb-4">
+            <Banner
+              tone="destructive"
+              title={`${outbox.quarantined} opération(s) refusée(s)`}
+              message="Elles ne repartiront pas d'elles-mêmes."
+              action={{
+                label: "Voir et corriger",
+                onPress: () => router.push("/(app)/appareil/operations"),
+              }}
+            />
+          </View>
+        ) : null}
+
+        {/* ┌──────────────────────────────────────────────────────────────┐
+            │ « BLOQUÉ » N'EST PAS « EN ATTENTE », ET CET ÉCRAN LE TAISAIT.│
+            │                                                              │
+            │ Une opération bloquée n'attend pas le réseau, elle attend une│
+            │ DÉCISION : un abonnement réglé, une permission accordée. Le  │
+            │ seul écran qui rend l'état de la synchronisation n'en disait │
+            │ rien, si bien que le compteur d'attente ne descendait jamais │
+            │ sans qu'on sache pourquoi. Le message ne propose donc ni de  │
+            │ synchroniser ni de réessayer : ni l'un ni l'autre n'y peut   │
+            │ quoi que ce soit.                                            │
+            └──────────────────────────────────────────────────────────────┘ */}
+        {outbox && outbox.blocked > 0 ? (
+          <View className="mb-4">
+            <Banner
+              tone="warning"
+              title={`${outbox.blocked} opération(s) en attente d'un droit`}
+              message="Elles repartiront seules dès que l'abonnement sera réglé ou la permission accordée."
+            />
+          </View>
+        ) : null}
+
+        {outbox && outbox.pending > 0 ? (
+          <View className="mb-4">
+            <Banner
+              tone="info"
+              title={`${outbox.pending} opération(s) en attente`}
+              message="Elles partent d'elles-mêmes dès que le réseau le permet."
+            />
+          </View>
+        ) : null}
+
+        <View className="mb-5">
+          <Button
+            fullWidth
+            size="lg"
+            loading={enCours}
+            leftIcon="CloudDownload"
+            onPress={() => void lancer("ecran")}
+          >
+            {/* Un bouton grisé sans raison est un cul-de-sac : quand le cycle
+                vient d'un bandeau, on le DIT plutôt que de laisser croire à une
+                panne. */}
+            {!enCours
+              ? "Synchroniser maintenant"
+              : origine === "ecran"
+                ? "Synchronisation en cours"
+                : "Synchronisation lancée ailleurs"}
+          </Button>
+        </View>
+
+        {states && states.length > 0 ? (
+          <Section title="État par table">
+            <Card className="overflow-hidden p-0">
+              {states
+                .filter((s) => s.rowCount > 0 || s.lastError)
+                .map((s, i) => (
+                  <View key={s.table}>
+                    {i > 0 ? <Divider /> : null}
+                    <ListItem
+                      title={labelFor(s.table)}
+                      subtitle={
+                        s.lastError
+                          ? s.lastError
+                          : `Complet ${ilYA(s.lastFullSyncAt)}`
+                      }
+                      value={String(s.rowCount)}
+                      valueTone={s.lastError ? "destructive" : "muted"}
+                      trailing={
+                        s.hasMore ? <Badge tone="warning">partiel</Badge> : undefined
+                      }
+                    />
+                  </View>
+                ))}
+            </Card>
+          </Section>
+        ) : null}
+      </View>
     </Screen>
   );
 }

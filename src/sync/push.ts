@@ -10,6 +10,7 @@
 import * as Crypto from "expo-crypto";
 
 import { api } from "@/api/client";
+import { SYNC_TIMEOUT_MS } from "@/api/config";
 import { ApiError } from "@/api/errors";
 
 import {
@@ -23,8 +24,7 @@ import {
   scheduleRetry,
 } from "./outbox";
 import { messageOf } from "./policy";
-import { pullTable } from "./pull";
-import { fetchManifest } from "./pull";
+import { fetchManifest, pullTable } from "./pull";
 import type { TableSpec } from "./types";
 
 export type Verdict = "applied" | "duplicate" | "rejected" | "retry" | "blocked";
@@ -96,6 +96,12 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   "category.create": ["categories"],
   "brand.create": ["brands"],
   "unit.create": ["units"],
+  // Une seule table : le nom d'une catégorie est JOINT à la lecture des
+  // articles (`data/articles.ts`), jamais recopié dans `products`. Relire les
+  // articles ne rendrait rien de plus.
+  "category.update": ["categories"],
+  "brand.update": ["brands"],
+  "unit.update": ["units"],
   // Fermer une session fige ses soldes par devise et son écart : la session
   // suit, et les mouvements de caisse avec elle.
   "register_session.close": ["register_sessions", "cash_movements"],
@@ -111,8 +117,25 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   // et le compte du client changent tous.
   "quotation.convert": ["quotations", "sales", "stocks", "customers",
                         "customer_balances", "customer_transactions"],
+  // ⚠ `cash_movements` alors que CRÉER une dépense ne bouge PAS le tiroir : le
+  // serveur l'enregistre en BROUILLON et n'appelle
+  // `create_cash_movement_for_expense` qu'à l'approbation. L'entrée reste
+  // parce que le serveur peut, demain, approuver d'office ; relire une table
+  // pour rien coûte une requête, la manquer laisse un solde faux.
   "expense.create": ["expenses", "cash_movements"],
+  // Soumettre ne fait qu'avancer un statut. Les quatre autres touchent le
+  // tiroir : approuver et payer en font SORTIR l'argent, annuler l'y remet.
+  "expense.submit": ["expenses"],
+  "expense.approve": ["expenses", "cash_movements"],
+  "expense.reject": ["expenses"],
+  "expense.pay": ["expenses", "cash_movements"],
+  "expense.cancel": ["expenses", "cash_movements"],
   "cash_movement.create": ["cash_movements"],
+  "cash_movement.cancel": ["cash_movements"],
+  "income_category.create": ["income_categories"],
+  "expense_category.create": ["expense_categories"],
+  "income_category.update": ["income_categories"],
+  "expense_category.update": ["expense_categories"],
 };
 
 export interface PushOutcome {
@@ -154,11 +177,23 @@ export async function pushOnce(deviceId?: string): Promise<PushOutcome> {
 
   let reponse: BatchResponse;
   try {
-    reponse = await api.post<BatchResponse>("/sync/operations/", {
-      batch_id: batchId,
-      device_id: deviceId,
-      operations,
-    });
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ LE DÉLAI DE SYNCHRONISATION, ET IL EST PLUS CRITIQUE ICI QU'AU     │
+    // │ TIRAGE.                                                            │
+    // │                                                                    │
+    // │ Un lot porte jusqu'à `BATCH_SIZE` actes que le serveur REJOUE un   │
+    // │ par un, chacun dans sa transaction : il répond donc bien plus tard │
+    // │ qu'à une lecture. Abandonner au bout de trente secondes ramène le  │
+    // │ lot entier en attente alors que le serveur est en train de         │
+    // │ l'appliquer, et le renvoi coûte un second traitement complet.      │
+    // │ L'idempotence par `operation_id` protège les données, jamais la    │
+    // │ batterie ni la patience du caissier.                               │
+    // └────────────────────────────────────────────────────────────────────┘
+    reponse = await api.post<BatchResponse>(
+      "/sync/operations/",
+      { batch_id: batchId, device_id: deviceId, operations },
+      { timeoutMs: SYNC_TIMEOUT_MS }
+    );
   } catch (error) {
     // Rien n'a atteint le serveur, ou il a repondu 5xx : tout retourne en
     // attente. On n'a RIEN perdu : le renvoi est sûr.
@@ -244,6 +279,18 @@ export async function pushAll(deviceId?: string): Promise<PushOutcome> {
     cumul.quarantined += r.quarantined;
     cumul.retry += r.retry;
     cumul.blocked += r.blocked;
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ `more` N'ÉTAIT JAMAIS RÉAFFECTÉ, DONC TOUJOURS FAUX.                 │
+    // │                                                                      │
+    // │ Le cumul partait de `VIDE` et n'en reprenait que les compteurs :     │
+    // │ `pushAll` annonçait « la file est vide » y compris quand elle        │
+    // │ sortait sur sa borne de cinquante tours, c'est-à-dire précisément    │
+    // │ quand il RESTE du travail prêt à partir. Un appelant qui s'y fierait │
+    // │ pour décider d'un second cycle ne le déclencherait jamais, et la     │
+    // │ file au-delà de cinquante lots attendrait la synchronisation         │
+    // │ suivante sans que rien ne le dise.                                   │
+    // └──────────────────────────────────────────────────────────────────────┘
+    cumul.more = r.more;
     if (!r.more || r.sent === 0) break;
   }
   return cumul;
