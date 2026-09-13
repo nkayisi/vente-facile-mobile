@@ -65,12 +65,19 @@ export function Tableau<T>({
   colonnes,
   lignes,
   cle,
-  vide = "Aucune donnée pour cette période",
+  // ⚠ `messageVide`, et NON `vide` : ce dernier nom est celui du repli d'un
+  // RELEVÉ (`MultiCurrencyTotal`), où une phrase à la place d'un montant est
+  // proscrite - un cadran se lit en balayant une colonne de chiffres. Un
+  // tableau vide, lui, a le droit de parler. Les deux props portaient le même
+  // nom, et le garde-fou de doctrine ne pouvait pas les distinguer : il criait
+  // sur du code légitime, ce qui est la façon dont un garde-fou finit
+  // désactivé. `ListeChoix` employait déjà ce nom-ci.
+  messageVide = "Aucune donnée pour cette période",
 }: {
   colonnes: ColonneTableau<T>[];
   lignes: T[];
   cle: (ligne: T, index: number) => string;
-  vide?: string;
+  messageVide?: string;
 }) {
   const [largeurVue, setLargeurVue] = useState(0);
   const largeurTotale = colonnes.reduce((s, c) => s + c.largeur, 0);
@@ -81,7 +88,7 @@ export function Tableau<T>({
   if (lignes.length === 0) {
     return (
       <View className="items-center bg-card px-4 py-8">
-        <Text variant="bodySmall">{vide}</Text>
+        <Text variant="bodySmall">{messageVide}</Text>
       </View>
     );
   }

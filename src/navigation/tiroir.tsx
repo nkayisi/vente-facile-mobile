@@ -11,10 +11,20 @@
  * transitive d'expo-router ; il est désormais DÉCLARÉ, parce qu'un
  * relèvement de version d'expo-router pourrait le retirer sans prévenir.
  */
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { BackHandler } from "react-native";
 import { Drawer } from "react-native-drawer-layout";
 
 import { useColor } from "@/ui";
+import { retourFermeLeTiroir } from "./fermeture";
 import { MenuLateral } from "./menu-lateral";
 
 interface ApiTiroir {
@@ -31,6 +41,16 @@ export function TiroirProvider({ children }: { children: ReactNode }) {
   const fermer = useCallback(() => setOuvert(false), []);
   const api = useMemo<ApiTiroir>(() => ({ ouvrir, fermer, ouvert }), [ouvrir, fermer, ouvert]);
   const card = useColor("card");
+
+  // Le bouton retour d'Android referme le tiroir au lieu de dépiler l'écran du
+  // dessous. Voir `retourFermeLeTiroir` : l'abonnement vit tout le temps, la
+  // décision de consommer l'événement est prise à chaque appui.
+  useEffect(() => {
+    const abonnement = BackHandler.addEventListener("hardwareBackPress", () =>
+      retourFermeLeTiroir(ouvert, fermer)
+    );
+    return () => abonnement.remove();
+  }, [ouvert, fermer]);
 
   return (
     <Contexte.Provider value={api}>

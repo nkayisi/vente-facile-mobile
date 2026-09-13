@@ -95,3 +95,24 @@ export function dateDepuisJourISO(iso: string | null | undefined): Date | null {
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   return Number.isNaN(d.getTime()) ? null : d;
 }
+
+/**
+ * Fraîcheur d'un horodatage, en clair.
+ *
+ * Écrite en double : l'écran Synchronisation en avait une copie privée, et le
+ * témoin de la barre du haut en réclamait une. Deux formulations du même
+ * chiffre sur deux écrans qui parlent de la MÊME synchronisation feraient
+ * douter qu'il s'agisse de la même.
+ *
+ * `null` se lit « jamais », jamais « à l'instant » : une base qui n'a jamais
+ * été tirée n'est pas une base fraîche.
+ */
+export function ilYA(valeur: Date | null, maintenant: Date = new Date()): string {
+  if (!valeur) return "jamais";
+  const minutes = Math.round((maintenant.getTime() - valeur.getTime()) / 60_000);
+  if (minutes < 1) return "à l'instant";
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const heures = Math.round(minutes / 60);
+  if (heures < 24) return `il y a ${heures} h`;
+  return `il y a ${Math.round(heures / 24)} j`;
+}

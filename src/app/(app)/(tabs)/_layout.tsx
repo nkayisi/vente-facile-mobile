@@ -26,6 +26,7 @@
  */
 import { Tabs, router } from "expo-router";
 
+import { IndicateurSync } from "@/features/sync/indicateur";
 import { MENU } from "@/navigation/menu";
 import { NOMS_ONGLETS, ONGLETS } from "@/navigation/onglets";
 import { TiroirProvider, useTiroir } from "@/navigation/tiroir";
@@ -60,6 +61,10 @@ function Coquille() {
         header: () => (
           <TopBar
             nomUtilisateur={snapshot?.user.full_name}
+            // Le témoin s'abonne LUI-MÊME à l'état de synchronisation : le lire
+            // ici le ferait remonter dans `Coquille`, donc re-rendre tout le
+            // `Tabs` à chaque battement d'un cycle.
+            right={<IndicateurSync />}
             onMenu={ouvrir}
             onAvatar={() => router.push("/profil")}
           />

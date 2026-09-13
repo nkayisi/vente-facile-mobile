@@ -68,6 +68,32 @@ export interface ScreenProps {
    * └────────────────────────────────────────────────────────────────────────┘
    */
   pied?: ReactNode;
+  /**
+   * Centre le contenu verticalement TANT QU'IL TIENT, et le laisse défiler
+   * depuis le haut dès qu'il dépasse.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ C'EST `flexGrow` QUI REND LE CENTRAGE SANS RISQUE, PAS `justifyContent`.│
+   * │                                                                        │
+   * │ `flexGrow: 1` porte la hauteur du conteneur au MINIMUM de la fenêtre : │
+   * │ `justifyContent` n'a donc d'espace libre à répartir que lorsqu'il en   │
+   * │ reste. Un contenu plus haut que l'écran remplit son conteneur          │
+   * │ exactement, il n'y a plus rien à centrer, et aucune ligne ne sort du   │
+   * │ défilement. Les deux vont ENSEMBLE :                                   │
+   * │                                                                        │
+   * │   - `justifyContent` seul, sur un conteneur dimensionné par son        │
+   * │     contenu, ne centre jamais rien - il n'y a pas d'espace libre ;     │
+   * │   - poser une marge de tête à la main (`mt-10`) centre à l'oeil sur le │
+   * │     terminal du développeur et décale tous les autres, un formulaire   │
+   * │     court sur un écran haut restant collé en haut.                     │
+   * └────────────────────────────────────────────────────────────────────────┘
+   *
+   * À réserver aux écrans dont le contenu EST la page - connexion,
+   * inscription, choix d'établissement, code de déverrouillage. Une LISTE ne
+   * se centre pas : son premier élément doit toujours se trouver au même
+   * endroit, quel que soit le nombre de lignes.
+   */
+  centre?: boolean;
   className?: string;
 }
 
@@ -79,6 +105,7 @@ export function Screen({
   refreshing = false,
   padded = true,
   pied,
+  centre = false,
   className = "",
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
@@ -91,10 +118,15 @@ export function Screen({
     paddingRight: edges.includes("right") ? insets.right : 0,
   };
 
+  const contenu = {
+    ...(padded ? { padding: 16 } : null),
+    ...(centre ? { flexGrow: 1, justifyContent: "center" as const } : null),
+  };
+
   const body = scroll ? (
     <ScrollView
       className={`flex-1 ${className}`}
-      contentContainerStyle={padded ? { padding: 16 } : undefined}
+      contentContainerStyle={contenu}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         onRefresh ? (
@@ -110,7 +142,11 @@ export function Screen({
       {children}
     </ScrollView>
   ) : (
-    <View className={`flex-1 ${padded ? "p-4" : ""} ${className}`}>{children}</View>
+    <View
+      className={`flex-1 ${padded ? "p-4" : ""} ${centre ? "justify-center" : ""} ${className}`}
+    >
+      {children}
+    </View>
   );
 
   return (

@@ -10,6 +10,7 @@
 import { ScrollView, View } from "react-native";
 
 import { Icon, type IconName } from "./icon";
+import { Pastille } from "./pastille";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { HIT } from "./tokens";
@@ -20,6 +21,7 @@ export function Chip({
   onPress,
   onRetirer,
   icon,
+  pastille,
 }: {
   label: string;
   actif?: boolean;
@@ -27,6 +29,16 @@ export function Chip({
   /** Présent : la puce porte une croix de retrait (puce de filtre actif). */
   onRetirer?: () => void;
   icon?: IconName;
+  /**
+   * La couleur d'une catégorie, telle que le marchand l'a choisie.
+   *
+   * Le back-office rend un point coloré devant chaque nom de rubrique, dans
+   * son sélecteur comme dans son tableau : c'est ce qui permet de retrouver
+   * « Carburant » d'un coup d'oeil dans une liste de vingt. Rendue AVANT
+   * l'icône, et jamais avec elle - deux marques à gauche du même libellé se
+   * disputent la lecture.
+   */
+  pastille?: string | null;
 }) {
   return (
     <Pressable
@@ -39,7 +51,11 @@ export function Chip({
         actif ? "border-primary bg-primary" : "border-border bg-card"
       }`}
     >
-      {icon ? <Icon name={icon} size={14} color={actif ? "primaryForeground" : "mutedForeground"} /> : null}
+      {pastille ? (
+        <Pastille couleur={pastille} taille={8} />
+      ) : icon ? (
+        <Icon name={icon} size={14} color={actif ? "primaryForeground" : "mutedForeground"} />
+      ) : null}
       <Text
         variant="bodySmall"
         className={actif ? "font-sans-medium text-primary-foreground" : "font-sans-medium text-foreground"}

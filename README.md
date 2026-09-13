@@ -273,25 +273,45 @@ contente d'**acheminer** les octets. Ajouter un transport ne touche aucun écran
 
 | Transport | Matériel | Paquet |
 | --- | --- | --- |
-| `embedded` | imprimante intégrée d'un terminal (NYX, Sunmi…) | module Expo local, à porter |
-| `bluetooth` | Bluetooth classique (SPP), la majorité des 58 mm | `react-native-bluetooth-classic` |
-| `ble` | Bluetooth basse consommation, modèles récents | `react-native-ble-plx` |
+| `embedded` | imprimante intégrée d'un terminal (NYX, Sunmi…) | module Expo local |
+| `bluetooth` | toute imprimante sans fil, ancienne comme récente | `react-native-bluetooth-classic` (série) + `react-native-ble-plx` (basse consommation) |
 | `pdf` | repli universel, et envoi au client | `expo-print` + `expo-sharing` |
+
+**Une seule option Bluetooth, et c'est délibéré.** Il y en avait deux,
+« classique » et « basse consommation ». Personne ne sait de quel protocole
+relève l'imprimante qu'il vient d'acheter : c'était demander au marchand une
+information qu'il n'a pas, sur un écran où se tromper donnait exactement le même
+message que ne pas avoir d'imprimante. On cherche des deux côtés, on présente
+une liste, et le PROTOCOLE est relevé quand il désigne sa machine
+(`ReglageImprimante.lien`). Les mots « série », « SPP », « GATT » et « BLE »
+n'atteignent jamais l'écran.
+
+⚠ **Les permissions Bluetooth se DEMANDENT à l'exécution.** Depuis Android 12,
+`BLUETOOTH_SCAN` et `BLUETOOTH_CONNECT` sont des permissions dangereuses : les
+déclarer ne suffit pas. Sans octroi, `getBondedDevices()` lève une
+`SecurityException` et le scan rend une erreur. C'est la cause première du
+« Bluetooth qui ne marche pas », et elle se lisait « Aucune imprimante trouvée »
+parce que chaque appel avalait son exception. **Aucune découverte ne rend une
+liste vide pour dire une panne** : `RechercheImprimantes` porte la cause, et un
+garde-fou de doctrine interdit le retour de `catch { return [] }`.
 
 Une seule mise en page (`render-text.ts`, 42 colonnes mesurées sur 58 mm), deux
 encodages : le ticket d'une imprimante Bluetooth et celui du terminal ne peuvent
 pas diverger.
 
+⚠ **Un transport ne redessine PAS le document.** Le Bluetooth imprime le même
+modèle que le reste, sans page de code, sans vidéo inversée et sans largeur à
+lui. Un ticket jugé trop petit se règle par la DENSITÉ, qui existe pour cela.
+
 **Avant de toucher aux 42 colonnes** : imprimer la règle de calibration depuis
 l'écran Imprimante, la photographier, compter. Ne jamais déduire la largeur d'un
 calcul.
 
-Restent au transport `embedded` : le portage du module natif du terminal (il
-exige une reconstruction native, et sa source est dans l'archive git de
-l'ancienne application), et la calibration à la photo sur un POS physique. Ces
-deux points demandent du matériel, pas du code.
+Reste au transport `embedded` : la calibration à la photo sur un POS physique.
+Elle demande du matériel, pas du code.
 
-**Sur iOS, le Bluetooth CLASSIQUE n'existe pas**, et l'écran le dit : le module
-passe par `ExternalAccessory`, qui n'expose que les accessoires certifiés MFi
-par Apple, ce que les 58 mm du marché ne sont pas. La chaîne descend au BLE puis
-au PDF, ce dernier étant toujours disponible.
+**Sur iOS, le profil SÉRIE n'existe pas**, et l'écran le dit : le module passe
+par `ExternalAccessory`, qui n'expose que les accessoires certifiés MFi par
+Apple, ce que les 58 mm du marché ne sont pas. L'option Bluetooth y reste
+offerte - la basse consommation marche très bien sur iPhone - et seules les
+imprimantes récentes y apparaissent. Le PDF ferme la chaîne, toujours.

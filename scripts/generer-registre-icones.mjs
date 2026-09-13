@@ -51,10 +51,34 @@ const DEMANDES = [
   "Warehouse", "Banknote", "Coins", "Gift", "TrendingDown", "TrendingUp",
   "PackageX", "Activity", "ArrowLeftRight", "SlidersHorizontal", "FolderTree",
   "Tag", "Ruler", "FileText", "FileSpreadsheet", "MapPin", "Truck", "Receipt",
+  // ⚠ `Table` était dans le registre SANS être dans cette liste : il y avait été
+  // ajouté à la main, contre la consigne en tête du fichier engendré. La
+  // régénération suivante l'a donc effacé, et `features/export/feuille-format`
+  // a cessé de compiler. Une entrée qui ne vit que dans le fichier ENGENDRÉ ne
+  // survit pas à la commande qui l'engendre : elle se déclare ICI.
+  "Table",
   "Calculator", "Percent", "CreditCard", "Calendar", "Clock", "ArrowUpRight",
   "ArrowDownRight", "Bell", "Sparkles",
   // Types d'etablissement, grille d'inscription.
   "Building2", "Pill", "UtensilsCrossed",
+  // Photo d'un article : `ImagePlus` est l'icone du champ photo du back-office
+  // (`components/products/product-image-field.tsx`), `Camera` la prise directe,
+  // que le web n'a pas - il n'a pas d'appareil photo sous la main.
+  "ImagePlus", "Camera",
+  // Bascule de theme, dans le pied du tiroir. Le back-office n'a AUCUN
+  // selecteur - sa palette sombre existe, son habillage est code en clair - il
+  // n'y a donc rien a mettre en miroir. Meme cas que `Camera`. On reste
+  // neanmoins chez lucide et non chez Ionicons : la bascule se pose a quelques
+  // points du `LogOut`, et deux familles cote a cote font changer l'epaisseur
+  // de trait au milieu d'une rangee.
+  "Monitor", "Sun", "Moon",
+  // Etat HORS LIGNE de l'indicateur de synchronisation de la barre du haut.
+  // `CloudDownload` dit le tirage en cours, `CloudOff` dit qu'il n'y a pas de
+  // reseau : un nuage barre se lit sans legende, la ou une icone d'alerte
+  // ferait croire a un refus du serveur. Le back-office n'a AUCUN indicateur
+  // de ce genre - il ne travaille jamais hors ligne - il n'y a donc rien a
+  // mettre en miroir. Meme cas que `Camera` et la bascule de theme.
+  "CloudOff",
 ];
 
 /** `CheckCircle2` -> `check-circle-2`. Les chiffres se detachent aussi. */

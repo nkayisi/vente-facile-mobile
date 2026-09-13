@@ -36,9 +36,14 @@ import { ToastProvider } from "@/ui";
  * `ToastProvider`, dont il émet les retours, et AU-DESSUS de toute la pile,
  * pour qu'un bandeau de n'importe quel écran lance le cycle sans quitter sa
  * page. Il n'y a alors qu'un seul verrou, donc qu'un seul cycle : deux tirages
- * concurrents écriraient deux fois les mêmes pages dans trente et une tables.
- * Comme `PanierProvider`, il ne fait aucun travail au montage, ce qui est la
- * condition du démarrage à froid sans réseau.
+ * concurrents écriraient deux fois les mêmes pages dans les tables tirées.
+ *
+ * Il porte désormais les cinq déclencheurs AUTOMATIQUES, et sa place est ce
+ * qui les rend possibles : montage du groupe, retour du réseau, retour au
+ * premier plan, écriture locale, réveil d'une temporisation. Il ne fait
+ * toujours aucun travail RÉSEAU au montage - il pose ses écouteurs et diffère
+ * sa première sollicitation - ce qui reste la condition du démarrage à froid
+ * sans réseau.
  */
 export default function AppLayout() {
   // Avant tout écran : sans cela, `formatPrice` écrit en francs congolais

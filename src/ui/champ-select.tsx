@@ -62,6 +62,7 @@ import { View } from "react-native";
 import { Divider } from "./divider";
 import { Icon, type IconName } from "./icon";
 import { ListItem } from "./list-item";
+import { Pastille } from "./pastille";
 import { Pressable } from "./pressable";
 import { Sheet } from "./sheet";
 import { Text } from "./text";
@@ -80,6 +81,18 @@ export interface OptionSelect {
   label: string;
   /** Ligne secondaire : « 12 articles en stock ». Facultative. */
   detail?: string;
+  /**
+   * Pastille de tête, quand l'entrée porte une couleur CHOISIE par le marchand
+   * - une rubrique de caisse, par exemple.
+   *
+   * ⚠ Ce n'est pas une décoration : c'est elle qui permet de retrouver
+   * « Carburant » d'un coup d'oeil dans une liste de vingt, et c'est pour cela
+   * qu'on fait choisir une couleur à la création. Une valeur non reconnue est
+   * IGNORÉE plutôt que rendue : `backgroundColor` accepte n'importe quelle
+   * chaîne et échoue en silence, et une pastille invisible se lirait comme une
+   * rubrique sans couleur, pas comme une donnée abîmée.
+   */
+  couleur?: string | null;
 }
 
 /** Ce qu'un appelant met en état pour ouvrir la liste dans SA propre feuille. */
@@ -219,7 +232,10 @@ export function ListeChoix({
   libelleVide?: string;
   messageVide?: string;
 }) {
-  const entrees: { valeur: string | null; label: string }[] = libelleVide
+  // L'entrée « aucun choix » n'a ni détail ni couleur : le type les rend
+  // facultatifs plutôt que de forcer chaque appelant à les inventer.
+  type Entree = Omit<OptionSelect, "valeur"> & { valeur: string | null };
+  const entrees: Entree[] = libelleVide
     ? [{ valeur: null, label: libelleVide }, ...options]
     : options;
 
@@ -236,6 +252,14 @@ export function ListeChoix({
           {i > 0 ? <Divider /> : null}
           <ListItem
             title={o.label}
+            subtitle={o.detail}
+            leading={
+              o.couleur ? (
+                <View className="mr-3 h-9 w-9 items-center justify-center">
+                  <Pastille couleur={o.couleur} taille={12} />
+                </View>
+              ) : undefined
+            }
             // La coche, et non un chevron : l'appui ne mène nulle part, il
             // choisit. `ListItem` réserve le chevron à une destination.
             trailing={

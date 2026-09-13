@@ -222,8 +222,26 @@ export default function InfosGenerales() {
                    editable={modifiable} multiline numberOfLines={3}
                    style={{ minHeight: 88, textAlignVertical: "top" }} />
           </FormField>
+          {/*
+            ⚠ CE RÉGLAGE N'EST PAS CELUI DE L'IMPRIMANTE DE CE TERMINAL.
+
+            Il voyage jusqu'au serveur (`receipt_paper_width`) et sert les reçus
+            que le back-office produit. L'imprimante du comptoir, elle, lit son
+            propre réglage local (Appareil → Imprimante), parce qu'une largeur
+            décrit un ROULEAU, donc une machine, et que deux comptoirs d'une
+            même boutique peuvent avoir deux imprimantes.
+
+            Le dire est indispensable : les deux réglages voisins de cette même
+            carte - en-tête et pied - arrivent bien sur le papier du comptoir.
+            Le marchand les règle ensemble, voit l'en-tête sortir, et en conclut
+            que la largeur est prise en compte. Elle ne l'est pas.
+          */}
           <View>
-            <Text variant="label" className="mb-2">Largeur du papier du ticket</Text>
+            <Text variant="label" className="mb-2">Largeur du papier au back-office</Text>
+            <Text variant="caption" className="mb-2 text-muted-foreground">
+              Pour les reçus imprimés depuis un ordinateur. L&apos;imprimante de ce
+              terminal a sa propre largeur, dans Appareil → Imprimante.
+            </Text>
             <View className="flex-row gap-3">
               <TuileChoix titre="58 mm" description="Ticket étroit"
                           choisie={reglages.largeurPapier === 58}

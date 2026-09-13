@@ -1,10 +1,4 @@
-import {
-  dateCourteFr,
-  dateDepuisJourISO,
-  dateHeureCourteFr,
-  jourEnLettresFr,
-  jourISO,
-} from "./dates";
+import { dateCourteFr, dateDepuisJourISO, dateHeureCourteFr, ilYA, jourEnLettresFr, jourISO } from "./dates";
 
 describe("dates courtes sans Intl", () => {
   const d = new Date(2026, 7, 31, 14, 7, 9);
@@ -76,6 +70,43 @@ describe("dateDepuisJourISO", () => {
     // « Invalid Date » affiché à un marchand est pire qu'une ligne absente.
     for (const mauvais of ["", "  ", "hier", "02/09/2026", null, undefined]) {
       expect(dateDepuisJourISO(mauvais)).toBeNull();
+    }
+  });
+});
+
+describe("ilYA", () => {
+  const T0 = new Date("2026-09-12T10:00:00.000Z");
+  const ilYaDe = (ms: number) => ilYA(new Date(T0.getTime() - ms), T0);
+
+  it("dit « jamais » pour une base qui n'a rien reçu", () => {
+    // `null` ne se lit jamais comme « à l'instant » : une base jamais tirée
+    // n'est pas une base fraîche.
+    expect(ilYA(null, T0)).toBe("jamais");
+  });
+
+  it("dit « à l'instant » sous la minute", () => {
+    expect(ilYaDe(0)).toBe("à l'instant");
+    expect(ilYaDe(20_000)).toBe("à l'instant");
+  });
+
+  it("compte en minutes sous l'heure", () => {
+    expect(ilYaDe(5 * 60_000)).toBe("il y a 5 min");
+    expect(ilYaDe(59 * 60_000)).toBe("il y a 59 min");
+  });
+
+  it("compte en heures sous la journée", () => {
+    expect(ilYaDe(3 * 3_600_000)).toBe("il y a 3 h");
+  });
+
+  it("compte en jours au-delà", () => {
+    expect(ilYaDe(3 * 24 * 3_600_000)).toBe("il y a 3 j");
+  });
+
+  it("n'emploie aucun formateur de locale", () => {
+    // `Intl` est proscrit : Hermes n'embarque pas l'ICU complète et se replie
+    // sur l'anglais SANS lever, donc jamais sur la machine du développeur.
+    for (const ms of [0, 60_000, 3_600_000, 86_400_000]) {
+      expect(ilYaDe(ms)).toMatch(/^(jamais|à l'instant|il y a \d+ (min|h|j))$/);
     }
   });
 });

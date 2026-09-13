@@ -14,7 +14,7 @@
  * barrel reexporte plus de 3 500 icones et Metro ne sait pas les elaguer de
  * facon fiable. Ici, ce qui n'est pas liste n'entre pas dans le paquet.
  *
- * 83 glyphes.
+ * 90 glyphes.
  *
  * Renommes entre les deux versions de lucide :
  *   BarChart3 (bar-chart-3) -> chart-column
@@ -103,10 +103,10 @@ import Tag from "lucide-react-native/icons/tag";
 import Ruler from "lucide-react-native/icons/ruler";
 import FileText from "lucide-react-native/icons/file-text";
 import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
-import Table from "lucide-react-native/icons/table";
 import MapPin from "lucide-react-native/icons/map-pin";
 import Truck from "lucide-react-native/icons/truck";
 import Receipt from "lucide-react-native/icons/receipt";
+import Table from "lucide-react-native/icons/table";
 import Calculator from "lucide-react-native/icons/calculator";
 import Percent from "lucide-react-native/icons/percent";
 import CreditCard from "lucide-react-native/icons/credit-card";
@@ -119,6 +119,12 @@ import Sparkles from "lucide-react-native/icons/sparkles";
 import Building2 from "lucide-react-native/icons/building-2";
 import Pill from "lucide-react-native/icons/pill";
 import UtensilsCrossed from "lucide-react-native/icons/utensils-crossed";
+import ImagePlus from "lucide-react-native/icons/image-plus";
+import Camera from "lucide-react-native/icons/camera";
+import Monitor from "lucide-react-native/icons/monitor";
+import Sun from "lucide-react-native/icons/sun";
+import Moon from "lucide-react-native/icons/moon";
+import CloudOff from "lucide-react-native/icons/cloud-off";
 
 export const LUCIDE = {
   LayoutDashboard,
@@ -189,10 +195,10 @@ export const LUCIDE = {
   Ruler,
   FileText,
   FileSpreadsheet,
-  Table,
   MapPin,
   Truck,
   Receipt,
+  Table,
   Calculator,
   Percent,
   CreditCard,
@@ -205,6 +211,12 @@ export const LUCIDE = {
   Building2,
   Pill,
   UtensilsCrossed,
+  ImagePlus,
+  Camera,
+  Monitor,
+  Sun,
+  Moon,
+  CloudOff,
 } as const;
 
 export type NomLucide = keyof typeof LUCIDE;

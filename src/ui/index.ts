@@ -63,8 +63,17 @@ export { StatValue, statValueSize, Mesure, mesureSize } from "./stat-value";
 export { StatStrip, StatStripItem, type StatTone } from "./stat-strip";
 export { ActionTile, type AccentTuile } from "./action-tile";
 export { Chip, ChipRow, BoutonFiltres } from "./chip";
+export { Pastille } from "./pastille";
+export { ChampMontant, type DeviseChoisissable } from "./champ-montant";
 export { Segmented, type OptionSegment } from "./segmented";
 export { Switch } from "./switch";
+export { BasculeTheme } from "./bascule-theme";
+export {
+  LIBELLE_THEME,
+  ORDRE_THEME,
+  themeSuivant,
+  type ModeTheme,
+} from "./theme-cycle";
 export { SearchInput, BarreRecherche } from "./search-input";
 export { Avatar, initiales } from "./avatar";
 export { ProgressBar, BarreEmpilee } from "./progress";
@@ -73,6 +82,7 @@ export { Dialog, AlertDialog } from "./dialog";
 export { ToastProvider, useToast } from "./toast";
 export { Fab, type ActionSecondaire } from "./fab";
 export { Apparition } from "./apparition";
+export { useMouvementReduit } from "./mouvement-reduit";
 export { DataList, DataRow, DataSection } from "./data-list";
 export { Tableau, Rang, type ColonneTableau } from "./tableau";
 export { Stepper } from "./stepper";
@@ -85,3 +95,4 @@ export { IconBrute } from "./icon";
 export { BarChart, BarChartHorizontal, type PointGraphe } from "./bar-chart";
 export { AreaChart, type PointAire } from "./area-chart";
 export { DonutChart, couleurDeSerie, type TrancheDonut } from "./donut-chart";
+export { VignetteArticle } from "./vignette-article";

@@ -23,8 +23,9 @@ import { ROLE_LABELS } from "@vente-facile/core";
 import { useLecture } from "@/data/live";
 import { etablissement } from "@/data/organisation";
 import { useSession } from "@/session/provider";
-import { Avatar, Badge, Divider, Icon, Pressable, Text } from "@/ui";
+import { Avatar, Badge, Divider, Icon, Pressable, Text, useToast } from "@/ui";
 import { HIT } from "@/ui/tokens";
+import { fermerPuis } from "./fermeture";
 import { entreesDuMenu, type EtatEntree } from "./menu";
 
 const LOGO = require("../../assets/images/logo.png");
@@ -43,15 +44,26 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
   const chemin = usePathname();
   const { snapshot, can, logout } = useSession();
   const { donnees: etab } = useLecture(etablissement, { tables: ["organizations"] });
+  const toast = useToast();
 
   const entrees = entreesDuMenu(can);
   const active = cleActive(chemin, entrees);
   const role = snapshot?.membership?.role ?? null;
 
-  const aller = (href: string) => {
-    onFermer();
-    router.push(href as never);
-  };
+  /** Ferme le tiroir, puis va quelque part. Voir `fermeture.ts`. */
+  const aller = (href: string) => fermerPuis(onFermer, () => router.push(href as never));
+
+  /**
+   * Une entrée hors droits se referme AUSSI, et dit pourquoi.
+   *
+   * Elle était simplement inerte : le marchand appuyait, rien ne bougeait, et
+   * rien ne distinguait « vous n'avez pas le droit » de « l'application est
+   * bloquée ». La pastille est pourtant à côté - mais on n'appuie pas sur une
+   * entrée qu'on vient de lire. Le motif part donc dans un toast, qui survit à
+   * la fermeture du tiroir, et le retour haptique est celui d'un REFUS.
+   */
+  const refuser = (raison: string | null) =>
+    fermerPuis(onFermer, raison ? () => toast.info(raison) : undefined);
 
   return (
     <View className="flex-1 bg-card" style={{ paddingTop: insets.top }}>
@@ -64,7 +76,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
           </Text>
         </View>
         <Pressable
-          onPress={onFermer}
+          onPress={fermerPuis(onFermer)}
           accessibilityRole="button"
           accessibilityLabel="Fermer le menu"
           className="items-center justify-center rounded-lg"
@@ -96,11 +108,10 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
           return (
             <View key={e.cle} className="px-3 py-0.5">
               <Pressable
-                onPress={e.accessible ? () => aller(e.href) : undefined}
-                disabled={!e.accessible}
-                haptic={e.accessible ? "selection" : "none"}
+                onPress={e.accessible ? aller(e.href) : refuser(e.raison)}
+                haptic={e.accessible ? "selection" : "warning"}
                 accessibilityRole="link"
-                accessibilityState={{ selected: estActive, disabled: !e.accessible }}
+                accessibilityState={{ selected: estActive }}
                 accessibilityLabel={e.raison ? `${e.label}. ${e.raison}` : e.label}
                 className={`flex-row items-center gap-3 rounded-lg px-4 py-2.5${
                   estActive ? " bg-primary" : ""
@@ -141,24 +152,16 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
           </Text>
           {[
             { titre: "Synchronisation", icon: "CloudDownload" as const, href: "/(app)/appareil/synchronisation" },
+            // Le SEUL endroit où un refus du serveur devient lisible. L'écran
+            // Synchronisation porte bien un bandeau pour la quarantaine, mais
+            // AUCUN pour les opérations bloquées : sans cette entrée, une
+            // opération retenue par un abonnement impayé n'a plus aucun chemin.
             { titre: "Opérations à corriger", icon: "AlertTriangle" as const, href: "/(app)/appareil/operations" },
             { titre: "Imprimante", icon: "Printer" as const, href: "/(app)/appareil/imprimante" },
-            // La file d'impression EXISTE depuis le lot 5, rien n'y donnait
-            // accès : un ticket avalé par un rouleau vide était perdu.
-            { titre: "Documents imprimés", icon: "Receipt" as const, href: "/(app)/appareil/documents" },
-            // Le PARC : le marchand doit pouvoir reconnaître ses terminaux, et
-            // surtout repérer celui qu'il ne reconnaît plus.
-            { titre: "Appareils", icon: "Cpu" as const, href: "/(app)/appareil/parc" },
-            { titre: "Apparence", icon: "Settings" as const, href: "/(app)/appareil/apparence" },
-            // La bascule depuis l'ancienne app : les deux portent le même
-            // identifiant natif, donc la nouvelle hérite du bac à sable de
-            // l'ancienne. L'entrée reste visible même quand il n'y a rien -
-            // c'est justement ce qu'on vient vérifier avant de désinstaller.
-            { titre: "Ancienne application", icon: "CloudDownload" as const, href: "/(app)/appareil/bascule" },
           ].map((a) => (
             <Pressable
               key={a.href}
-              onPress={() => aller(a.href)}
+              onPress={aller(a.href)}
               haptic="selection"
               accessibilityRole="link"
               accessibilityLabel={a.titre}
@@ -179,7 +182,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <Pressable
-          onPress={() => aller("/profil")}
+          onPress={aller("/profil")}
           accessibilityRole="link"
           accessibilityLabel="Mon profil"
           className="flex-row items-center gap-3"
@@ -195,7 +198,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
           </Text>
         </View>
         <Pressable
-          onPress={() => void logout()}
+          onPress={fermerPuis(onFermer, () => void logout())}
           accessibilityRole="button"
           accessibilityLabel="Se déconnecter"
           className="items-center justify-center rounded-lg"

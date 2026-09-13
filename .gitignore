@@ -41,3 +41,9 @@ example
 # generated native folders
 /ios
 /android
+
+# Artefacts de compilation des modules Expo locaux. Leur SOURCE est versionnee
+# (13 fichiers) ; leurs `build/` pesent 3,2 Mo de binaires, de .dex et de caches
+# Kotlin incrementaux, regeneres par `expo prebuild` a chaque construction.
+modules/*/android/build/
+modules/*/ios/build/

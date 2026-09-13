@@ -193,6 +193,7 @@ export function DataRow({
   sousValeur,
   badge,
   icon,
+  vignette,
   onPress,
   chevron = true,
 }: {
@@ -202,16 +203,25 @@ export function DataRow({
   sousValeur?: string | null;
   badge?: React.ReactNode;
   icon?: IconName;
+  /**
+   * Une vignette à la place de l'icône : la photo d'un article, par exemple.
+   *
+   * Elle PRIME sur `icon`, qui reste le repli des rangées sans image. Les deux
+   * occupent la même case de 36 points, sinon une liste dont seuls quelques
+   * articles portent une photo verrait ses textes se décaler d'une ligne à
+   * l'autre.
+   */
+  vignette?: React.ReactNode;
   onPress?: () => void;
   chevron?: boolean;
 }) {
   const contenu = (
     <View className="flex-row items-center gap-3 bg-card px-4 py-3" style={{ minHeight: HIT.min }}>
-      {icon ? (
+      {vignette ?? (icon ? (
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-muted">
           <Icon name={icon} size={18} color="mutedForeground" />
         </View>
-      ) : null}
+      ) : null)}
       <View className="min-w-0 flex-1">
         <View className="flex-row items-center gap-2">
           <Text variant="bodySmall" numberOfLines={1} className="min-w-0 flex-1 font-sans-medium">

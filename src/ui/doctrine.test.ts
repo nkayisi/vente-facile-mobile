@@ -763,3 +763,230 @@ describe("aucun détour par l'écran Synchronisation pour synchroniser", () => {
     ).toBe(false);
   });
 });
+
+/**
+ * Le registre d'icônes est DÉRIVÉ, et il doit le rester.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `Table` VIVAIT DANS LE FICHIER ENGENDRÉ, ET NULLE PART AILLEURS.        │
+ * │                                                                          │
+ * │ Il avait été ajouté à la main dans `icons/registre.ts`, contre la        │
+ * │ consigne écrite en tête de ce fichier. La première régénération l'a      │
+ * │ donc effacé, et `features/export/feuille-format` a cessé de compiler -   │
+ * │ dans une commande dont l'auteur n'avait aucune raison de soupçonner      │
+ * │ qu'elle RETIRAIT quelque chose.                                          │
+ * │                                                                          │
+ * │ Ce test compare les deux listes. Il n'exige pas de lancer le             │
+ * │ générateur : il lit sa table de demandes et l'export du registre, ce qui │
+ * │ suffit à voir une entrée qui n'existe que d'un côté.                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le registre d'icônes ne diverge pas de son générateur", () => {
+  const registre = readFileSync(join(RACINE, "ui/icons/registre.ts"), "utf8");
+  const generateur = readFileSync(
+    resolve(RACINE, "../scripts/generer-registre-icones.mjs"),
+    "utf8"
+  );
+
+  const demandes = new Set(
+    (sansCommentaires(
+      generateur.slice(
+        generateur.indexOf("const DEMANDES"),
+        generateur.indexOf("];", generateur.indexOf("const DEMANDES"))
+      )
+    ).match(/"([A-Za-z0-9]+)"/g) ?? []).map((m) => m.replaceAll('"', ""))
+  );
+
+  const importes = new Set(
+    (registre.match(/^import (\w+) from "lucide-react-native\/icons\//gm) ?? []).map(
+      (l) => l.replace(/^import (\w+).*/, "$1")
+    )
+  );
+
+  it("le balayage MORD", () => {
+    // Un balayage qui ne trouve rien passe et ne prouve rien : ce dépôt l'a
+    // déjà payé sur `test_bulk_write_visibility` et `test_users_scope`.
+    expect(demandes.size).toBeGreaterThan(50);
+    expect(importes.size).toBeGreaterThan(50);
+  });
+
+  it("chaque icône du registre est DEMANDÉE par le générateur", () => {
+    const orphelines = [...importes].filter((n) => !demandes.has(n));
+    expect(orphelines).toEqual([]);
+  });
+
+  it("chaque icône demandée est bien dans le registre", () => {
+    const manquantes = [...demandes].filter((n) => !importes.has(n));
+    expect(manquantes).toEqual([]);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN FORMULAIRE D'AUTHENTIFICATION SE CENTRE, IL NE SE COLLE PAS EN HAUT. │
+ * │                                                                          │
+ * │ Ces écrans n'ont RIEN d'autre à l'écran : quatre champs de connexion sur │
+ * │ un téléphone haut laissaient les deux tiers du bas vides, et le bloc     │
+ * │ paraissait tombé là plutôt que posé. Le remède qui vient à l'esprit est  │
+ * │ une marge de tête (`mt-10`, `pt-8`) : elle centre à l'oeil sur le        │
+ * │ terminal de celui qui l'écrit, et décale tous les autres - c'est         │
+ * │ exactement ce que les quatre écrans portaient.                           │
+ * │                                                                          │
+ * │ Le centrage appartient donc à `Screen`, qui connaît la hauteur réelle,   │
+ * │ et non à l'écran, qui ne la connaît pas.                                 │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le parcours d'authentification centre son contenu", () => {
+  /** L'ouverture de chaque `<Screen …>`, attributs compris. */
+  function balisesEcran(code: string): string[] {
+    return [...code.matchAll(/<Screen\b[^>]*>/g)].map((m) => m[0]);
+  }
+
+  /**
+   * `HorsLigneBloquant` porte son propre centrage (`flex-1 items-center
+   * justify-center`), et c'est écrit dans son fichier : ajouter `centre` sur le
+   * `Screen` qui l'enveloppe serait une redondance posée pour faire passer un
+   * test. Les écrans de code PIN, eux, centrent à la main dans un `Screen` non
+   * défilant, la pavé numérique ayant besoin de sa hauteur.
+   */
+  const centreAutrement = (code: string): boolean =>
+    code.includes("justify-center") || code.includes("HorsLigneBloquant");
+
+  it("aucun écran de connexion ou d'inscription ne laisse son contenu en haut", () => {
+    const fautifs: string[] = [];
+    let balayees = 0;
+
+    for (const groupe of ["(auth)", "(locked)"]) {
+      for (const f of fichiers(join(RACINE, "app", groupe))) {
+        const code = sansCommentaires(readFileSync(f, "utf8"));
+        for (const balise of balisesEcran(code)) {
+          balayees += 1;
+          if (!/\bcentre\b/.test(balise) && !centreAutrement(code)) {
+            fautifs.push(`${relative(RACINE, f)} : ${balise}`);
+          }
+        }
+      }
+    }
+
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien : c'est le
+    // piège que ce dépôt a déjà payé trois fois.
+    expect(balayees).toBeGreaterThan(4);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("aucune marge de tête ne rattrape le centrage à la main", () => {
+    // `mt-10` sur le titre de la connexion et `pt-8` sur la reprise
+    // d'enrôlement : les deux décalaient le bloc SOUS l'axe une fois le
+    // centrage posé, et c'est la première chose qu'on remet par réflexe.
+    const fautifs: string[] = [];
+    for (const groupe of ["(auth)", "(locked)"]) {
+      for (const f of fichiers(join(RACINE, "app", groupe))) {
+        const code = sansCommentaires(readFileSync(f, "utf8"));
+        const m = code.match(/\b(?:mt|pt|my|py)-(?:8|10|12|16|20|24)\b/);
+        if (m) fautifs.push(`${relative(RACINE, f)} : ${m[0]}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le balayage MORD sur un `Screen` non centré", () => {
+    const nu = "<Screen scroll>";
+    const centre = "<Screen scroll centre>";
+    expect(balisesEcran(`${nu}<Text />`)).toEqual([nu]);
+    expect(/\bcentre\b/.test(nu)).toBe(false);
+    expect(/\bcentre\b/.test(centre)).toBe(true);
+    // `centered`, `centre-ville` ou un `className` qui contient le mot ne
+    // doivent pas être pris pour le prop : la frontière de mot les écarte, et
+    // c'est un souligné qui avait fait passer le garde-fou des écritures en
+    // masse sur le site même qu'il devait attraper.
+    expect(/\bcentre\b/.test('<Screen className="items-center">')).toBe(false);
+  });
+
+  it("`Screen` apparie `flexGrow` et `justifyContent`, et il le faut", () => {
+    const code = readFileSync(join(RACINE, "ui", "screen.tsx"), "utf8");
+    // `justifyContent` SEUL, sur un conteneur dimensionné par son contenu, ne
+    // centre jamais rien. Et sans `flexGrow`, un contenu plus haut que l'écran
+    // n'aurait pas de quoi remplir son conteneur : la répartition d'espace
+    // libre le décalerait hors du défilement, donc le haut du formulaire
+    // deviendrait inatteignable.
+    expect(code).toMatch(/flexGrow: 1, justifyContent: "center"/);
+  });
+});
+
+describe("la synchronisation automatique ne s'impose pas", () => {
+  const SYNC = join(RACINE, "features", "sync");
+  const sources = fichiers(SYNC);
+
+  it("le balayage balaie bien quelque chose", () => {
+    // Un balayage qui ne trouve rien passe au vert et ne prouve rien : le
+    // dépôt s'est déjà fait prendre trois fois.
+    expect(sources.length).toBeGreaterThan(5);
+  });
+
+  it("aucun toast n'échappe à `doitNotifier`", () => {
+    // ┌──────────────────────────────────────────────────────────────────┐
+    // │ UNE ORIGINE AUTOMATIQUE NE PARLE JAMAIS.                        │
+    // │                                                                  │
+    // │ Cinq déclencheurs partent tout seuls. Si l'un d'eux annonçait    │
+    // │ son résultat, un marchand en zone morte recevrait un bandeau     │
+    // │ toutes les minutes, et un marchand connecté un « Synchronisation │
+    // │ terminée » après chaque vente. À ce rythme on cesse de lire les  │
+    // │ toasts, y compris celui qui comptait.                            │
+    // └──────────────────────────────────────────────────────────────────┘
+    // Le contrôle est à la LIGNE et non au fichier : un fichier qui garde un
+    // toast et en laisse un autre nu passerait un contrôle par fichier, et
+    // c'est exactement la forme que prendrait l'oubli.
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const lignes = sansCommentaires(readFileSync(f, "utf8")).split("\n");
+      lignes.forEach((ligne, i) => {
+        if (!/toast\.(succes|erreur|info)\s*\(/.test(ligne)) return;
+        if (!/doitNotifier\s*\(/.test(ligne)) fautifs.push(`${relative(RACINE, f)}:${i + 1}`);
+      });
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le balayage MORD sur un toast non gardé", () => {
+    const garde = 'if (doitNotifier(depuis)) toast.succes("fini");';
+    const nu = 'toast.succes("fini");';
+    const appel = /toast\.(succes|erreur|info)\s*\(/;
+    expect(appel.test(nu)).toBe(true);
+    expect(/doitNotifier\s*\(/.test(nu)).toBe(false);
+    expect(/doitNotifier\s*\(/.test(garde)).toBe(true);
+  });
+
+  it("aucune cadence par `setInterval`", () => {
+    // Un intervalle qui dérive pendant qu'un cycle tourne empile les réveils,
+    // et rien ne le signale : la cadence passe par un `setTimeout`
+    // reprogrammé après chaque cycle, dont on connaît toujours le seul
+    // exemplaire vivant.
+    const fautifs = sources
+      .filter((f) => /\bsetInterval\s*\(/.test(sansCommentaires(readFileSync(f, "utf8"))))
+      .map((f) => relative(RACINE, f));
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le balayage MORD sur un `setInterval`", () => {
+    expect(/\bsetInterval\s*\(/.test("const t = setInterval(tic, 1000);")).toBe(true);
+    expect(/\bsetInterval\s*\(/.test("const t = setTimeout(tic, 1000);")).toBe(false);
+  });
+
+  it("aucun fichier ne pose un minuteur sans jamais en nettoyer aucun", () => {
+    // Un `setTimeout` sans aucun `clearTimeout` dans le même fichier survit au
+    // démontage : le fournisseur est démonté à CHAQUE verrouillage, et un
+    // réveil orphelin solliciterait un contexte qui n'existe plus.
+    //
+    // ⚠ La portée de ce contrôle est le FICHIER, et il faut le dire : il
+    // attrape un module qui ne nettoie jamais rien, pas un nettoyage oublié
+    // parmi plusieurs. Mesuré : retirer UN `clearTimeout` sur trois le laisse
+    // au vert. C'est le test du fournisseur qui juge le démontage réel.
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/\bsetTimeout\s*\(/.test(code)) continue;
+      if (!/\bclearTimeout\s*\(/.test(code)) fautifs.push(relative(RACINE, f));
+    }
+    expect(fautifs).toEqual([]);
+  });
+});

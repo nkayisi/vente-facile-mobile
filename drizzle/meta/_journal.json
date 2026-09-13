@@ -57,6 +57,13 @@
       "when": 1788657639920,
       "tag": "0007_index_inventaire",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789013078525,
+      "tag": "0008_photos_articles",
+      "breakpoints": true
     }
   ]
 }

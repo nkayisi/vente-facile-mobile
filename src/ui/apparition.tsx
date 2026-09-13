@@ -26,32 +26,13 @@
  * c'est l'élément DÉJÀ en place.
  */
 import { useEffect, useState } from "react";
-import { AccessibilityInfo, Animated, Easing } from "react-native";
+import { Animated, Easing } from "react-native";
+
+import { useMouvementReduit } from "./mouvement-reduit";
 
 /** Décalage entre deux éléments, et rang au-delà duquel tout entre ensemble. */
 const PAS_MS = 40;
 const RANGS_DECALES = 6;
-
-function useMouvementReduit(): boolean {
-  const [reduit, setReduit] = useState(false);
-  useEffect(() => {
-    let vivant = true;
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((v) => {
-        if (vivant) setReduit(v);
-      })
-      .catch(() => {
-        // Un système qui ne sait pas répondre n'est pas une raison de ne rien
-        // afficher : on anime, c'est le comportement par défaut.
-      });
-    const abo = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduit);
-    return () => {
-      vivant = false;
-      abo.remove();
-    };
-  }, []);
-  return reduit;
-}
 
 export function Apparition({
   index = 0,

@@ -187,9 +187,51 @@ export const printJobs = sqliteTable(
   (t) => [index("print_jobs_created_idx").on(t.createdAt)]
 );
 
+/**
+ * Photos d'articles en attente d'envoi.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE PHOTO NE PEUT PAS PASSER PAR LE JOURNAL, ET C'EST STRUCTUREL.       │
+ * │                                                                          │
+ * │ `/sync/operations/` transporte du JSON ; `Product.image` est un          │
+ * │ `ImageField`, donc du multipart. La photo attend donc ICI, et elle part  │
+ * │ par un `PATCH /products/{id}/` séparé, APRÈS que le serveur a l'article. │
+ * │                                                                          │
+ * │ Ce qui rend la manœuvre possible : `product.create` transmet l'ID du     │
+ * │ TERMINAL (`local_id` dans le gestionnaire), et le serveur le conserve.   │
+ * │ La photo vise donc le bon article sans avoir à guetter un identifiant    │
+ * │ renvoyé.                                                                 │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Le fichier est COPIÉ dans le dossier de l'application avant d'être inscrit
+ * ici : l'URI que rend le sélecteur pointe vers un cache que le système efface
+ * dès que le stockage se tend, et une photo prise le matin partirait le soir
+ * sur un fichier disparu.
+ */
+export const pendingProductPhotos = sqliteTable(
+  "pending_product_photos",
+  {
+    /** L'article visé. C'est l'ID du terminal, que le serveur reprend. */
+    productId: text("product_id").primaryKey(),
+    /** Chemin du fichier COPIÉ, dans le dossier de l'application. */
+    uri: text("uri").notNull(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    /** Nombre d'envois tentés : sert la temporisation, et le message d'échec. */
+    attempts: integer("attempts").notNull().default(0),
+    /** Dernier refus, tel que l'API l'a écrit. Nul tant que rien n'a échoué. */
+    lastError: text("last_error"),
+  },
+  (t) => [index("pending_photos_created_idx").on(t.createdAt)]
+);
+
 export type SyncStateRow = typeof syncState.$inferSelect;
 export type LocalSetting = typeof localSettings.$inferSelect;
 export type OutboxOperation = typeof outboxOperations.$inferSelect;
 export type NewOutboxOperation = typeof outboxOperations.$inferInsert;
 export type ParkedCart = typeof parkedCarts.$inferSelect;
+export type PendingProductPhoto = typeof pendingProductPhotos.$inferSelect;
 export type PrintJob = typeof printJobs.$inferSelect;
