@@ -152,6 +152,10 @@ export default function Encaissement() {
           deviseFacture,
           snapshot,
           registerName: session.registerName,
+          warehouseName: session.warehouseName ?? undefined,
+          // La liste sert à NOMMER le règlement : sans elle, le libellé de la
+          // ligne serait l'identifiant du moyen de paiement.
+          moyens,
           restantDu: aCredit ? totaux.restantFacture : 0,
           aCredit,
         }),

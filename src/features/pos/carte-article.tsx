@@ -10,7 +10,7 @@ import { View } from "react-native";
 
 import { getPackaging, pluralizeUnit } from "@vente-facile/core";
 
-import { Icon, Pressable, Text } from "@/ui";
+import { Icon, Pressable, Text, VignetteArticle } from "@/ui";
 import type { ArticlePos } from "./catalogue";
 
 interface Props {
@@ -26,13 +26,22 @@ interface Props {
 
 export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, onPress }: Props) {
   const conditionnement = getPackaging(article);
-  // UN ARTICLE SOUS INVENTAIRE EST INERTE, comme au back-office. Le laisser
-  // cliquable ferait composer un panier, imprimer un ticket, puis découvrir le
-  // refus du serveur avec le client déjà parti - c'est exactement ce qui est
-  // arrivé au comptoir. Le verrou prime sur l'épuisement : c'est le motif que
-  // le serveur oppose en premier.
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ LE VERROU REND LA CARTE INERTE. L'ÉPUISEMENT, NON.                    │
+  // │                                                                        │
+  // │ Un article sous inventaire est refusé par le serveur AVANT même qu'il  │
+  // │ regarde les quantités, et ce n'est pas un manque que le marchand peut  │
+  // │ résoudre au comptoir : la carte reste morte, et elle porte la          │
+  // │ RÉFÉRENCE de la session pour qu'on sache quoi débloquer.               │
+  // │                                                                        │
+  // │ Un article ÉPUISÉ, lui, s'ajoute désormais au panier. Il garde son     │
+  // │ icône, sa couleur et son libellé - c'est l'information - mais il se    │
+  // │ touche : le panier se chiffre, l'encaissement se ferme, et la          │
+  // │ PROFORMA sort. Une tuile grise sans explication renvoyait le client    │
+  // │ sans rien lui donner ; il repart maintenant avec un devis.             │
+  // └────────────────────────────────────────────────────────────────────────┘
   const verrouille = article.verrou_inventaire !== null;
-  const inerte = verrouille || epuise;
+  const inerte = verrouille;
 
   return (
     <Pressable
@@ -48,17 +57,24 @@ export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, on
           : `${article.name}, ${prix}`
       }
     >
-      <View className="flex-row items-start justify-between">
-        <Text variant="body" numberOfLines={2} className="flex-1 font-sans-medium">
-          {article.name}
-        </Text>
-        {auPanier > 0 ? (
-          <View className="ml-2 min-w-6 items-center rounded-full bg-primary px-1.5 py-0.5">
-            <Text variant="caption" className="text-primary-foreground">
-              {auPanier}
-            </Text>
-          </View>
-        ) : null}
+      {/* LA VIGNETTE CÈDE LA PLACE AU PRIX, jamais l'inverse. Une photo pleine
+          largeur au-dessus du nom repousserait le stock hors de l'écran, or
+          c'est le stock qui fait refuser la vente. Disposition du web : image
+          à gauche, colonne d'information à droite. */}
+      <View className="flex-row items-start gap-2">
+        <VignetteArticle uri={article.image} taille="md" />
+        <View className="flex-1 flex-row items-start justify-between">
+          <Text variant="body" numberOfLines={2} className="flex-1 font-sans-medium">
+            {article.name}
+          </Text>
+          {auPanier > 0 ? (
+            <View className="ml-2 min-w-6 items-center rounded-full bg-primary px-1.5 py-0.5">
+              <Text variant="caption" className="text-primary-foreground">
+                {auPanier}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       <Text variant="bodyLarge" className="mt-2 font-sans-semibold text-primary">

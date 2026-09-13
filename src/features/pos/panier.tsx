@@ -38,7 +38,9 @@ import { useSession } from "@/session/provider";
 import { pointsDuClient } from "./donnees";
 import { detteEnAttente } from "./reserve-locale";
 import {
+  avertissementDeStock,
   motifDeRefus,
+  motifsEncaissement,
   PANIER_VIDE,
   reducteurPanier,
   type ActionPanier,
@@ -85,6 +87,8 @@ export interface Totaux {
    * └────────────────────────────────────────────────────────────────────────┘
    */
   facture: SaleCurrencyTotals;
+  /** La même, points NON déduits : c'est elle que la PROFORMA imprime. */
+  factureBrute: SaleCurrencyTotals;
 
   /** Solde de points du client, tel que le dernier tirage l'a déposé. */
   soldePoints: number;
@@ -136,6 +140,20 @@ interface ValeurPanier {
    * déjà pour l'action « modifier » ; l'écran doit la lire de la même façon.
    */
   verifierModification: (index: number, saisie: Saisie) => string | null;
+  /**
+   * Ce que le stock ne couvre pas, sans rien fermer à l'ajout.
+   *
+   * Le caissier doit le savoir en composant - le découvrir en rendant la
+   * monnaie serait pire que le refus qu'on vient de retirer.
+   */
+  avertir: (article: ArticlePos, saisie: Saisie) => string | null;
+  /**
+   * Ce qui ferme l'ENCAISSEMENT, ligne par ligne. Vide = le panier s'encaisse.
+   *
+   * La proforma, elle, reste ouverte quoi qu'il arrive : c'est tout l'intérêt
+   * de séparer les deux.
+   */
+  ruptures: string[];
   envoyer: (action: ActionPanier) => void;
 }
 
@@ -229,6 +247,17 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       globalDiscountAmount: etat.remiseGlobale,
       loyaltyDiscount: remiseFidelite,
     });
+    // Points NON déduits : la proforma ne les réserve pas.
+    const factureBrute =
+      remiseFidelite > 0
+        ? saleCurrencyTotals({
+            lines: etat.lignes,
+            currencies: devises,
+            invoiceCurrency: deviseFacture,
+            globalDiscountAmount: etat.remiseGlobale,
+            loyaltyDiscount: 0,
+          })
+        : facture;
     const totalFacture = facture.total;
     const payeFacture = tendersIn(etat.reglements, devises, deviseFacture);
     const excedent = payeFacture - totalFacture;
@@ -262,6 +291,7 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       net: brut.total - remiseFidelite,
       totalFacture,
       facture,
+      factureBrute,
       payeFacture,
       restantFacture: Math.max(0, devises.round(-excedent, deviseFacture)),
       monnaie:
@@ -297,6 +327,8 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       // article sous inventaire enverrait le caissier chercher au dépôt une
       // marchandise qui est là, mais interdite à la vente.
       verifier: (article, saisie) => motifDeRefus(article, etat.lignes, saisie),
+      avertir: (article, saisie) => avertissementDeStock(article, etat.lignes, saisie),
+      ruptures: motifsEncaissement(etat.lignes),
       verifierModification: (index, saisie) => {
         const courante = etat.lignes[index];
         if (!courante) return null;

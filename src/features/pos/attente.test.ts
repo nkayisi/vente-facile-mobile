@@ -90,7 +90,7 @@ describe("Mise en attente", () => {
     const etat = reducteurPanier(ajouter(PANIER_VIDE, casier, 1, 0), {
       type: "client",
       client: {
-        id: "c1", name: "Kalume", allow_credit: true,
+        id: "c1", name: "Kalume", phone: null, allow_credit: true,
         credit_limit: "0", current_balance: "120000",
       },
     });
@@ -189,7 +189,7 @@ describe("Étiquette", () => {
     const etat = reducteurPanier(PANIER_VIDE, {
       type: "client",
       client: {
-        id: "c1", name: "Kalume", allow_credit: true,
+        id: "c1", name: "Kalume", phone: null, allow_credit: true,
         credit_limit: null, current_balance: null,
       },
     });

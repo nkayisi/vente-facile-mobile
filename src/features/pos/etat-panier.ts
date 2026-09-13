@@ -10,6 +10,7 @@
  * traduit par un panier FAUX plutôt que par un plantage visible.
  */
 import {
+  lignesEnRupture,
   maxGlobalDiscount,
   verifierAjout,
   type BasketLine,
@@ -23,6 +24,13 @@ import { motifDuVerrou, motifStockInconnu } from "./motifs";
 export interface ClientPos {
   id: string;
   name: string;
+  /**
+   * Imprimé sur le ticket, sous « Tél. ».
+   *
+   * La réimpression le rendait déjà depuis la vente tirée ; l'original ne
+   * l'avait pas, faute d'être sélectionné. Même asymétrie que le dépôt.
+   */
+  phone: string | null;
   allow_credit: boolean | null;
   credit_limit: string | null;
   current_balance: string | null;
@@ -127,7 +135,13 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
   switch (action.type) {
     case "ajouter": {
       const verdict = verifierAjout(action.article, etat.lignes, action.saisie);
-      if (!verdict.ok) return etat;
+      // ON GARDE L'ARITHMÉTIQUE DU VERDICT, ON N'EN GARDE PLUS LE REFUS.
+      // `quantity` et `packageQuantity` sont le miroir de `to_base` du serveur
+      // et restent indispensables. Le manque de stock, lui, ne ferme plus
+      // l'ajout : il fermera l'ENCAISSEMENT, et la proforma restera ouverte.
+      // Seule une saisie vide est encore écartée - ce n'est pas un manque de
+      // stock, c'est une absence de saisie.
+      if (verdict.quantity < 1) return etat;
 
       const index = etat.lignes.findIndex((l) => l.product.id === action.article.id);
       if (index < 0) {
@@ -166,7 +180,7 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
       // qu'on modifie se compterait contre elle-même.
       const autres = etat.lignes.filter((_, i) => i !== action.index);
       const verdict = verifierAjout(courante.product, autres, action.saisie);
-      if (!verdict.ok) return etat;
+      // Même règle qu'à l'ajout : le manque de stock ne referme pas la saisie.
       if (verdict.quantity < 1) return etat;
 
       const lignes = [...etat.lignes];
@@ -247,9 +261,31 @@ export function motifDeRefus(
   if (article.verrou_inventaire !== null) {
     return motifDuVerrou(article.name, article.verrou_inventaire);
   }
-
+  // LE STOCK N'EST PLUS UN REFUS ICI. Il l'est à l'encaissement, par
+  // `motifsEncaissement`. Ce qui manque se DIT quand même, sans fermer le
+  // bouton : c'est `avertissementDeStock`.
   const verdict = verifierAjout(article, lignes, saisie);
-  if (verdict.ok) return null;
+  if (verdict.quantity < 1) return verdict.raison;
+  return null;
+}
+
+/**
+ * Ce que le stock ne couvre pas, dit sans rien fermer.
+ *
+ * Le caissier doit savoir qu'il compose un panier qu'il ne pourra pas
+ * encaisser - le découvrir au moment de rendre la monnaie serait pire que le
+ * refus qu'on vient de retirer. Mais c'est un AVERTISSEMENT : le bouton
+ * « Ajouter » reste ouvert, parce que ce panier a vocation à sortir en
+ * proforma.
+ */
+export function avertissementDeStock(
+  article: ArticlePos,
+  lignes: LignePanier[],
+  saisie: Saisie
+): string | null {
+  if (article.verrou_inventaire !== null) return null; // déjà un refus
+  const verdict = verifierAjout(article, lignes, saisie);
+  if (verdict.ok || verdict.quantity < 1) return null;
 
   // Seul le cas « aucune ligne de stock » est réétiqueté. Un zéro RÉELLEMENT
   // enregistré doit continuer de se lire « 0 en stock » : c'est une
@@ -261,4 +297,26 @@ export function motifDeRefus(
     !article.allow_negative_stock;
 
   return inconnu ? motifStockInconnu(article.name) : verdict.raison;
+}
+
+/**
+ * Ce qui ferme l'encaissement, ligne par ligne.
+ *
+ * Vide, le panier s'encaisse. Non vide, il ne s'encaisse pas et l'écran DIT
+ * lesquelles, parce qu'un bouton grisé sans motif est un cul-de-sac.
+ *
+ * Le réétiquetage du stock inconnu est le même qu'à l'avertissement : les deux
+ * phrases doivent se ressembler, sinon le caissier croit à deux problèmes là
+ * où il n'y en a qu'un.
+ */
+export function motifsEncaissement(lignes: LignePanier[]): string[] {
+  return lignesEnRupture(lignes).map((rupture) => {
+    const article = lignes[rupture.index]?.product as ArticlePos | undefined;
+    const inconnu =
+      article &&
+      article.stock_quantity === null &&
+      article.track_inventory &&
+      !article.allow_negative_stock;
+    return inconnu ? motifStockInconnu(article.name) : rupture.raison;
+  });
 }

@@ -108,6 +108,7 @@ export default function Comptoir() {
   }
 
   const nbLignes = panier.etat.lignes.length;
+  const ruptures = panier.ruptures;
 
   return (
     // Le comptoir est un ONGLET : il n'a plus de bouton « quitter », on en
@@ -249,6 +250,21 @@ export default function Comptoir() {
             </Text>
             <Text variant="h3">{panier.argent(panier.totaux.totalFacture)}</Text>
           </View>
+          {/* LA MÊME PORTE QUE SUR LE PANIER, SINON ELLE NE SERT À RIEN.
+              Fermer l'encaissement dans le panier et le laisser ouvert ici
+              rendrait le garde-fou contournable d'un écran, et le refus
+              tomberait au moment de rendre la monnaie. La phrase, elle, vit
+              sur le panier : c'est là qu'on voit QUELLE ligne manque. */}
+          {ruptures.length > 0 ? (
+            <View className="mb-2 flex-row items-center gap-1.5">
+              <Icon name="AlertCircle" size={14} color="destructive" />
+              <Text variant="caption" className="flex-1 text-destructive">
+                {ruptures.length === 1
+                  ? "Un article manque en stock : proforma possible, encaissement non."
+                  : `${ruptures.length} articles manquent en stock : proforma possible, encaissement non.`}
+              </Text>
+            </View>
+          ) : null}
           <View className="flex-row gap-3">
             <View className="flex-1">
               <Button variant="secondary" onPress={() => router.push("/pos/panier")} fullWidth>
@@ -256,7 +272,11 @@ export default function Comptoir() {
               </Button>
             </View>
             <View className="flex-1">
-              <Button onPress={() => router.push("/pos/encaissement")} fullWidth>
+              <Button
+                onPress={() => router.push("/pos/encaissement")}
+                disabled={ruptures.length > 0}
+                fullWidth
+              >
                 Encaisser
               </Button>
             </View>
@@ -273,6 +293,7 @@ export default function Comptoir() {
         // Le motif du refus s'AFFICHE, et le bouton se ferme. Il était calculé
         // puis jeté : l'appui restait sans effet et sans explication.
         verifier={(saisie: Saisie) => (choisi ? panier.verifier(choisi, saisie) : null)}
+        avertir={(saisie: Saisie) => (choisi ? panier.avertir(choisi, saisie) : null)}
         onValider={(saisie: Saisie) => {
           if (!choisi) return;
           const refus = panier.verifier(choisi, saisie);

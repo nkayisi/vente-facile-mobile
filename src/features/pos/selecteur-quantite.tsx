@@ -61,6 +61,16 @@ export interface SelecteurQuantiteProps {
    * └────────────────────────────────────────────────────────────────────────┘
    */
   verifier?: (saisie: Saisie) => string | null;
+  /**
+   * Ce que le stock ne couvre pas, SANS fermer le bouton.
+   *
+   * Deux props et non une, parce que ce sont deux décisions différentes : un
+   * refus ferme la saisie, un avertissement la laisse passer. Depuis que la
+   * rupture n'est plus un refus, la taire complètement ferait composer un
+   * panier dont le caissier ne découvrirait l'impasse qu'au moment d'encaisser,
+   * client devant lui.
+   */
+  avertir?: (saisie: Saisie) => string | null;
   libelleValider?: string;
   /** Retrait de la ligne, proposé en édition. */
   onRetirer?: () => void;
@@ -75,6 +85,7 @@ export function SelecteurQuantite({
   scellesDisponibles,
   vracDisponible,
   verifier,
+  avertir,
   libelleValider = "Ajouter",
   onRetirer,
 }: SelecteurQuantiteProps) {
@@ -127,6 +138,9 @@ export function SelecteurQuantite({
   // Une saisie vide n'est pas un refus : afficher « indiquez une quantité » en
   // rouge dès l'ouverture ferait crier l'écran avant la moindre frappe.
   const refus = rien ? null : (verifier?.(saisie) ?? null);
+  // L'avertissement ne paraît que s'il n'y a pas déjà un refus : deux encadrés
+  // rouges pour un seul article feraient croire à deux problèmes.
+  const alerte = rien || refus ? null : (avertir?.(saisie) ?? null);
 
   const motDetail = conditionnement?.retailWord ?? article.unit_name ?? "unité";
   const motContenant = conditionnement?.packageWord ?? "contenant";
@@ -206,6 +220,21 @@ export function SelecteurQuantite({
               <Text variant="bodySmall" className="flex-1 text-destructive">
                 {refus}
               </Text>
+            </View>
+          ) : null}
+
+          {alerte ? (
+            <View className="mx-5 mt-3 flex-row items-start gap-2 rounded-xl bg-warning/10 px-4 py-3">
+              <Icon name="AlertTriangle" size={18} color="warning" />
+              <View className="flex-1">
+                <Text variant="bodySmall" className="text-warning">
+                  {alerte}
+                </Text>
+                <Text variant="caption" className="mt-0.5 text-muted-foreground">
+                  {"Vous pouvez l'ajouter pour chiffrer une proforma, mais la "}
+                  {"vente ne pourra pas être encaissée."}
+                </Text>
+              </View>
             </View>
           ) : null}
 

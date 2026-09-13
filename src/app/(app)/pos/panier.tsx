@@ -13,11 +13,15 @@ import { getPackaging, pluralizeUnit } from "@vente-facile/core";
 import { lineGross, looseQuantityOf, type Saisie } from "@vente-facile/core/pos";
 
 import { etiquetteParDefaut, mettreEnAttente } from "@/features/pos/attente";
+import { donneesProforma } from "@/features/pos/proforma";
+import { PREFIXE, prochainNumero } from "@/features/pos/numerotation";
+import { imprimerProforma } from "@/printing/jobs";
+import { useSession } from "@/session/provider";
 import { sessionOuverte } from "@/features/pos/caisse";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
 import { usePanier, type LignePanier } from "@/features/pos/panier";
 import {
-  Button, Divider, EmptyState, FormField, Icon, Input, Pressable, Screen, Text,
+  Button, Divider, EmptyState, FormField, Icon, Input, Pressable, Screen, Text, useToast,
 } from "@/ui";
 
 export default function Panier() {
@@ -28,6 +32,50 @@ export default function Panier() {
   // Verrou synchrone AVANT tout `setState` : deux appuis rapprochés rangeraient
   // le panier deux fois, et le second appui viderait un panier déjà vide.
   const verrouAttente = useRef(false);
+  const verrouProforma = useRef(false);
+  const [proformaEnCours, setProformaEnCours] = useState(false);
+  const { snapshot } = useSession();
+  const toast = useToast();
+
+  /**
+   * Chiffre le panier sur un papier qui dit n'être pas un reçu.
+   *
+   * Rien n'est enregistré : ni vente, ni devis, ni opération en file. Et le
+   * PANIER RESTE EN PLACE - c'est ce qui rend la réimpression possible sans
+   * table de documents, et surtout ce qui permet d'encaisser dans la foulée si
+   * le client dit oui. Le back-office le vidait, et c'est ce comportement-là
+   * qui change.
+   */
+  const sortirProforma = async () => {
+    if (verrouProforma.current || lignes.length === 0) return;
+    verrouProforma.current = true;
+    setProformaEnCours(true);
+    try {
+      const caisse = await sessionOuverte();
+      const reference = await prochainNumero(
+        PREFIXE.proforma,
+        snapshot?.device?.device_code ?? ""
+      );
+      await imprimerProforma(
+        donneesProforma({
+          reference,
+          date: new Date(),
+          etat: panier.etat,
+          factureBrute: panier.totaux.factureBrute,
+          snapshot,
+          registerName: caisse?.registerName,
+          warehouseName: caisse?.warehouseName ?? undefined,
+        })
+      );
+      toast.succes(`Proforma ${reference}`);
+    } catch (e) {
+      // L'échec d'impression ne défait rien : il n'y avait rien à défaire.
+      toast.erreur(e instanceof Error ? e.message : "L'impression a échoué.");
+    } finally {
+      verrouProforma.current = false;
+      setProformaEnCours(false);
+    }
+  };
 
   const lignes = panier.etat.lignes;
 
@@ -201,18 +249,62 @@ export default function Panier() {
               </View>
             ) : null}
 
+            {/* CE QUI FERME L'ENCAISSEMENT SE DIT, ET SE DIT ICI. Un bouton
+                grisé sans motif est un cul-de-sac : le caissier appuie, rien
+                ne se passe, et il ne sait ni pourquoi ni quoi faire. La
+                phrase nomme l'article ET la sortie - la proforma. */}
+            {panier.ruptures.length > 0 ? (
+              <View className="mb-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+                <View className="flex-row items-center gap-1.5">
+                  <Icon name="AlertCircle" size={15} color="destructive" />
+                  <Text variant="bodySmall" className="flex-1 font-sans-medium text-destructive">
+                    {panier.ruptures.length === 1
+                      ? "Un article manque en stock"
+                      : `${panier.ruptures.length} articles manquent en stock`}
+                  </Text>
+                </View>
+                {panier.ruptures.slice(0, 3).map((motif) => (
+                  <Text key={motif} variant="caption" className="mt-1 text-destructive">
+                    {motif}
+                  </Text>
+                ))}
+                <Text variant="caption" className="mt-1.5 text-muted-foreground">
+                  Vous ne pouvez pas encaisser, mais vous pouvez remettre une
+                  proforma au client.
+                </Text>
+              </View>
+            ) : null}
+
+            <View className="mb-2">
+              <Button
+                variant="ghost"
+                onPress={() => setEtiquette(etiquetteParDefaut(panier.etat))}
+                fullWidth
+              >
+                Mettre en attente
+              </Button>
+            </View>
+
             <View className="flex-row gap-3">
               <View className="flex-1">
+                {/* La proforma ne dépend JAMAIS du stock : c'est précisément
+                    le document qui existe pour le cas où il manque. */}
                 <Button
                   variant="secondary"
-                  onPress={() => setEtiquette(etiquetteParDefaut(panier.etat))}
+                  onPress={() => void sortirProforma()}
+                  loading={proformaEnCours}
+                  disabled={lignes.length === 0}
                   fullWidth
                 >
-                  Mettre en attente
+                  Proforma
                 </Button>
               </View>
               <View className="flex-1">
-                <Button onPress={() => router.push("/pos/encaissement")} fullWidth>
+                <Button
+                  onPress={() => router.push("/pos/encaissement")}
+                  disabled={panier.ruptures.length > 0}
+                  fullWidth
+                >
                   Encaisser
                 </Button>
               </View>

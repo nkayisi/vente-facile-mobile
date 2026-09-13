@@ -74,6 +74,7 @@ export async function chercherClients(terme: string, limite = 25): Promise<Clien
     .select({
       id: customers.id,
       name: customers.name,
+      phone: customers.phone,
       allow_credit: customers.allowCredit,
       credit_limit: customers.creditLimit,
       current_balance: customers.currentBalance,
@@ -96,6 +97,7 @@ export async function clientParId(id: string): Promise<ClientPos | null> {
     .select({
       id: customers.id,
       name: customers.name,
+      phone: customers.phone,
       allow_credit: customers.allowCredit,
       credit_limit: customers.creditLimit,
       current_balance: customers.currentBalance,

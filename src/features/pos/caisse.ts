@@ -27,6 +27,15 @@ export interface SessionCaisse {
   registerId: string;
   registerName: string;
   warehouseId: string | null;
+  /**
+   * Le NOM du dépôt, et pas seulement son identifiant.
+   *
+   * Le ticket porte une ligne « Dépôt » que la RÉIMPRESSION rendait déjà
+   * (`warehouses.name`, joint depuis la vente tirée) et que l'original n'avait
+   * pas : l'encaissement n'avait qu'un `warehouseId` à passer. Une ligne de
+   * moins sur l'original que sur son duplicata, pour la même vente.
+   */
+  warehouseName: string | null;
   openingBalance: string | null;
   openedAt: Date | null;
   /**
@@ -113,11 +122,16 @@ export async function sessionOuverte(): Promise<SessionCaisse | null> {
       registerId: registerSessions.registerId,
       registerName: registers.name,
       warehouseId: registers.warehouseId,
+      warehouseName: warehouses.name,
       openingBalance: registerSessions.openingBalance,
       openedAt: registerSessions.openedAt,
     })
     .from(registerSessions)
     .innerJoin(registers, eq(registers.id, registerSessions.registerId))
+    // `leftJoin` : une caisse sans dépôt assigné est tolérée à l'ouverture, et
+    // un `innerJoin` la ferait disparaître - donc plus de session du tout, sur
+    // un comptoir qui vend.
+    .leftJoin(warehouses, eq(warehouses.id, registers.warehouseId))
     .where(eq(registerSessions.status, "open"))
     .orderBy(desc(registerSessions.openedAt))
     .limit(1);
@@ -155,8 +169,13 @@ export async function sessionOuverte(): Promise<SessionCaisse | null> {
   if (!derniere) return null;
 
   const [caisse] = await db
-    .select({ name: registers.name, warehouseId: registers.warehouseId })
+    .select({
+      name: registers.name,
+      warehouseId: registers.warehouseId,
+      warehouseName: warehouses.name,
+    })
     .from(registers)
+    .leftJoin(warehouses, eq(warehouses.id, registers.warehouseId))
     .where(eq(registers.id, derniere.payload.register))
     .limit(1);
 
@@ -165,6 +184,7 @@ export async function sessionOuverte(): Promise<SessionCaisse | null> {
     registerId: derniere.payload.register,
     registerName: caisse?.name ?? "Caisse",
     warehouseId: caisse?.warehouseId ?? null,
+    warehouseName: caisse?.warehouseName ?? null,
     // Absent quand le caissier n'a rien écrit : le serveur héritera alors du
     // tiroir de la dernière clôture. `"0"` par défaut affirmerait un tiroir
     // vide que personne n'a compté.
@@ -215,8 +235,13 @@ export async function ouvrirSession(
   });
 
   const [caisse] = await db
-    .select({ name: registers.name, warehouseId: registers.warehouseId })
+    .select({
+      name: registers.name,
+      warehouseId: registers.warehouseId,
+      warehouseName: warehouses.name,
+    })
     .from(registers)
+    .leftJoin(warehouses, eq(warehouses.id, registers.warehouseId))
     .where(eq(registers.id, registerId))
     .limit(1);
 
@@ -225,6 +250,7 @@ export async function ouvrirSession(
     registerId,
     registerName: caisse?.name ?? "Caisse",
     warehouseId: caisse?.warehouseId ?? null,
+    warehouseName: caisse?.warehouseName ?? null,
     openingBalance: fondDeCaisse === null ? null : String(fondDeCaisse),
     openedAt: new Date(),
     // Elle vient d'entrer au journal : rien n'a encore pu la bloquer.

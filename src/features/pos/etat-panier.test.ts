@@ -4,7 +4,14 @@
  * Un défaut ici ne plante pas : il fabrique un panier faux, qu'on découvre au
  * moment d'encaisser, ou pire, sur le ticket du client.
  */
-import { motifDeRefus, PANIER_VIDE, reducteurPanier, type EtatPanier } from "./etat-panier";
+import {
+  avertissementDeStock,
+  motifDeRefus,
+  motifsEncaissement,
+  PANIER_VIDE,
+  reducteurPanier,
+  type EtatPanier,
+} from "./etat-panier";
 import type { ArticlePos } from "./catalogue";
 
 const casier = {
@@ -78,16 +85,31 @@ describe("Panier", () => {
     expect(etat.lignes[0].quantity).toBe(20);
   });
 
-  it("refuse un ajout que le stock ne permet pas, sans toucher au panier", () => {
+  it("ACCEPTE un ajout au-delà du stock, et ferme l'encaissement", () => {
+    // Le refus a changé de place : on compose, on chiffre, on sort une
+    // proforma. Ce qui ne doit jamais arriver, c'est qu'un TICKET DE VENTE
+    // sorte pour une vente que le serveur refusera.
     const plein = ajouter(PANIER_VIDE, casier, 4, 12); // tout le rayon
     const apres = ajouter(plein, casier, 0, 1);
-    expect(apres).toBe(plein);
+    expect(apres).not.toBe(plein);
+    expect(apres.lignes[0].quantity).toBe(61);
+    expect(motifsEncaissement(apres.lignes)).toHaveLength(1);
+    expect(motifsEncaissement(apres.lignes)[0]).toContain("Stock insuffisant");
   });
 
-  it("refuse le gros quand les contenants manquent, meme si le total suffit", () => {
-    // 4 casiers scellés seulement, mais 60 unités au total.
+  it("ACCEPTE le gros quand les contenants manquent, et ferme l'encaissement", () => {
+    // 4 casiers scellés seulement, mais 60 unités au total. Le serveur
+    // refuserait : le panier se compose quand même, il ne s'encaisse pas.
     const etat = ajouter(PANIER_VIDE, casier, 5, 0);
-    expect(etat.lignes).toHaveLength(0);
+    expect(etat.lignes).toHaveLength(1);
+    expect(motifsEncaissement(etat.lignes)[0]).toContain("en scellé");
+  });
+
+  it("garde le panier encaissable tant que le stock suffit", () => {
+    // ⚠ Le cas qui attrape l'erreur de conception : une ligne posée EXACTEMENT
+    // sur le disponible ne doit pas se compter contre elle-même.
+    const etat = ajouter(PANIER_VIDE, casier, 4, 12); // tout le rayon, pile
+    expect(motifsEncaissement(etat.lignes)).toEqual([]);
   });
 
   it("exclut la ligne editee de son propre controle de stock", () => {
@@ -121,7 +143,7 @@ describe("Panier", () => {
     let etat = ajouter(PANIER_VIDE, detail, 0, 1);
     etat = reducteurPanier(etat, {
       type: "client",
-      client: { id: "c1", name: "Kalume", allow_credit: true, credit_limit: "0", current_balance: "0" },
+      client: { id: "c1", name: "Kalume", phone: null, allow_credit: true, credit_limit: "0", current_balance: "0" },
     });
     etat = reducteurPanier(etat, { type: "points", points: 500 });
     etat = reducteurPanier(etat, { type: "credit", actif: true, echeance: "2026-09-30" });
@@ -209,12 +231,21 @@ describe("motifDeRefus", () => {
     expect(motif).not.toContain("Stock insuffisant");
   });
 
+  it("NE REFUSE PLUS sur le stock : c'est un avertissement", () => {
+    // Le motif de refus est réservé à ce qui ferme réellement l'ajout, et le
+    // stock n'en fait plus partie. L'information, elle, ne se perd pas : elle
+    // passe par `avertissementDeStock`, qui ne ferme aucun bouton.
+    const vide = { ...casier, stock_quantity: 0, stock_packages: 0, stock_loose: 0 };
+    expect(motifDeRefus(vide, [], saisie)).toBeNull();
+    expect(avertissementDeStock(vide, [], saisie)).toContain("Stock insuffisant");
+  });
+
   it("distingue un stock INCONNU d'un stock nul", () => {
     // Relevé à l'écran : « Stock insuffisant : 0 en stock. » sous une carte
     // qui annonçait « Stock inconnu ». Deux affirmations contradictoires sur
     // le même écran, et le caissier ne sait ni laquelle croire ni quoi faire.
     const inconnu = { ...casier, stock_quantity: null, stock_packages: null, stock_loose: null };
-    const motif = motifDeRefus(inconnu, [], saisie)!;
+    const motif = avertissementDeStock(inconnu, [], saisie)!;
 
     expect(motif).toContain("Aucun stock enregistré");
     expect(motif).not.toContain("0 en stock");
@@ -225,10 +256,18 @@ describe("motifDeRefus", () => {
     // « inconnu » ferait chercher une synchronisation là où il faut
     // réapprovisionner.
     const vide = { ...casier, stock_quantity: 0, stock_packages: 0, stock_loose: 0 };
-    const motif = motifDeRefus(vide, [], saisie)!;
+    const motif = avertissementDeStock(vide, [], saisie)!;
 
     expect(motif).toContain("Stock insuffisant");
     expect(motif).not.toContain("Aucun stock enregistré");
+  });
+
+  it("réétiquette le stock INCONNU de la même façon à l'encaissement", () => {
+    // Deux phrases différentes pour le même manque feraient croire à deux
+    // problèmes distincts.
+    const inconnu = { ...casier, stock_quantity: null, stock_packages: null, stock_loose: null };
+    const etat = ajouter(PANIER_VIDE, inconnu, 0, 1);
+    expect(motifsEncaissement(etat.lignes)[0]).toContain("Aucun stock enregistré");
   });
 
   it("n'oppose AUCUNE borne quand l'entrepôt tolère le découvert", () => {
@@ -242,9 +281,17 @@ describe("motifDeRefus", () => {
   });
 
   it("rend le motif du NOYAU quand le stock est simplement trop court", () => {
-    const motif = motifDeRefus(casier, [], { packages: 99, loose: 0 })!;
+    const motif = avertissementDeStock(casier, [], { packages: 99, loose: 0 })!;
     expect(motif).toContain("Stock insuffisant");
     expect(motif).toContain("Primus 65cl");
+  });
+
+  it("le VERROU reste un refus, lui, et il prime", () => {
+    // Un article sous inventaire est refusé par le serveur avant même qu'il
+    // regarde les quantités : le comptoir doit refuser aussi.
+    const bloque = { ...casier, verrou_inventaire: "INV-0002" };
+    expect(motifDeRefus(bloque, [], saisie)).toContain("INV-0002");
+    expect(avertissementDeStock(bloque, [], saisie)).toBeNull();
   });
 });
 
