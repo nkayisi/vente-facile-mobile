@@ -59,3 +59,50 @@ export function sousArbre(
   }
   return [...vus];
 }
+
+export interface Rangee<T> {
+  item: T;
+  profondeur: number;
+}
+
+/**
+ * Les noeuds à plat, dans l'ordre d'un parcours d'arbre.
+ *
+ * « Sodas » doit apparaître SOUS « Boissons » : une liste alphabétique plate
+ * les séparerait, et le marchand ne verrait pas que l'une contient l'autre.
+ *
+ * L'ORDRE D'ENTRÉE EST CONSERVÉ dans une fratrie : c'est à l'appelant de
+ * trier, et il trie comme le serveur (`Category.Meta.ordering`).
+ *
+ * ⚠ Un noeud dont le parent a disparu revient en FIN de liste, à la profondeur
+ * zéro. Le perdre le rendrait inatteignable sans que rien ne le signale, et
+ * c'est un cas ordinaire : le parent peut avoir été supprimé entre deux
+ * tirages. Le parcours est borné par les identifiants déjà vus, si bien qu'une
+ * hiérarchie accidentellement cyclique ralentit sans boucler.
+ */
+export function ordreArbre<T extends NoeudCategorie>(noeuds: T[]): Rangee<T>[] {
+  const enfants = new Map<string | null, T[]>();
+  for (const n of noeuds) {
+    const cle = n.parentId ?? null;
+    const fratrie = enfants.get(cle);
+    if (fratrie) fratrie.push(n);
+    else enfants.set(cle, [n]);
+  }
+
+  const rendu: Rangee<T>[] = [];
+  const vus = new Set<string>();
+  const descendre = (parent: string | null, profondeur: number) => {
+    for (const n of enfants.get(parent) ?? []) {
+      if (vus.has(n.id)) continue;
+      vus.add(n.id);
+      rendu.push({ item: n, profondeur });
+      descendre(n.id, profondeur + 1);
+    }
+  };
+  descendre(null, 0);
+
+  for (const n of noeuds) {
+    if (!vus.has(n.id)) rendu.push({ item: n, profondeur: 0 });
+  }
+  return rendu;
+}

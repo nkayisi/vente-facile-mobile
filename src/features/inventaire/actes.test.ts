@@ -34,9 +34,12 @@ jest.mock("@/sync", () => ({
     mockLireJournal(kind, options),
 }));
 
+import { enqueue } from "@/sync";
+
 import {
   comptagesEnAttente,
   creationsEnAttente,
+  creerArticle,
   sessionsEnAttente,
 } from "./actes";
 
@@ -156,5 +159,112 @@ describe("comptagesEnAttente", () => {
       { session: "autre", counts: [{ id: "l1", quantity_counted: "12" }] },
     ]);
     expect((await comptagesEnAttente("s1")).size).toBe(0);
+  });
+});
+
+/**
+ * Le corps d'un article, tel que le SERIALIZER du back-office l'attend.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `selling_mode: "both"` N'EST PAS UN CHOIX DU MODÈLE.                    │
+ * │                                                                          │
+ * │ Les trois valeurs sont `retail_only`, `wholesale_only` et                │
+ * │ `wholesale_and_retail`. Le terminal envoyait « both » dès qu'un          │
+ * │ conditionnement était saisi : 400, refus DÉTERMINISTE, quarantaine,      │
+ * │ jamais réessayé. Aucun article conditionné créé sur un terminal n'est    │
+ * │ donc jamais arrivé.                                                      │
+ * │                                                                          │
+ * │ Vérifié contre le vrai serveur avant correctif :                         │
+ * │   {"selling_mode":["« both » n'est pas un choix valide."]}  [HTTP 400]   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("creerArticle", () => {
+  const base = {
+    nom: "Sucre 1kg",
+    sku: "SUC-1KG",
+    modeVente: "retail_only" as const,
+    prixVente: 1500,
+    prixAchat: 1000,
+    taxable: false,
+    suitLeStock: true,
+  };
+
+  // ⚠ `enqueue` est un mock PARTAGÉ par tout le fichier : sans remise à zéro,
+  // `calls[0]` est celui du test précédent et l'assertion porte sur un corps
+  // qui n'est pas le sien. On lit donc le DERNIER appel, et on repart de zéro.
+  beforeEach(() => (enqueue as jest.Mock).mockClear());
+
+  const corps = () => {
+    const appels = (enqueue as jest.Mock).mock.calls;
+    return appels[appels.length - 1][2] as Record<string, unknown>;
+  };
+
+  it("n'envoie JAMAIS un mode de vente hors des trois du modèle", async () => {
+    const modes = ["retail_only", "wholesale_only", "wholesale_and_retail"] as const;
+    for (const mode of modes) {
+      (enqueue as jest.Mock).mockClear();
+      await creerArticle({
+        ...base,
+        modeVente: mode,
+        unite: "u-1",
+        unitesParContenant: 12,
+        uniteContenant: "u-2",
+        prixVenteGros: 16000,
+      });
+      expect(modes).toContain(corps().selling_mode as string);
+    }
+  });
+
+  it("porte le conditionnement quand le mode le demande", async () => {
+    await creerArticle({
+      ...base,
+      modeVente: "wholesale_and_retail",
+      unite: "u-1",
+      unitesParContenant: 12,
+      uniteContenant: "u-2",
+      prixVenteGros: 16000,
+      prixAchatGros: 11000,
+    });
+
+    expect(corps()).toMatchObject({
+      selling_mode: "wholesale_and_retail",
+      units_per_package: 12,
+      packaging_unit: "u-2",
+      wholesale_price: "16000",
+      package_cost_price: "11000",
+    });
+  });
+
+  it("n'envoie AUCUNE clé de conditionnement au détail seul", async () => {
+    await creerArticle(base);
+    const envoye = corps();
+
+    // Le serveur ne les refuserait pas, mais les envoyer ferait croire à un
+    // conditionnement absent et laisserait `units_per_package` à zéro en base.
+    for (const cle of [
+      "units_per_package",
+      "packaging_unit",
+      "wholesale_price",
+      "package_cost_price",
+      "allow_auto_unpacking",
+    ]) {
+      expect(envoye).not.toHaveProperty(cle);
+    }
+  });
+
+  it("écrit les décimales en CHAÎNE, jamais en nombre", async () => {
+    await creerArticle({ ...base, prixVente: 1234.56, prixAchat: 1000.5 });
+
+    expect(corps().selling_price).toBe("1234.56");
+    expect(corps().cost_price).toBe("1000.5");
+  });
+
+  it("ne porte le taux de TVA que si l'article est taxable", async () => {
+    await creerArticle({ ...base, taxable: false, tauxTva: 16 });
+    expect(corps()).not.toHaveProperty("tax_rate");
+
+    (enqueue as jest.Mock).mockClear();
+    await creerArticle({ ...base, taxable: true, tauxTva: 16 });
+    expect(corps()).toMatchObject({ is_taxable: true, tax_rate: "16" });
   });
 });

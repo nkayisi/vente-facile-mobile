@@ -17,8 +17,10 @@ import {
   type Packaging,
 } from "@vente-facile/core";
 
+import { ordreArbre } from "@/data/categories-arbre";
 import { db } from "@/db/client";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
+import type { GenreReferentiel } from "@/features/inventaire/referentiel";
 
 export interface ArticleListe {
   id: string;
@@ -31,6 +33,8 @@ export interface ArticleListe {
   /** « 3 casiers + 7 bouteilles », ou « 147 bouteilles », ou null si non suivi. */
   stockAffiche: string | null;
   prix: string | null;
+  /** URL de la photo, absente pour la majorité des articles. */
+  image: string | null;
 }
 
 export interface FiltresArticles {
@@ -62,6 +66,7 @@ export async function listeArticles(
       id: products.id,
       name: products.name,
       sku: products.sku,
+      image: products.image,
       isActive: products.isActive,
       trackInventory: products.trackInventory,
       sellingPrice: products.sellingPrice,
@@ -133,6 +138,7 @@ export async function listeArticles(
       suitLeStock: Boolean(l.trackInventory),
       stockAffiche,
       prix: l.sellingPrice ?? null,
+      image: l.image ?? null,
     };
   });
 
@@ -198,6 +204,8 @@ export interface DetailArticle {
   id: string;
   nom: string;
   sku: string | null;
+  /** URL de la photo, absente pour la majorité des articles. */
+  image: string | null;
   codeBarres: string | null;
   description: string;
   categorie: string | null;
@@ -236,7 +244,27 @@ export interface DetailArticle {
  * « Non défini », pas « 0 ».
  */
 export async function detailArticle(id: string): Promise<DetailArticle | null> {
-  const { alias } = await import("drizzle-orm/sqlite-core");
+  /*
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │ `alias` ÉTAIT CHARGÉ PAR UN IMPORT DYNAMIQUE, ET LA FICHE RESTAIT    │
+   * │ EN CHARGEMENT.                                                       │
+   * │                                                                      │
+   * │ `await import("drizzle-orm/sqlite-core")` était le SEUL import       │
+   * │ dynamique du dépôt - les cinq autres modules qui se servent d'`alias`│
+   * │ l'importent en tête, et ce fichier LE FAISAIT DÉJÀ (voir plus haut). │
+   * │                                                                      │
+   * │ Metro sert un `import()` par une requête au serveur de              │
+   * │ développement, et cette requête n'a AUCUN délai de garde : quand le  │
+   * │ pont est encombré, la promesse ne se règle jamais. `useLecture`      │
+   * │ n'atteint alors ni son `then` ni son `catch`, donc `donnees` reste à │
+   * │ `null` - et la fiche concluait « Article introuvable » sur un        │
+   * │ article bel et bien présent en base (vérifié : 100 lignes, la sienne │
+   * │ comprise).                                                           │
+   * │                                                                      │
+   * │ Rien ne justifiait le report : `alias` est une fonction de quelques  │
+   * │ lignes, dans un paquet que ce module charge déjà.                    │
+   * └──────────────────────────────────────────────────────────────────────┘
+   */
   const uniteDetail = alias(units, "unite_detail");
   const uniteContenant = alias(units, "unite_contenant");
 
@@ -286,6 +314,7 @@ export async function detailArticle(id: string): Promise<DetailArticle | null> {
     id: p.id,
     nom: p.name,
     sku: p.sku?.trim() || null,
+    image: p.image?.trim() || null,
     codeBarres: p.barcode?.trim() || null,
     description: p.shortDescription ?? "",
     categorie: l.categorie ?? null,
@@ -338,16 +367,37 @@ export async function detailArticle(id: string): Promise<DetailArticle | null> {
 
 export interface EntreeReferentiel {
   id: string;
+  genre: GenreReferentiel;
   nom: string;
   detail: string | null;
   actif: boolean;
   /** Nombre de produits qui s'y rattachent. */
   produits: number;
+  /** Catégories et marques. `null` pour une unité, qui n'en porte pas. */
+  slug: string | null;
+  /** Unités seulement. */
+  symbole: string | null;
+  /** Catégories seulement. */
+  parentId: string | null;
+  /** Rang dans l'arbre. Toujours zéro hors catégories. */
+  profondeur: number;
 }
 
-/** Catégories, marques ou unités, avec leur nombre de produits. */
+/**
+ * Catégories, marques ou unités, avec leur nombre de produits.
+ *
+ * Les CATÉGORIES descendent dans l'ordre d'un parcours d'arbre : « Sodas »
+ * doit se lire SOUS « Boissons », faute de quoi le marchand ne voit pas que
+ * l'une contient l'autre, et créer une sous-catégorie devient invérifiable.
+ *
+ * ⚠ Le filtre `is_deleted` est de la DÉFENSE EN PROFONDEUR, pas le correctif
+ * qu'on croit : le tirage supprime PHYSIQUEMENT les lignes marquées
+ * (`ingest.ts::deleteRows`), donc une catégorie supprimée sur le web a déjà
+ * disparu d'ici. Il couvre le cas d'une ligne écrite `is_deleted` sans
+ * `deleted_at`, qui n'engendre aucune pierre tombale.
+ */
 export async function referentiel(
-  genre: "categories" | "marques" | "unites"
+  genre: GenreReferentiel
 ): Promise<EntreeReferentiel[]> {
   const tousProduits = await db
     .select({
@@ -368,36 +418,68 @@ export async function referentiel(
 
   if (genre === "categories") {
     const n = compter((p) => p.categoryId);
-    const lignes = await db.select().from(categories).orderBy(categories.name);
-    return lignes.map((c) => ({
-      id: c.id,
-      nom: c.name,
-      detail: c.parentId ? "Sous-catégorie" : null,
-      actif: Boolean(c.isActive),
-      produits: n.get(c.id) ?? 0,
+    const lignes = await db
+      .select()
+      .from(categories)
+      .where(or(eq(categories.isDeleted, false), isNull(categories.isDeleted)))
+      // `(sort_order, name)`, miroir de `Category.Meta.ordering`.
+      .orderBy(categories.sortOrder, categories.name);
+    const noms = new Map(lignes.map((c) => [c.id, c.name]));
+    return ordreArbre(
+      lignes.map((c) => ({ ...c, parentId: c.parentId ?? null }))
+    ).map((r) => ({
+      id: r.item.id,
+      genre,
+      nom: r.item.name,
+      // Le NOM du parent, jamais « Sous-catégorie » : cette étiquette ne disait
+      // pas SOUS QUOI, et c'est la seule chose qu'on vient y chercher. C'est
+      // aussi ce que porte la colonne « Catégorie parente » du back-office.
+      detail: r.item.parentId ? (noms.get(r.item.parentId) ?? null) : null,
+      actif: Boolean(r.item.isActive),
+      produits: n.get(r.item.id) ?? 0,
+      slug: r.item.slug,
+      symbole: null,
+      parentId: r.item.parentId ?? null,
+      profondeur: r.profondeur,
     }));
   }
+
   if (genre === "marques") {
     const n = compter((p) => p.brandId);
-    const lignes = await db.select().from(brands).orderBy(brands.name);
+    const lignes = await db
+      .select()
+      .from(brands)
+      .where(or(eq(brands.isDeleted, false), isNull(brands.isDeleted)))
+      .orderBy(brands.name);
     return lignes.map((b) => ({
       id: b.id,
+      genre,
       nom: b.name,
       detail: null,
       actif: Boolean(b.isActive),
       produits: n.get(b.id) ?? 0,
+      slug: b.slug,
+      symbole: null,
+      parentId: null,
+      profondeur: 0,
     }));
   }
+
   const n = compter((p) => p.unitId);
   const lignes = await db.select().from(units).orderBy(units.name);
   return lignes.map((u) => ({
     id: u.id,
+    genre,
     nom: u.name,
     detail: u.symbol?.trim() || null,
     // Une UNITÉ n'a pas de drapeau d'activité au manifeste : elle est toujours
     // utilisable. Inventer un `false` ferait griser des unités valides.
     actif: true,
     produits: n.get(u.id) ?? 0,
+    slug: null,
+    symbole: u.symbol,
+    parentId: null,
+    profondeur: 0,
   }));
 }
 

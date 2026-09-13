@@ -1,4 +1,4 @@
-import { sousArbre, type NoeudCategorie } from "./categories-arbre";
+import { ordreArbre, sousArbre, type NoeudCategorie } from "./categories-arbre";
 
 /** Trois niveaux, plus une branche voisine qui ne doit JAMAIS être ramenée. */
 const ARBRE: NoeudCategorie[] = [
@@ -49,5 +49,43 @@ describe("le sous-arbre d'une catégorie", () => {
       { id: "b", parentId: "a" },
     ];
     expect(new Set(sousArbre(cycle, "a"))).toEqual(new Set(["a", "b"]));
+  });
+});
+
+describe("l'ordre d'affichage", () => {
+  const noeud = (id: string, parentId: string | null) => ({ id, parentId });
+
+  it("range un enfant SOUS son parent, et lui donne sa profondeur", () => {
+    const rendu = ordreArbre([
+      noeud("b", null), noeud("s", "b"), noeud("c", "s"), noeud("e", null),
+    ]);
+    expect(rendu.map((r) => [r.item.id, r.profondeur])).toEqual([
+      ["b", 0], ["s", 1], ["c", 2], ["e", 0],
+    ]);
+  });
+
+  it("CONSERVE l'ordre d'entrée dans une fratrie : c'est l'appelant qui trie", () => {
+    const rendu = ordreArbre([noeud("z", null), noeud("a", null)]);
+    expect(rendu.map((r) => r.item.id)).toEqual(["z", "a"]);
+  });
+
+  it("rend un ORPHELIN en fin de liste plutôt que de le perdre", () => {
+    // Son parent a pu être supprimé entre deux tirages. Le perdre le rendrait
+    // inatteignable, sans que rien ne le signale.
+    const rendu = ordreArbre([noeud("a", null), noeud("orphelin", "disparu")]);
+    expect(rendu.map((r) => [r.item.id, r.profondeur])).toEqual([
+      ["a", 0], ["orphelin", 0],
+    ]);
+  });
+
+  it("ne boucle pas sur une hiérarchie CYCLIQUE", () => {
+    const rendu = ordreArbre([noeud("a", "b"), noeud("b", "a")]);
+    expect(rendu).toHaveLength(2);
+    expect(rendu.every((r) => r.profondeur === 0)).toBe(true);
+  });
+
+  it("rend chaque noeud UNE SEULE FOIS", () => {
+    const rendu = ordreArbre([noeud("b", null), noeud("s", "b"), noeud("c", "s")]);
+    expect(new Set(rendu.map((r) => r.item.id)).size).toBe(rendu.length);
   });
 });

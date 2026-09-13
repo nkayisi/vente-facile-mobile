@@ -21,6 +21,8 @@ import { formatPrice } from "@vente-facile/core";
 
 import { compteursRubriques, listeArticles, type ArticleListe } from "@/data/articles";
 import { useLecture } from "@/data/live";
+import { FeuilleImportArticles } from "@/features/inventaire/feuille-import";
+import { VignetteArticle } from "@/ui";
 import { useSession } from "@/session/provider";
 import {
   Badge,
@@ -31,7 +33,6 @@ import {
   Screen,
   SearchInput,
   Mesure,
-  Text,
 } from "@/ui";
 
 const TABLES = ["products", "categories", "brands", "units", "stocks"];
@@ -39,9 +40,17 @@ const TABLES = ["products", "categories", "brands", "units", "stocks"];
 export default function Articles() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
+  const [importOuvert, setImportOuvert] = useState(false);
+  // Un import réussi écrit dans `products` côté SERVEUR : la table locale ne
+  // bouge qu'au prochain tirage, et `useLecture` n'a donc rien à écouter. Ce
+  // compteur force la relecture, et la feuille dit d'aller synchroniser.
+  const [apresImport, setApresImport] = useState(0);
 
   const charger = useCallback(() => listeArticles({ recherche, limite: 100 }), [recherche]);
-  const { donnees, chargement } = useLecture(charger, { tables: TABLES, deps: [recherche] });
+  const { donnees, chargement } = useLecture(charger, {
+    tables: TABLES,
+    deps: [recherche, apresImport],
+  });
   const { donnees: compteurs } = useLecture(compteursRubriques, { tables: TABLES });
 
   const articles = donnees?.elements ?? [];
@@ -54,12 +63,30 @@ export default function Articles() {
         count={{ n: total, label: total > 1 ? "produits au total" : "produit au total" }}
         actions={
           <>
-            {/* L'IMPORT Excel reste au back-office : choisir un fichier, en
-                relire les erreurs ligne à ligne et corriger se fait au clavier,
-                pas au pouce. L'écran le dit plutôt que de faire semblant. */}
-            <Button variant="outline" size="sm" leftIcon="Upload" disabled onPress={() => {}}>
-              Importer les Produits
-            </Button>
+            {/* ┌──────────────────────────────────────────────────────────┐
+                │ L'IMPORT NE RESTE PLUS AU SEUL BACK-OFFICE.              │
+                │                                                          │
+                │ Le bouton était DÉSACTIVÉ, au motif que relire des       │
+                │ erreurs ligne à ligne se fait au clavier. C'est vrai du  │
+                │ CONFORT, et faux du besoin : un marchand qui n'a qu'un   │
+                │ téléphone ne pouvait pas garnir son catalogue du tout.   │
+                │ La feuille le dit - le back-office reste plus            │
+                │ confortable - au lieu de fermer la porte.                │
+                │                                                          │
+                │ Le classeur est lu par le SERVEUR : ses règles (codes    │
+                │ déjà pris, plafond du plan, catégories créées au         │
+                │ passage) ne sont pas recopiées ici.                      │
+                └──────────────────────────────────────────────────────────┘ */}
+            {can("products.create") ? (
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon="Upload"
+                onPress={() => setImportOuvert(true)}
+              >
+                Importer les Produits
+              </Button>
+            ) : undefined}
             {can("products.create") ? (
               <Button
                 size="sm"
@@ -72,9 +99,6 @@ export default function Articles() {
           </>
         }
       />
-      <Text variant="caption">
-        L&apos;import Excel se fait depuis le back-office.
-      </Text>
 
       {/* Liens rapides de rubrique, avec leur compteur en pastille grise. */}
       <View className="flex-row flex-wrap gap-2">
@@ -114,6 +138,9 @@ export default function Articles() {
 
   const rendu = (a: ArticleListe) => (
     <DataRow
+      // La photo si l'article en porte une, l'icône colis sinon : la majorité
+      // n'en a pas, et le repli doit rester identique partout.
+      vignette={<VignetteArticle uri={a.image} />}
       principal={a.nom}
       secondaire={[a.sku, a.categorie].filter(Boolean).join(" · ") || null}
       badge={a.actif ? undefined : <Badge tone="neutral">Inactif</Badge>}
@@ -141,6 +168,16 @@ export default function Articles() {
             : "Commencez par ajouter votre premier produit.",
         }}
       />
+
+      {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
+          formulaire vierge, sans effet de remise à zéro à tenir en phase. */}
+      {importOuvert ? (
+        <FeuilleImportArticles
+          ouvert
+          onFermer={() => setImportOuvert(false)}
+          onImporte={() => setApresImport((n) => n + 1)}
+        />
+      ) : null}
     </Screen>
   );
 }

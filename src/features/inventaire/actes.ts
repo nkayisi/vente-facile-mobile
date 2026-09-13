@@ -14,7 +14,12 @@ import * as Crypto from "expo-crypto";
 
 import { pireEnvoi } from "@/data/envoi";
 import { lotEnAttente, type LotEnAttente } from "@/features/sync/attente";
-import { enAttenteParType, enqueue, type EtatEnvoi } from "@/sync";
+import {
+  enAttenteParType,
+  enqueue,
+  type EtatEnvoi,
+  type OperationKind,
+} from "@/sync";
 
 // Le corps de l'acte vit dans le module PUR : ce fichier importe `@/sync`, qui
 // ouvre la base SQLite au chargement, et le contrat de transport ne serait
@@ -28,6 +33,12 @@ import {
   corpsDeLaSession,
   type SaisieSession,
 } from "./nouvelle-session";
+import {
+  corpsCreationReferentiel,
+  corpsModificationReferentiel,
+  type GenreReferentiel,
+  type SaisieReferentiel,
+} from "./referentiel";
 import { slugifier } from "./slug";
 
 export type { SaisieSession };
@@ -289,6 +300,9 @@ export async function sessionsEnAttente(): Promise<Map<string, AttenteSession>> 
 
 // ------------------------------------------------------------------ catalogue
 
+/** Les trois modes du serveur, à l'identique : aucun alias, aucune traduction. */
+export type ModeVente = "retail_only" | "wholesale_only" | "wholesale_and_retail";
+
 export interface SaisieArticle {
   nom: string;
   sku: string;
@@ -296,18 +310,44 @@ export interface SaisieArticle {
   categorie?: string | null;
   marque?: string | null;
   unite?: string | null;
+  modeVente: ModeVente;
+  /** Canal détail. En gros seul, le serveur les déduit du contenant. */
   prixVente: number;
   prixAchat: number;
+  /** Canal gros, exprimé pour un CONTENANT entier. */
+  prixVenteGros?: number;
+  prixAchatGros?: number;
+  taxable: boolean;
+  tauxTva?: number;
   suitLeStock: boolean;
   seuilReassort?: number;
   /** Conditionnement : nombre d'unités de détail par contenant. */
   unitesParContenant?: number;
   uniteContenant?: string | null;
+  ouvertureAutomatique?: boolean;
   notes?: string;
 }
 
+/**
+ * Met un article en file, dans le corps EXACT du serializer du back-office.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `selling_mode: "both"` N'EXISTE PAS, ET LE SERVEUR REFUSAIT.            │
+ * │                                                                          │
+ * │ Les trois valeurs du modèle sont `retail_only`, `wholesale_only` et      │
+ * │ `wholesale_and_retail`. Le terminal envoyait « both » dès qu'un          │
+ * │ conditionnement était saisi : réponse 400, « « both » n'est pas un       │
+ * │ choix valide », refus DÉTERMINISTE donc quarantaine, jamais réessayé.    │
+ * │                                                                          │
+ * │ Autrement dit : AUCUN article conditionné saisi sur un terminal n'est    │
+ * │ jamais arrivé au serveur. Le marchand voyait sa fiche, la vendait au     │
+ * │ comptoir, et elle n'existait nulle part ailleurs.                        │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
 export async function creerArticle(saisie: SaisieArticle): Promise<string> {
   const id = Crypto.randomUUID();
+  const conditionne = saisie.modeVente !== "retail_only";
+
   await enqueue(id, "product.create", {
     id,
     name: saisie.nom.trim(),
@@ -317,18 +357,33 @@ export async function creerArticle(saisie: SaisieArticle): Promise<string> {
     ...(saisie.categorie ? { category: saisie.categorie } : {}),
     ...(saisie.marque ? { brand: saisie.marque } : {}),
     ...(saisie.unite ? { unit: saisie.unite } : {}),
+    selling_mode: saisie.modeVente,
+    // ⚠ Les décimales voyagent en CHAÎNE, jamais en nombre : un panier en CDF
+    // à sept chiffres perd ses unités en virgule flottante.
     selling_price: String(saisie.prixVente),
     cost_price: String(saisie.prixAchat),
+    ...(conditionne
+      ? {
+          units_per_package: saisie.unitesParContenant,
+          ...(saisie.uniteContenant ? { packaging_unit: saisie.uniteContenant } : {}),
+          ...(saisie.prixVenteGros != null
+            ? { wholesale_price: String(saisie.prixVenteGros) }
+            : {}),
+          ...(saisie.prixAchatGros != null
+            ? { package_cost_price: String(saisie.prixAchatGros) }
+            : {}),
+          ...(saisie.modeVente === "wholesale_and_retail"
+            ? { allow_auto_unpacking: saisie.ouvertureAutomatique ?? true }
+            : {}),
+        }
+      : {}),
+    is_taxable: saisie.taxable,
+    ...(saisie.taxable && saisie.tauxTva != null
+      ? { tax_rate: String(saisie.tauxTva) }
+      : {}),
     track_inventory: saisie.suitLeStock,
     ...(saisie.seuilReassort != null
       ? { reorder_point: String(saisie.seuilReassort) }
-      : {}),
-    ...(saisie.unitesParContenant && saisie.unitesParContenant > 1
-      ? {
-          selling_mode: "both",
-          units_per_package: saisie.unitesParContenant,
-          ...(saisie.uniteContenant ? { packaging_unit: saisie.uniteContenant } : {}),
-        }
       : {}),
     notes: saisie.notes ?? "",
     is_active: true,
@@ -336,22 +391,167 @@ export async function creerArticle(saisie: SaisieArticle): Promise<string> {
   return id;
 }
 
+const ACTE_CREATION: Record<GenreReferentiel, OperationKind> = {
+  categories: "category.create",
+  marques: "brand.create",
+  unites: "unit.create",
+};
+
+const ACTE_MODIFICATION: Record<GenreReferentiel, OperationKind> = {
+  categories: "category.update",
+  marques: "brand.update",
+  unites: "unit.update",
+};
+
 export async function creerReferentiel(
-  genre: "category" | "brand" | "unit",
-  saisie: { nom: string; symbole?: string; parent?: string | null }
+  saisie: SaisieReferentiel,
+  slug: string,
+  options: { dependDe?: string[] } = {}
 ): Promise<string> {
   const id = Crypto.randomUUID();
-  await enqueue(id, `${genre}.create` as never, {
+  await enqueue(
     id,
-    name: saisie.nom.trim(),
-    // Une UNITÉ n'a pas de `slug` : elle porte un symbole.
-    ...(genre === "unit"
-      ? { symbol: (saisie.symbole ?? saisie.nom).trim() }
-      : { slug: slugifier(saisie.nom) }),
-    ...(genre === "category" && saisie.parent ? { parent: saisie.parent } : {}),
-    is_active: true,
-  });
+    ACTE_CREATION[saisie.genre],
+    { id, ...corpsCreationReferentiel(saisie, slug) },
+    { dependsOn: options.dependDe }
+  );
   return id;
+}
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA CLÉ DE L'ACTE N'EST PAS CELLE DE LA FICHE, ET C'EST LA DÉFINITION.   │
+ * │                                                                          │
+ * │ Le premier argument d'`enqueue` est la clé d'IDEMPOTENCE de l'acte ;     │
+ * │ `payload.id` est l'identité du SUJET. À la création le sujet n'existe    │
+ * │ pas encore, les deux coïncident donc, et le serveur reprend la clé du    │
+ * │ terminal. À la modification le sujet a déjà la sienne : réemployer la    │
+ * │ clé de la fiche ferait avaler la seconde correction par le               │
+ * │ `onConflictDoNothing` d'`enqueue`, et le marchand corrigerait deux fois  │
+ * │ la même faute de frappe sans le moindre effet.                           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * `dependDe` sert deux cas réels : une sous-catégorie dont le PARENT est encore
+ * en file, et la modification d'une fiche elle-même encore en file (on crée
+ * « Boisons » hors ligne, on voit la faute, on corrige). Sans dépendance, un
+ * parent refusé fait partir l'enfant avec un identifiant qui n'existe pas, et
+ * le marchand lit une erreur citant un UUID.
+ */
+export async function modifierReferentiel(
+  fiche: string,
+  saisie: SaisieReferentiel,
+  options: { dependDe?: string[] } = {}
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  await enqueue(
+    id,
+    ACTE_MODIFICATION[saisie.genre],
+    { id: fiche, ...corpsModificationReferentiel(saisie) },
+    { dependsOn: options.dependDe }
+  );
+  return id;
+}
+
+/** Une fiche de référentiel qui n'est pas encore arrivée au serveur. */
+export interface ReferentielEnAttente {
+  /** L'acte. Pour une création, c'est aussi la clé de la fiche. */
+  id: string;
+  /** La fiche visée. Égale à `id` pour une création. */
+  fiche: string;
+  genre: GenreReferentiel;
+  nom: string;
+  slug: string | null;
+  symbole: string | null;
+  parentId: string | null;
+  actif: boolean;
+  envoi: EtatEnvoi;
+  le: Date | null;
+}
+
+interface CorpsReferentiel {
+  id: string;
+  name?: string;
+  slug?: string;
+  symbol?: string;
+  parent?: string | null;
+  is_active?: boolean;
+}
+
+const GENRE_PAR_ACTE: [GenreReferentiel, OperationKind, OperationKind][] = [
+  ["categories", "category.create", "category.update"],
+  ["marques", "brand.create", "brand.update"],
+  ["unites", "unit.create", "unit.update"],
+];
+
+function enFiche(
+  genre: GenreReferentiel,
+  o: { id: string; payload: CorpsReferentiel; occurredAt: Date | null; envoi: EtatEnvoi }
+): ReferentielEnAttente {
+  return {
+    id: o.id,
+    // `payload.id` désigne la fiche dans les DEUX cas ; à la création il vaut
+    // aussi la clé de l'acte, le terminal posant la clé que le serveur reprend.
+    fiche: o.payload.id,
+    genre,
+    nom: o.payload.name ?? "",
+    slug: o.payload.slug ?? null,
+    symbole: o.payload.symbol ?? null,
+    parentId: o.payload.parent ?? null,
+    actif: o.payload.is_active !== false,
+    envoi: o.envoi,
+    le: o.occurredAt,
+  };
+}
+
+/**
+ * Les fiches CRÉÉES ici et pas encore confirmées.
+ *
+ * ⚠ `avecBloquees` est demandé, et l'encadré d'`outbox.ts` le permet : chaque
+ * ligne fusionnée porte sa pastille d'envoi, donc rien n'est présenté comme
+ * ACQUIS. Sans lui, une catégorie créée il y a dix minutes disparaîtrait de la
+ * liste ET du sélecteur de parent à la seconde où le serveur répond `blocked` ;
+ * le marchand la recréerait, et `unblockAll` ferait partir les deux - la
+ * première appliquée, la seconde en quarantaine, pour un refus qu'il n'a pas
+ * provoqué.
+ */
+export async function creationsReferentielEnAttente(): Promise<ReferentielEnAttente[]> {
+  const lots = await Promise.all(
+    GENRE_PAR_ACTE.map(async ([genre, creation]) => {
+      const ops = await enAttenteParType<CorpsReferentiel>(creation, {
+        avecBloquees: true,
+      });
+      return ops.map((o) => enFiche(genre, o));
+    })
+  );
+  return lots.flat();
+}
+
+/**
+ * Par fiche, la DERNIÈRE modification en file et le PIRE état de toutes.
+ *
+ * La dernière parce que c'est elle qui décrit ce que le marchand vient de
+ * saisir ; le pire état parce qu'une seule opération bloquée suffit à ce que la
+ * fiche n'aboutisse pas.
+ */
+export async function modificationsReferentielEnAttente(): Promise<
+  Map<string, ReferentielEnAttente>
+> {
+  const par = new Map<string, ReferentielEnAttente>();
+  for (const [genre, , modification] of GENRE_PAR_ACTE) {
+    const ops = await enAttenteParType<CorpsReferentiel>(modification, {
+      avecBloquees: true,
+    });
+    for (const o of ops) {
+      const fiche = enFiche(genre, o);
+      const deja = par.get(fiche.fiche);
+      // `enAttenteParType` rend par `seq` croissant : la dernière écrase.
+      par.set(fiche.fiche, {
+        ...fiche,
+        envoi: pireEnvoi([deja?.envoi, fiche.envoi].filter(Boolean) as EtatEnvoi[]),
+      });
+    }
+  }
+  return par;
 }
 
 /** Ce que le catalogue attend d'envoyer, par genre. */
@@ -359,11 +559,15 @@ export async function catalogueEnAttente(): Promise<{
   articles: { id: string; nom: string; sku: string }[];
   referentiels: LotEnAttente;
 }> {
-  const [articles, cats, marques, unites] = await Promise.all([
-    enAttenteParType<{ id: string; name: string; sku: string }>("product.create"),
-    enAttenteParType<{ id: string }>("category.create"),
-    enAttenteParType<{ id: string }>("brand.create"),
-    enAttenteParType<{ id: string }>("unit.create"),
+  const [articles, ...lots] = await Promise.all([
+    enAttenteParType<{ id: string; name: string; sku: string }>("product.create", {
+      avecBloquees: true,
+    }),
+    ...GENRE_PAR_ACTE.flatMap(([, creation, modification]) =>
+      [creation, modification].map((k) =>
+        enAttenteParType<{ id: string }>(k, { avecBloquees: true })
+      )
+    ),
   ]);
   return {
     articles: articles.map((o) => ({
@@ -371,7 +575,7 @@ export async function catalogueEnAttente(): Promise<{
       nom: o.payload.name,
       sku: o.payload.sku,
     })),
-    referentiels: lotEnAttente([...cats, ...marques, ...unites]),
+    referentiels: lotEnAttente(lots.flat()),
   };
 }
 

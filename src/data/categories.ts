@@ -10,7 +10,7 @@ import { asc, eq, or, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories } from "@/db/schema";
 
-import { sousArbre, type NoeudCategorie } from "./categories-arbre";
+import { ordreArbre, sousArbre, type NoeudCategorie } from "./categories-arbre";
 
 export interface CategorieChoix {
   id: string;
@@ -44,37 +44,20 @@ export async function categoriesPourFiltre(): Promise<CategorieChoix[]> {
     })
     .from(categories)
     .where(or(eq(categories.isDeleted, false), isNull(categories.isDeleted)))
-    .orderBy(asc(categories.name));
+    // `(sort_order, name)`, miroir de `Category.Meta.ordering`. Deux ordres
+    // pour le même arbre dans la même application serait pire que ce
+    // changement.
+    .orderBy(asc(categories.sortOrder), asc(categories.name));
 
-  const enfants = new Map<string | null, typeof lignes>();
-  for (const l of lignes) {
-    const cle = l.parentId ?? null;
-    const fratrie = enfants.get(cle);
-    if (fratrie) fratrie.push(l);
-    else enfants.set(cle, [l]);
-  }
-
-  const rendu: CategorieChoix[] = [];
-  const vus = new Set<string>();
-  const descendre = (parent: string | null, profondeur: number) => {
-    for (const l of enfants.get(parent) ?? []) {
-      // Garde de cycle : une hiérarchie fautive ralentit, elle ne boucle pas.
-      if (vus.has(l.id)) continue;
-      vus.add(l.id);
-      rendu.push({ id: l.id, nom: l.nom, parentId: l.parentId, profondeur });
-      descendre(l.id, profondeur + 1);
-    }
-  };
-  descendre(null, 0);
-
-  // Une catégorie dont le parent a été supprimé n'a plus de racine : la perdre
-  // la rendrait infiltrable, sans que rien ne le signale.
-  for (const l of lignes) {
-    if (!vus.has(l.id)) {
-      rendu.push({ id: l.id, nom: l.nom, parentId: l.parentId, profondeur: 0 });
-    }
-  }
-  return rendu;
+  // Le parcours, la garde de cycle et la reprise des orphelins vivent dans
+  // `ordreArbre` : les recopier ici serait la seconde arithmétique d'arbre du
+  // dépôt, et la liste des référentiels a besoin de la même.
+  return ordreArbre(lignes).map((r) => ({
+    id: r.item.id,
+    nom: r.item.nom,
+    parentId: r.item.parentId,
+    profondeur: r.profondeur,
+  }));
 }
 
 /**
