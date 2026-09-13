@@ -69,8 +69,8 @@ export default function Login() {
   };
 
   return (
-    <Screen scroll>
-      <View className="mb-8 mt-10">
+    <Screen scroll centre>
+      <View className="mb-8">
         <Text variant="h1">Vente Facile</Text>
         <Text variant="muted">Connectez-vous pour ouvrir votre caisse.</Text>
       </View>

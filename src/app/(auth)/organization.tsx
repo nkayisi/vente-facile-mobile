@@ -54,8 +54,8 @@ export default function ChooseOrganization() {
   };
 
   return (
-    <Screen scroll>
-      <View className="mb-6 mt-8">
+    <Screen scroll centre>
+      <View className="mb-6">
         <Text variant="h2">Quel établissement ?</Text>
         <Text variant="muted">
           Ce terminal sera rattaché à celui que vous choisissez. Pour en changer,
