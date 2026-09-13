@@ -78,14 +78,30 @@ export async function telechargerDocument(
   format: FormatExport,
   nom: string
 ): Promise<void> {
-  const jetons = await ensureFreshTokens();
-
   const query = new URLSearchParams({ export_format: format });
   for (const [cle, valeur] of Object.entries(parametres)) {
     if (valeur !== undefined && valeur !== null && valeur !== "") {
       query.set(cle, String(valeur));
     }
   }
+  await telechargerEtPartager(`${chemin}?${query.toString()}`, format, nom);
+}
+
+/**
+ * Le téléchargement lui-même, sans le vocabulaire des rapports.
+ *
+ * Extrait pour le MODÈLE d'import : `/products/import-template/` rend un
+ * classeur et n'accepte aucun `export_format`. Lui en poser un marcherait -
+ * DRF ignore un paramètre inconnu - mais écrirait dans l'URL une intention qui
+ * n'existe pas, et le prochain lecteur chercherait le format que le serveur
+ * n'offre pas.
+ */
+export async function telechargerEtPartager(
+  cheminComplet: string,
+  format: FormatExport,
+  nom: string
+): Promise<void> {
+  const jetons = await ensureFreshTokens();
 
   const cible = new File(
     dossier(),
@@ -98,7 +114,7 @@ export async function telechargerDocument(
   let fichier: File;
   try {
     fichier = await File.downloadFileAsync(
-      `${API_BASE_URL}${chemin}?${query.toString()}`,
+      `${API_BASE_URL}${cheminComplet}`,
       cible,
       {
         headers: {

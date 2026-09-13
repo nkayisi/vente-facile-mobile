@@ -178,3 +178,35 @@ export function libellePeriodeFiltre(
   if (params.date_to) return `jusqu'au ${params.date_to}`;
   return "Tout l'historique";
 }
+
+/**
+ * La même période, mais TOUJOURS en `date_from` / `date_to`.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `month` N'EXISTE QUE SUR LES MOUVEMENTS DE STOCK.                       │
+ * │                                                                          │
+ * │ `StockMovementFilter` déclare `filter_month` ; ni `CashMovementViewSet`  │
+ * │ ni `ExpenseViewSet` n'en ont l'équivalent - ils ne lisent que            │
+ * │ `date_from` et `date_to` dans leur `get_queryset`. Un `?month=2026-09`   │
+ * │ envoyé au livre de caisse serait donc IGNORÉ EN SILENCE : la liste       │
+ * │ locale montrerait septembre et le document couvrirait tout l'historique, │
+ * │ sous un en-tête qui annonce septembre.                                   │
+ * │                                                                          │
+ * │ On garde donc le mode « un mois précis », qui est la maille du           │
+ * │ commerçant, et on le traduit en deux dates avant l'envoi. Les bornes     │
+ * │ viennent de `bornesLocales`, donc du même calcul que le SQL local : le   │
+ * │ dernier jour n'est pas deviné, et février 2024 finit bien le 29.         │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export function parametresPeriodeEnDates(
+  p: PeriodeFiltre,
+  aujourdhui: Date = new Date()
+): { date_from?: string; date_to?: string } {
+  const params = parametresPeriode(p, aujourdhui);
+  if (!params.month) {
+    return { date_from: params.date_from, date_to: params.date_to };
+  }
+  const { debutMs, finMs } = bornesLocales(p, aujourdhui);
+  if (debutMs == null || finMs == null) return {};
+  return { date_from: jourISO(new Date(debutMs)), date_to: jourISO(new Date(finMs)) };
+}

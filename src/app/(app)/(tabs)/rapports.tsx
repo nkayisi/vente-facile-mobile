@@ -899,7 +899,7 @@ function SectionVue({
               }))}
             lignes={t.lignes}
             cle={(l) => l.cle}
-            vide={section.vide}
+            messageVide={section.vide}
           />
           {t.total > t.taille ? (
             <Pagination
