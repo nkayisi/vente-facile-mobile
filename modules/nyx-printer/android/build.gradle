@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.nyxprinter'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.nyxprinter"
+  defaultConfig {
+    minSdkVersion 24
+    versionCode 1
+    versionName "0.1.0"
+  }
+  // Le service NYX est piloté via AIDL (désactivé par défaut sous AGP 8).
+  buildFeatures {
+    aidl true
+  }
+}

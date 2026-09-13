@@ -41,6 +41,15 @@ export const PREFIXE = {
   ajustement: "AJU",
   cloture: "CZ",
   depense: "DEP",
+  /**
+   * La facture proforma.
+   *
+   * Elle a sa propre série, dense et par appareil, plutôt que le suffixe
+   * aléatoire du back-office : un numéro dictable au téléphone vaut mieux
+   * qu'un tirage, et un client qui revient avec son devis doit pouvoir le
+   * désigner. Le préfixe est celui que `DOCUMENT_IDENTITIES.proforma` attend.
+   */
+  proforma: "PRO",
 } as const;
 
 export type Prefixe = (typeof PREFIXE)[keyof typeof PREFIXE];

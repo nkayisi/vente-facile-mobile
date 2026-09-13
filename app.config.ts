@@ -70,23 +70,30 @@ const config: ExpoConfig = {
     // Le terminal porte des ventes non synchronisées : une sauvegarde
     // automatique restaurée sur un autre appareil les dupliquerait.
     allowBackup: false,
-    // Bluetooth CLASSIQUE (profil série), le transport de l'écrasante majorité
-    // des imprimantes 58 mm du marché. `react-native-ble-plx` pose lui-même
-    // celles du BLE via son greffon ; le paquet Bluetooth classique n'en a pas,
-    // d'où cette liste écrite à la main.
-    //
-    // Les deux familles cohabitent parce qu'Android a CHANGÉ de modèle en 12 :
-    // `BLUETOOTH` / `BLUETOOTH_ADMIN` valent jusqu'à l'API 30, `BLUETOOTH_SCAN`
-    // et `BLUETOOTH_CONNECT` à partir de 31. N'en garder qu'une moitié
-    // exclurait la moitié du parc, et les terminaux POS bon marché tournent
-    // souvent sur des versions anciennes.
-    permissions: [
-      "android.permission.BLUETOOTH",
-      "android.permission.BLUETOOTH_ADMIN",
-      "android.permission.BLUETOOTH_CONNECT",
-      "android.permission.BLUETOOTH_SCAN",
-      "android.permission.ACCESS_FINE_LOCATION",
-    ],
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ AUCUNE PERMISSION BLUETOOTH ÉCRITE À LA MAIN, ET C'EST VOULU.     │
+    // │                                                                    │
+    // │ Il y en avait cinq ici. Elles étaient REDONDANTES : les deux       │
+    // │ bibliothèques les déclarent dans leur propre manifeste, avec les   │
+    // │ nuances qui comptent - `BLUETOOTH` et `BLUETOOTH_ADMIN` plafonnés  │
+    // │ à l'API 30, `BLUETOOTH_SCAN` portant `neverForLocation`. Et le     │
+    // │ greffon de `react-native-ble-plx` réinjecte de toute façon les     │
+    // │ trois premières par `withPermissions`.                             │
+    // │                                                                    │
+    // │ Surtout, elles étaient NUISIBLES. Expo écrit les entrées de ce     │
+    // │ tableau SANS le moindre attribut, et les reconnaît sur le seul nom │
+    // │ (`@expo/config-plugins`, `android/Permissions.js`). Or le greffon  │
+    // │ BLE n'ajoute son `BLUETOOTH_SCAN` attribué QUE si aucune entrée de │
+    // │ ce nom n'existe déjà (`plugin/build/withBLEAndroidManifest.js`).   │
+    // │ Le `BLUETOOTH_SCAN` nu écrit ici supprimait donc                   │
+    // │ `neverForLocation` - et sans ce drapeau, Android 12+ exige la      │
+    // │ LOCALISATION pour chercher une imprimante.                         │
+    // │                                                                    │
+    // │ Le raisonnement d'origine sur l'API 30 contre l'API 31 reste juste │
+    // │ et reste tenu : il l'est par les bibliothèques, pas par cette      │
+    // │ liste. ⚠ À RECONTRÔLER dans le manifeste ENGENDRÉ après tout       │
+    // │ `expo prebuild`, jamais depuis ce fichier.                         │
+    // └────────────────────────────────────────────────────────────────────┘
   },
 
   plugins: [
@@ -114,6 +121,13 @@ const config: ExpoConfig = {
         modes: ["central"],
         bluetoothAlwaysPermission:
           "Le Bluetooth sert à envoyer les tickets à votre imprimante.",
+        // ⚠ UNE IMPRIMANTE NE DÉRIVE AUCUNE POSITION. Le greffon vaut `false`
+        // par défaut : il déclare alors `BLUETOOTH_SCAN` sans
+        // `neverForLocation`, et la localisation SANS `maxSdkVersion`, si bien
+        // qu'Android 12+ réclame une position pour imprimer un ticket. À vrai,
+        // le drapeau est posé et la localisation redevient ce qu'elle est : une
+        // exigence des seules versions antérieures à Android 12.
+        neverForLocation: true,
       },
     ],
     // Sentry pose ses agents natifs (crash Java/Kotlin et ObjC/Swift) : sans

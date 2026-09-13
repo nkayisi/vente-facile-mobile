@@ -18,7 +18,7 @@ import type { Block } from "@vente-facile/core/receipt";
 import { nomDeFichier } from "@vente-facile/core/report";
 
 import type { ContexteImpression, PiloteImpression } from "../driver";
-import { rendreHtml } from "../render-html";
+import { pageDuTicket } from "../render-html";
 
 export const pilotePdf: PiloteImpression = {
   id: "pdf",
@@ -31,8 +31,26 @@ export const pilotePdf: PiloteImpression = {
   },
 
   async imprimer(blocks: Block[], contexte: ContexteImpression) {
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ LES DIMENSIONS SONT PASSÉES, ET C'EST OBLIGATOIRE.                  │
+    // │                                                                      │
+    // │ `expo-print` ne lit PAS la règle `@page { size: … }` de la feuille de │
+    // │ style : les dimensions viennent de ses options `width` / `height`, et │
+    // │ leur défaut est le format US LETTER, 612 × 792 points. Établi dans sa │
+    // │ source native, des deux côtés : Android `PrintPDFRenderTask.kt`      │
+    // │ (`DEFAULT_MEDIA_WIDTH = 612`), iOS `PrintOptions.swift`              │
+    // │ (`kLetterPaperSize`).                                                │
+    // │                                                                      │
+    // │ Sans elles, le reçu d'un rouleau de 58 mm sortait sur une feuille de │
+    // │ bureau, tassé dans le coin supérieur gauche : le client à qui le     │
+    // │ marchand envoie ce PDF reçoit une page presque vide. Le dépôt a déjà │
+    // │ payé ce piège sur les rapports A4 ; il ne se redécouvre pas.         │
+    // └──────────────────────────────────────────────────────────────────────┘
+    const page = pageDuTicket(blocks, contexte.paperWidth);
     const { uri } = await Print.printToFileAsync({
-      html: rendreHtml(blocks, contexte.paperWidth),
+      html: page.html,
+      width: page.largeurPt,
+      height: page.hauteurPt,
       base64: false,
     });
 

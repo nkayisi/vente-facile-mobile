@@ -24,6 +24,7 @@ import { View } from "react-native";
 import { formatDateTimeFr } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
+import { libelleTransport } from "@/printing";
 import {
   derniersDocuments,
   imprimerDocument,
@@ -61,8 +62,8 @@ export default function Documents() {
       const transport = await imprimerDocument(d.id);
       toast.succes(
         d.printCount > 0
-          ? `Duplicata sorti (${transport}). Le numéro est inchangé.`
-          : `Document sorti (${transport}).`
+          ? `Duplicata sorti (${libelleTransport(transport)}). Le numéro est inchangé.`
+          : `Document sorti (${libelleTransport(transport)}).`
       );
       recharger();
     } catch (e) {

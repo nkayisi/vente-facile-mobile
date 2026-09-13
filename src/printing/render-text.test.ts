@@ -1,5 +1,5 @@
 /**
- * Le rendu 42 colonnes.
+ * Le rendu 32 colonnes.
  *
  * Ce que ces tests protègent n'est pas une mise en page, c'est la LISIBILITÉ
  * d'un papier qu'on remet à un client. Un défaut ici ne plante pas : il sort de
@@ -9,7 +9,7 @@ import type { Block } from "@vente-facile/core/receipt";
 
 import { colonnesPour, paire, regleDeCalibration, rendreTexte, replier } from "./render-text";
 
-const LARGEUR = 42;
+const LARGEUR = 32;
 
 /** Largeur réellement occupée : une ligne en double échelle compte double. */
 const occupe = (l: { text: string; scale?: 1 | 2 }) => l.text.length * (l.scale ?? 1);
@@ -17,8 +17,21 @@ const occupe = (l: { text: string; scale?: 1 | 2 }) => l.text.length * (l.scale 
 const rendre = (blocks: Block[]) => rendreTexte(blocks);
 
 describe("Largeur", () => {
-  it("58 mm vaut 42 colonnes, valeur MESURÉE sur papier", () => {
-    expect(colonnesPour(58)).toBe(42);
+  it("58 mm vaut 32 colonnes : la police A, celle qui se LIT", () => {
+    // 42 colonnes imposent la police B, dont la chasse fait 9 points sur 17 de
+    // haut. Mesuré sur une T58_9345 en Bluetooth le 13 septembre 2026 : le
+    // marchand ne pouvait pas lire son propre ticket, et à 32 colonnes la
+    // règle de calibration confirme que le dernier « # » touche le bord.
+    expect(colonnesPour(58)).toBe(32);
+  });
+
+  it("80 mm vaut 48 colonnes, une largeur que l'encodeur accepte", () => {
+    // 57 venait du rapport des millimètres de PAPIER et n'existait sur aucune
+    // imprimante : l'encodeur ESC/POS levait, donc plus aucun ticket ne sortait
+    // en Bluetooth dès que le marchand basculait son réglage sur 80 mm.
+    expect(colonnesPour(80)).toBe(48);
+    expect([32, 35, 42, 44, 48]).toContain(colonnesPour(80));
+    expect([32, 35, 42, 44, 48]).toContain(colonnesPour(58));
   });
 
   it("ne laisse aucune ligne déborder, double échelle comprise", () => {
@@ -47,8 +60,8 @@ describe("Couple libellé / montant", () => {
   });
 
   it("abrège le LIBELLÉ, jamais le montant : un montant tronqué est un faux montant", () => {
-    // Le cas documenté : sur 42 colonnes, « Montant payé » et un montant CDF à
-    // huit chiffres se recouvraient de plusieurs colonnes.
+    // Le cas documenté : « Montant payé » et un montant CDF à huit chiffres se
+    // recouvraient de plusieurs colonnes.
     const [ligne] = paire("Montant payé au comptoir", "12 500 000.00 CDF", LARGEUR);
     expect(ligne).toHaveLength(LARGEUR);
     expect(ligne).toContain("12 500 000.00 CDF");
@@ -56,9 +69,11 @@ describe("Couple libellé / montant", () => {
   });
 
   it("passe le montant à la ligne quand le libellé n'a plus de place lisible", () => {
-    // 12 + 1 + 38 dépasse 42, et il ne resterait que 3 colonnes au libellé :
-    // l'abréger le rendrait illisible, la valeur descend donc seule.
-    const valeur = "1 234 567 890 123 456 789 012 345 678 CDF";
+    // 12 + 1 + 29 dépasse 32, et il ne resterait que 2 colonnes au libellé :
+    // l'abréger le rendrait illisible, la valeur descend donc seule. Elle tient
+    // en revanche sur une ligne entière, donc elle n'est pas repliée.
+    const valeur = "1 234 567 890 123 456 789 CDF";
+    expect(valeur.length).toBeLessThanOrEqual(LARGEUR);
     const lignes = paire("Montant payé", valeur, LARGEUR);
     expect(lignes).toHaveLength(2);
     expect(lignes[1].trimStart()).toBe(valeur);
@@ -93,7 +108,10 @@ describe("Articles", () => {
   it("donne au nom la PLEINE largeur, sur deux lignes s'il le faut", () => {
     const textes = rendre([ligneArticle]).map((l) => l.text);
     // Quatre colonnes ne tiendraient pas : le nom n'aurait que 18 caractères.
-    expect(textes[0]).toBe("AACEFEMINE 30CE 2MG COMPRIMES PELLICULES");
+    // Sur 32, ce nom de quarante signes se replie, et RIEN ne s'en perd.
+    expect(textes[0]).toBe("AACEFEMINE 30CE 2MG COMPRIMES");
+    expect(textes[1]).toBe("PELLICULES");
+    expect(`${textes[0]} ${textes[1]}`).toBe("AACEFEMINE 30CE 2MG COMPRIMES PELLICULES");
   });
 
   it("porte le conditionnement, que l'ancien ticket mobile n'imprimait pas", () => {
@@ -168,6 +186,77 @@ describe("Règle de calibration", () => {
     expect(lignes.filter((l) => l.text.startsWith("#"))).toHaveLength(1);
     for (const ligne of lignes) {
       expect(ligne.text.length * (ligne.scale ?? 1)).toBeLessThanOrEqual(LARGEUR);
+    }
+  });
+});
+
+
+describe("Les deux largeurs, et pas seulement celle qui est mesurée", () => {
+  const DOCUMENT: Block[] = [
+    { kind: "text", text: "ETABLISSEMENT KALUME & FILS SARL", role: "orgName", align: "center" },
+    { kind: "band", text: "Vente à crédit", sub: "Duplicata" },
+    { kind: "chip", text: "DETTE SOLDÉE" },
+    {
+      kind: "items",
+      rows: [
+        {
+          name: "AACEFEMINE 30CE 2MG COMPRIMES PELLICULES",
+          quantity: "12",
+          unitPrice: "92 000",
+          total: "1 104 000",
+          quantityLabel: "1 carton + 2 plaquettes",
+          discountPercentage: 15,
+        },
+      ],
+    },
+    { kind: "amounts", rows: [{ label: "Montant payé", value: "12 500 000 FC", strong: true }] },
+    { kind: "total", label: "Net à payer", value: "12 500 000 FC" },
+    { kind: "kv", mode: "inline", rows: [{ label: "Client", value: "Etablissement Kalume & Fils SARL" }] },
+    { kind: "rule", weight: "heavy" },
+  ];
+
+  for (const papier of [58, 80] as const) {
+    it(`ne laisse rien déborder sur ${papier} mm`, () => {
+      const largeur = colonnesPour(papier);
+      for (const ligne of rendreTexte(DOCUMENT, { paperWidth: papier })) {
+        expect(occupe(ligne)).toBeLessThanOrEqual(largeur);
+      }
+    });
+
+    it(`gradue sa règle de calibration sur ${papier} mm`, () => {
+      const largeur = colonnesPour(papier);
+      for (const ligne of rendreTexte(regleDeCalibration(papier), { paperWidth: papier })) {
+        expect(occupe(ligne)).toBeLessThanOrEqual(largeur);
+      }
+    });
+  }
+});
+
+describe("Un montant ne se tronque jamais", () => {
+  it("replie une valeur trop longue au lieu de lui manger la tête", () => {
+    // `padStart(...).slice(-largeur)` gardait la FIN : « 1 234 567 890 123 »
+    // sortait amputé de son premier chiffre, donc plausible et faux.
+    const valeur = "1234567890123456789012345678901234567890123456";
+    const lignes = paire("Montant payé", valeur, 42);
+    expect(lignes.join("")).toContain(valeur.slice(0, 20));
+    // Aucun chiffre perdu : la concaténation des lignes porte toute la valeur.
+    expect(lignes.join("").replace(/\s/g, "")).toContain(valeur);
+  });
+
+  it("garde le cas courant sur une seule ligne, valeur collée à droite", () => {
+    const [ligne] = paire("Total", "12 500 FC", 42);
+    expect(ligne).toHaveLength(42);
+    expect(ligne.endsWith("12 500 FC")).toBe(true);
+  });
+});
+
+describe("Pastille", () => {
+  it("se replie plutôt que de déborder en silence", () => {
+    const blocks: Block[] = [
+      { kind: "chip", text: "DUPLICATA D'UN RECU DE REGLEMENT TRES LONG A IMPRIMER" },
+    ];
+    for (const ligne of rendreTexte(blocks, { paperWidth: 58 })) {
+      expect(occupe(ligne)).toBeLessThanOrEqual(42);
     }
   });
 });

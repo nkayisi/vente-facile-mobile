@@ -18,7 +18,7 @@ import {
   packagingFactorOf,
   type SaleCurrencyTotals,
 } from "@vente-facile/core/pos";
-import { getPackaging, pluralizeUnit } from "@vente-facile/core";
+import { formatDateTimeFr, getPackaging, pluralizeUnit } from "@vente-facile/core";
 import type {
   ReceiptChrome,
   SaleReceiptData,
@@ -101,12 +101,44 @@ export interface ContexteTicket {
   snapshot: SessionSnapshot | null;
   registerName?: string;
   warehouseName?: string;
+  /**
+   * Les moyens de paiement, pour NOMMER les règlements.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ `Reglement.method` EST UN IDENTIFIANT, ET IL S'IMPRIMAIT TEL QUEL.    │
+   * │                                                                        │
+   * │ `buildSaleReceipt` emploie `payments[].method` comme LIBELLÉ de la     │
+   * │ ligne de règlement. Le client lisait donc                              │
+   * │ « 3f2a9c1e-8b44-…  50,00 $ » là où il devait lire « Espèces », sur    │
+   * │ tout ticket encaissé au comptoir et par les trois transports.          │
+   * │                                                                        │
+   * │ Le pire n'est pas l'identifiant, c'est l'ASYMÉTRIE : la réimpression   │
+   * │ reconstruit le document depuis la base locale, où elle joint           │
+   * │ `paymentMethods.name`. L'original portait donc un UUID et son propre   │
+   * │ duplicata portait « Espèces », pour la même vente.                     │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  moyens?: { id: string; name: string }[];
   /** Points gagnés sur cette vente, tels que le serveur les accordera. */
   pointsGagnes?: number;
   pointsRestants?: number;
   aCredit: boolean;
   /** Restant dû, en devise de facture. Zéro pour une vente réglée. */
   restantDu: number;
+}
+
+/**
+ * Le NOM d'un moyen de paiement, jamais son identifiant.
+ *
+ * Le repli reprend celui du POS web (`getMethodById(...)?.name || "Règlement"`), et
+ * il n'est pas décoratif : un moyen désactivé entre la vente et la réimpression
+ * laisserait sinon un libellé VIDE en face d'un montant, sur le papier du client.
+ */
+function nomDuMoyen(
+  moyens: { id: string; name: string }[] | undefined,
+  id: string
+): string {
+  return moyens?.find((m) => m.id === id)?.name?.trim() || "Règlement";
 }
 
 /**
@@ -150,10 +182,23 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
   return {
     kind: contexte.aCredit ? "credit_sale" : "sale",
     number: contexte.reference,
-    date: contexte.date.toISOString(),
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ UNE DATE LISIBLE, PAS UN HORODATAGE MACHINE.                        │
+    // │                                                                      │
+    // │ `toISOString()` imprimait « 2026-09-11T10:00:00.000Z » sur le papier │
+    // │ du client - en UTC, donc daté de la VEILLE pour toute vente faite    │
+    // │ après 23 h à Kinshasa. Et la RÉIMPRESSION du même ticket, elle,      │
+    // │ passait déjà par `formatDateTimeFr` : l'original et son duplicata ne │
+    // │ portaient pas la même date, pour la même vente.                      │
+    // │                                                                      │
+    // │ Même helper que `reimpression.ts`, et surtout pas `Intl` : Hermes    │
+    // │ n'embarque pas l'ICU complète et se replie sur l'anglais SANS lever. │
+    // └──────────────────────────────────────────────────────────────────────┘
+    date: formatDateTimeFr(contexte.date),
     cashierName: contexte.snapshot?.user.full_name,
     registerName: contexte.registerName,
     customerName: etat.client?.name,
+    customerPhone: etat.client?.phone ?? undefined,
     chrome: chromeDeLaSession(contexte.snapshot),
     warehouseName: contexte.warehouseName,
     items,
@@ -172,7 +217,7 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
     total: facture.total,
     currency: facture.currency,
     payments: etat.reglements.map((r) => ({
-      method: r.method,
+      method: nomDuMoyen(contexte.moyens, r.method),
       amount: Number(r.amount) || 0,
       currency: r.currency,
     })),

@@ -218,3 +218,26 @@ export async function derniersDocuments(limite = 50): Promise<DocumentImprimable
 
   return lignes.map((l) => ({ ...l, kind: l.kind as GenreDocument }));
 }
+
+/**
+ * Imprime une facture proforma, SANS la ranger.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE SEUL DOCUMENT QUI S'IMPRIME SANS ENTRER DANS `print_jobs`.           │
+ * │                                                                          │
+ * │ Cette table porte des documents à numéro définitif et à valeur probante :│
+ * │ `documentParNumero` traite le numéro comme unique et durable,            │
+ * │ `derniersDocuments` en fait la liste que le marchand consulte, et        │
+ * │ `detteEnAttente` y lit des montants pour reconstituer le crédit d'un     │
+ * │ client. Une proforma n'est rien de tout cela - elle ne prouve aucun      │
+ * │ paiement et n'engage aucun stock - et l'y ranger la ferait entrer dans   │
+ * │ trois lectures qui ne la concernent pas.                                 │
+ * │                                                                          │
+ * │ Elle se réimprime donc en se RÉGÉNÉRANT, et c'est pour cela que le       │
+ * │ panier reste en place après l'impression : sa source est encore à        │
+ * │ l'écran. Le back-office n'en garde rien non plus.                        │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export async function imprimerProforma(donnees: SaleReceiptData): Promise<void> {
+  await imprimer(buildSaleReceipt(donnees), { nom: donnees.number });
+}

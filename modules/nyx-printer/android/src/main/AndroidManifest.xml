@@ -1,0 +1,20 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    VISIBILITÉ DE PAQUET (Android 11+), ET ELLE N'EST PAS FACULTATIVE.
+
+    Sans cette déclaration, le système CACHE le paquet du service : `bindService`
+    rend false sans lever et sans rien écrire au journal. C'est exactement le
+    symptôme « le service d'impression est muet » : on cherche alors un défaut
+    dans le code de l'imprimante là où il n'y a qu'une règle de visibilité.
+
+    Les DEUX identifiants sont listés, et il faut les deux : le service est le
+    même (ses classes sont toutes `net.nyx.printerservice.*`), mais les
+    terminaux rebadgés le publient sous un autre identifiant d'application.
+    Relevé sur un Noryox NB55 : `com.incar.printerservice`, APK
+    `/system/priv-app/NyxPrinterService/NyxPrinterService.apk`.
+  -->
+  <queries>
+    <package android:name="com.incar.printerservice" />
+    <package android:name="net.nyx.printerservice" />
+  </queries>
+</manifest>

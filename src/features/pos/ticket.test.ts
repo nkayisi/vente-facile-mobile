@@ -20,6 +20,10 @@
  */
 import { createCurrencyTable, saleCurrencyTotals } from "@vente-facile/core/pos";
 
+import { buildSaleReceipt } from "@vente-facile/core/receipt";
+
+import { rendreTexte } from "@/printing/render-text";
+
 import { donneesTicketVente, type ContexteTicket } from "./ticket";
 import { PANIER_VIDE, reducteurPanier, type EtatPanier } from "./etat-panier";
 import type { ArticlePos } from "./catalogue";
@@ -151,5 +155,168 @@ describe("Le ticket porte les montants de la devise qu'il annonce", () => {
       expect(somme).toBe(t.subtotal);
       expect(t.total).toBe(t.subtotal);
     }
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `Reglement.method` EST UN IDENTIFIANT, ET IL PARTAIT SUR LE PAPIER.     │
+ * │                                                                          │
+ * │ `buildSaleReceipt` emploie `payments[].method` comme LIBELLÉ de la ligne │
+ * │ de règlement : le client lisait « 3f2a9c1e-8b44-…  20,00 $ ». Sur tout  │
+ * │ ticket encaissé au comptoir, par les trois transports, et depuis         │
+ * │ toujours.                                                                │
+ * │                                                                          │
+ * │ Rien ne pouvait le signaler : c'est une chaîne valide en face d'un       │
+ * │ montant juste. Et sur les données de développement le défaut se voyait   │
+ * │ d'autant moins que le POS WEB, lui, résout déjà le nom - comme le fait   │
+ * │ la RÉIMPRESSION du même ticket, qui joint `paymentMethods.name`. Le      │
+ * │ papier original et son propre duplicata ne portaient donc pas la même    │
+ * │ ligne, pour la même vente.                                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("Le règlement porte le NOM du moyen de paiement", () => {
+  const ESPECES = "3f2a9c1e-8b44-4c21-9f0e-7a1d5b2c8e33";
+  const moyens = [{ id: ESPECES, name: "Espèces" }];
+
+  /** Un panier réglé, tel que l'écran d'encaissement le construit. */
+  function regle(deviseFacture: string, methode = ESPECES, liste = moyens) {
+    const etat = reducteurPanier(ajouter(PANIER_VIDE, savon, 0, 2), {
+      type: "reglements",
+      reglements: [
+        { cle: "r1", method: methode, currency: deviseFacture, amount: "20" },
+      ],
+    });
+    return donneesTicketVente({ ...contexte(etat, deviseFacture), moyens: liste });
+  }
+
+  it("imprime « Espèces », jamais l'identifiant du moyen", () => {
+    expect(regle("USD").payments[0].method).toBe("Espèces");
+  });
+
+  it("se replie sur « Règlement » quand le moyen est introuvable", () => {
+    // Un moyen désactivé entre la vente et la réimpression. Le repli n'est pas
+    // décoratif : sans lui, le papier porterait un libellé VIDE en face d'un
+    // montant, ce qui est pire qu'un mot générique. C'est celui du POS web.
+    expect(regle("USD", ESPECES, []).payments[0].method).toBe("Règlement");
+    expect(regle("USD", "inconnu").payments[0].method).toBe("Règlement");
+  });
+
+  it("se replie aussi sur un nom vide, que la base accepte", () => {
+    const anonyme = [{ id: ESPECES, name: "   " }];
+    expect(regle("USD", ESPECES, anonyme).payments[0].method).toBe("Règlement");
+  });
+});
+
+/**
+ * Le balayage qui couvre le TUYAU, et non un appelant.
+ *
+ * Il rend le ticket en TEXTE - donc par le chemin qu'emprunte réellement une
+ * imprimante Bluetooth - et refuse qu'une seule ligne porte une forme
+ * d'identifiant. Une vente en a quatre sous la main (article, client, moyen de
+ * paiement, session) : c'est le genre de valeur qui se glisse dans un champ
+ * d'affichage sans que rien ne lève.
+ *
+ * Une seule vente suffit à couvrir presque tout le modèle partagé : en-tête
+ * d'organisation, bandeau, bloc d'identité, articles, colonnes de montants,
+ * total et pied y passent tous.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE PREMIÈRE VERSION DE CE BALAYAGE EST PASSÉE AU VERT SUR LE DÉFAUT.   │
+ * │                                                                          │
+ * │ Elle cherchait un UUID COMPLET, ses cinq groupes. Or une ligne de        │
+ * │ règlement est un couple libellé / montant, et `paire()` abrège le        │
+ * │ LIBELLÉ : sur 42 colonnes, l'identifiant sortait                         │
+ * │ « 3f2a9c1e-8b44-4c21-9f0e-7a1d5b2. 56 000 FC », tronqué au point. Le    │
+ * │ motif ne pouvait donc RIEN reconnaître, et le test déclarait conforme le │
+ * │ papier dont le défaut venait d'être mesuré. Relevé par mutation, pas par │
+ * │ relecture - c'est le même piège que `\bqueryset\b`, qui ne mordait pas   │
+ * │ sur `self.get_queryset()`.                                               │
+ * │                                                                          │
+ * │ On raisonne donc par JETON, et non par motif global : un identifiant ne  │
+ * │ contient que des chiffres hexadécimaux et des tirets, là où tout ce      │
+ * │ qu'un ticket porte légitimement de long et de tireté - un numéro de      │
+ * │ document - commence par un préfixe dont au moins une lettre n'est pas    │
+ * │ hexadécimale (le V de « VT », le Z de « CZ », le P de « DEP »).          │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("Aucun identifiant ne sort sur le papier", () => {
+  /**
+   * Les jetons qui ressemblent à un identifiant, tronqués ou non.
+   *
+   * Douze signes et deux tirets au minimum : une date (« 2026-09-04 », dix
+   * signes) n'en est pas un, et un identifiant coupé court - « 3f2a9c1e-8b44-4c21 »
+   * - en est encore un.
+   */
+  function identifiants(ligne: string): string[] {
+    return ligne
+      .split(/\s+/)
+      // La troncature ajoute un point, et une ponctuation de fin n'appartient
+      // pas au jeton.
+      .map((jeton) => jeton.replace(/[.,;:]+$/, ""))
+      .filter(
+        (jeton) =>
+          jeton.length >= 12 &&
+          /^[0-9a-f-]+$/i.test(jeton) &&
+          (jeton.match(/-/g) ?? []).length >= 2
+      );
+  }
+
+  const client = {
+    id: "9c1b7d54-2f6a-4e88-b0c3-5d4e6f7a8b90",
+    name: "Nelly Kayisi",
+    phone: "+243 997 876 765",
+    allow_credit: true,
+    credit_limit: "0",
+    current_balance: "0",
+  };
+
+  /** Le ticket d'une vente qui porte tous les identifiants d'un comptoir. */
+  function lignesDuTicket() {
+    const moyen = "3f2a9c1e-8b44-4c21-9f0e-7a1d5b2c8e33";
+    let etat = ajouter(PANIER_VIDE, savon, 0, 2);
+    etat = reducteurPanier(etat, { type: "client", client });
+    etat = reducteurPanier(etat, {
+      type: "reglements",
+      reglements: [{ cle: "r1", method: moyen, currency: "CDF", amount: "56000" }],
+    });
+    const donnees = donneesTicketVente({
+      ...contexte(etat, "CDF"),
+      moyens: [{ id: moyen, name: "Espèces" }],
+      registerName: "Caisse principale",
+      warehouseName: "Depot central",
+    });
+    return rendreTexte(buildSaleReceipt(donnees), { paperWidth: 58 }).map((l) => l.text);
+  }
+
+  it("balaie un ticket entier sans y trouver d'identifiant", () => {
+    const lignes = lignesDuTicket();
+    // UN BALAYAGE QUI NE BALAIE RIEN PASSE AU VERT : ce dépôt l'a déjà payé
+    // quatre fois. On compte donc ce qu'on a lu avant de conclure.
+    expect(lignes.length).toBeGreaterThan(15);
+    expect(lignes.flatMap(identifiants)).toEqual([]);
+  });
+
+  it("porte bien les vraies valeurs à la place", () => {
+    const papier = lignesDuTicket().join("\n");
+    expect(papier).toContain("Especes");
+    expect(papier).toContain("Nelly Kayisi");
+    expect(papier).toContain("Depot central");
+    expect(papier).toContain("Caisse principale");
+  });
+
+  it("MORD sur la forme que le défaut produisait, TRONQUÉE comprise", () => {
+    // La forme relevée sur le papier, point de troncature compris.
+    expect(identifiants("3f2a9c1e-8b44-4c21-9f0e-7a1d5b2. 56 000 FC")).toHaveLength(1);
+    // Et sur une troncature plus dure, qu'un montant long provoquerait.
+    expect(identifiants("3f2a9c1e-8b44-4c21 12 500 000 000 FC")).toHaveLength(1);
+    // Sans confondre avec ce qu'un ticket porte légitimement. Le numéro de
+    // document est le cas à ne pas rater : sa date et son code d'appareil sont
+    // parfois entièrement hexadécimaux (« 20260904-A1B2-0001 »), et c'est son
+    // PRÉFIXE qui l'en distingue.
+    expect(identifiants("Recu n: VT-20260904-A1B2-0001")).toEqual([]);
+    expect(identifiants("Date: 2026-09-04 10:00")).toEqual([]);
+    expect(identifiants("Tel.: +243 997 876 765")).toEqual([]);
+    expect(identifiants("Sous-total 56 000 FC")).toEqual([]);
   });
 });
