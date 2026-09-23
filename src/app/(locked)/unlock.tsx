@@ -16,6 +16,7 @@ import {
   verifyPin,
   type BiometricSupport,
 } from "@/session/lock";
+import { useDeconnexion } from "@/session/deconnexion";
 import { useSession } from "@/session/provider";
 import { Banner, Button, PinDots, PinPad, Screen, Text } from "@/ui";
 
@@ -27,7 +28,8 @@ function formatDelay(ms: number): string {
 }
 
 export default function Unlock() {
-  const { snapshot, markUnlocked, logout } = useSession();
+  const { snapshot, markUnlocked } = useSession();
+  const { demander } = useDeconnexion();
 
   const [pin, setPin] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -110,10 +112,15 @@ export default function Unlock() {
           <Banner
             tone="destructive"
             title="Trop d'essais"
-            message="Reconnectez-vous avec votre mot de passe. Vos ventes en attente sur cet appareil sont conservées."
+            // La promesse est devenue CONDITIONNELLE, et elle doit le dire. La
+            // modale envoie d'abord ce qui attend, puis remet le terminal à
+            // neuf ; ce qui ne peut pas partir - pas de réseau, un droit
+            // manquant, un refus du serveur - n'est jamais effacé, elle n'offre
+            // aucune issue destructrice.
+            message="Reconnectez-vous avec votre mot de passe. Ce qui attend encore son envoi partira d'abord, et ce qui ne peut pas partir est conservé."
           />
           <View className="mt-6">
-            <Button fullWidth size="lg" onPress={logout}>
+            <Button fullWidth size="lg" onPress={demander}>
               Se reconnecter
             </Button>
           </View>

@@ -39,12 +39,38 @@ export type ColorToken =
   | "border"
   | "input"
   | "ring"
+  | "splash"
   | "chart1"
   | "chart2"
   | "chart3"
   | "chart4"
   | "chart5";
 
+/**
+ * Le fond du splash, CLAIR DANS LES DEUX THÈMES.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE JETON NE SUIT PAS LE THÈME, ET C'EST TOUT SON INTÉRÊT.               │
+ * │                                                                          │
+ * │ Le logo de la marque porte du bleu sombre et un contour noir : mesuré    │
+ * │ contre `#0f0f11`, le tourbillon orange tient 5,4:1 mais le mot « Vente » │
+ * │ tombe à 1,6:1 et le téléphone à ~1:1. Sur un fond sombre, il ne reste    │
+ * │ que l'orange, ce qui se lit comme un défaut d'affichage.                 │
+ * │                                                                          │
+ * │ `app.config.ts` a donc tranché : le splash natif reste clair de nuit     │
+ * │ comme de jour. Ce jeton est ce qui permet à l'écran de démarrage de le   │
+ * │ PROLONGER sans écrire `bg-white`, que le garde-fou des couleurs en dur   │
+ * │ interdit à juste titre partout ailleurs.                                 │
+ * │                                                                          │
+ * │ ⚠ IL NE SERT QU'À CELA : le FOND de l'écran de démarrage.               │
+ * │ Il a un temps servi de PLAQUE sous le logo, sur tous les écrans. C'était │
+ * │ un carré blanc posé sur le `#f3f4f6` de la page en thème clair et sur le │
+ * │ `#0f0f11` en sombre : deux couleurs qui ne sont celles d'aucune des deux │
+ * │ pages. Le fond derrière le logo est TOUJOURS celui de la page. Voir      │
+ * │ `ui/logo.tsx`, et le garde-fou « aucune plaque d'une autre couleur ne se │
+ * │ glisse sous le logo » qui l'interdit désormais.                          │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
 export type Palette = Record<ColorToken, string>;
 
 const light: Palette = {
@@ -75,6 +101,7 @@ const light: Palette = {
   border: "#e5e7eb",
   input: "#e7e7e7",
   ring: "#ea580c",
+  splash: "#ffffff",
   chart1: "#ea580c",
   chart2: "#3b82f6",
   chart3: "#22c55e",
@@ -107,6 +134,8 @@ const dark: Palette = {
   border: "#2d2d30",
   input: "#3f3f46",
   ring: "#f97316",
+  // Identique au thème clair : voir la note au-dessus de `Palette`.
+  splash: "#ffffff",
   chart1: "#f97316",
   chart2: "#60a5fa",
   chart3: "#4ade80",

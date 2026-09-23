@@ -8,6 +8,9 @@
  */
 import TestRenderer, { act } from "react-test-renderer";
 
+// Module PUR, sans effet de bord : il peut rester en tête.
+import { reinitialiserPourTest } from "@/sync/verrou";
+
 const mockPushAll = jest.fn<Promise<void>, unknown[]>();
 const mockPullAll = jest.fn<Promise<unknown>, unknown[]>();
 const mockUnblockAll = jest.fn<Promise<void>, unknown[]>();
@@ -20,7 +23,16 @@ let mockStatus = "ready";
 let mockRetourReseau: (() => void) | null = null;
 let mockChangement: ((ev: { tableName: string }) => void) | null = null;
 
+/**
+ * ⚠ LE VERROU N'EST PAS DOUBLÉ, ET C'EST TOUT L'INTÉRÊT.
+ *
+ * Ce fichier juge « le verrou, les écouteurs et le nettoyage » : le doubler
+ * reviendrait à éprouver la doublure. Il est PUR (une variable de module, aucune
+ * base, aucun rendu), donc le vrai tourne ici sans rien ouvrir. `requireActual`
+ * est la seule référence hors portée qu'une fabrique de `jest.mock` accepte.
+ */
 jest.mock("@/sync", () => ({
+  ...jest.requireActual("@/sync/verrou"),
   pushAll: (...a: unknown[]) => mockPushAll(...a),
   pullAll: (...a: unknown[]) => mockPullAll(...a),
   unblockAll: () => mockUnblockAll(),
@@ -100,6 +112,10 @@ function monter() {
 
 describe("le fournisseur de synchronisation", () => {
   beforeEach(() => {
+    // Le verrou est une variable de MODULE : elle survit d'un cas à l'autre. Un
+    // test qui la laisse prise ferait échouer le suivant pour une raison qui ne
+    // lui appartient pas.
+    reinitialiserPourTest();
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockEnLigne = true;

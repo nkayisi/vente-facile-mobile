@@ -10,8 +10,10 @@
  * sm:text-left`) : on fait de même.
  */
 import { View } from "react-native";
+import { router } from "expo-router";
 import { formatDateFr, ROLE_LABELS } from "@vente-facile/core";
 
+import { useDeconnexion } from "@/session/deconnexion";
 import { useSession } from "@/session/provider";
 import {
   Avatar,
@@ -39,7 +41,8 @@ function dateLisible(v: string | null | undefined): string {
 }
 
 export default function Profil() {
-  const { snapshot, lock, logout } = useSession();
+  const { snapshot, lock } = useSession();
+  const { demander } = useDeconnexion();
   const u = snapshot?.user;
   const role = snapshot?.membership?.role ?? null;
 
@@ -94,6 +97,24 @@ export default function Profil() {
             icon="Key"
             value={String(snapshot?.membership?.permissions.length ?? 0)}
           />
+          <Divider inset />
+          {/* ┌────────────────────────────────────────────────────────────┐
+              │ ICI, ET PAS DANS LE BLOC « CET APPAREIL » DU TIROIR.       │
+              │                                                            │
+              │ Ce bloc ne porte que les TROIS écrans qu'on vient chercher │
+              │ au comptoir, et `appareil/_layout.tsx` l'écrit noir sur    │
+              │ blanc : les autres routes sont atteintes depuis l'endroit  │
+              │ où la question se pose. La question « qu'est-ce que le     │
+              │ système réserve en bas de MON écran » se pose ici, à côté  │
+              │ du code de ce terminal.                                    │
+              └────────────────────────────────────────────────────────────┘ */}
+          <ListItem
+            title="Diagnostic d'affichage"
+            subtitle="Marges réservées par le système"
+            icon="Ruler"
+            chevron
+            onPress={() => router.push("/(app)/appareil/affichage")}
+          />
         </Card>
       </Section>
 
@@ -114,7 +135,7 @@ export default function Profil() {
             <Button variant="outline" fullWidth leftIcon="Lock" onPress={lock}>
               Verrouiller le terminal
             </Button>
-            <Button variant="destructive" fullWidth leftIcon="LogOut" onPress={() => void logout()}>
+            <Button variant="destructive" fullWidth leftIcon="LogOut" onPress={demander}>
               Se déconnecter
             </Button>
           </View>

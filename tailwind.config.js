@@ -29,6 +29,8 @@ module.exports = {
         border: color("border"),
         input: color("input"),
         ring: color("ring"),
+        // Clair dans les deux thèmes : voir `ui/tokens.ts`.
+        splash: color("splash"),
         chart: {
           1: color("chart1"),
           2: color("chart2"),

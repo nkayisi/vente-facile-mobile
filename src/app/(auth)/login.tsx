@@ -11,8 +11,8 @@ import { View } from "react-native";
 import { router } from "expo-router";
 
 import { ApiError } from "@/api/errors";
-import { useSession } from "@/session/provider";
-import { Banner, Button, FormField, Input, Pressable, Screen, Text } from "@/ui";
+import { MOTIF_DEMARRAGE, useSession } from "@/session/provider";
+import { Banner, Button, FormField, Input, Logo, Pressable, Screen, Text } from "@/ui";
 
 export default function Login() {
   const { login, chooseOrganization, status, lostReason } = useSession();
@@ -70,20 +70,39 @@ export default function Login() {
 
   return (
     <Screen scroll centre>
-      <View className="mb-8">
-        <Text variant="h1">Vente Facile</Text>
-        <Text variant="muted">Connectez-vous pour ouvrir votre caisse.</Text>
+      {/* Le mot-symbole est DANS le logo, et le titre le répète : à cette
+          taille il n'y est qu'une texture de quelques points, illisible, et
+          c'est déjà le parti pris du tiroir. Retirer le titre emporterait la
+          hiérarchie de titres que lit un lecteur d'écran. */}
+      <View className="mb-8 items-center gap-3">
+        <Logo hauteur={104} nomAilleurs />
+        <View className="items-center gap-1">
+          <Text variant="h1">Vente Facile</Text>
+          <Text variant="muted">Connectez-vous pour ouvrir votre caisse.</Text>
+        </View>
       </View>
 
-      {status === "needs_password" ? (
+      {/* ⚠ La condition ne peut PAS se réduire au statut : un démarrage à froid
+      qui a levé retombe sur `anonymous`, pas sur `needs_password`. Sans la
+      seconde branche, le caissier arriverait ici sans un mot et croirait sa
+      journée perdue. */}
+      {status === "needs_password" || lostReason === MOTIF_DEMARRAGE ? (
         <View className="mb-5">
           <Banner
             tone="warning"
-            title="Session expirée"
+            title={
+              lostReason === MOTIF_DEMARRAGE
+                ? "Le terminal n'a pas pu ouvrir sa session"
+                : "Session expirée"
+            }
             message={
-              lostReason === "no_device"
-                ? "Ce terminal doit être enrôlé à nouveau. Vos données restent sur l'appareil."
-                : "L'accès de ce terminal a été révoqué ou a expiré. Vos ventes en attente sont conservées et repartiront après reconnexion."
+              lostReason === MOTIF_DEMARRAGE
+                ? // La phrase qui compte est « rien n'a été effacé » : c'est la
+                  // seule question que se pose celui qui lit ce bandeau.
+                  "La lecture des données locales a échoué au démarrage. Rien n'a été effacé : vos ventes et vos opérations en attente sont toujours sur l'appareil. Reconnectez-vous pour reprendre."
+                : lostReason === "no_device"
+                  ? "Ce terminal doit être enrôlé à nouveau. Vos données restent sur l'appareil."
+                  : "L'accès de ce terminal a été révoqué ou a expiré. Vos ventes en attente sont conservées et repartiront après reconnexion."
             }
           />
         </View>

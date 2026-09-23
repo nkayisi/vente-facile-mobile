@@ -17,7 +17,11 @@
  * **Sans DSN, rien ne s'initialise, et ce n'est pas une erreur.** Le
  * développement et les compilations internes n'ont pas de service de collecte ;
  * lever au démarrage pour un outil d'observation empêcherait de vendre à cause
- * d'un outil censé aider. `EXPO_PUBLIC_SENTRY_DSN` est posé par le profil EAS.
+ * d'un outil censé aider. `EXPO_PUBLIC_SENTRY_DSN` n'est posé nulle part : il
+ * est à ajouter aux profils `preview` et `production` d'`eas.json` le jour où
+ * un projet Sentry existe. ⚠ Une valeur VIDE y est REFUSÉE par EAS CLI, qui
+ * répond « eas.json is not valid » et n'entame même pas la compilation : on
+ * retire la clé, on ne la met pas à la chaîne vide.
  */
 import * as Sentry from "@sentry/react-native";
 

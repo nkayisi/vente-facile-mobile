@@ -28,6 +28,7 @@ export { PinPad, PinDots } from "./pin-pad";
 export { Badge, type BadgeTone } from "./badge";
 export { Screen, type ScreenProps } from "./screen";
 export { Spinner, type SpinnerProps } from "./spinner";
+export { Logo } from "./logo";
 export {
   Banner,
   EmptyState,
@@ -67,6 +68,7 @@ export { Pastille } from "./pastille";
 export { ChampMontant, type DeviseChoisissable } from "./champ-montant";
 export { Segmented, type OptionSegment } from "./segmented";
 export { Switch } from "./switch";
+export { Checkbox, CaseACocher } from "./checkbox";
 export { BasculeTheme } from "./bascule-theme";
 export {
   LIBELLE_THEME,

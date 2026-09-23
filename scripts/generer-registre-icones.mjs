@@ -59,6 +59,11 @@ const DEMANDES = [
   "Table",
   "Calculator", "Percent", "CreditCard", "Calendar", "Clock", "ArrowUpRight",
   "ArrowDownRight", "Bell", "Sparkles",
+  // Encaissement : les quatre glyphes de la modale du back-office.
+  // `HandCoins` coiffe l'option « Credit » du selecteur de moyen de paiement,
+  // `Smartphone` le mobile money, `CircleDollarSign` le repli et le symbole du
+  // champ montant, `Star` les points de fidelite (`LoyaltyPointsPicker`).
+  "HandCoins", "Smartphone", "CircleDollarSign", "Star",
   // Types d'etablissement, grille d'inscription.
   "Building2", "Pill", "UtensilsCrossed",
   // Photo d'un article : `ImagePlus` est l'icone du champ photo du back-office

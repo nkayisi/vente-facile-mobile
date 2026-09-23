@@ -65,3 +65,70 @@ describe("Screen centre", () => {
     ).toEqual({ flexGrow: 1, justifyContent: "center" });
   });
 });
+
+describe("Screen fond", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ UNE COUTURE NE LÈVE RIEN NON PLUS.                                      │
+   * │                                                                          │
+   * │ Un pied blanc sur un corps gris s'affiche parfaitement : c'est une       │
+   * │ bande d'une autre couleur en travers de l'écran, et rien à l'exécution   │
+   * │ ne la distingue d'une disposition voulue. Elle se relève à l'oeil, sur   │
+   * │ une capture - c'est exactement comme ça qu'elle a été trouvée.           │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  function classes(element: React.ReactElement): string[] {
+    let rendu!: ReturnType<typeof create>;
+    act(() => {
+      rendu = create(element);
+    });
+    return rendu.root
+      .findAllByType(View)
+      .map((v) => String(v.props.className ?? ""));
+  }
+
+  /** Le pied est la seule vue à porter le rembourrage de la barre d'actions. */
+  const pied = (liste: string[]): string =>
+    liste.find((c) => c.includes("px-4 py-3")) ?? "";
+
+  it("par défaut, le pied se DÉTACHE du corps : filet et plaque", () => {
+    const c = classes(
+      <Screen pied={<View />}>
+        <View />
+      </Screen>
+    );
+    expect(c[0]).toContain("bg-background");
+    expect(pied(c)).toContain("border-t");
+    expect(pied(c)).toContain("bg-card");
+  });
+
+  it("`fond=\"card\"` rend l'écran d'un seul tenant, sans couture", () => {
+    const c = classes(
+      <Screen fond="card" pied={<View />}>
+        <View />
+      </Screen>
+    );
+    expect(c[0]).toContain("bg-card");
+    expect(c[0]).not.toContain("bg-background");
+    // Le filet ET la plaque partent ensemble : garder l'un des deux laisserait
+    // la couture qu'on vient de supprimer.
+    expect(pied(c)).not.toContain("border-t");
+    expect(pied(c)).not.toContain("bg-card");
+  });
+
+  it("le pied garde son rembourrage dans les deux fonds", () => {
+    // Sans lui, la barre d'actions colle aux bords : le prop ne doit changer
+    // que la COULEUR, jamais la géométrie.
+    for (const f of ["background", "card"] as const) {
+      expect(
+        pied(
+          classes(
+            <Screen fond={f} pied={<View />}>
+              <View />
+            </Screen>
+          )
+        )
+      ).toContain("px-4 py-3");
+    }
+  });
+});

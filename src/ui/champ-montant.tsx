@@ -44,6 +44,7 @@ export function ChampMontant({
   repere,
   erreur,
   autoFocus,
+  requis = true,
 }: {
   label?: string;
   valeur: string;
@@ -56,6 +57,13 @@ export function ChampMontant({
   repere?: string;
   erreur?: string;
   autoFocus?: boolean;
+  /**
+   * L'etoile du `FormField`.
+   *
+   * A `false` pour un ACOMPTE, qui est facultatif par definition : une etoile
+   * sur un champ qu'on a le droit de laisser vide fait chercher ce qui manque.
+   */
+  requis?: boolean;
 }) {
   const symbole = devises.find((d) => d.code === devise)?.symbole ?? devise;
   const multi = devises.length > 1;
@@ -69,7 +77,7 @@ export function ChampMontant({
       // écrire `label="Montant"` pour obtenir « Montant * ». On ne recopie pas
       // ce détour.
       label={`${label} (${devise})`}
-      required
+      required={requis}
       error={erreur}
       hint={afficheRepere ? repere : undefined}
     >

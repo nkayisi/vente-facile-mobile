@@ -82,6 +82,10 @@ function toSnapshot(data: SessionResponse): SessionSnapshot {
     currencies: data.currencies,
     loyalty_program: data.loyalty_program,
     device: data.device,
+    // `?? null` et non l'omission : un serveur antérieur ne l'envoie pas, et
+    // la distinction « absent » / « nul » n'a aucun sens ici - les deux se
+    // lisent « pas de verdict », donc porte ouverte (`jugerAcces`, règle 1).
+    subscription: data.subscription ?? null,
     fetched_at: data.server_time ?? new Date().toISOString(),
   };
 }

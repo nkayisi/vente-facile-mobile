@@ -203,6 +203,34 @@ describe("les raccourcis ne mènent pas dans un cul-de-sac", () => {
 });
 
 /**
+ * La table d'aiguillage de la session vise des routes qui existent.
+ *
+ * `ROUTE_FOR` (`session/gate.tsx`) est le SEUL aiguillage de l'application, et
+ * son `router.replace(cible as never)` passe une VARIABLE : ni le typage des
+ * routes ni le balayage des littéraux ci-dessus ne le voient. Une entrée qui
+ * nommerait une route absente ferait rester l'utilisateur là où il est, sans
+ * erreur - donc un état de session dont on ne sortirait jamais.
+ */
+describe("l'aiguillage de session", () => {
+  const routes = new Set(
+    fichiers(APP).map(cheminDeRoute).filter((r): r is string => r !== null)
+  );
+
+  it("chaque état de session mène à une route qui existe", () => {
+    const code = readFileSync(join(SRC, "session/gate.tsx"), "utf8");
+    const table = /ROUTE_FOR[^=]*=\s*\{([^}]*)\}/s.exec(code);
+    expect(table).not.toBeNull();
+
+    const cibles = [...table![1].matchAll(/:\s*"([^"]+)"/g)].map((m) => m[1]);
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien.
+    expect(cibles.length).toBeGreaterThan(4);
+
+    const casses = cibles.filter((c) => !existe(routes, normaliser(c)));
+    expect(casses).toEqual([]);
+  });
+});
+
+/**
  * `src/app/` est le dossier de ROUTES, et rien d'autre.
  *
  * Un souligné de tête n'y protège de rien : expo-router enregistre quand même

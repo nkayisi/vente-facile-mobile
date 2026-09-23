@@ -11,7 +11,30 @@ import type { ExpoConfig } from "expo/config";
 
 type Profile = "development" | "preview" | "production";
 
-const profile = (process.env.EAS_BUILD_PROFILE ?? "development") as Profile;
+/**
+ * ┌────────────────────────────────────────────────────────────────────────────┐
+ * │ LE PROFIL VIENT DE `VF_PROFILE`, PAS DE `EAS_BUILD_PROFILE`.               │
+ * │                                                                            │
+ * │ Mesuré : `EAS_BUILD_PROFILE` n'apparaît NULLE PART dans eas-cli - seul le  │
+ * │ serveur de compilation le pose. Ce fichier est pourtant évalué DEUX fois : │
+ * │ par le CLI sur la machine du développeur, pour résoudre l'identité de      │
+ * │ l'application et donc ses IDENTIFIANTS DE SIGNATURE, puis par le serveur.  │
+ * │ Avec la seule variable d'EAS, `eas build --profile production` demandait   │
+ * │ une clé pour `com.ventefacile.app.dev` et livrait un binaire déclarant     │
+ * │ `com.ventefacile.app` : un paquet signé de la mauvaise clé, que Google     │
+ * │ Play refuse - et rien à l'écran ne l'annonce, la ligne fautive étant un    │
+ * │ nom d'application juste.                                                   │
+ * │                                                                            │
+ * │ `VF_PROFILE` est déclaré dans l'`env` de chaque profil d'`eas.json`, que   │
+ * │ le CLI charge AVANT d'évaluer ce fichier et que le serveur repose          │
+ * │ ensuite : une seule valeur, lue au même endroit des deux côtés.            │
+ * │ `EAS_BUILD_PROFILE` reste en second rang, pour qu'un profil auquel on      │
+ * │ aurait oublié la variable ne retombe pas en développement.                 │
+ * └────────────────────────────────────────────────────────────────────────────┘
+ */
+const profile = (process.env.VF_PROFILE ??
+  process.env.EAS_BUILD_PROFILE ??
+  "development") as Profile;
 
 /** Suffixe d'identifiant natif : deux variantes cohabitent sur un appareil. */
 const SUFFIX: Record<Profile, string> = {
@@ -101,10 +124,41 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
+        // ┌────────────────────────────────────────────────────────────────┐
+        // │ LE SPLASH ÉTAIT INVISIBLE EN THÈME CLAIR, À CHAQUE LANCEMENT. │
+        // │                                                                │
+        // │ `splash-icon.png` était l'asset du gabarit Expo : un dessin    │
+        // │ BLANC (240,240,240), posé ici sur un fond `#FFFFFF`. Le thème  │
+        // │ sombre le rendait, le thème clair non - et le thème clair est  │
+        // │ le défaut. Rien ne pouvait le signaler : un PNG ne lève pas.   │
+        // └────────────────────────────────────────────────────────────────┘
+        //
+        // ┌────────────────────────────────────────────────────────────────┐
+        // │ LE FOND RESTE CLAIR EN THÈME SOMBRE, ET C'EST MESURÉ.         │
+        // │                                                                │
+        // │ Contre `#0f0f11`, le tourbillon orange du logo tient 5,4:1,    │
+        // │ mais le bleu du mot « Vente » tombe à 1,6:1 et le contour du   │
+        // │ téléphone à ~1:1. Un splash sombre n'afficherait donc que le   │
+        // │ tourbillon : un logo amputé, qui se lit comme un défaut        │
+        // │ d'affichage plutôt que comme une marque.                       │
+        // │                                                                │
+        // │ Contrepartie ASSUMÉE : un bref éclair clair le soir, avant que │
+        // │ l'application ne peigne son fond sombre. On la paie plutôt que │
+        // │ de montrer une marque coupée en deux.                          │
+        // │                                                                │
+        // │ La clé `dark` reste DÉCLARÉE plutôt que retirée, pour que le   │
+        // │ prochain lecteur voie que le cas a été tranché et non oublié.  │
+        // │ Le greffon accepte aussi `dark.image` : c'est la porte de      │
+        // │ sortie le jour où une variante sombre du logo existera.        │
+        // └────────────────────────────────────────────────────────────────┘
         backgroundColor: "#FFFFFF",
-        dark: { backgroundColor: "#0F0F11" },
-        image: "./assets/images/splash-icon.png",
-        imageWidth: 160,
+        dark: { backgroundColor: "#FFFFFF" },
+        // Engendré depuis `logo.png` par `scripts/derive-brand-assets.mjs` :
+        // l'encre seule, sans le rembourrage transparent du fichier source.
+        // Sans ce recadrage, `imageWidth` piloterait un cadre dont le logo
+        // n'occupe que la moitié, et le nombre ne voudrait plus rien dire.
+        image: "./assets/images/logo-trim.png",
+        imageWidth: 180,
       },
     ],
     "expo-sqlite",
@@ -176,11 +230,18 @@ const config: ExpoConfig = {
    * n'a pas - l'imprimante Bluetooth, par exemple, qui planterait au premier
    * ticket. Une version applicative, elle, se laisse oublier.
    *
-   * `url` et `extra.eas.projectId` restent ABSENTS tant que le projet n'est pas
-   * relié à un compte EAS (`eas init` puis `eas update:configure` les posent).
-   * Sans eux le mécanisme est inerte : aucune mise à jour n'est cherchée, et
-   * rien ne casse. Les inventer ici enverrait les terminaux interroger un
-   * identifiant qui n'existe pas.
+   * `url` RESTE ABSENT, et c'est un choix : `eas init` a relié le projet (voir
+   * `extra.eas.projectId` plus bas), mais `eas update:configure` n'a pas été
+   * lancé. Sans URL le mécanisme est inerte - aucune mise à jour n'est
+   * cherchée, et rien ne casse.
+   *
+   * ⚠ LE JOUR OÙ ON L'ARME, UN PIÈGE S'OUVRE. `eas update` ne pose pas
+   * `EAS_BUILD_PROFILE` : ce fichier retomberait alors sur `development`, donc
+   * un identifiant natif en `.dev` et une empreinte qui ne correspond à AUCUN
+   * binaire installé, et `EXPO_PUBLIC_API_URL` serait absent - ce que
+   * `src/api/config.ts` refuse désormais au démarrage. Une mise à jour publiée
+   * sans son profil bloquerait les terminaux qui la reçoivent. À trancher AVANT
+   * `eas update:configure`, pas après.
    */
   updates: {
     enabled: true,
@@ -194,8 +255,26 @@ const config: ExpoConfig = {
     reactCompiler: true,
   },
 
+  /**
+   * Compte propriétaire du projet EAS (`@nkayisi/vf-marchand`).
+   *
+   * Explicite plutôt que déduit du compte connecté : une compilation lancée
+   * depuis une machine d'intégration, ou par quelqu'un d'autre, viserait sinon
+   * un projet homonyme sous SON compte, et les numéros de version distants
+   * repartiraient de zéro.
+   */
+  owner: "nkayisi",
+
   extra: {
     profile,
+    /**
+     * ⚠ POSÉ À LA MAIN, ET IL LE RESTERA. `eas init` ne sait pas écrire dans
+     * une configuration dynamique : il imprime l'identifiant et s'arrête sur
+     * « Cannot automatically write to dynamic config ». Le régénérer par un
+     * second `eas init` créerait un SECOND projet plutôt que de retrouver
+     * celui-ci.
+     */
+    eas: { projectId: "d3a6cfce-e612-450e-86ae-f29886206a39" },
   },
 };
 

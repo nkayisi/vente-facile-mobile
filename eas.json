@@ -14,6 +14,9 @@
       },
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "VF_PROFILE": "development"
       }
     },
     "preview": {
@@ -23,9 +26,11 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net",
-        "EXPO_PUBLIC_SENTRY_DSN": ""
+        "VF_PROFILE": "preview",
+        "EXPO_PUBLIC_API_URL": "https://backend.vente-facile.net/api/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://vente-facile.net",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "SENTRY_DISABLE_NATIVE_DEBUG_UPLOAD": "true"
       }
     },
     "production": {
@@ -36,9 +41,11 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.ventefacile.net/api/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://app.ventefacile.net",
-        "EXPO_PUBLIC_SENTRY_DSN": ""
+        "VF_PROFILE": "production",
+        "EXPO_PUBLIC_API_URL": "https://backend.vente-facile.net/api/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://vente-facile.net",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "SENTRY_DISABLE_NATIVE_DEBUG_UPLOAD": "true"
       }
     }
   },

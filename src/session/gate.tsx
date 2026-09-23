@@ -16,17 +16,27 @@ import { useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { useSession } from "./provider";
 import type { SessionStatus } from "./types";
 
-/** Écran attendu pour chaque état. Une seule table, pas de condition éparse. */
+/**
+ * Écran attendu pour chaque état. Une seule table, pas de condition éparse.
+ *
+ * ⚠ `anonymous` a DEUX portes, et la table n'en porte qu'une. Au tout premier
+ * lancement, on passe par la présentation ; ensuite, et pour toujours, par la
+ * connexion. Le choix se fait plus bas, sur `accueilVu`, parce qu'il dépend
+ * d'une lecture de base et non du seul état de session.
+ */
 const ROUTE_FOR: Record<Exclude<SessionStatus, "loading">, string> = {
   anonymous: "/(auth)/login",
   needs_password: "/(auth)/login",
+  // Une base étrangère se tranche AVANT de vendre : l'écran nomme l'ancien
+  // propriétaire, ses opérations en attente, et n'offre que deux issues.
+  base_etrangere: "/(locked)/reprise",
   needs_pin: "/(auth)/pin",
   locked: "/(locked)/unlock",
   ready: "/(app)",
 };
 
 export function SessionGate() {
-  const { status } = useSession();
+  const { status, accueilVu } = useSession();
   const segments = useSegments();
   const router = useRouter();
   // La pile est declaree APRES cette garde dans le layout racine, et les effets
@@ -42,8 +52,20 @@ export function SessionGate() {
     // un état provisoire ferait clignoter l'écran de connexion à chaque
     // démarrage, y compris pour un utilisateur déjà connecté.
     if (status === "loading") return;
+    // ┌──────────────────────────────────────────────────────────────────┐
+    // │ ON ATTEND AUSSI QUE LE DRAPEAU SOIT LU.                         │
+    // │                                                                  │
+    // │ Sans cette ligne, un premier lancement affiche la connexion      │
+    // │ pendant une image, puis saute sur la présentation quand la base  │
+    // │ répond. C'est exactement le clignotement décrit deux lignes plus │
+    // │ haut pour `loading`, par une seconde porte - et il ne se voit    │
+    // │ qu'au premier lancement, c'est-à-dire jamais en développement,   │
+    // │ où la base a déjà son drapeau.                                   │
+    // └──────────────────────────────────────────────────────────────────┘
+    if (status === "anonymous" && accueilVu === null) return;
 
-    const target = ROUTE_FOR[status];
+    const target =
+      status === "anonymous" && !accueilVu ? "/(auth)/bienvenue" : ROUTE_FOR[status];
     const current = `/${segments.join("/")}`;
 
     // `(app)` couvre toute une arborescence : une fois dedans, on laisse
@@ -65,7 +87,7 @@ export function SessionGate() {
           : current === target;
 
     if (!alreadyThere) router.replace(target as never);
-  }, [status, segments, router, navigation?.key]);
+  }, [status, accueilVu, segments, router, navigation?.key]);
 
   return null;
 }

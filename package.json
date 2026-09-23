@@ -83,7 +83,19 @@
     "db:studio": "drizzle-kit studio",
     "test": "jest",
     "test:watch": "jest --watch",
-    "db:pull-schema": "node scripts/generate-schema.mjs"
+    "db:pull-schema": "node scripts/generate-schema.mjs",
+    "verifier:natif": "node scripts/verifier-arbre-natif.mjs",
+    "eas:preview": "pnpm verifier:natif && eas build --profile preview --platform android",
+    "eas:production": "pnpm verifier:natif && eas build --profile production --platform android"
   },
-  "private": true
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@sentry/cli",
+      "esbuild",
+      "unrs-resolver"
+    ]
+  }
 }

@@ -59,6 +59,7 @@
 import { Fragment, useState } from "react";
 import { View } from "react-native";
 
+import { CaseACocher } from "./checkbox";
 import { Divider } from "./divider";
 import { Icon, type IconName } from "./icon";
 import { ListItem } from "./list-item";
@@ -93,6 +94,12 @@ export interface OptionSelect {
    * rubrique sans couleur, pas comme une donnée abîmée.
    */
   couleur?: string | null;
+  /**
+   * Glyphe de tête, quand l'entrée désigne un GENRE et non une donnée du
+   * marchand : un moyen de paiement, par exemple. Il cède le pas à `couleur`,
+   * qui, elle, vient du marchand et le distingue de ses voisines.
+   */
+  icon?: IconName;
 }
 
 /** Ce qu'un appelant met en état pour ouvrir la liste dans SA propre feuille. */
@@ -258,6 +265,10 @@ export function ListeChoix({
                 <View className="mr-3 h-9 w-9 items-center justify-center">
                   <Pastille couleur={o.couleur} taille={12} />
                 </View>
+              ) : o.icon ? (
+                <View className="mr-3 h-9 w-9 items-center justify-center">
+                  <Icon name={o.icon} size={20} color="mutedForeground" />
+                </View>
               ) : undefined
             }
             // La coche, et non un chevron : l'appui ne mène nulle part, il
@@ -396,17 +407,7 @@ export function ListeChoixMultiple({
             <ListItem
               title={o.label}
               subtitle={o.detail}
-              trailing={
-                <View
-                  className={`h-5 w-5 items-center justify-center rounded-sm border ${
-                    active ? "border-primary bg-primary" : "border-input"
-                  }`}
-                >
-                  {active ? (
-                    <Icon name="Check" size={14} color="primaryForeground" />
-                  ) : null}
-                </View>
-              }
+              trailing={<CaseACocher coche={active} />}
               onPress={() => onBasculer(o.valeur)}
             />
           </Fragment>

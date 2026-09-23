@@ -14,6 +14,7 @@
  * **l'action principale est EN HAUT**, « Annuler » dessous.
  */
 import { Modal, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "./button";
 import { Text } from "./text";
@@ -33,12 +34,44 @@ export function Dialog({
   children?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal visible={ouvert} transparent animationType="fade" onRequestClose={onFermer}>
       {/* Le voile lit un jeton : `bg-black/50` resterait noir en thème sombre
           alors que le fond, lui, aurait changé. */}
-      <View className="flex-1 items-center justify-center bg-foreground/50 px-4">
-        <View className="w-full max-w-md gap-4 rounded-xl border border-border bg-card p-6">
+      <View
+        className="flex-1 items-center justify-center bg-foreground/50 px-4"
+        // ┌────────────────────────────────────────────────────────────────┐
+        // │ UNE MODALE EST RENDUE HORS DE L'ARBRE DE `Screen`.            │
+        // │                                                                │
+        // │ Personne ne pose donc sa zone sûre, et c'est pourquoi          │
+        // │ `dialog.tsx` rejoint `sheet.tsx` dans la liste des exceptions   │
+        // │ NOMMÉES du garde-fou « un seul propriétaire par bord ». Un     │
+        // │ dialogue court est centré, donc sans danger ; un dialogue assez │
+        // │ haut pour remplir l'écran touchait les deux bords, et son       │
+        // │ dernier bouton - l'action principale, qui est EN HAUT de la     │
+        // │ pile mais en bas de l'écran - passait sous la barre gestuelle.  │
+        // │                                                                │
+        // │ ⚠ CE N'EST QUE LA MOITIÉ DU REMÈDE, et la moitié sans risque.  │
+        // │ La carte ne DÉFILE toujours pas : un contenu plus haut que     │
+        // │ l'espace disponible déborde encore. Y mettre un défilement      │
+        // │ toucherait une vingtaine d'appelants sans qu'aucun défaut ne    │
+        // │ soit constaté sur l'un d'eux - à faire le jour où l'on en tient │
+        // │ un, pas avant.                                                  │
+        // └────────────────────────────────────────────────────────────────┘
+        style={{
+          paddingTop: insets.top + 16,
+          paddingBottom: insets.bottom + 16,
+        }}
+      >
+        <View
+          className="w-full max-w-md gap-4 rounded-xl border border-border bg-card p-6"
+          // En React Native, `flexShrink` vaut ZÉRO par défaut - le contraire
+          // du navigateur. Sans cette ligne, la carte ignore purement et
+          // simplement le rembourrage ci-dessus et déborde quand même.
+          style={{ flexShrink: 1 }}
+        >
           {/* Titre et description CENTRÉS, comme le `text-center sm:text-left`
               du web en rendu étroit. */}
           <View className="gap-1">

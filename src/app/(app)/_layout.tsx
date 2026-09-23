@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 
 import { useDeviseParDefaut } from "@/data/devises";
+import { GardeAbonnement } from "@/features/abonnement/garde";
 import { PanierProvider } from "@/features/pos/panier";
 import { SynchronisationProvider } from "@/features/sync/provider";
 import { ToastProvider } from "@/ui";
@@ -54,11 +55,22 @@ export default function AppLayout() {
     <ToastProvider>
       <SynchronisationProvider>
         <PanierProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
-            <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
-          </Stack>
+          {/*
+            La porte est SOUS `SynchronisationProvider`, et c'est essentiel :
+            le tirage et le réveil de session restent autorisés quand
+            l'organisation est bloquée (la lecture n'est jamais fermée). C'est
+            par là que le terminal apprend qu'il est de nouveau en règle, y
+            compris quand le marchand a payé depuis un autre terminal ou depuis
+            le back-office. La monter plus haut figerait le verdict pour
+            toujours.
+          */}
+          <GardeAbonnement>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
+            </Stack>
+          </GardeAbonnement>
         </PanierProvider>
       </SynchronisationProvider>
     </ToastProvider>

@@ -53,8 +53,18 @@ import { ApiError, type FailureKind } from "@/api/errors";
 import { ecrireReglage, lireReglage } from "@/data/reglages";
 import { surRetourReseau, useEnLigne } from "@/data/reseau";
 import { envoyerPhotosEnAttente } from "@/features/inventaire/photos";
+import { jugerAcces } from "@/features/abonnement/porte";
 import { useSession } from "@/session/provider";
-import { etatJournal, pullAll, pushAll, unblockAll, type PullProgress } from "@/sync";
+import {
+  estPris,
+  etatJournal,
+  prendre,
+  pullAll,
+  pushAll,
+  rendre,
+  unblockAll,
+  type PullProgress,
+} from "@/sync";
 import { useToast } from "@/ui";
 
 import { BarreProgressionSync } from "./barre-progression";
@@ -106,15 +116,16 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
 
   const abort = useRef<AbortController | null>(null);
   /**
-   * Le verrou est une RÉFÉRENCE, pas l'état.
+   * ⚠ LE VERROU N'EST PLUS ICI : il vit dans `@/sync/verrou`, en variable de
+   * module.
    *
-   * `if (enCours) return` lit un état de RENDU : deux appuis dans le même tour
-   * de boucle - le bandeau du haut et celui du bas, ou un double-tap - le
-   * verraient tous deux à `false` et partiraient ensemble. Avec cinq
-   * déclencheurs automatiques qui peuvent tomber dans le même tour, ce n'est
-   * plus un cas d'école.
+   * Ce n'était pas une référence par hasard - `if (enCours) return` lit un état
+   * de RENDU, et deux appuis dans le même tour de boucle le verraient tous deux
+   * à faux et partiraient ensemble. Cette raison ne change pas ; ce qui change,
+   * c'est la PORTÉE. La déconnexion propre pousse elle aussi, et depuis la
+   * RACINE : un verrou enfermé dans ce composant, monté sous `(app)`, ne la
+   * protégerait de rien. Les deux mondes partagent désormais le même.
    */
-  const tourne = useRef(false);
   /** Miroir de l'origine, lisible par `annuler` sans le remémoïser. */
   const origineRef = useRef<OrigineSync | null>(null);
 
@@ -188,23 +199,25 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
 
   const executer = useCallback(
     async (jusquOu: Portee, depuis: OrigineSync) => {
-      if (tourne.current) return;
       // ┌──────────────────────────────────────────────────────────────────┐
       // │ LE VERROU SE POSE AVANT LE PREMIER `await`, ET C'EST OBLIGÉ.    │
       // │                                                                  │
       // │ Le contrôle du journal ci-dessous est asynchrone. Posé après     │
       // │ lui, le verrou laisserait passer les trois déclencheurs d'une    │
       // │ même rafale : ils franchiraient tous le test pendant que le      │
-      // │ premier attend sa requête, puis partiraient ensemble. Un ref     │
-      // │ est fait pour être posé sans rendu ; on s'en sert.               │
+      // │ premier attend sa requête, puis partiraient ensemble.            │
+      // │                                                                  │
+      // │ `prendre()` teste ET pose d'un seul geste : personne ne pourra   │
+      // │ glisser un `await` entre les deux, ce qu'un `if (estPris())`     │
+      // │ suivi d'une pose laisserait faire sans rien signaler.            │
       // └──────────────────────────────────────────────────────────────────┘
-      tourne.current = true;
+      if (!prendre()) return;
 
       // Un cycle n'a de sens que sur une session prête : pendant un
       // verrouillage ou une expiration, les jetons sont là mais l'utilisateur
       // ne l'est pas.
       if (statusRef.current !== "ready") {
-        tourne.current = false;
+        rendre();
         return;
       }
 
@@ -221,7 +234,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
       if (jusquOu === "envoi") {
         const { nbPret } = await lireJournalSansLever();
         if (nbPret === 0) {
-          tourne.current = false;
+          rendre();
           return;
         }
       }
@@ -281,8 +294,17 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
           // │ passées.                                                     │
           // └──────────────────────────────────────────────────────────────┘
           try {
-            await rafraichirSession();
-            await unblockAll();
+            const frais = await rafraichirSession();
+            // ⚠ ON NE DÉBLOQUE QUE SI LA PORTE EST OUVERTE.
+            //
+            // Depuis qu'un 402 range le lot en `blocked`, un `unblockAll()`
+            // inconditionnel ferait tourner en rond : bloquer -> débloquer ->
+            // renvoyer -> 402 -> bloquer, à CHAQUE cycle, pour un abonnement
+            // qui ne sera réglé que dans trois jours. On juge sur le verdict
+            // de CE réveil-ci, d'où le retour de `rafraichirSession`.
+            if (jugerAcces(frais?.subscription, frais?.fetched_at, new Date()).ouvert) {
+              await unblockAll();
+            }
           } catch {
             // Le terminal garde l'instantané qu'il avait : ouvrir
             // l'application sans réseau ne doit jamais enfermer dehors.
@@ -347,7 +369,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
         if (doitSignaler(depuis, kind)) setErreur(message);
         if (doitNotifier(depuis)) toast.erreur(message);
       } finally {
-        tourne.current = false;
+        rendre();
         origineRef.current = null;
         setOrigine(null);
         setPortee(null);
@@ -414,7 +436,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
       const d = decider({
         declencheur,
         enLigne: enLigneRef.current,
-        cycleEnCours: tourne.current,
+        cycleEnCours: estPris(),
         nbPret: journal.nbPret,
         prochaineTentativeAt: journal.prochaineTentativeAt,
         derniereComplete: derniereComplete.current,
@@ -489,7 +511,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const abo = addDatabaseChangeListener((ev) => {
       if (ev.tableName !== "outbox_operations") return;
-      if (tourne.current) return;
+      if (estPris()) return;
       void solliciteRef.current?.("journal");
     });
     return () => abo.remove();

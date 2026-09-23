@@ -14,7 +14,7 @@
  * barrel reexporte plus de 3 500 icones et Metro ne sait pas les elaguer de
  * facon fiable. Ici, ce qui n'est pas liste n'entre pas dans le paquet.
  *
- * 90 glyphes.
+ * 94 glyphes.
  *
  * Renommes entre les deux versions de lucide :
  *   BarChart3 (bar-chart-3) -> chart-column
@@ -116,6 +116,10 @@ import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
 import ArrowDownRight from "lucide-react-native/icons/arrow-down-right";
 import Bell from "lucide-react-native/icons/bell";
 import Sparkles from "lucide-react-native/icons/sparkles";
+import HandCoins from "lucide-react-native/icons/hand-coins";
+import Smartphone from "lucide-react-native/icons/smartphone";
+import CircleDollarSign from "lucide-react-native/icons/circle-dollar-sign";
+import Star from "lucide-react-native/icons/star";
 import Building2 from "lucide-react-native/icons/building-2";
 import Pill from "lucide-react-native/icons/pill";
 import UtensilsCrossed from "lucide-react-native/icons/utensils-crossed";
@@ -208,6 +212,10 @@ export const LUCIDE = {
   ArrowDownRight,
   Bell,
   Sparkles,
+  HandCoins,
+  Smartphone,
+  CircleDollarSign,
+  Star,
   Building2,
   Pill,
   UtensilsCrossed,

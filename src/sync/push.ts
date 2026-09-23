@@ -195,9 +195,36 @@ export async function pushOnce(deviceId?: string): Promise<PushOutcome> {
       { timeoutMs: SYNC_TIMEOUT_MS }
     );
   } catch (error) {
+    const message = error instanceof ApiError ? error.message : String(error);
+
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ UNE PORTE FERMÉE N'EST PAS UNE PANNE.                             │
+    // │                                                                    │
+    // │ Le serveur répond 402 quand l'abonnement ne couvre plus            │
+    // │ l'écriture. Réessayer ne l'ouvrira pas : sans cette branche, le    │
+    // │ terminal renvoyait le même lot à chaque cycle, pendant toute la    │
+    // │ durée du blocage - des semaines, le temps qu'un marchand règle -   │
+    // │ en faisant monter un compteur d'essais qui finirait par condamner  │
+    // │ des ventes parfaitement valides. Et les écrans annonçaient « attend│
+    // │ son envoi », c'est-à-dire qu'ils envoyaient chercher du réseau.    │
+    // │                                                                    │
+    // │ `blocked` est fait pour cela : conservé, non réessayé, message     │
+    // │ distinct, et libéré d'un coup par `unblockAll()` au règlement.     │
+    // └────────────────────────────────────────────────────────────────────┘
+    if (error instanceof ApiError && error.kind === "subscription") {
+      for (const op of lot) await markBlocked(op.id, message);
+      // ⚠ `more: false` ARRÊTE la boucle de `pushAll`. Sans lui, le refus
+      // portant sur l'endpoint et non sur le lot, cinquante lots partiraient
+      // pour cinquante 402.
+      //
+      // Et on ne relance PAS : rien n'a échoué, une porte est fermée. Le
+      // cycle continue vers le tirage, qui reste autorisé et ramène le
+      // verdict frais - c'est lui qui fait monter le voile au bon moment.
+      return { ...VIDE, sent: lot.length, blocked: lot.length, more: false };
+    }
+
     // Rien n'a atteint le serveur, ou il a repondu 5xx : tout retourne en
     // attente. On n'a RIEN perdu : le renvoi est sûr.
-    const message = error instanceof ApiError ? error.message : String(error);
     for (const op of lot) await scheduleRetry(op.id, op.attempts, message);
     throw error;
   }

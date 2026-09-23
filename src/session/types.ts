@@ -97,6 +97,46 @@ export interface SessionDevice {
   expires_at: string;
 }
 
+/**
+ * L'abonnement, tel que le terminal doit le comprendre.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ IL DESCEND PAR LA SESSION D'APPAREIL PARCE QU'IL NE PEUT PAS DESCENDRE   │
+ * │ AILLEURS.                                                                │
+ * │                                                                          │
+ * │ `/subscriptions/status/` exige `subscription.view`, accordée au SEUL     │
+ * │ propriétaire. Or un terminal est tenu par un CAISSIER : une porte        │
+ * │ adossée à cet endpoint ne se fermerait jamais pour la population même    │
+ * │ qu'il faut retenir. Le chemin de réveil, lui, sert tous les rôles.       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export interface SessionSubscription {
+  /** Le verdict du SERVEUR au dernier réveil. On le constate, on ne le refait pas. */
+  is_blocked: boolean;
+  /** `none | trial | active | past_due | expired | cancelled | suspended`. */
+  status: string;
+  message: string | null;
+  /**
+   * La date jusqu'à laquelle le serveur laisserait écrire, GRÂCE COMPRISE.
+   *
+   * C'est la seule chose qui permette de juger hors ligne. Sans elle, le
+   * dernier verdict connu resterait « non bloqué » indéfiniment, et un mode
+   * avion offrirait des mois gratuits.
+   */
+  access_until: string | null;
+  days_remaining: number | null;
+  /** Le plan EN COURS : ce qu'on propose de prolonger, plutôt qu'un autre. */
+  plan_id: string | null;
+  plan_name: string | null;
+  /**
+   * Ce compte peut-il régler l'abonnement ?
+   *
+   * `moko_initiate` est `IsTenantOwner`. La règle appartient au serveur : la
+   * recopier ici ferait mentir le bouton le jour où elle s'élargirait.
+   */
+  can_manage: boolean;
+}
+
 /** Ce qui est rangé dans le trousseau et relu au démarrage. */
 export interface SessionSnapshot {
   user: SessionUser;
@@ -106,6 +146,12 @@ export interface SessionSnapshot {
   currencies: OrganizationCurrency[];
   loyalty_program: SessionLoyaltyProgram | null;
   device: SessionDevice | null;
+  /**
+   * ⚠ FACULTATIF, et c'est la règle 1 de `jugerAcces` exprimée dans le type :
+   * un instantané écrit par une version antérieure ne le porte pas. Le rendre
+   * obligatoire mettrait tout le parc dehors le jour de la mise à jour.
+   */
+  subscription?: SessionSubscription | null;
   /** Date du dernier réveil réussi : sert à dater la fraîcheur des droits. */
   fetched_at: string;
 }
@@ -139,4 +185,16 @@ export type SessionStatus =
    * celui de l'appareil. Distinct de `anonymous` : la base locale et les
    * opérations en attente sont intactes, et l'écran doit le dire.
    */
-  | "needs_password";
+  | "needs_password"
+  /**
+   * La base locale porte les données d'un AUTRE compte, et des opérations qui
+   * n'ont jamais été envoyées.
+   *
+   * ⚠ **L'ÉTAT EST LE VERROU, et c'est pour cela qu'il vaut mieux qu'un écran
+   * ordinaire.** Le groupe `(app)` n'est pas monté, donc pas de
+   * `SynchronisationProvider` ; et même si quelque chose le montait, `executer`
+   * sort déjà sur `statusRef.current !== "ready"`. Le journal de l'ancien
+   * propriétaire ne peut donc pas partir sous le jeton du nouveau, par
+   * construction et non par surveillance.
+   */
+  | "base_etrangere";

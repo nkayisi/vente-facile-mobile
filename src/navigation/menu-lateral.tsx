@@ -15,20 +15,19 @@
  * plan approuvé dit de les griser, et le plan gagne : un caissier qui ne voit
  * jamais « Stock » ne sait pas que la fonction existe ni qu'il peut la demander.
  */
-import { Image, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { router, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ROLE_LABELS } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
 import { etablissement } from "@/data/organisation";
+import { useDeconnexion } from "@/session/deconnexion";
 import { useSession } from "@/session/provider";
-import { Avatar, Badge, Divider, Icon, Pressable, Text, useToast } from "@/ui";
+import { Avatar, Badge, Divider, Icon, Logo, Pressable, Text, useToast } from "@/ui";
 import { HIT } from "@/ui/tokens";
 import { fermerPuis } from "./fermeture";
 import { entreesDuMenu, type EtatEntree } from "./menu";
-
-const LOGO = require("../../assets/images/logo.png");
 
 /** Entrée active : le préfixe le PLUS LONG qui corresponde, comme sur le web. */
 function cleActive(chemin: string, entrees: EtatEntree[]): string | null {
@@ -42,7 +41,8 @@ function cleActive(chemin: string, entrees: EtatEntree[]): string | null {
 export function MenuLateral({ onFermer }: { onFermer: () => void }) {
   const insets = useSafeAreaInsets();
   const chemin = usePathname();
-  const { snapshot, can, logout } = useSession();
+  const { snapshot, can } = useSession();
+  const { demander } = useDeconnexion();
   const { donnees: etab } = useLecture(etablissement, { tables: ["organizations"] });
   const toast = useToast();
 
@@ -70,7 +70,11 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
       {/* 1. Marque, exactement comme le web : « Vente » puis « Facile » orange. */}
       <View className="flex-row items-center justify-between border-b border-border pr-2">
         <View className="flex-row items-center">
-          <Image source={LOGO} style={{ width: 68, height: 68 }} resizeMode="contain" />
+          {/* ⚠ L'encre GRANDIT à hauteur de rangée égale, et c'est le
+              correctif : `logo.png` est un carré dont plus de la moitié est
+              du vide transparent, si bien qu'une boîte de 68 points n'en
+              rendait que 51. `Logo` lit l'encre seule. */}
+          <Logo hauteur={68} nomAilleurs className="mr-1" />
           <Text variant="h4">
             Vente<Text className="text-xl text-primary">Facile</Text>
           </Text>
@@ -198,7 +202,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
           </Text>
         </View>
         <Pressable
-          onPress={fermerPuis(onFermer, () => void logout())}
+          onPress={fermerPuis(onFermer, demander)}
           accessibilityRole="button"
           accessibilityLabel="Se déconnecter"
           className="items-center justify-center rounded-lg"

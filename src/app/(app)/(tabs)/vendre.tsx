@@ -25,6 +25,7 @@ import { libelleEnvoi } from "@/data/envoi";
 import { arreteA } from "@/features/pos/verrou-inventaire";
 import { ouvrirSession, sessionOuverte, caissesDisponibles, type CaissePos, type SessionCaisse } from "@/features/pos/caisse";
 import { CarteArticle } from "@/features/pos/carte-article";
+import { FeuilleEncaissement } from "@/features/pos/feuille-encaissement";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
 import { usePanier } from "@/features/pos/panier";
 import { useSynchronisation } from "@/features/sync/provider";
@@ -44,6 +45,7 @@ export default function Comptoir() {
   const [rubrique, setRubrique] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
   const [choisi, setChoisi] = useState<ArticlePos | null>(null);
+  const [encaissement, setEncaissement] = useState(false);
   const [paniersRanges, setPaniersRanges] = useState(0);
   // Depuis quand l'état des inventaires est-il celui qu'on oppose ? Un verrou
   // est l'instantané d'un état concurrent, pas une autorité : le dire est ce
@@ -95,7 +97,7 @@ export default function Comptoir() {
 
   if (session === undefined) {
     return (
-      <Screen>
+      <Screen edges={[]}>
         <View className="flex-1 items-center justify-center">
           <Spinner />
         </View>
@@ -273,7 +275,7 @@ export default function Comptoir() {
             </View>
             <View className="flex-1">
               <Button
-                onPress={() => router.push("/pos/encaissement")}
+                onPress={() => setEncaissement(true)}
                 disabled={ruptures.length > 0}
                 fullWidth
               >
@@ -282,6 +284,13 @@ export default function Comptoir() {
             </View>
           </View>
         </View>
+      ) : null}
+
+      {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
+          formulaire vierge, sans effet de remise a zero a tenir en phase avec
+          les champs qu'on y ajoutera. */}
+      {encaissement ? (
+        <FeuilleEncaissement onFermer={() => setEncaissement(false)} />
       ) : null}
 
       <SelecteurQuantite
@@ -424,7 +433,7 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
 
   if (caisses === null) {
     return (
-      <Screen>
+      <Screen edges={[]}>
         <View className="flex-1 items-center justify-center">
           <Spinner />
         </View>
@@ -434,7 +443,7 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
 
   if (caisses.length === 0) {
     return (
-      <Screen>
+      <Screen edges={[]}>
         <EmptyState
           icon="Lock"
           title="Aucune caisse"

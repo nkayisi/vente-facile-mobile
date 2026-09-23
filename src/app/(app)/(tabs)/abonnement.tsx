@@ -12,10 +12,12 @@
  * │ vendre trois semaines sans jamais synchroniser.                          │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
- * **Le paiement part dans le NAVIGATEUR DU SYSTÈME.** Le tunnel Moko est une
- * page web hébergée ; l'embarquer dans une WebView est le motif de refus 4.2
- * le plus courant à la revue App Store, et c'est aussi ce qu'un marchand
- * attend d'un paiement : voir la barre d'adresse.
+ * **Le paiement est NATIF.** Cet écran a longtemps ouvert le navigateur du
+ * système, au motif que « le tunnel Moko est une page web hébergée ». Il n'en
+ * est rien : le checkout du back-office est un formulaire REST suivi d'une
+ * confirmation USSD. Il n'y a donc ni page à embarquer, ni motif de refus 4.2,
+ * et le marchand n'a plus à sortir de l'application pour régler son abonnement
+ * - ni à se retrouver bloqué quand `EXPO_PUBLIC_WEB_URL` n'est pas réglée.
  *
  * **Lecture en ligne, assumée.** `subscriptions` n'est pas au manifeste de
  * tirage et n'a rien à y faire : un abonnement est une relation avec
@@ -23,10 +25,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import * as WebBrowser from "expo-web-browser";
 import { formatDateFr } from "@vente-facile/core";
 
-import { WEB_BASE_URL } from "@/api/config";
 import { readableMessage } from "@/api/errors";
 import {
   STATUT_ABONNEMENT,
@@ -41,6 +41,8 @@ import {
   type PaiementAbonnement,
   type PlanAbonnement,
 } from "@/data/abonnement";
+import { eligibiliteDuPlan } from "@/features/abonnement/eligibilite";
+import { FeuillePaiement } from "@/features/abonnement/feuille-paiement";
 import { useMonnaie } from "@/data/devises";
 import { useEnLigne } from "@/data/reseau";
 import { useSession } from "@/session/provider";
@@ -57,6 +59,7 @@ export default function Abonnement() {
   const toast = useToast();
   const enLigne = useEnLigne();
   const organisation = snapshot?.organization.id ?? null;
+  const peutRegler = snapshot?.subscription?.can_manage ?? false;
 
   const [onglet, setOnglet] = useState<Onglet>("etat");
   const [etat, setEtat] = useState<EtatAbonnement | null>(null);
@@ -65,6 +68,10 @@ export default function Abonnement() {
   const [factures, setFactures] = useState<FactureAbonnement[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [paiement, setPaiement] = useState<{
+    plan: PlanAbonnement;
+    mode: "new" | "extend";
+  } | null>(null);
 
   const charger = useCallback(async () => {
     if (!organisation) return;
@@ -99,52 +106,19 @@ export default function Abonnement() {
     void charger();
   }, [charger]);
 
-  const payer = async (plan: PlanAbonnement, mode: "new" | "extend") => {
-    if (!WEB_BASE_URL) {
-      toast.erreur(
-        "L'adresse du back-office n'est pas configurée sur cette version. Réglez l'abonnement depuis un navigateur."
-      );
+  const payer = (plan: PlanAbonnement, mode: "new" | "extend") => {
+    if (!peutRegler) {
+      // `moko_initiate` est `IsTenantOwner` : le dire ici évite de faire saisir
+      // un numéro de téléphone pour se faire refuser ensuite.
+      toast.erreur("Seul le propriétaire du compte peut régler l'abonnement.");
       return;
     }
-    const q = new URLSearchParams({ planId: plan.id, cycle: "monthly", mode });
-    try {
-      await WebBrowser.openBrowserAsync(`${WEB_BASE_URL}/payment/checkout?${q}`);
-      // Au retour du navigateur, l'état a pu changer : on le redemande plutôt
-      // que de laisser un « Expiré » à l'écran d'un marchand qui vient de payer.
-      void charger();
-    } catch {
-      toast.erreur("Le navigateur n'a pas pu être ouvert.");
-    }
-  };
-
-  /**
-   * Ce qu'un plan propose, dans les règles du serveur.
-   *
-   * L'anti-rétrogradation n'est pas une préférence commerciale : redescendre
-   * sous le plancher retirerait des utilisateurs, des entrepôts ou des
-   * produits DÉJÀ créés, et le serveur refuse. Le dire sur le bouton évite un
-   * aller-retour jusqu'au tunnel de paiement pour se faire refuser là-bas.
-   */
-  const actionDuPlan = (
-    plan: PlanAbonnement
-  ): { label: string; desactive: boolean; raison?: string; mode: "new" | "extend" } => {
-    if (!etat) return { label: "Choisir", desactive: true, mode: "new" };
-    const courant = etat.planId === plan.id;
-    if (plan.tier < etat.tierPlancher) {
-      return {
-        label: "Indisponible",
-        desactive: true,
-        raison: "Ce plan est en dessous de ce que vous utilisez déjà.",
-        mode: "new",
-      };
-    }
-    if (courant) return { label: "Prolonger", desactive: false, mode: "extend" };
-    return { label: "Choisir ce plan", desactive: false, mode: "new" };
+    setPaiement({ plan, mode });
   };
 
   if (chargement && !etat) {
     return (
-      <Screen>
+      <Screen edges={[]}>
         <PageHeader title="Abonnement" />
         <View className="flex-1 items-center justify-center">
           <Spinner />
@@ -332,7 +306,7 @@ export default function Abonnement() {
             </Card>
           ) : (
             plans.map((p) => {
-              const a = actionDuPlan(p);
+              const a = eligibiliteDuPlan(p, etat);
               const courant = etat?.planId === p.id;
               return (
                 <Card
@@ -391,12 +365,12 @@ export default function Abonnement() {
                     <Button
                       fullWidth
                       variant={courant ? "outline" : "primary"}
-                      disabled={a.desactive || !enLigne}
-                      onPress={() => void payer(p, a.mode)}
+                      disabled={!a.possible || !enLigne || !peutRegler}
+                      onPress={() => a.possible && payer(p, a.mode)}
                     >
-                      {a.label}
+                      {a.libelle}
                     </Button>
-                    {a.raison ? (
+                    {!a.possible ? (
                       <Text variant="caption" className="mt-1">
                         {a.raison}
                       </Text>
@@ -406,11 +380,19 @@ export default function Abonnement() {
               );
             })
           )}
-          <Banner
-            tone="info"
-            title="Le paiement se fait dans votre navigateur"
-            message="Le tunnel Moko s'ouvre hors de l'application, où vous voyez l'adresse du site avant de saisir un moyen de paiement. Revenez ici ensuite : l'état se remet à jour."
-          />
+          {peutRegler ? (
+            <Banner
+              tone="info"
+              title="Le paiement se fait ici"
+              message="Choisissez un plan, puis votre opérateur Mobile Money. Vous confirmerez sur votre téléphone, sans quitter l'application."
+            />
+          ) : (
+            <Banner
+              tone="info"
+              title="Réservé au propriétaire"
+              message="Seul le propriétaire du compte peut régler l'abonnement. Prévenez-le : il peut le faire depuis son propre terminal."
+            />
+          )}
         </View>
       ) : null}
 
@@ -495,6 +477,20 @@ export default function Abonnement() {
           </Section>
         </View>
       ) : null}
+
+      {/* La feuille monte du bas, sur la grille des plans qui reste visible. */}
+      <FeuillePaiement
+        ouvert={paiement !== null}
+        onFermer={() => {
+          setPaiement(null);
+          // L'état a pu changer : on le redemande plutôt que de laisser un
+          // « Expiré » à l'écran d'un marchand qui vient de payer.
+          void charger();
+        }}
+        plan={paiement?.plan ?? null}
+        mode={paiement?.mode ?? "new"}
+        finActuelle={etat?.finPeriode ?? null}
+      />
     </Screen>
   );
 }

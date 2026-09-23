@@ -3,7 +3,10 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+} from "react-native-safe-area-context";
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -14,6 +17,7 @@ import {
 
 import { initSentry } from "@/observabilite/sentry";
 import { DatabaseProvider } from "@/db/provider";
+import { DeconnexionProvider } from "@/session/deconnexion";
 import { SessionGate } from "@/session/gate";
 import { SessionProvider } from "@/session/provider";
 import { ThemeProvider } from "@/ui/theme";
@@ -48,6 +52,12 @@ initSentry();
  * aussi habillé. La base vient avant la session : celle-ci lira bientôt des
  * réglages qui y sont rangés.
  *
+ * `DeconnexionProvider` est ICI, et non dans un écran : sa surcouche doit
+ * SURVIVRE au démontage du groupe `(app)`, que la séquence de déconnexion
+ * provoque elle-même en posant `anonymous`. Écrite dans « Mon profil », la
+ * modale disparaîtrait à l'instant précis où l'on en a le plus besoin - pendant
+ * le nettoyage de la base. Et ses trois appelants vivent dans DEUX groupes.
+ *
  * Aucun de ces fournisseurs ne touche au réseau au montage. C'est la condition
  * pour qu'un démarrage à froid sans connexion aboutisse.
  */
@@ -76,13 +86,28 @@ export default function RootLayout() {
   // le rendu en police système le temps du chargement.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
+      {/* ┌──────────────────────────────────────────────────────────────┐
+          │ LES MÉTRIQUES INITIALES, ET NON UN FOURNISSEUR NU.           │
+          │                                                              │
+          │ Sans elles, les marges système valent ZÉRO au tout premier   │
+          │ rendu, puis se corrigent une image plus tard. Sur un         │
+          │ terminal lent, c'est une image où la barre d'onglets et le   │
+          │ pied de page sont posés au mauvais endroit - et c'est la     │
+          │ classe de défaut qu'un marchand rapporte sans pouvoir la     │
+          │ reproduire, parce qu'elle ne dure qu'un battement.           │
+          │                                                              │
+          │ Elles viennent du natif au démarrage, donc elles ne coûtent  │
+          │ aucun aller-retour.                                          │
+          └──────────────────────────────────────────────────────────────┘ */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ThemeProvider>
           <StatusBar style="auto" />
           <DatabaseProvider>
             <SessionProvider>
               <SessionGate />
-              <Stack screenOptions={{ headerShown: false }} />
+              <DeconnexionProvider>
+                <Stack screenOptions={{ headerShown: false }} />
+              </DeconnexionProvider>
             </SessionProvider>
           </DatabaseProvider>
         </ThemeProvider>

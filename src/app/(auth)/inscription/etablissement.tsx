@@ -18,7 +18,7 @@ import { router } from "expo-router";
 
 import { readableMessage } from "@/api/errors";
 import { useSession } from "@/session/provider";
-import { EchecInscription, enrollDevice, type TypeEtablissement } from "@/session/session";
+import { EchecInscription, type TypeEtablissement } from "@/session/session";
 import {
   Banner,
   Button,
@@ -50,7 +50,7 @@ const DEVISES = [
 
 export default function Etablissement() {
   const { saisie, poser } = useInscription();
-  const { inscrire } = useSession();
+  const { chooseOrganization, inscrire } = useSession();
   const [erreurs, setErreurs] = useState<Record<string, string>>({});
   const [erreurGenerale, setErreurGenerale] = useState<string | null>(null);
   /** Renseigné quand la boutique EXISTE mais que le terminal n'est pas enrôlé. */
@@ -115,13 +115,27 @@ export default function Etablissement() {
     }
   }
 
+  /**
+   * Reprendre un enrôlement interrompu.
+   *
+   * ⚠ **ON PASSE PAR LE FOURNISSEUR, JAMAIS PAR `enrollDevice` EN DIRECT.**
+   *
+   * `chooseOrganization` fait exactement le même appel, plus deux choses qui
+   * manquaient ici. D'abord le VERDICT sur la base locale : un instantané écrit
+   * sans lui se ferait adopter par les données du compte précédent au prochain
+   * démarrage, et les deux établissements fusionneraient - c'est le défaut que
+   * `session/proprietaire.ts` existe pour fermer. Ensuite `setStatus` : sans
+   * lui l'état restait `anonymous`, la garde renvoyait aussitôt à la connexion,
+   * et le marchand ne pouvait PAS reprendre son enrôlement. Le
+   * `router.replace("/")` qui se trouvait ici combattait la garde au lieu de la
+   * laisser faire ; elle navigue seule dès que le statut bascule.
+   */
   async function reprendreEnrolement() {
     if (!aEnroler || verrou.current) return;
     verrou.current = true;
     setEnvoi(true);
     try {
-      await enrollDevice(aEnroler);
-      router.replace("/");
+      await chooseOrganization(aEnroler);
     } catch {
       setErreurGenerale("L'enregistrement du terminal n'a pas abouti. Réessayez.");
     } finally {

@@ -7,8 +7,11 @@
  * découvre qu'à la nuit tombée, et une `Alert.alert` a l'air normale jusqu'à
  * ce qu'on la voie sur les deux plateformes.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+
+import { tablesTirees } from "@/db/tables";
+import { PALETTES } from "./tokens";
 
 const RACINE = resolve(__dirname, "..");
 
@@ -313,11 +316,15 @@ describe("un seul propriétaire par bord de zone sûre", () => {
    * poser une marge de contenu. Les exceptions sont NOMMÉES, et chacune tient à
    * ce qu'elle ne vit pas dans un `Screen` :
    *   - `sheet.tsx`   : une modale, rendue hors de l'arbre de l'écran
+   *   - `dialog.tsx`  : une modale aussi, et pour la MÊME raison. Un dialogue
+   *                     assez haut pour remplir l'écran touchait les deux
+   *                     bords, et son action principale passait sous la barre
+   *                     gestuelle.
    *   - `top-bar.tsx` : la barre système, au-dessus du contenu
    *   - `toast.tsx`   : le fournisseur est monté AU-DESSUS du navigateur, pour
    *                     servir aussi les écrans plein écran du comptoir
    */
-  const AUTORISES = ["screen.tsx", "sheet.tsx", "top-bar.tsx", "toast.tsx"];
+  const AUTORISES = ["screen.tsx", "sheet.tsx", "dialog.tsx", "top-bar.tsx", "toast.tsx"];
 
   it("aucun composant d'interface n'ajoute une zone sûre en plus de `Screen`", () => {
     const fautifs: string[] = [];
@@ -852,12 +859,45 @@ describe("le parcours d'authentification centre son contenu", () => {
   const centreAutrement = (code: string): boolean =>
     code.includes("justify-center") || code.includes("HorsLigneBloquant");
 
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ LA PRÉSENTATION N'EST PAS UN FORMULAIRE.                              │
+   * │                                                                        │
+   * │ Ce garde-fou vise les écrans dont le CONTENU EST LA PAGE : quatre      │
+   * │ champs de connexion sur un téléphone haut, qui paraissent tombés là    │
+   * │ plutôt que posés. `app/(auth)/bienvenue.tsx` est l'inverse - un pager  │
+   * │ horizontal pleine hauteur, surmonté d'une barre et suivi d'un pied     │
+   * │ fixe. Le centrer empêcherait son corps de remplir la fenêtre, donc de  │
+   * │ paginer sur une page entière : le balayage s'arrêterait entre deux     │
+   * │ vues. C'est chaque VUE qui centre son contenu, dans `carrousel.tsx`.   │
+   * │                                                                        │
+   * │ ⚠ L'EXCEPTION EST NOMMÉE PLUTÔT QU'IMPLICITE. Sans elle, le test       │
+   * │ passerait quand même - les vues contiennent `justify-center`, que      │
+   * │ `centreAutrement` accepte - mais il passerait PAR ACCIDENT, et le      │
+   * │ jour où ce mot disparaîtrait du fichier voisin, un écran sans rapport  │
+   * │ se retrouverait fautif. Ce dépôt a déjà payé trois fois le prix d'un   │
+   * │ balayage vert pour une raison qui n'était pas la sienne.               │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  const EXCEPTIONS = ["app/(auth)/bienvenue.tsx"];
+  const exempte = (f: string): boolean =>
+    EXCEPTIONS.some((e) => relative(RACINE, f).endsWith(e));
+
+  it("l'exception nommée désigne un fichier qui existe", () => {
+    // Une exception posée sur un chemin faux n'exempte rien et ne se voit
+    // pas : elle laisse simplement le garde-fou crier ailleurs.
+    for (const e of EXCEPTIONS) {
+      expect(existsSync(join(RACINE, e))).toBe(true);
+    }
+  });
+
   it("aucun écran de connexion ou d'inscription ne laisse son contenu en haut", () => {
     const fautifs: string[] = [];
     let balayees = 0;
 
     for (const groupe of ["(auth)", "(locked)"]) {
       for (const f of fichiers(join(RACINE, "app", groupe))) {
+        if (exempte(f)) continue;
         const code = sansCommentaires(readFileSync(f, "utf8"));
         for (const balise of balisesEcran(code)) {
           balayees += 1;
@@ -881,6 +921,7 @@ describe("le parcours d'authentification centre son contenu", () => {
     const fautifs: string[] = [];
     for (const groupe of ["(auth)", "(locked)"]) {
       for (const f of fichiers(join(RACINE, "app", groupe))) {
+        if (exempte(f)) continue;
         const code = sansCommentaires(readFileSync(f, "utf8"));
         const m = code.match(/\b(?:mt|pt|my|py)-(?:8|10|12|16|20|24)\b/);
         if (m) fautifs.push(`${relative(RACINE, f)} : ${m[0]}`);
@@ -986,6 +1027,539 @@ describe("la synchronisation automatique ne s'impose pas", () => {
       const code = sansCommentaires(readFileSync(f, "utf8"));
       if (!/\bsetTimeout\s*\(/.test(code)) continue;
       if (!/\bclearTimeout\s*\(/.test(code)) fautifs.push(relative(RACINE, f));
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN CHAMP FACULTATIF QUE PERSONNE NE PASSE NE LÈVE RIEN.                  │
+ * │                                                                          │
+ * │ `ContexteTicket` déclarait `pointsGagnes` et `pointsRestants` depuis     │
+ * │ l'origine, et aucun appelant ne les fournissait : le bloc fidélité du    │
+ * │ ticket ne sortait QUE lorsque des points étaient dépensés, et le client  │
+ * │ rattaché qui venait lire son cumul ne le trouvait nulle part.            │
+ * │                                                                          │
+ * │ Le type-check ne peut pas le voir - les deux champs sont facultatifs -   │
+ * │ et la relecture du ticket non plus : il les lit correctement. Le défaut  │
+ * │ est chez l'APPELANT, et il s'y voit par une absence.                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le ticket de vente annonce le cumul du client", () => {
+  /** Le fichier compose-t-il le document d'une vente ? */
+  function decritUnTicket(code: string): boolean {
+    return /donneesTicketVente\(/.test(code);
+  }
+
+  /** Y passe-t-il le solde de points ? */
+  function passeLeSolde(code: string): boolean {
+    return /pointsRestants\s*:/.test(code);
+  }
+
+  it("tout appelant de `donneesTicketVente` passe `pointsRestants`", () => {
+    const fautifs: string[] = [];
+    let balayes = 0;
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      // Le module qui DÉFINIT le contexte n'est pas un appelant.
+      if (chemin.endsWith("features/pos/ticket.ts")) continue;
+      if (chemin.includes(".test.")) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!decritUnTicket(code)) continue;
+      balayes += 1;
+      if (!passeLeSolde(code)) fautifs.push(chemin);
+    }
+    // ⚠ Un balayage qui ne balaie RIEN passe au vert et ne prouve rien : ce
+    // dépôt l'a déjà payé trois fois.
+    expect(balayes).toBeGreaterThan(0);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le garde-fou MORD sur un appelant muet, et laisse passer le bavard", () => {
+    expect(decritUnTicket("donnees: donneesTicketVente({ reference, etat })")).toBe(true);
+    expect(passeLeSolde("donnees: donneesTicketVente({ reference, etat })")).toBe(false);
+    expect(passeLeSolde("pointsRestants: soldeApresVente(a, b, c),")).toBe(true);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA DÉCONNEXION N'A QU'UN SEUL CHEMIN, ET UNE SEULE MAIN EFFACE.         │
+ * │                                                                          │
+ * │ Se déconnecter d'un compte X puis se connecter avec un compte Y          │
+ * │ FUSIONNAIT les deux établissements dans la même base : aucune table      │
+ * │ tirée ne porte de colonne de locataire, et les curseurs de tirage de X   │
+ * │ faisaient répondre « rien de neuf » sur des tables que Y n'avait jamais  │
+ * │ tirées - son catalogue ne descendait donc jamais, sans le moindre        │
+ * │ message.                                                                 │
+ * │                                                                          │
+ * │ Rien de tout cela ne se voit à l'exécution. Un `logout()` direct remis   │
+ * │ dans un écran ne lève pas : il court-circuite simplement l'envoi et le   │
+ * │ nettoyage, et le défaut revient sur le terminal d'un marchand.           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("la déconnexion passe par un seul chemin", () => {
+  /**
+   * Deux exceptions, chacune pour une raison NOMMÉE.
+   *
+   * `session/provider.tsx` DÉFINIT `logout` : il n'en est pas un appelant.
+   *
+   * `app/(locked)/reprise.tsx` appelle `logout` à dessein, et passer par la
+   * modale y serait un DÉFAUT : à cet instant la session est celle du nouveau
+   * compte, et la file d'attente appartient à l'ancien. Synchroniser pousserait
+   * les opérations de X sous le jeton de Y, c'est-à-dire exactement la fusion
+   * qu'on ferme. On abandonne la session sans rien envoyer et sans rien
+   * effacer, pour que l'ancien propriétaire puisse revenir.
+   */
+  const EXCEPTIONS = ["session/provider.tsx", "app/(locked)/reprise.tsx"];
+
+  it("aucun écran ne prend `logout` de `useSession()`", () => {
+    const fautifs: string[] = [];
+    let balayes = 0;
+
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      if (chemin.endsWith("session/deconnexion.tsx")) continue;
+      if (EXCEPTIONS.some((e) => chemin.endsWith(e))) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      balayes += 1;
+      // `const { …, logout } = useSession()` : la déstructuration est la seule
+      // façon d'obtenir la fonction, et elle se reconnaît à son accolade.
+      if (/\{[^}]*\blogout\b[^}]*\}\s*=\s*useSession\(\)/.test(code)) {
+        fautifs.push(chemin);
+      }
+    }
+
+    expect(balayes).toBeGreaterThan(50);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("une seule main efface la base locale", () => {
+    const autorises = ["session/deconnexion.tsx", "session/provider.tsx"];
+    const fautifs: string[] = [];
+    let balayes = 0;
+
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      // Le module qui la DÉFINIT n'est pas un appelant.
+      if (chemin.endsWith("db/purge.ts")) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      balayes += 1;
+      if (!/\bpurgerBaseLocale\b/.test(code)) continue;
+      if (!autorises.some((a) => chemin.endsWith(a))) fautifs.push(chemin);
+    }
+
+    expect(balayes).toBeGreaterThan(50);
+    expect(fautifs).toEqual([]);
+  });
+
+  /**
+   * ⚠ LE VERDICT SUR LA BASE DOIT ÊTRE INÉVITABLE, PAS SEULEMENT HABITUEL.
+   *
+   * `enrollDevice` écrit l'instantané de session. Appelée en dehors du
+   * fournisseur, elle le pose sans que `appliquerVerdictBase` ait rien dit : au
+   * démarrage suivant, cet instantané se fait adopter par les données du compte
+   * précédent, et les deux établissements fusionnent. Rien ne lève, rien ne
+   * s'affiche - le catalogue du nouveau compte ne descend simplement jamais.
+   *
+   * `app/(auth)/inscription/etablissement.tsx` l'appelait ainsi, et c'est
+   * pourquoi ce garde-fou existe plutôt qu'un commentaire.
+   */
+  it("`enrollDevice` n'est appelée que par le fournisseur de session", () => {
+    const autorises = ["session/provider.tsx", "session/session.ts"];
+    const fautifs: string[] = [];
+    let balayes = 0;
+
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      balayes += 1;
+      if (!/\benrollDevice\b/.test(code)) continue;
+      if (!autorises.some((a) => chemin.endsWith(a))) fautifs.push(chemin);
+    }
+
+    expect(balayes).toBeGreaterThan(50);
+    expect(fautifs).toEqual([]);
+  });
+
+  /**
+   * ⚠ LA SESSION D'ABORD, LA BASE ENSUITE.
+   *
+   * Purger sous un comptoir monté réveille une cinquantaine de `useLecture` au
+   * commit ; ils avalent leurs erreurs, donc les écrans ne plantent pas, ils se
+   * VIDENT sous les yeux du marchand. Et la dissymétrie des pannes tranche :
+   * tué entre les deux, on rouvre `anonymous` sur une base périmée que le filet
+   * d'entrée rattrape ; dans l'ordre inverse, on rouvrirait `ready` sur une base
+   * VIDE, sans rien pour le signaler.
+   */
+  it("le nettoyage abandonne la session AVANT de vider la base", () => {
+    const code = sansCommentaires(
+      readFileSync(join(RACINE, "session/deconnexion.tsx"), "utf8")
+    );
+    const session = code.indexOf("await logout()");
+    const purge = code.indexOf("purgerBaseLocale()");
+    expect(session).toBeGreaterThan(-1);
+    expect(purge).toBeGreaterThan(-1);
+    expect(session).toBeLessThan(purge);
+  });
+});
+
+/**
+ * Les noms de tables se DÉRIVENT du schéma, jamais recopiés.
+ *
+ * `db/schema/pulled.ts` est ENGENDRÉ par `pnpm db:pull-schema` depuis le
+ * manifeste du serveur. Une liste tenue à la main dériverait à la prochaine
+ * régénération, en silence, et une table oubliée par une purge referait
+ * exactement le défaut que la purge existe pour corriger.
+ */
+describe("aucun nom de table écrit à la main", () => {
+  it("hors du schéma, `src/db/` ne cite aucune table tirée", () => {
+    // `db/tables` est PUR : il lit les modules de schéma, qui ne déclarent que
+    // des tables. `db/client`, lui, ouvre SQLite au chargement ; il n'entre pas
+    // dans ce fichier, et c'est ce qui permet de l'importer en tête.
+    const noms = tablesTirees();
+    expect(noms.length).toBeGreaterThan(30);
+
+    const fautifs: string[] = [];
+    let balayes = 0;
+    for (const f of fichiers(join(RACINE, "db"))) {
+      const chemin = relative(RACINE, f);
+      if (chemin.includes("db/schema/")) continue;
+      balayes += 1;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      for (const n of noms) {
+        if (new RegExp(`["'\`]${n}["'\`]`).test(code)) fautifs.push(`${chemin} : ${n}`);
+      }
+    }
+
+    expect(balayes).toBeGreaterThan(2);
+    expect(fautifs).toEqual([]);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE PLAFOND D'ENCAISSEMENT RECOIT UNE CONVERSION BRUTE, JAMAIS ARRONDIE. │
+ * │                                                                          │
+ * │ `montantExigible` cherche le plus petit montant qui SOLDE la facture     │
+ * │ dans la devise encaissee. Lui passer `convertMoney` detruit l'information│
+ * │ dont il a besoin : 26 681 FC / 2300 vaut 11,60043..., et `convertMoney`  │
+ * │ rend deja 11,60. Plafonner 11,60 rend 11,60, et le bouton « Encaisser »  │
+ * │ se referme sur une vente qu'aucun montant en dollars ne peut solder.     │
+ * │                                                                          │
+ * │ Les deux fonctions ont la MEME signature : TypeScript ne voit rien, et   │
+ * │ le defaut ne se decouvre qu'au comptoir, face a un client qui attend.    │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le recalage du montant recu", () => {
+  it("ne cable jamais une conversion ARRONDISSANTE sur `convertirBrut`", () => {
+    const fautifs: string[] = [];
+    let balayes = 0;
+
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/\bconvertirBrut\s*:/.test(code)) continue;
+      balayes += 1;
+      for (const m of code.matchAll(/\bconvertirBrut\s*:\s*([A-Za-z_$][\w$.]*)/g)) {
+        if (/convertMoney$|convMoney$/.test(m[1])) {
+          fautifs.push(`${relative(RACINE, f)} : ${m[1]}`);
+        }
+      }
+    }
+
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien.
+    expect(balayes).toBeGreaterThan(0);
+    expect(fautifs).toEqual([]);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA PRÉSENTATION A DEUX SORTIES, ET UNE SEULE RANGE LE DRAPEAU.          │
+ * │                                                                          │
+ * │ « Passer » et « Commencer » mènent tous deux à la connexion. Si l'un des │
+ * │ deux y naviguait sans écrire `accueil.vu`, la présentation reviendrait à │
+ * │ CHAQUE lancement - et rien ne le signalerait : l'écran s'affiche         │
+ * │ correctement, il est simplement de trop. Le défaut ne se voit qu'en      │
+ * │ relançant l'application, ce qu'on ne fait pas en développement, où le    │
+ * │ rechargement à chaud garde l'état.                                       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("la présentation ne se montre qu'une fois", () => {
+  const ECRAN = join(RACINE, "app/(auth)/bienvenue.tsx");
+
+  /** Le corps d'une fonction, accolades équilibrées à partir de `marque`. */
+  function corpsApres(code: string, marque: string): string {
+    const debut = code.indexOf(marque);
+    if (debut < 0) return "";
+    let i = code.indexOf("{", debut + marque.length);
+    if (i < 0) return "";
+    let profondeur = 0;
+    const ouverture = i;
+    for (; i < code.length; i++) {
+      if (code[i] === "{") profondeur += 1;
+      else if (code[i] === "}") {
+        profondeur -= 1;
+        if (profondeur === 0) return code.slice(ouverture, i + 1);
+      }
+    }
+    return "";
+  }
+
+  const NAV_CONNEXION = /router\.(?:push|replace)\(\s*["'`][^"'`]*\(auth\)\/login/g;
+
+  it("le balayage MORD, et l'écran qu'il vise existe", () => {
+    // Un balayage qui ne trouve rien passe au vert et ne prouve rien : ce
+    // dépôt s'est déjà fait prendre trois fois.
+    expect(existsSync(ECRAN)).toBe(true);
+    expect(
+      'router.replace("/(auth)/login");'.match(NAV_CONNEXION)
+    ).toHaveLength(1);
+    expect(corpsApres("const f = () => { a; };", "const f =")).toBe("{ a; }");
+  });
+
+  it("un seul chemin mène à la connexion, et il range le drapeau", () => {
+    const code = sansCommentaires(readFileSync(ECRAN, "utf8"));
+
+    // Deux navigations, c'est deux sorties à tenir en phase : la seconde
+    // oubliera le drapeau, et ce sera celle que le marchand empruntera.
+    expect(code.match(NAV_CONNEXION) ?? []).toHaveLength(1);
+
+    const terminer = corpsApres(code, "const terminer =");
+    expect(terminer).not.toBe("");
+    expect(terminer).toMatch(/marquerAccueilVu\(\)/);
+    expect(terminer.match(NAV_CONNEXION) ?? []).toHaveLength(1);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'ÉCRAN DE DÉMARRAGE PROLONGE LE SPLASH, IL NE LUI SUCCÈDE PAS.         │
+ * │                                                                          │
+ * │ Le splash natif se dimensionne par `imageWidth` dans `app.config.ts`,    │
+ * │ que l'écran de démarrage recopie. Les laisser diverger rend un saut de   │
+ * │ taille au moment précis où le splash se lève : l'œil le voit sans        │
+ * │ pouvoir le nommer, et aucun type ne relie les deux fichiers.             │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le raccord du splash", () => {
+  const CONFIG = resolve(RACINE, "../app.config.ts");
+  const DEMARRAGE = join(RACINE, "app/index.tsx");
+
+  it("l'écran de démarrage rend le logo à la largeur du splash", () => {
+    const splash = /imageWidth:\s*(\d+)/.exec(readFileSync(CONFIG, "utf8"));
+    const ecran = /LARGEUR_DU_SPLASH\s*=\s*(\d+)/.exec(readFileSync(DEMARRAGE, "utf8"));
+    // Sans ces deux assertions, un renommage ferait passer le test en
+    // comparant `null` à `null`.
+    expect(splash).not.toBeNull();
+    expect(ecran).not.toBeNull();
+    expect(ecran![1]).toBe(splash![1]);
+  });
+
+  it("les deux montrent le MÊME dessin", () => {
+    // `logo.png` est un carré dont plus de la moitié est transparente :
+    // l'employer d'un côté et l'encre recadrée de l'autre donnerait deux
+    // tailles pour un même nombre.
+    expect(readFileSync(CONFIG, "utf8")).toMatch(/images\/logo-trim\.png/);
+  });
+
+  it("l'écran de démarrage ne suit pas le thème", () => {
+    // ⚠ `bg-splash` et non `bg-background`. Le fond du splash est clair dans
+    // les DEUX thèmes, parce que le bleu du logo tombe à 1,6:1 sur `#0f0f11` :
+    // suivre le thème rendrait un logo amputé en soirée, et ferait deux
+    // ruptures au lieu d'une.
+    expect(sansCommentaires(readFileSync(DEMARRAGE, "utf8"))).toMatch(/\bbg-splash\b/);
+  });
+
+  /**
+   * ⚠ LE FOND DERRIÈRE LE LOGO EST TOUJOURS CELUI DE LA PAGE.
+   *
+   * `Logo` posait une plaque `bg-splash` - blanche dans les deux thèmes -
+   * pour sauver sa lisibilité de nuit. Elle dessinait un carré blanc sur le
+   * `#f3f4f6` de la page en thème clair et sur le `#0f0f11` en sombre : deux
+   * couleurs qui ne sont celles d'aucune des deux pages.
+   *
+   * Le problème qu'elle réglait reste vrai et mesuré (bleu à 1,61:1, contour
+   * noir à 1,01:1 sur `#0f0f11`), et la sortie est dans `ui/logo.tsx` : le
+   * dessin ne se pose que sur un fond CLAIR, et le thème sombre reçoit le
+   * mot-symbole en typographie. Ni plaque rapportée, ni logo amputé.
+   *
+   * ⚠ Ce test remplace un garde-fou qui exigeait l'inverse. Le laisser en
+   * place l'aurait fait passer À VIDE : `plaque={false}` ayant disparu, sa
+   * liste de fautifs restait vide sans plus rien démontrer.
+   */
+  it("aucune plaque d'une autre couleur ne se glisse sous le logo", () => {
+    const fautifs: string[] = [];
+    let balayes = 0;
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      if (chemin.endsWith("ui/logo.tsx")) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/<Logo\b/.test(code)) continue;
+      balayes += 1;
+      // La prop a disparu : la revoir signerait le retour de la plaque.
+      if (/\bplaque\b/.test(code)) fautifs.push(`${chemin} : prop \`plaque\``);
+      // `fondClair` dit « cet écran est clair quel que soit le thème ». Le
+      // seul dans ce cas est le démarrage, dont le fond EST `bg-splash`.
+      if (/\bfondClair\b/.test(code) && !chemin.endsWith("app/index.tsx")) {
+        fautifs.push(`${chemin} : \`fondClair\` hors de l'écran de démarrage`);
+      }
+      // Un `bg-splash` ailleurs que sur le fond du démarrage serait
+      // précisément la plaque, sous un autre nom.
+      if (/\bbg-splash\b/.test(code) && !chemin.endsWith("app/index.tsx")) {
+        fautifs.push(`${chemin} : \`bg-splash\` employé comme plaque`);
+      }
+    }
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien.
+    expect(balayes).toBeGreaterThan(1);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le jeton `splash` vaut la même chose dans les deux thèmes", () => {
+    // C'est tout son intérêt : un jeton qui suivrait le thème ne servirait à
+    // rien ici, et `bg-white` est interdit par le garde-fou des couleurs.
+    expect(PALETTES.light.splash).toBe(PALETTES.dark.splash);
+  });
+});
+
+describe("la zone sûre du bas a un propriétaire, et un seul", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ `edges={[]}` EST JUSTE DANS UN ONGLET ET FAUX PARTOUT AILLEURS.         │
+   * │                                                                          │
+   * │ Un écran d'ONGLET vit dans une scène que le navigateur dimensionne       │
+   * │ AU-DESSUS de sa barre, et cette barre porte déjà `insets.bottom`         │
+   * │ (`BottomTabBar`, l. 252). Un `Screen` qui y ajouterait sa propre marge    │
+   * │ compterait la zone sûre deux fois : une bande vide au-dessus de la       │
+   * │ barre.                                                                   │
+   * │                                                                          │
+   * │ Un écran de PILE n'a rien sous lui. `edges={[]}` y retire la SEULE       │
+   * │ marge qui tienne son contenu au-dessus de la barre gestuelle, et sa      │
+   * │ dernière ligne - le bouton « Enregistrer » de tous les formulaires -     │
+   * │ devient inatteignable. C'est la classe de défaut rapportée par un        │
+   * │ marchand, et elle ne se voit pas sur un émulateur à boutons logiciels.   │
+   * │                                                                          │
+   * │ Les deux erreurs sont SILENCIEUSES : l'écran s'affiche dans les deux     │
+   * │ cas. D'où ce balayage.                                                   │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  const ECRANS = join(RACINE, "app");
+
+  /**
+   * Les balises `<Screen …>` d'un fichier, une chaîne par balise.
+   *
+   * ⚠ ON NE PEUT PAS S'ARRÊTER AU PREMIER `>`. Un prop porte souvent une
+   * fonction fléchée (`onPress={() => …}`) ou une comparaison, donc un `>`
+   * qui n'est pas la fin de la balise. On suit la profondeur des accolades,
+   * sinon le balayage coupe la balise en deux et ne voit plus `edges`.
+   */
+  function balisesScreen(code: string): string[] {
+    const sortie: string[] = [];
+    for (let i = code.indexOf("<Screen"); i !== -1; i = code.indexOf("<Screen", i + 1)) {
+      // `<ScreenAutreChose` n'est pas notre composant.
+      if (/[A-Za-z0-9]/.test(code[i + 7] ?? "")) continue;
+      let profondeur = 0;
+      for (let j = i; j < code.length; j++) {
+        const c = code[j];
+        if (c === "{") profondeur++;
+        else if (c === "}") profondeur--;
+        else if (c === ">" && profondeur === 0) {
+          sortie.push(code.slice(i, j + 1));
+          break;
+        }
+      }
+    }
+    return sortie;
+  }
+
+  const SANS_ZONE_SURE = /\bedges=\{\[\]\}/;
+
+  it("le balayage trouve bien des `Screen` des deux côtés", () => {
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien : ce
+    // dépôt l'a déjà payé trois fois.
+    let onglets = 0;
+    let piles = 0;
+    for (const f of fichiers(ECRANS)) {
+      const n = balisesScreen(readFileSync(f, "utf8")).length;
+      if (relative(ECRANS, f).includes("(tabs)")) onglets += n;
+      else piles += n;
+    }
+    expect(onglets).toBeGreaterThan(5);
+    expect(piles).toBeGreaterThan(20);
+  });
+
+  it("tout écran d'onglet renonce à la zone sûre, que la barre porte déjà", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(ECRANS)) {
+      const rel = relative(RACINE, f);
+      if (!rel.includes("(tabs)")) continue;
+      for (const b of balisesScreen(readFileSync(f, "utf8"))) {
+        if (!SANS_ZONE_SURE.test(b)) fautifs.push(`${rel} : il manque edges={[]}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("aucun écran de pile ne renonce à sa zone sûre", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(ECRANS)) {
+      const rel = relative(RACINE, f);
+      if (rel.includes("(tabs)")) continue;
+      for (const b of balisesScreen(readFileSync(f, "utf8"))) {
+        if (SANS_ZONE_SURE.test(b)) {
+          fautifs.push(`${rel} : edges={[]} hors d'un onglet, le bas passe sous la barre gestuelle`);
+        }
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le balayage VOIT `edges` malgré une fonction fléchée dans la balise", () => {
+    // Le piège : `=>` contient un `>`. En s'arrêtant au premier, la balise
+    // serait coupée avant `edges` et le garde-fou deviendrait aveugle.
+    const avecFleche = '<Screen onRefresh={() => void f()} edges={[]} padded={false}>';
+    expect(balisesScreen(avecFleche)).toHaveLength(1);
+    expect(SANS_ZONE_SURE.test(balisesScreen(avecFleche)[0])).toBe(true);
+    expect(SANS_ZONE_SURE.test('<Screen scroll padded={false}>')).toBe(false);
+  });
+});
+
+/**
+ * L'abonnement se règle DANS l'application.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA DOCTRINE QUI JUSTIFIAIT LE NAVIGATEUR DÉCRIVAIT UN MÉCANISME QUI     │
+ * │ N'EXISTE PAS.                                                            │
+ * │                                                                          │
+ * │ Elle affirmait que « le tunnel Moko est une page web hébergée », donc    │
+ * │ qu'il fallait sortir vers le navigateur du système sous peine du motif   │
+ * │ de refus 4.2 de l'App Store. Vérification faite, le checkout du          │
+ * │ back-office est un formulaire REST suivi d'une confirmation USSD : il    │
+ * │ n'y a aucune page à embarquer, donc aucun motif 4.2.                     │
+ * │                                                                          │
+ * │ Sortir coûtait cher : le marchand quittait l'application, devait s'y     │
+ * │ reconnecter, et ne pouvait rien régler du tout si `EXPO_PUBLIC_WEB_URL`  │
+ * │ manquait sur sa version - c'est-à-dire précisément quand sa caisse       │
+ * │ venait de se bloquer.                                                    │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le paiement de l'abonnement ne sort pas de l'application", () => {
+  const OUVERTURE_NAVIGATEUR = /openBrowserAsync|openAuthSessionAsync|Linking\.openURL/;
+
+  it("le balayage voit bien les écrans d'abonnement", () => {
+    // Un balayage qui ne balaie rien passe au vert sans rien démontrer.
+    const vus = fichiers(RACINE).filter((f) => /abonnement|paiement/.test(f));
+    expect(vus.length).toBeGreaterThan(2);
+  });
+
+  it("aucun écran d'abonnement n'ouvre un navigateur pour payer", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      if (!/abonnement|paiement/.test(f)) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      const m = code.match(OUVERTURE_NAVIGATEUR);
+      if (m) fautifs.push(`${relative(RACINE, f)} : ${m[0]}`);
     }
     expect(fautifs).toEqual([]);
   });

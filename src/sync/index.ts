@@ -22,6 +22,7 @@ export {
   enAttenteParType,
 } from "./outbox";
 export { readState, readAllStates, writeState, resetAllStates } from "./state";
+export { estPris, prendre, rendre, avecVerrou, attendreLibre } from "./verrou";
 export { coerce } from "./coerce";
 export type {
   Manifest,

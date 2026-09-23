@@ -36,10 +36,20 @@ const RANGS_DECALES = 6;
 
 export function Apparition({
   index = 0,
+  className,
   children,
 }: {
   /** Rang dans la liste : il porte le décalage. */
   index?: number;
+  /**
+   * ⚠ SANS LUI, UN ENFANT EN `flex-1` SE RÉDUIT À RIEN.
+   *
+   * Cette vue n'a aucune propriété de flux : un `flex-1` posé DEDANS se
+   * résout contre un parent dimensionné par son contenu, donc contre rien, et
+   * l'élément disparaît. Le cas se présente dès qu'on anime autre chose
+   * qu'une carte de liste - un cadre qui doit remplir la hauteur, par exemple.
+   */
+  className?: string;
   children: React.ReactNode;
 }) {
   const reduit = useMouvementReduit();
@@ -73,6 +83,7 @@ export function Apparition({
 
   return (
     <Animated.View
+      className={className}
       style={{
         opacity: progression,
         transform: [

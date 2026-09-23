@@ -165,6 +165,60 @@ export async function oublierPhoto(productId: string): Promise<void> {
     .where(eq(pendingProductPhotos.productId, productId));
 }
 
+/** Combien de photos attendent encore leur envoi. */
+export async function nbPhotosEnAttente(): Promise<number> {
+  const lignes = await db
+    .select({ productId: pendingProductPhotos.productId })
+    .from(pendingProductPhotos);
+  return lignes.length;
+}
+
+/**
+ * Efface TOUS les fichiers de photos en attente, ligne par ligne puis le dossier.
+ *
+ * Appelé par la purge de la base locale, et par elle seule.
+ *
+ * ⚠ **Le dossier est balayé APRÈS les lignes connues, et il faut les deux.** Les
+ * `uri` couvrent ce que la table référence ; le balayage du dossier ramasse ce
+ * qu'une purge précédente a laissé - un arrêt entre la suppression du fichier et
+ * celle de sa ligne, ou l'inverse. Sans lui, un terminal accumulerait des photos
+ * que plus rien ne désigne, sur un stockage qui manque déjà de place.
+ *
+ * Rend le nombre de fichiers réellement supprimés. Aucune erreur ne remonte : un
+ * fichier récalcitrant ne doit pas empêcher une déconnexion d'aboutir.
+ */
+export async function viderDossierPhotos(): Promise<number> {
+  let supprimes = 0;
+
+  const lignes = await db.select({ uri: pendingProductPhotos.uri }).from(pendingProductPhotos);
+  for (const ligne of lignes) {
+    try {
+      const f = new File(ligne.uri);
+      if (f.exists) {
+        f.delete();
+        supprimes += 1;
+      }
+    } catch {
+      // Un fichier qu'on ne peut pas effacer ne retient pas la purge.
+    }
+  }
+
+  try {
+    for (const entree of dossier().list()) {
+      try {
+        entree.delete();
+        supprimes += 1;
+      } catch {
+        // idem
+      }
+    }
+  } catch {
+    // Dossier absent ou illisible : il n'y a rien à ramasser.
+  }
+
+  return supprimes;
+}
+
 /**
  * Le `PATCH` multipart lui-même.
  *

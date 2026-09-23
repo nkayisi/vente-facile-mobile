@@ -46,3 +46,38 @@ export async function ecrireReglage(cle: string, valeur: unknown): Promise<void>
 }
 
 export const CLE_THEME = "theme.preference";
+
+/**
+ * « Ce terminal a déjà vu la présentation. »
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ ELLE N'EST PAS DANS `CLES_CONSERVEES`, ET C'EST UNE DÉCISION.           │
+ * │                                                                          │
+ * │ L'allowlist de `db/purge-regles.ts` ne porte que ce qui décrit le        │
+ * │ MATÉRIEL posé sur le comptoir : le thème et l'imprimante. « J'ai vu la   │
+ * │ présentation » est un fait sur une PERSONNE, pas sur un appareil, et y   │
+ * │ glisser cette clé diluerait un invariant écrit pour un confort.          │
+ * │                                                                          │
+ * │ Conséquence assumée : le carrousel revient après une déconnexion. Le     │
+ * │ geste est rare et confirmé ici - le geste quotidien est le verrou par    │
+ * │ code, pas la déconnexion - et revoir trois vues après avoir changé de    │
+ * │ compte se défend.                                                        │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export const CLE_ACCUEIL_VU = "accueil.vu";
+
+/**
+ * ⚠ LE DÉFAUT EST « PAS ENCORE VU », et il le faut dans les deux sens.
+ *
+ * `lireReglage` avale ses erreurs et rend le défaut : sur une base illisible,
+ * on remontre donc la présentation. C'est l'oubli qui coûte le moins - un appui
+ * sur « Passer » - là où le défaut inverse ferait perdre la présentation à
+ * quelqu'un qui ne l'a jamais vue, sans aucun moyen d'y revenir.
+ */
+export async function accueilDejaVu(): Promise<boolean> {
+  return lireReglage(CLE_ACCUEIL_VU, false);
+}
+
+export async function marquerAccueilVu(): Promise<void> {
+  await ecrireReglage(CLE_ACCUEIL_VU, true);
+}

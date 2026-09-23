@@ -19,6 +19,29 @@ import { useSafeAreaInsets, type Edge } from "react-native-safe-area-context";
 
 import { useTheme } from "./theme";
 
+/**
+ * Les deux fonds possibles d'un ecran, et ce que chacun fait du pied.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE TABLE, JAMAIS `bg-${fond}`.                                         │
+ * │                                                                          │
+ * │ NativeWind extrait les classes du CODE a la compilation : une classe     │
+ * │ fabriquee au vol n'existe dans aucune feuille, et elle est simplement    │
+ * │ ignoree - pas d'erreur, pas d'avertissement, juste un ecran qui garde    │
+ * │ le fond d'avant. Meme motif que la table `TONS` des apercus.             │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ LE PIED PERD SON FILET ET SA PLAQUE EN `card`, ET C'EST TOUT L'OBJET.
+ * Le filet et le fond de carte DETACHENT la barre du contenu qui defile
+ * dessous. Quand la page EST deja la surface carte, ils separent une chose
+ * d'elle-meme : c'est trait pour trait la couture que ce prop existe pour
+ * supprimer.
+ */
+const FONDS = {
+  background: { page: "bg-background", pied: "border-t border-border bg-card" },
+  card: { page: "bg-card", pied: "" },
+} as const;
+
 export interface ScreenProps {
   children: ReactNode;
   /**
@@ -94,6 +117,30 @@ export interface ScreenProps {
    * endroit, quel que soit le nombre de lignes.
    */
   centre?: boolean;
+  /**
+   * Le fond de l'ecran, pied compris.
+   *
+   * `"background"` (defaut) : le gris de page, avec un pied blanc detache par
+   * un filet. C'est la disposition de tous les ecrans de l'application.
+   *
+   * `"card"` : la surface carte, d'un seul tenant, sans couture entre le corps
+   * et la barre d'actions.
+   *
+   * ⚠ `card`, ET SURTOUT PAS UN BLANC EN DUR. En theme clair le jeton vaut
+   * `#ffffff`, donc l'ecran est blanc ; en theme sombre il vaut `#1a1a1d`,
+   * donc il reste sombre. Deux raisons, et la seconde est mecanique :
+   *
+   *  - un blanc integral au premier lancement, en soiree, sur le terminal d'un
+   *    marchand qui a choisi le theme sombre ;
+   *  - `app/_layout.tsx` monte `<StatusBar style="auto" />`, qui decide d'apres
+   *    le `colorScheme` et NON d'apres ce qui est derriere. Sur un ecran forme
+   *    blanc en theme sombre, les icones de statut sortiraient BLANCHES SUR
+   *    BLANC, donc invisibles. Les rattraper demanderait un second `StatusBar`
+   *    propre a cet ecran, soit un deuxieme proprietaire pour une ressource
+   *    globale - exactement le motif que ce fichier combat pour les zones
+   *    sures.
+   */
+  fond?: keyof typeof FONDS;
   className?: string;
 }
 
@@ -106,6 +153,7 @@ export function Screen({
   padded = true,
   pied,
   centre = false,
+  fond = "background",
   className = "",
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
@@ -149,8 +197,10 @@ export function Screen({
     </View>
   );
 
+  const f = FONDS[fond];
+
   return (
-    <View className="flex-1 bg-background" style={pad}>
+    <View className={`flex-1 ${f.page}`} style={pad}>
       <KeyboardAvoidingView
         className="flex-1"
         // `padding` sur iOS, `height` sur Android : le comportement natif du
@@ -162,8 +212,9 @@ export function Screen({
         {pied ? (
           // Le filet et le fond de carte DÉTACHENT la barre du contenu qui
           // défile dessous. Sans eux, un texte qui passe derrière donne
-          // l'impression que la page s'arrête là où elle continue.
-          <View className="border-t border-border bg-card px-4 py-3">{pied}</View>
+          // l'impression que la page s'arrête là où elle continue. En `card`
+          // ils disparaissent : voir la table `FONDS`.
+          <View className={`px-4 py-3 ${f.pied}`}>{pied}</View>
         ) : null}
       </KeyboardAvoidingView>
     </View>

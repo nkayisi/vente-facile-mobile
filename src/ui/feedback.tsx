@@ -67,20 +67,46 @@ export function Banner({
  *
  * Un écran vide doit dire trois choses : ce qui manque, pourquoi, et le geste
  * qui remplit. « Aucun résultat » tout seul laisse l'utilisateur bloqué.
+ *
+ * Deux variantes, parce qu'un état vide n'occupe pas la même place selon
+ * qu'il tient LIEU d'écran ou qu'il tient lieu de BLOC dans une carte :
+ *
+ * - `ecran` : il remplit ce qui reste de la page et se centre dedans.
+ * - `carte` : voir `EtatVideEnCarte` plus bas.
  */
 export function EmptyState({
   icon = "Inbox",
   title,
   message,
   action,
+  variante = "ecran",
 }: {
   icon?: IconName;
   title: string;
   message?: string;
   action?: { label: string; onPress: () => void };
+  variante?: "ecran" | "carte";
 }) {
+  if (variante === "carte") {
+    return <EtatVideEnCarte title={title} message={message} action={action} />;
+  }
+
   return (
-    <View className="flex-1 items-center justify-center px-8 py-12">
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ `grow`, ET SURTOUT PAS `flex-1`.                                     │
+    // │                                                                      │
+    // │ `flex-1` vaut `flex-basis: 0` : dans un parent dont la hauteur est   │
+    // │ AUTOMATIQUE - une `Card`, exactement - la boîte se résout à ses      │
+    // │ seules marges intérieures et tout le contenu SORT de la carte. Il ne │
+    // │ se passe rien de visible : pas d'erreur, pas d'avertissement. Sous   │
+    // │ `overflow-hidden` l'état vide disparaît entièrement, et l'écran      │
+    // │ annonce une carte titrée dont le corps est blanc.                    │
+    // │                                                                      │
+    // │ `grow` laisse la base à `auto` : là où il reste de la place on la    │
+    // │ prend et on se centre - c'est le cas plein écran, inchangé - et là   │
+    // │ où il n'y en a pas, on fait la hauteur de son contenu.               │
+    // └──────────────────────────────────────────────────────────────────────┘
+    <View className="grow items-center justify-center px-8 py-12">
       {/* Cercle `h-16 w-16` du back-office : c'est ce qui distingue un etat
           vide DELIBERE d'un ecran qui n'a simplement rien charge. */}
       <View className="h-16 w-16 items-center justify-center rounded-full bg-muted">
@@ -97,6 +123,55 @@ export function EmptyState({
       {action ? (
         <View className="mt-5">
           <Button onPress={action.onPress}>{action.label}</Button>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Le même état vide, pris comme BLOC dans une carte qui porte déjà son titre.
+ *
+ * Trois écarts avec la variante plein écran, et chacun a sa raison :
+ *
+ * 1. PAS D'ICÔNE. Une carte du tableau de bord porte DÉJÀ la sienne, en tête à
+ *    droite ; la redessiner au centre, deux fois plus grosse, écrit le même
+ *    glyphe deux fois sur la même carte. Ce que le cercle sert à dire - « ce
+ *    vide est délibéré, l'écran n'est pas en train de charger » - est déjà dit
+ *    par l'en-tête de la carte, qui est là et qui est renseigné.
+ * 2. PAS DE HAUTEUR D'ÉCRAN. `py-12` et un titre en `h4` font une hauteur de
+ *    héros. Trois sections vides à la suite donneraient un tableau de bord qui
+ *    crie trois fois qu'il n'a rien à dire.
+ * 3. LE TON D'UNE LÉGENDE. C'est une note sous un titre, pas un titre de plus.
+ *
+ * Même grammaire que l'état vide d'un `Tableau`, qui est le seul autre bloc
+ * vide EN CARTE du dépôt : deux façons de dire la même chose sur deux écrans
+ * voisins font douter qu'il s'agisse de la même chose.
+ */
+function EtatVideEnCarte({
+  title,
+  message,
+  action,
+}: {
+  title: string;
+  message?: string;
+  action?: { label: string; onPress: () => void };
+}) {
+  return (
+    <View className="items-center px-6 py-7">
+      <Text variant="label" className="text-center">
+        {title}
+      </Text>
+      {message ? (
+        <Text variant="caption" className="mt-1 text-center">
+          {message}
+        </Text>
+      ) : null}
+      {action ? (
+        <View className="mt-3.5">
+          <Button size="sm" variant="outline" onPress={action.onPress}>
+            {action.label}
+          </Button>
         </View>
       ) : null}
     </View>

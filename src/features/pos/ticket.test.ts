@@ -320,3 +320,60 @@ describe("Aucun identifiant ne sort sur le papier", () => {
     expect(identifiants("Sous-total 56 000 FC")).toEqual([]);
   });
 });
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE BLOC FIDÉLITÉ NE SORTAIT QUE SI DES POINTS ÉTAIENT DÉPENSÉS.         │
+ * │                                                                          │
+ * │ `pointsGagnes` et `pointsRestants` étaient DÉCLARÉS dans `ContexteTicket`│
+ * │ depuis l'origine, et personne ne les passait : `earned` valait 0 et      │
+ * │ `balance` restait `undefined`. Or `showsLoyalty` du noyau exige l'un des │
+ * │ trois. Le client rattaché qui venait lire son cumul ne le trouvait donc  │
+ * │ nulle part, alors que le back-office l'imprime depuis toujours.          │
+ * │                                                                          │
+ * │ Ce n'est pas un défaut de calcul : c'est un défaut de CÂBLAGE, invisible │
+ * │ au type-check - les deux champs sont facultatifs - et invisible à la     │
+ * │ relecture du ticket, qui les lit correctement.                           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("Le ticket porte le cumul de points du client", () => {
+  const CLIENT = {
+    id: "c1",
+    name: "Nelly Kayisi",
+    phone: null,
+    allow_credit: true,
+    credit_limit: "0",
+    current_balance: "0",
+  };
+
+  function avecClient(patch: Partial<ContexteTicket>) {
+    const etat: EtatPanier = { ...PANIER_VIDE, client: CLIENT };
+    return donneesTicketVente({ ...contexte(etat, "USD"), ...patch });
+  }
+
+  it("annonce le solde MÊME quand aucun point n'est dépensé", () => {
+    // C'est exactement le cas signalé : un client rattaché, aucune déduction,
+    // et le papier ne disait rien de son cumul.
+    expect(avecClient({ pointsRestants: 1798.57 }).loyalty).toMatchObject({
+      balance: 1798.57,
+    });
+  });
+
+  it("porte les trois lignes du back-office quand elles existent", () => {
+    expect(
+      avecClient({ pointsGagnes: 2, pointsRestants: 655.72 }).loyalty
+    ).toMatchObject({ earned: 2, balance: 655.72 });
+  });
+
+  it("ne porte AUCUN bloc sans client : il n'y a pas de compte à annoncer", () => {
+    expect(
+      donneesTicketVente({ ...contexte(PANIER_VIDE, "USD"), pointsRestants: 900 }).loyalty
+    ).toBeUndefined();
+  });
+
+  it("laisse le solde ABSENT plutôt que nul quand l'appelant n'en a pas", () => {
+    // `undefined` et `0` ne disent pas la même chose : le premier retire la
+    // ligne, le second affirme « vous n'avez plus rien ».
+    expect(avecClient({}).loyalty?.balance).toBeUndefined();
+  });
+});

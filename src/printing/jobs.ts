@@ -200,6 +200,18 @@ export async function enregistrerEtImprimer(options: {
 }
 
 /** Les derniers documents, le plus récent d'abord. */
+/**
+ * Combien de documents ce terminal garde pour la réimpression.
+ *
+ * Sert à la déconnexion : `print_jobs` est purement locale, et vider la base
+ * emporte donc la seule trace qui permette de ressortir un ticket. Le marchand
+ * doit le savoir AVANT de confirmer, pas le découvrir quand un client revient.
+ */
+export async function compterDocuments(): Promise<number> {
+  const lignes = await db.select({ id: printJobs.id }).from(printJobs);
+  return lignes.length;
+}
+
 export async function derniersDocuments(limite = 50): Promise<DocumentImprimable[]> {
   const lignes = await db
     .select({

@@ -18,6 +18,7 @@ import { PREFIXE, prochainNumero } from "@/features/pos/numerotation";
 import { imprimerProforma } from "@/printing/jobs";
 import { useSession } from "@/session/provider";
 import { sessionOuverte } from "@/features/pos/caisse";
+import { FeuilleEncaissement } from "@/features/pos/feuille-encaissement";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
 import { usePanier, type LignePanier } from "@/features/pos/panier";
 import {
@@ -28,6 +29,7 @@ export default function Panier() {
   const panier = usePanier();
   const [enEdition, setEnEdition] = useState<number | null>(null);
   const [remiseOuverte, setRemiseOuverte] = useState(false);
+  const [encaissement, setEncaissement] = useState(false);
   const [etiquette, setEtiquette] = useState<string | null>(null);
   // Verrou synchrone AVANT tout `setState` : deux appuis rapprochés rangeraient
   // le panier deux fois, et le second appui viderait un panier déjà vide.
@@ -301,7 +303,7 @@ export default function Panier() {
               </View>
               <View className="flex-1">
                 <Button
-                  onPress={() => router.push("/pos/encaissement")}
+                  onPress={() => setEncaissement(true)}
                   disabled={panier.ruptures.length > 0}
                   fullWidth
                 >
@@ -312,6 +314,12 @@ export default function Panier() {
           </View>
         </>
       )}
+
+      {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
+          formulaire vierge. */}
+      {encaissement ? (
+        <FeuilleEncaissement onFermer={() => setEncaissement(false)} />
+      ) : null}
 
       <BoiteEtiquette
         valeur={etiquette}

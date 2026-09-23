@@ -523,7 +523,7 @@ export default function TableauDeBord() {
             />
           ) : (
             <EmptyState
-              icon="ShoppingCart"
+              variante="carte"
               title="Aucune vente"
               message="Rien n'a été facturé sur cette période."
             />
@@ -580,7 +580,7 @@ export default function TableauDeBord() {
             </>
           ) : (
             <EmptyState
-              icon="Banknote"
+              variante="carte"
               title="Aucun encaissement"
               message="Rien n'a été réglé sur cette période."
             />
@@ -605,11 +605,18 @@ export default function TableauDeBord() {
               </View>
             ))
           ) : (
-            <EmptyState
-              icon="Package"
-              title="Aucun produit vendu"
-              message="Aucune ligne de vente sur cette période."
-            />
+            // Cette carte est en `p-0` parce que ses RANGÉES sont pleine
+            // largeur, filets compris. L'état vide, lui, n'en est pas une :
+            // sans ce rembourrage, il se poserait 16 points plus haut que
+            // celui des deux cartes voisines, et trois cartes vides à la
+            // suite ne se termineraient pas à la même hauteur.
+            <View className="pb-4">
+              <EmptyState
+                variante="carte"
+                title="Aucun produit vendu"
+                message="Aucune ligne de vente sur cette période."
+              />
+            </View>
           )}
         </Card>
       </View>

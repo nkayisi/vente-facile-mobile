@@ -1,5 +1,6 @@
 import { ActivityIndicator, View } from "react-native";
 
+import { fusionner } from "./classes";
 import { Icon, type IconName } from "./icon";
 import { Pressable, type HapticKind } from "./pressable";
 import { Text } from "./text";
@@ -91,9 +92,19 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled: inactive, busy: loading }}
       pressedClassName="active:opacity-80"
-      className={`flex-row items-center justify-center rounded-lg ${s.box} ${v.box} ${
-        inactive ? "opacity-50" : ""
-      } ${fullWidth ? "w-full" : "self-start"} ${className}`}
+      // ⚠ `fusionner`, ET PAS UNE CONCATÉNATION. En NativeWind, deux classes
+      // qui touchent la même propriété se départagent par ORDRE ALPHABÉTIQUE
+      // dans la feuille compilée, pas par l'ordre du `className` : un appelant
+      // qui demande `rounded-full` perdait contre le `rounded-lg` d'ici
+      // (« f » < « l »), et son bouton restait carré, sans le moindre
+      // avertissement. Même piège que `Text` et `Card`, par un troisième
+      // chemin. Voir `ui/classes.ts`.
+      className={fusionner(
+        `flex-row items-center justify-center rounded-lg ${s.box} ${v.box} ${
+          inactive ? "opacity-50" : ""
+        } ${fullWidth ? "w-full" : "self-start"}`,
+        className
+      )}
     >
       {/* ┌──────────────────────────────────────────────────────────────────┐
           │ LA ROUE PREND LA PLACE DE L'ICÔNE, PAS CELLE DU LIBELLÉ.        │

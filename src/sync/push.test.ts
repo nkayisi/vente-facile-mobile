@@ -92,3 +92,56 @@ describe("libellés des opérations", () => {
     expect(orphelins).toEqual([]);
   });
 });
+
+/**
+ * Un abonnement échu ferme une PORTE ; il ne tombe pas en panne.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ SANS CETTE BRANCHE, LE TERMINAL MARTÈLE LE SERVEUR PENDANT DES SEMAINES.│
+ * │                                                                          │
+ * │ Le refus arrive en 402 sur TOUT le lot, pas en verdict par opération :   │
+ * │ il tombe donc dans le `catch`, qui remettait chaque opération en         │
+ * │ attente. À chaque cycle, le même lot repartait, le compteur d'essais     │
+ * │ montait - et finissait par condamner des ventes parfaitement valides -   │
+ * │ pendant que les écrans annonçaient « attend son envoi », c'est-à-dire    │
+ * │ qu'ils envoyaient le marchand chercher du réseau qui était déjà là.      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Le contrôle est TEXTUEL, comme ceux du dessus : `push.ts` ouvre la base
+ * locale, qui n'existe pas sous Jest. Ce qu'il tient est donc la STRUCTURE du
+ * `catch`, et c'est là que vivait le défaut.
+ */
+function blocCatchDeLEnvoi(): string {
+  const code = readFileSync(join(SRC, "sync/push.ts"), "utf8");
+  const debut = code.indexOf("  } catch (error) {");
+  const fin = code.indexOf("  const parKind", debut);
+  return code.slice(debut, fin);
+}
+
+describe("un lot refusé pour abonnement", () => {
+  it("le bloc de rattrapage est bien trouvé", () => {
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien : ce
+    // dépôt l'a déjà payé trois fois.
+    const bloc = blocCatchDeLEnvoi();
+    expect(bloc.length).toBeGreaterThan(200);
+    expect(bloc).toContain("scheduleRetry");
+  });
+
+  it("est mis en attente d'un règlement, jamais réessayé", () => {
+    const bloc = blocCatchDeLEnvoi();
+    const surAbonnement = bloc.indexOf('kind === "subscription"');
+    const surReessai = bloc.indexOf("scheduleRetry");
+
+    expect(surAbonnement).toBeGreaterThan(-1);
+    // ⚠ L'ORDRE est ce qui compte : un `scheduleRetry` atteint avant le test
+    // d'abonnement remettrait tout en attente et la branche ne servirait plus.
+    expect(surAbonnement).toBeLessThan(surReessai);
+    expect(bloc).toContain("markBlocked");
+  });
+
+  it("arrête la boucle d'envoi au lieu d'enchaîner cinquante refus", () => {
+    // Le refus porte sur l'ENDPOINT, pas sur le lot : sans `more: false`,
+    // `pushAll` repartirait pour un lot suivant qui se ferait refuser pareil.
+    expect(blocCatchDeLEnvoi()).toContain("more: false");
+  });
+});
