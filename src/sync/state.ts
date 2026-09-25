@@ -27,6 +27,8 @@ interface StatePatch {
   lastFullSyncAt?: Date | null;
   lastError?: string | null;
   rowCount?: number;
+  /** Le périmètre sous lequel le curseur ci-dessus a été obtenu. */
+  scopeToken?: string | null;
 }
 
 export async function writeState(table: string, patch: StatePatch): Promise<void> {

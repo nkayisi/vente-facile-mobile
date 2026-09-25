@@ -36,7 +36,7 @@
  * │ en liste : même contenu qu'avant, rangé au rang qui est le sien.         │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import {
@@ -48,6 +48,16 @@ import {
 
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  nombreDeFiltresPerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+  contexteFileDe,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { alertes } from "@/data/tableau-alertes";
 import {
   graphesTableauDeBord,
@@ -64,8 +74,11 @@ import {
   AreaChart,
   Badge,
   Banner,
+  BoutonFiltres,
   Card,
   CardHeader,
+  Chip,
+  ChipRow,
   Divider,
   DonutChart,
   EmptyState,
@@ -315,29 +328,56 @@ export default function TableauDeBord() {
     [money, principale]
   );
 
-  const charger = useCallback(() => relevesTableauDeBord(periode), [periode]);
+  // Le périmètre du tableau de bord. `avecAuteur` est VRAI : une vente a un
+  // vendeur, et c'est la première question qu'un propriétaire pose devant ces
+  // chiffres. La carte d'inventaire, elle, n'en tiendra pas compte - un stock
+  // est un état, pas un acte.
+  const [choixPerimetre, setChoixPerimetre] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const perimetre = usePerimetre(choixPerimetre, true);
+  const applique = perimetre.applique;
+  const moi = snapshot?.user.id ?? null;
+  // Ce que les ventes ENCORE EN FILE ont besoin qu'on sache d'elles :
+  // leur auteur, et si le filtre d'entrepôt courant tolère qu'on ignore
+  // le leur - une caisse peut n'avoir aucun dépôt.
+  const file = useMemo(() => contexteFileDe(perimetre, moi), [perimetre, moi]);
+
+  const charger = useCallback(
+    () => relevesTableauDeBord(periode, applique, file),
+    [periode, applique, file]
+  );
   const { donnees: r } = useLecture(charger, {
     tables: TABLES_RELEVES,
-    deps: [periode],
+    deps: [periode, applique, file],
   });
 
   const chargerGraphes = useCallback(
-    () => graphesTableauDeBord(periode),
-    [periode]
+    () => graphesTableauDeBord(periode, applique, file),
+    [periode, applique, file]
   );
   const { donnees: g } = useLecture(chargerGraphes, {
     tables: TABLES_GRAPHES,
-    deps: [periode],
+    deps: [periode, applique, file],
   });
 
-  const chargerProduits = useCallback(() => topProduits(periode), [periode]);
+  const chargerProduits = useCallback(
+    () => topProduits(periode, applique, file),
+    [periode, applique, file]
+  );
   const { donnees: produits } = useLecture(chargerProduits, {
     tables: TABLES_PRODUITS,
-    deps: [periode],
+    deps: [periode, applique, file],
   });
 
-  const { donnees: inventaire } = useLecture(releveInventaire, {
+  const [feuillePerimetre, setFeuillePerimetre] = useState(false);
+  const puces = useMemo(() => resumeDuPerimetre(perimetre), [perimetre]);
+
+  const chargerInventaire = useCallback(
+    () => releveInventaire(applique),
+    [applique]
+  );
+  const { donnees: inventaire } = useLecture(chargerInventaire, {
     tables: TABLES_STOCK,
+    deps: [applique],
   });
   const { donnees: lesAlertes } = useLecture(() => alertes(12), {
     tables: ["stocks", "products", "sales", "customers"],
@@ -436,7 +476,30 @@ export default function TableauDeBord() {
             </Pressable>
           );
         })}
+        {/* Le périmètre se pose À CÔTÉ de la période : les deux bornent le même
+            écran, et les séparer ferait chercher l'un après avoir trouvé
+            l'autre. La pastille ne compte que ce qui est CHOISI : un caissier
+            porte deux contraintes qu'il n'a pas posées. */}
+        <BoutonFiltres
+          actifs={nombreDeFiltresPerimetre(perimetre)}
+          onPress={() => setFeuillePerimetre(true)}
+        />
       </View>
+
+      {puces.length > 0 ? (
+        <ChipRow>
+          {puces.map((puce) => (
+            <Chip
+              key={puce.cle}
+              label={puce.label}
+              actif
+              onPress={() =>
+                setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
+              }
+            />
+          ))}
+        </ChipRow>
+      ) : null}
 
       {/* Quatre relevés, DEUX COLONNES : voir l'encadré en tête de fichier. */}
       <View className="mt-4 flex-row flex-wrap gap-3">
@@ -692,6 +755,14 @@ export default function TableauDeBord() {
           </Card>
         )}
       </View>
+      <FeuilleFiltresPerimetre
+        ouvert={feuillePerimetre}
+        onFermer={() => setFeuillePerimetre(false)}
+        valeur={choixPerimetre}
+        onChanger={setChoixPerimetre}
+        offre={perimetre}
+        libelleResultats="Voir le tableau de bord"
+      />
     </Screen>
   );
 }

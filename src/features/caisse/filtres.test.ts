@@ -118,6 +118,7 @@ describe("puces retirables", () => {
   it("nomme le type par son LIBELLÉ, jamais par son code", () => {
     const puces = resumeDesFiltresCaisse(
       { ...FILTRES_CAISSE_VIDES, type: "fund_in" },
+      {},
       libelle
     );
     expect(puces).toEqual([{ cle: "type", label: "Apport de fonds" }]);

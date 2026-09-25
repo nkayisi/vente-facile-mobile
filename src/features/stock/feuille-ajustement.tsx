@@ -36,7 +36,7 @@ import { type Packaging } from "@vente-facile/core";
 import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepots } from "@/data/stock";
+import { entrepotsSansValorisation } from "@/data/stock";
 import { niveauxDeStock } from "@/data/stock-niveaux";
 import { TYPE_AJUSTEMENT } from "@/data/stock-operations";
 import { creerAjustement } from "@/features/stock/actes";
@@ -121,7 +121,7 @@ export function FeuilleNouvelAjustement({
   const [vrac, setVrac] = useState("");
   const [erreurs, setErreurs] = useState<ErreursQuantite>({});
 
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐

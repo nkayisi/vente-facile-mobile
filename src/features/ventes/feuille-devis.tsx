@@ -42,7 +42,7 @@ import { useMonnaie } from "@/data/devises";
 import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepots } from "@/data/stock";
+import { entrepotsSansValorisation } from "@/data/stock";
 import { chercherArticles } from "@/features/pos/catalogue";
 import { chercherClients } from "@/features/pos/donnees";
 import { creerDevis, type LigneDevisSaisie } from "@/features/ventes/retours-devis";
@@ -103,7 +103,7 @@ export function FeuilleNouveauDevis({
   const [prix, setPrix] = useState("");
   const [erreurLigne, setErreurLigne] = useState<{ q?: string; p?: string }>({});
 
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
   const entrepot = entrepotParDefaut(depots);
 
   const chargerClients = useCallback(

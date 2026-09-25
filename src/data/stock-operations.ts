@@ -92,7 +92,19 @@ export interface TransfertResume {
 }
 
 export async function listeTransferts(
-  f: { recherche?: string; statut?: string | null; limite?: number } = {}
+  f: {
+    recherche?: string;
+    statut?: string | null;
+    /**
+     * ⚠ SÉMANTIQUE **OU**, JAMAIS ET. Un transfert relie DEUX entrepôts : le
+     * borner sur la seule source cacherait au magasinier de destination
+     * exactement ce qu'il doit réceptionner. C'est déjà le raisonnement du
+     * manifeste de tirage, où `stock_transfers` n'est pas borné par
+     * `warehouse_path`, et celui du `StockTransferFilter` du serveur.
+     */
+    entrepot?: string | null;
+    limite?: number;
+  } = {}
 ): Promise<{ elements: TransfertResume[]; total: number }> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
@@ -101,6 +113,12 @@ export async function listeTransferts(
 
   const conditions = [
     f.statut ? eq(stockTransfers.status, f.statut) : undefined,
+    f.entrepot
+      ? or(
+          eq(stockTransfers.sourceWarehouseId, f.entrepot),
+          eq(stockTransfers.destinationWarehouseId, f.entrepot)
+        )
+      : undefined,
     terme ? like(sql`lower(${stockTransfers.reference})`, motif) : undefined,
   ].filter(Boolean);
   const filtre = conditions.length > 0 ? and(...conditions) : undefined;
@@ -275,13 +293,19 @@ export interface AjustementResume {
 }
 
 export async function listeAjustements(
-  f: { recherche?: string; statut?: string | null; limite?: number } = {}
+  f: {
+    recherche?: string;
+    statut?: string | null;
+    entrepot?: string | null;
+    limite?: number;
+  } = {}
 ): Promise<{ elements: AjustementResume[]; total: number }> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
 
   const conditions = [
     f.statut ? eq(stockAdjustments.status, f.statut) : undefined,
+    f.entrepot ? eq(stockAdjustments.warehouseId, f.entrepot) : undefined,
     terme
       ? or(
           like(sql`lower(${stockAdjustments.reference})`, motif),

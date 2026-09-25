@@ -26,7 +26,14 @@ export { ListItem, type ListItemProps } from "./list-item";
 export { Divider } from "./divider";
 export { PinPad, PinDots } from "./pin-pad";
 export { Badge, type BadgeTone } from "./badge";
+export { BarresSysteme } from "./barres-systeme";
 export { Screen, type ScreenProps } from "./screen";
+export {
+  BORDS_PAR_DEFAUT,
+  rembourrageZoneSure,
+  useMargesSysteme,
+  type MargesSysteme,
+} from "./zone-sure";
 export { Spinner, type SpinnerProps } from "./spinner";
 export { Logo } from "./logo";
 export {

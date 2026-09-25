@@ -84,3 +84,41 @@ export const LIBELLES: Record<Verdict, { titre: string; detail: string }> = {
       "La fenêtre va jusqu'au bord de l'écran, mais le système n'annonce aucune place pour sa barre. Tout ce qui est en bas passe donc dessous. Envoyez cette capture.",
   },
 };
+
+/**
+ * Ce qu'on reserve en bas quand le systeme ne reserve rien.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ 48, ET C'EST UNE DÉCISION SOUS INCERTITUDE, PAS UNE MESURE.             │
+ * │                                                                          │
+ * │ Dans le cas `marge_absente`, le mode de navigation est INCONNAISSABLE    │
+ * │ depuis JavaScript. En bord-à-bord, `Dimensions.get("screen")`,           │
+ * │ `.get("window")` et `useSafeAreaFrame()` rendent le MÊME rectangle -     │
+ * │ `DeviceInfoModule.kt` remplace les bornes de la fenêtre par celles de    │
+ * │ l'écran, barres comprises. Le seul chiffre qui décrirait la barre est    │
+ * │ l'inset, et c'est précisément lui qui ment ici.                          │
+ * │                                                                          │
+ * │ Restent deux valeurs possibles : 24 pour une poignée gestuelle, 48 pour  │
+ * │ une barre à trois boutons (`navigation_bar_height` d'AOSP). ON PREND LA  │
+ * │ GRANDE, et l'argument est asymétrique :                                  │
+ * │                                                                          │
+ * │  - trop peu, sur un terminal à trois boutons - le parc de ce produit -   │
+ * │    c'est « Encaisser » à moitié recouvert, donc une vente perdue ;       │
+ * │  - trop, c'est vingt-quatre points de bande morte SUR UN APPAREIL QUI    │
+ * │    EST DÉJÀ EN DÉFAUT. Le reproche de bande morte écrit en tête de ce    │
+ * │    fichier vise `conforme` et `fenetre_inseree` : il ne porte pas ici.   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export const PLANCHER_BARRE_SYSTEME = 48;
+
+/**
+ * La marge basse à POSER, plancher compris. C'est la seule valeur qu'un écran
+ * doit employer ; `Mesures.margeBasse` est ce que le système ANNONCE.
+ *
+ * ⚠ UNE FONCTION, ET SURTOUT PAS UN `Math.max` CHEZ L'APPELANT. C'est la
+ * condition `marge_absente` qui fait tout le travail : recopiée, elle se perdra
+ * une fois, et cet appel-là posera une bande morte sur un appareil sain.
+ */
+export function margeBasseEffective(m: Mesures): number {
+  return verdict(m) === "marge_absente" ? PLANCHER_BARRE_SYSTEME : m.margeBasse;
+}

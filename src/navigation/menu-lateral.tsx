@@ -17,14 +17,23 @@
  */
 import { ScrollView, View } from "react-native";
 import { router, usePathname } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ROLE_LABELS } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
 import { etablissement } from "@/data/organisation";
 import { useDeconnexion } from "@/session/deconnexion";
 import { useSession } from "@/session/provider";
-import { Avatar, Badge, Divider, Icon, Logo, Pressable, Text, useToast } from "@/ui";
+import {
+  Avatar,
+  Badge,
+  Divider,
+  Icon,
+  Logo,
+  Pressable,
+  Text,
+  useMargesSysteme,
+  useToast,
+} from "@/ui";
 import { HIT } from "@/ui/tokens";
 import { fermerPuis } from "./fermeture";
 import { entreesDuMenu, type EtatEntree } from "./menu";
@@ -39,7 +48,7 @@ function cleActive(chemin: string, entrees: EtatEntree[]): string | null {
 }
 
 export function MenuLateral({ onFermer }: { onFermer: () => void }) {
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
   const chemin = usePathname();
   const { snapshot, can } = useSession();
   const { demander } = useDeconnexion();
@@ -66,7 +75,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
     fermerPuis(onFermer, raison ? () => toast.info(raison) : undefined);
 
   return (
-    <View className="flex-1 bg-card" style={{ paddingTop: insets.top }}>
+    <View className="flex-1 bg-card" style={{ paddingTop: marges.haut }}>
       {/* 1. Marque, exactement comme le web : « Vente » puis « Facile » orange. */}
       <View className="flex-row items-center justify-between border-b border-border pr-2">
         <View className="flex-row items-center">
@@ -162,6 +171,12 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
             // opération retenue par un abonnement impayé n'a plus aucun chemin.
             { titre: "Opérations à corriger", icon: "AlertTriangle" as const, href: "/(app)/appareil/operations" },
             { titre: "Imprimante", icon: "Printer" as const, href: "/(app)/appareil/imprimante" },
+            // ⚠ SANS CETTE ENTRÉE, L'ÉCRAN DE DIAGNOSTIC N'EXISTE POUR PERSONNE.
+            // Il a été écrit pour qu'un marchand chez qui la barre du système
+            // recouvre le bas de l'écran puisse nous envoyer un relevé - et il
+            // n'était câblé nulle part. Un outil qu'on ne peut pas atteindre ne
+            // sert qu'à celui qui l'a écrit.
+            { titre: "Diagnostic d'affichage", icon: "Ruler" as const, href: "/(app)/appareil/affichage" },
           ].map((a) => (
             <Pressable
               key={a.href}
@@ -183,7 +198,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
       {/* 4. Compte, en pied comme l'avatar du web. */}
       <View
         className="flex-row items-center gap-3 border-t border-border px-4 py-3"
-        style={{ paddingBottom: insets.bottom + 12 }}
+        style={{ paddingBottom: marges.bas + 12 }}
       >
         <Pressable
           onPress={aller("/profil")}

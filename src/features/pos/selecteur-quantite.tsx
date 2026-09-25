@@ -25,7 +25,7 @@ import { Modal, View } from "react-native";
 import { getPackaging, pluralizeUnit } from "@vente-facile/core";
 import type { Saisie } from "@vente-facile/core/pos";
 
-import { Button, Divider, Icon, Pressable, Text } from "@/ui";
+import { Button, Divider, Icon, Pressable, Text, useMargesSysteme } from "@/ui";
 import type { ArticlePos } from "./catalogue";
 
 type Canal = "package" | "retail";
@@ -116,6 +116,10 @@ export function SelecteurQuantite({
     [conditionnement, contenants, detail]
   );
 
+  // ⚠ AVANT le retour anticipé : un hook appelé conditionnellement change
+  // l'ordre des hooks d'un rendu à l'autre.
+  const marges = useMargesSysteme();
+
   if (!article) return null;
 
   const valeurCourante = canal === "package" ? contenants : detail;
@@ -146,7 +150,16 @@ export function SelecteurQuantite({
   const motContenant = conditionnement?.packageWord ?? "contenant";
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onFermer}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onFermer}
+      // Voir `ui/sheet.tsx` : inertes tant que le bord-à-bord est actif, mais
+      // il l'est par un drapeau Gradle que ce dépôt ne garde pas.
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       <Pressable
         className="flex-1 justify-end bg-foreground/50"
         onPress={onFermer}
@@ -154,7 +167,17 @@ export function SelecteurQuantite({
         accessibilityLabel="Fermer"
       >
         {/* Le contenu absorbe le geste : toucher la feuille ne la ferme pas. */}
-        <Pressable onPress={() => {}} haptic="none" className="rounded-t-3xl bg-card pb-6">
+        {/* ⚠ `pb-6` NE SUFFIT PAS SUR UNE BARRE À TROIS BOUTONS. Vingt-quatre
+            points couvrent une poignée gestuelle ; une barre à trois boutons en
+            fait quarante-huit, et le bouton « Ajouter » passait dessous. Une
+            modale est rendue hors de l'arbre de `Screen` : personne ne pose sa
+            zone sûre à sa place, elle la prend par la main unique. */}
+        <Pressable
+          onPress={() => {}}
+          haptic="none"
+          className="rounded-t-3xl bg-card"
+          style={{ paddingBottom: Math.max(marges.bas, 24) }}
+        >
           <View className="items-center py-3">
             <View className="h-1 w-10 rounded-full bg-border" />
           </View>

@@ -145,6 +145,15 @@ export interface ContexteRapport {
    * le serveur répond 400 sans lui, et cet onglet n'a pas de « tous ».
    */
   utilisateur?: string;
+  /**
+   * Le PÉRIMÈTRE de l'écran, appliqué à TOUS les onglets.
+   *
+   * ⚠ Distinct de `utilisateur` juste au-dessus, et les confondre serait un
+   * défaut : celui-là est le SUJET de l'onglet « Par utilisateur », qui n'a pas
+   * de « tous » ; celui-ci est un filtre facultatif que les huit onglets
+   * partagent. Le serveur les lit sous deux noms différents pour cette raison.
+   */
+  perimetre?: { entrepot: string | null; utilisateur: string | null };
   /** Granularité de l'activité par employé. */
   granularite?: "day" | "hour";
   /**
@@ -185,6 +194,12 @@ function periode(
     if (ctx.debut) p.set("date_from", ctx.debut);
     if (ctx.fin) p.set("date_to", ctx.fin);
   }
+  // ⚠ LE PÉRIMÈTRE ENTRE ICI, ET NULLE PART AILLEURS. C'est le seul
+  // constructeur de requête des huit onglets : l'ajouter onglet par onglet
+  // garantirait qu'un onglet en manque, et un onglet qui ignore la puce
+  // affichée à deux centimètres est le défaut que ce fichier a déjà payé.
+  if (ctx.perimetre?.entrepot) p.set("warehouse", ctx.perimetre.entrepot);
+  if (ctx.perimetre?.utilisateur) p.set("user", ctx.perimetre.utilisateur);
   if (ctx.groupBy) p.set("group_by", ctx.groupBy);
   if (opts?.page !== undefined) {
     p.set("page", String(opts.page));
@@ -1244,8 +1259,11 @@ export interface Creances {
 }
 
 export async function chargerCreances(ctx: ContexteRapport): Promise<Creances> {
+  // ⚠ `periode(ctx, { sansPeriode: true })` et non une chaîne nue : une créance
+  // est due AUJOURD'HUI, elle n'a pas de fenêtre - mais elle a bien un
+  // PÉRIMÈTRE, et c'est ce constructeur qui le pose.
   const d = await api.get<any>(
-    `/reports/statistics/${CHEMIN_CREANCES}/`,
+    `/reports/statistics/${CHEMIN_CREANCES}/${periode(ctx, { sansPeriode: true })}`,
     entetes(ctx)
   );
   const parDevise: any[] = Array.isArray(d.by_currency)

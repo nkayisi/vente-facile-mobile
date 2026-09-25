@@ -9,13 +9,14 @@
  * **Le total en unités reste SOUS la lecture en contenants** : le premier sert
  * au réassort, le second au comptoir.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
 import { jourISO } from "@/data/dates";
 import { useLecture } from "@/data/live";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { useEnLigne } from "@/data/reseau";
 import {
   ETAT_STOCK,
@@ -23,7 +24,6 @@ import {
   type EtatStock,
   type LigneNiveau,
 } from "@/data/stock-niveaux";
-import { entrepots } from "@/data/stock";
 import { ApiError } from "@/api/errors";
 import { FeuilleFormat } from "@/features/export/feuille-format";
 import {
@@ -70,15 +70,31 @@ export default function Niveaux() {
   const [feuilleFormat, setFeuilleFormat] = useState(false);
   const [envoiExport, setEnvoiExport] = useState(false);
 
+  // ⚠ LES OPTIONS VIENNENT DU RÔLE, PLUS DE LA TABLE. `entrepots()` rend tous
+  // les dépôts descendus sur ce terminal ; un magasinier n'a le droit de viser
+  // que les siens, et le tirage ne borne pas `warehouses`.
+  const choixPerimetre = useMemo(
+    () => ({ entrepot, utilisateur: null }),
+    [entrepot]
+  );
+  const perimetre = usePerimetre(choixPerimetre, false);
+  const depots = perimetre.entrepots;
+  const applique = perimetre.applique;
+
   const charger = useCallback(
-    () => niveauxDeStock({ recherche, entrepot, etat, limite: 300 }),
-    [recherche, entrepot, etat]
+    () =>
+      niveauxDeStock({
+        recherche,
+        entrepot: applique.entrepot,
+        etat,
+        limite: 300,
+      }),
+    [recherche, applique, etat]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, entrepot, etat],
+    deps: [recherche, applique, etat],
   });
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
 
   const lignes = donnees?.elements ?? [];
 
@@ -89,19 +105,19 @@ export default function Niveaux() {
         onChange={setRecherche}
         placeholder="Rechercher un produit..."
       />
-      {(depots?.length ?? 0) > 1 ? (
+      {depots.length > 1 ? (
         <ChipRow>
           <Chip
             label="Tous les entrepôts"
             actif={entrepot === null}
             onPress={() => setEntrepot(null)}
           />
-          {(depots ?? []).map((d) => (
+          {depots.map((d) => (
             <Chip
-              key={d.id}
-              label={d.nom}
-              actif={entrepot === d.id}
-              onPress={() => setEntrepot(d.id)}
+              key={d.valeur}
+              label={d.label}
+              actif={entrepot === d.valeur}
+              onPress={() => setEntrepot(d.valeur)}
             />
           ))}
         </ChipRow>
@@ -164,7 +180,9 @@ export default function Niveaux() {
         "/stocks/export/",
         {
           search: recherche || undefined,
-          warehouse: entrepot ?? undefined,
+          // Le document couvre EXACTEMENT ce que la liste montre : donc le
+          // périmètre appliqué, comme la lecture.
+          warehouse: applique.entrepot ?? undefined,
           status: statutServeur(etat),
           // Le défaut du back-office : les sous-totaux par catégorie sont ce
           // qu'on vient chercher dans une situation de stock.

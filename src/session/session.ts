@@ -86,6 +86,12 @@ function toSnapshot(data: SessionResponse): SessionSnapshot {
     // la distinction « absent » / « nul » n'a aucun sens ici - les deux se
     // lisent « pas de verdict », donc porte ouverte (`jugerAcces`, règle 1).
     subscription: data.subscription ?? null,
+    // ⚠ ICI, `undefined` ET `null` NE SE VALENT PAS, contrairement à
+    // `subscription` juste au-dessus. Un serveur antérieur n'envoie pas la clé :
+    // la laisser `undefined` fait dire « roster inconnu », donc verrouille le
+    // filtre avec son motif. La forcer à `null` reviendrait à affirmer que
+    // l'organisation n'a personne.
+    team: data.team,
     fetched_at: data.server_time ?? new Date().toISOString(),
   };
 }

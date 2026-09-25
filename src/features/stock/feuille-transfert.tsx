@@ -36,7 +36,7 @@ import { chercherArticlesPourTransfert } from "@/data/articles";
 import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepots } from "@/data/stock";
+import { entrepotsSansValorisation } from "@/data/stock";
 import { creerTransfert, type LigneSaisie } from "@/features/stock/actes";
 import {
   afficherPartage,
@@ -124,7 +124,7 @@ export function FeuilleNouveauTransfert({
   const [vrac, setVrac] = useState("");
   const [erreurs, setErreurs] = useState<ErreursQuantite>({});
 
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐

@@ -56,6 +56,13 @@ export interface VenteEnAttente {
    */
   session: string | null;
   /**
+   * L'entrepôt porté par le corps. `null` : inconnu, jamais « tous ».
+   *
+   * Remonté ici pour que les écrans n'aient pas à replonger dans `corps` :
+   * c'est la même raison qui a fait remonter `session`.
+   */
+  entrepot: string | null;
+  /**
    * En file, ou BLOQUÉE faute d'abonnement ou de droit.
    *
    * « Attend son envoi » est faux pour la seconde : elle n'attend pas le
@@ -89,6 +96,16 @@ export interface CorpsVente {
   id: string;
   reference?: string;
   session?: string;
+  /**
+   * L'entrepôt de la vente, quand la caisse en a un.
+   *
+   * `buildSalePayload` l'écrit (`...(warehouse ? { warehouse } : {})`) depuis
+   * l'entrepôt de la session ouverte. La ligne de TYPE manquait seulement : la
+   * donnée était dans le journal depuis le lot 4, sans que rien ne sache la
+   * lire. ⚠ `undefined` n'est pas « tous les entrepôts », c'est un entrepôt
+   * INCONNU - une caisse peut n'en avoir aucun.
+   */
+  warehouse?: string;
   currency?: string;
   /** Devise principale pour une unité de la devise de facture. */
   exchange_rate?: number;
@@ -200,6 +217,7 @@ async function lireVentesDuJournal(): Promise<
         date: o.occurredAt,
         nbArticles: Array.isArray(t?.items) ? t.items.length : null,
         session: o.payload.session ?? null,
+        entrepot: o.payload.warehouse ?? null,
         envoi: o.envoi,
       },
       corps: o.payload,

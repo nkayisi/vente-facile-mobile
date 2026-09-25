@@ -21,13 +21,14 @@
  * la liste derrière se relit, le décompte du bouton « Voir » est vrai, et
  * fermer n'annule rien. C'est la grammaire des filtres du back-office.
  */
+import { ChampsPerimetre } from "@/features/perimetre/champs-perimetre";
+import type { OffrePerimetre } from "@/features/perimetre/filtre-perimetre";
 import { useState } from "react";
 import { View } from "react-native";
 
 import {
   MODES_PERIODE,
   moisRecents,
-  PERIODE_TOUT,
   type ModePeriode,
   type PeriodeFiltre,
 } from "@/data/periode-filtre";
@@ -191,6 +192,7 @@ export function FeuilleFiltresCaisse({
   valeur,
   onChanger,
   nombreDeResultats,
+  perimetre,
   devises,
 }: {
   ouvert: boolean;
@@ -198,6 +200,8 @@ export function FeuilleFiltresCaisse({
   valeur: FiltresCaisse;
   onChanger: (f: FiltresCaisse) => void;
   nombreDeResultats: number;
+  /** Ce que le rôle autorise : la feuille le rend, elle n'en décide rien. */
+  perimetre: OffrePerimetre;
   /** Les devises de l'établissement. Vide ou unique : le champ disparaît. */
   devises: OptionSelect[];
 }) {
@@ -223,6 +227,13 @@ export function FeuilleFiltresCaisse({
         />
       ) : (
         <>
+          <ChampsPerimetre
+            offre={perimetre}
+            valeur={valeur}
+            onChanger={(perim) => onChanger({ ...valeur, ...perim })}
+            setChoix={setChoix}
+          />
+
           <FormField label="Type de mouvement">
             <DeclencheurSelect
               libelle={valeur.type ? libelleTypeCaisse(valeur.type) : "Tous les types"}
@@ -288,6 +299,7 @@ export function FeuilleFiltresDepense({
   valeur,
   onChanger,
   nombreDeResultats,
+  perimetre,
   categories,
   devises,
 }: {
@@ -296,6 +308,7 @@ export function FeuilleFiltresDepense({
   valeur: FiltresDepense;
   onChanger: (f: FiltresDepense) => void;
   nombreDeResultats: number;
+  perimetre: OffrePerimetre;
   categories: OptionSelect[];
   devises: OptionSelect[];
 }) {
@@ -322,6 +335,13 @@ export function FeuilleFiltresDepense({
         />
       ) : (
         <>
+          <ChampsPerimetre
+            offre={perimetre}
+            valeur={valeur}
+            onChanger={(perim) => onChanger({ ...valeur, ...perim })}
+            setChoix={setChoix}
+          />
+
           <FormField label="Catégorie">
             <DeclencheurSelect
               libelle={nomCategorie ?? "Toutes les catégories"}

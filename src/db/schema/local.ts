@@ -41,6 +41,24 @@ export const syncState = sqliteTable("sync_state", {
   lastError: text("last_error"),
   /** Lignes reçues au total, pour la progression du premier tirage. */
   rowCount: integer("row_count").notNull().default(0),
+  /**
+   * Le PÉRIMÈTRE sous lequel ce curseur a été obtenu.
+   *
+   * ┌──────────────────────────────────────────────────────────────────┐
+   * │ SANS LUI, UN CHANGEMENT DE PÉRIMÈTRE PERD DES LIGNES POUR DE BON.│
+   * │                                                                  │
+   * │ Le serveur applique le périmètre AVANT le curseur. Quand il       │
+   * │ s'élargit - un magasinier reçoit un second dépôt - les lignes     │
+   * │ devenues éligibles portent un `updated_at` antérieur au point de  │
+   * │ reprise : elles sont écartées, et la sonde `pull/changed/`        │
+   * │ confirme « rien de neuf ». L'écran annonce « Complet » sur une    │
+   * │ table amputée.                                                    │
+   * │                                                                  │
+   * │ `null` : jamais reçu (serveur antérieur, ou table jamais tirée).  │
+   * │ Ce n'est PAS un changement - voir `perimetreAChange`.             │
+   * └──────────────────────────────────────────────────────────────────┘
+   */
+  scopeToken: text("scope_token"),
 });
 
 /**

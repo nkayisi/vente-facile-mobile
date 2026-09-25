@@ -108,59 +108,79 @@ export default function Scan() {
 
   const nbLignes = panier.etat.lignes.length;
 
-  return (
-    <View className="flex-1 bg-black">
-      <CameraView
-        style={{ flex: 1 }}
-        facing="back"
-        barcodeScannerSettings={{ barcodeTypes: [...FORMATS] }}
-        onBarcodeScanned={surLecture}
-      />
-
-      {/* Viseur : un cadre, pas un masque. Cacher le reste de l'image empêche
-          de viser un code mal placé sur un emballage. */}
-      <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
-        <View className="h-32 w-72 rounded-2xl border-2 border-white/80" />
-      </View>
-
-      <View className="absolute inset-x-0 top-0 flex-row items-center gap-2 px-2 pt-14">
-        <Pressable
-          onPress={() => router.back()}
-          className="h-11 w-11 items-center justify-center rounded-full bg-black/50"
-          accessibilityLabel="Fermer le scanner"
-        >
-          <Icon name="X" size={24} />
-        </Pressable>
-        <Text variant="body" className="text-white">
-          Visez le code-barres
+  /**
+   * La barre du bas vit dans le `pied` de `Screen`, et c'est tout l'objet.
+   *
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ ELLE RÉSERVAIT QUARANTE POINTS EN DUR (`pb-10`), ET C'ÉTAIT TROP PEU.   │
+   * │                                                                          │
+   * │ Quarante suffit par accident face à une poignée gestuelle (24 dp). Face  │
+   * │ à une barre à trois boutons (48 dp), il manque huit points - et ce sont  │
+   * │ ceux du bas de « Terminer le scan ». C'était le seul écran de            │
+   * │ l'application à vivre hors de `Screen`, donc le seul dont le bas ne      │
+   * │ dépendait d'aucune marge système.                                        │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  const barreDuBas = (
+    <View className="gap-3">
+      <View className="flex-row items-baseline justify-between">
+        <Text variant="body">
+          {nbLignes} article{nbLignes > 1 ? "s" : ""} au panier
+        </Text>
+        <Text variant="h4" numeric>
+          {panier.argent(panier.totaux.totalFacture)}
         </Text>
       </View>
-
-      {message ? (
-        <View
-          className={`absolute inset-x-4 bottom-36 rounded-xl px-4 py-3 ${
-            message.ok ? "bg-success" : "bg-destructive"
-          }`}
-        >
-          <Text variant="body" className="text-white">
-            {message.texte}
-          </Text>
-        </View>
-      ) : null}
-
-      <View className="absolute inset-x-0 bottom-0 bg-black/70 px-4 pb-10 pt-4">
-        <View className="mb-3 flex-row items-baseline justify-between">
-          <Text variant="body" className="text-white">
-            {nbLignes} article{nbLignes > 1 ? "s" : ""} au panier
-          </Text>
-          <Text variant="h4" className="text-white">
-            {panier.argent(panier.totaux.totalFacture)}
-          </Text>
-        </View>
-        <Button onPress={() => router.back()} disabled={nbLignes === 0} fullWidth>
-          Terminer le scan
-        </Button>
-      </View>
+      <Button onPress={() => router.back()} disabled={nbLignes === 0} fullWidth>
+        Terminer le scan
+      </Button>
     </View>
+  );
+
+  return (
+    <Screen padded={false} pied={barreDuBas}>
+      {/* La caméra EST le corps : le viseur, l'en-tête et le bandeau de message
+          se posent dessus, dans ce corps, donc au-dessus de la marge du haut
+          que `Screen` a déjà réservée. `pt-14` en dur n'a plus lieu d'être. */}
+      <View className="flex-1 bg-black">
+        <CameraView
+          style={{ flex: 1 }}
+          facing="back"
+          barcodeScannerSettings={{ barcodeTypes: [...FORMATS] }}
+          onBarcodeScanned={surLecture}
+        />
+
+        {/* Viseur : un cadre, pas un masque. Cacher le reste de l'image empêche
+            de viser un code mal placé sur un emballage. */}
+        <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
+          <View className="h-32 w-72 rounded-2xl border-2 border-white/80" />
+        </View>
+
+        <View className="absolute inset-x-0 top-0 flex-row items-center gap-2 px-2 pt-2">
+          <Pressable
+            onPress={() => router.back()}
+            className="h-11 w-11 items-center justify-center rounded-full bg-black/50"
+            accessibilityLabel="Fermer le scanner"
+          >
+            <Icon name="X" size={24} />
+          </Pressable>
+          <Text variant="body" className="text-white">
+            Visez le code-barres
+          </Text>
+        </View>
+
+        {message ? (
+          <View
+            className={`absolute inset-x-4 bottom-4 rounded-xl px-4 py-3 ${
+              message.ok ? "bg-success" : "bg-destructive"
+            }`}
+          >
+            <Text variant="body" className="text-white">
+              {message.texte}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </Screen>
   );
 }

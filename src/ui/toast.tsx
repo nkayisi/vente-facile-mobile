@@ -12,12 +12,12 @@
  */
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HAUTEUR_ONGLETS } from "@/navigation/metriques";
 
 import { Icon, type IconName } from "./icon";
 import { Text } from "./text";
+import { useMargesSysteme } from "./zone-sure";
 
 type TonToast = "succes" | "erreur" | "info";
 
@@ -38,7 +38,7 @@ const Contexte = createContext<ApiToast | null>(null);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [courant, setCourant] = useState<{ ton: TonToast; message: string } | null>(null);
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
 
   const montrer = useCallback((ton: TonToast, message: string) => {
     if (minuteur.current) clearTimeout(minuteur.current);
@@ -78,7 +78,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
            * fournisseur est monté au-dessus - il doit aussi servir les écrans
            * plein écran du comptoir, qui n'ont pas de barre.
            */
-          style={{ bottom: insets.bottom + HAUTEUR_ONGLETS + 12 }}
+          style={{ bottom: marges.bas + HAUTEUR_ONGLETS + 12 }}
         >
           <View className={`flex-row items-center gap-2 rounded-xl border px-3 py-3 ${h.fond}`}>
             <Icon name={h.icone} size={18} color={h.couleur} />

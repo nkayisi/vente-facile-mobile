@@ -347,6 +347,25 @@ export interface FiltresHistorique {
    * └──────────────────────────────────────────────────────────────────────┘
    */
   limite?: number;
+  /** L'entrepôt de la vente. `null` : tous ceux du périmètre. */
+  entrepot?: string | null;
+  /** Le VENDEUR (`sold_by`). `null` : tous. */
+  utilisateur?: string | null;
+  /**
+   * L'utilisateur connecté, pour les ventes encore dans le journal : elles lui
+   * appartiennent forcément (voir `retientVenteEnFile`), et sans lui un filtre
+   * « Utilisateur » les laisserait toutes passer.
+   */
+  moi?: string | null;
+  /**
+   * Le filtre d'entrepôt courant tolère-t-il une vente dont on ignore le dépôt ?
+   *
+   * Vrai sous un VERROU (le périmètre du rôle, que le marchand n'a pas posé),
+   * faux sous un CHOIX délibéré. Voir `entrepotInconnuAdmis`. Sans lui, un
+   * membre borné à un seul dépôt perdait de son propre historique la vente
+   * qu'il venait d'encaisser sur une caisse sans entrepôt.
+   */
+  entrepotInconnuAdmis?: boolean;
 }
 
 /**
@@ -433,6 +452,46 @@ function parDevise(
  * la centième, ce qui est précisément le défaut que le back-office a dû
  * corriger sur son écran de niveaux de stock.
  */
+/**
+ * Le SQL du périmètre de l'historique, jumeau de `retientVenteHistoriqueEnFile`.
+ *
+ * ⚠ NOMMÉ, pour que `data/perimetre-parite.test.ts` croise les deux. Rendu en
+ * TABLEAU pour se glisser dans le `cadre` existant : `sales` porte les deux
+ * colonnes en direct, aucune jointure n'est donc nécessaire.
+ */
+function conditionsHistorique(f: FiltresHistorique) {
+  return [
+    f.entrepot ? eq(sales.warehouseId, f.entrepot) : undefined,
+    f.utilisateur ? eq(sales.soldById, f.utilisateur) : undefined,
+  ];
+}
+
+/**
+ * Le périmètre de l'historique, opposé à une vente encore dans le journal.
+ *
+ * ⚠ NOMMÉ ET NON INLINE, pour que `data/perimetre-parite.test.ts` puisse le
+ * croiser avec le SQL. Écrit dans une chaîne de `.filter()`, il échappait au
+ * garde-fou : ajouter une condition au SQL et l'oublier ici ne lève RIEN,
+ * l'écran affiche simplement des ventes que le filtre aurait dû écarter.
+ *
+ * « Pas d'entrepôt » se lit INCONNU, jamais « tous » : l'imputer à celui qu'on
+ * regarde gonflerait son total d'une vente qu'un autre dépôt a peut-être faite.
+ * L'auteur, lui, est certain - `session/proprietaire.ts` interdit qu'une base
+ * habitée change de main.
+ */
+function retientVenteHistoriqueEnFile(
+  f: FiltresHistorique,
+  v: { entrepot: string | null }
+): boolean {
+  const entrepot = v.entrepot ?? null;
+  if (f.entrepot && entrepot !== f.entrepot) {
+    // Un verrou tolère l'inconnu, un choix est exact : voir `FiltresHistorique`.
+    if (entrepot !== null || !f.entrepotInconnuAdmis) return false;
+  }
+  if (f.utilisateur && f.utilisateur !== (f.moi ?? null)) return false;
+  return true;
+}
+
 export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageVentes> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
@@ -465,6 +524,9 @@ export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageV
   // appliqué après une page déjà limitée.
   const enFile: VenteResume[] = attente
     .filter((v) => !dejaTirees.has(v.reference))
+    // Le périmètre se juge sur la vente DU JOURNAL : c'est elle qui porte
+    // `entrepot`, le résumé ne le garde pas.
+    .filter((v) => retientVenteHistoriqueEnFile(f, v))
     .map((v) => ({
       id: v.id,
       reference: v.reference,
@@ -492,6 +554,10 @@ export async function historiqueVentes(f: FiltresHistorique = {}): Promise<PageV
 
   const cadre = [
     borne ? gte(sales.saleDate, borne) : undefined,
+    // Dans le CADRE et non dans `conditions` : le décompte par statut s'en
+    // sert aussi, et des puces qui annoncent un autre périmètre que la liste
+    // sont exactement ce que ce fichier a déjà dû corriger.
+    ...conditionsHistorique(f),
     terme
       ? or(
           like(sql`lower(${sales.reference})`, motif),

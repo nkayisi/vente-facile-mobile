@@ -34,6 +34,14 @@ export interface TableSpec {
   row_count: number | null;
   columns: ColumnSpec[];
   children: ChildSpec[];
+  /**
+   * L'empreinte du périmètre sous lequel ce membre lit cette table.
+   *
+   * ⚠ Facultatif : un serveur antérieur ne l'envoie pas, et on ne doit pas
+   * lire son absence comme un changement - ce serait re-tirer trente-huit
+   * tables à chaque synchronisation. Voir `perimetreAChange`.
+   */
+  scope_token?: string;
 }
 
 export interface Manifest {

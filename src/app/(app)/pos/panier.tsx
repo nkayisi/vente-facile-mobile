@@ -6,7 +6,7 @@
  * avec le client avant d'annoncer le montant.
  */
 import { useEffect, useRef, useState } from "react";
-import { FlatList, Modal, View } from "react-native";
+import { FlatList, View } from "react-native";
 import { router } from "expo-router";
 
 import { getPackaging, pluralizeUnit } from "@vente-facile/core";
@@ -22,7 +22,7 @@ import { FeuilleEncaissement } from "@/features/pos/feuille-encaissement";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
 import { usePanier, type LignePanier } from "@/features/pos/panier";
 import {
-  Button, Divider, EmptyState, FormField, Icon, Input, Pressable, Screen, Text, useToast,
+  Button, Dialog, Divider, EmptyState, FormField, Icon, Input, Pressable, Screen, Text, useToast,
 } from "@/ui";
 
 export default function Panier() {
@@ -158,61 +158,26 @@ export default function Panier() {
 
   const ligne = enEdition !== null ? lignes[enEdition] : null;
 
-  return (
-    <Screen>
-      <View className="flex-row items-center gap-2 pt-2">
-        <Pressable
-          onPress={() => router.back()}
-          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
-          accessibilityLabel="Retour au comptoir"
-        >
-          <Icon name="ArrowLeft" size={24} />
-        </Pressable>
-        <Text variant="h4" className="flex-1">
-          Panier
-        </Text>
-        {lignes.length > 0 ? (
-          <Pressable
-            onPress={() => panier.envoyer({ type: "vider" })}
-            haptic="warning"
-            className="h-11 justify-center rounded-full px-3 active:bg-muted"
-            accessibilityLabel="Vider le panier"
-          >
-            <Text variant="bodySmall" className="text-destructive">
-              Vider
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      {lignes.length === 0 ? (
-        <EmptyState
-          icon="ShoppingCart"
-          title="Panier vide"
-          message="Choisissez des articles dans la grille du comptoir."
-          action={{ label: "Retour au comptoir", onPress: () => router.back() }}
-        />
-      ) : (
-        <>
-          <FlatList
-            data={lignes}
-            keyExtractor={(l, i) => `${l.product.id}-${i}`}
-            contentContainerClassName="pb-56 pt-2"
-            ItemSeparatorComponent={() => <Divider />}
-            renderItem={({ item, index }) => (
-              <LigneArticle
-                ligne={item}
-                montant={panier.argent(
-                  panier.devises.convertMoney(
-                    lineGross(item), panier.devises.primary, panier.deviseFacture
-                  )
-                )}
-                onPress={() => setEnEdition(index)}
-              />
-            )}
-          />
-
-          <View className="absolute inset-x-0 bottom-0 border-t border-border bg-card px-4 pb-6 pt-3">
+  /**
+   * La barre du bas vit dans le `pied` de `Screen`, et ce n'est pas cosmétique.
+   *
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ ELLE PORTE UN CHAMP DE SAISIE, ET ELLE ÉTAIT HORS DU CLAVIER.           │
+   * │                                                                          │
+   * │ Écrite en `absolute`, elle vivait hors du `KeyboardAvoidingView` de      │
+   * │ `Screen` : clavier ouvert, « Remise sur le total » restait dessous.      │
+   * │ C'est mot pour mot ce que la docstring de `ScreenProps.pied` annonce -   │
+   * │ « une barre d'action qui reste sous un clavier ouvert n'est pas une      │
+   * │ barre d'action ».                                                        │
+   * │                                                                          │
+   * │ Elle obligeait en outre la liste à réserver sa hauteur à la main         │
+   * │ (`pb-56`, deux cent vingt-quatre points devinés), un nombre qui se       │
+   * │ périme au premier bouton ajouté et dont l'oubli cache la dernière ligne. │
+   * │ Frère du défilement, la liste se réduit d'elle-même.                     │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  const barreDuPanier = (
+    <View>
             <Recapitulatif />
 
             <Pressable
@@ -311,7 +276,63 @@ export default function Panier() {
                 </Button>
               </View>
             </View>
-          </View>
+    </View>
+  );
+
+  return (
+    <Screen pied={lignes.length > 0 ? barreDuPanier : null}>
+      <View className="flex-row items-center gap-2 pt-2">
+        <Pressable
+          onPress={() => router.back()}
+          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+          accessibilityLabel="Retour au comptoir"
+        >
+          <Icon name="ArrowLeft" size={24} />
+        </Pressable>
+        <Text variant="h4" className="flex-1">
+          Panier
+        </Text>
+        {lignes.length > 0 ? (
+          <Pressable
+            onPress={() => panier.envoyer({ type: "vider" })}
+            haptic="warning"
+            className="h-11 justify-center rounded-full px-3 active:bg-muted"
+            accessibilityLabel="Vider le panier"
+          >
+            <Text variant="bodySmall" className="text-destructive">
+              Vider
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {lignes.length === 0 ? (
+        <EmptyState
+          icon="ShoppingCart"
+          title="Panier vide"
+          message="Choisissez des articles dans la grille du comptoir."
+          action={{ label: "Retour au comptoir", onPress: () => router.back() }}
+        />
+      ) : (
+        <>
+          <FlatList
+            data={lignes}
+            keyExtractor={(l, i) => `${l.product.id}-${i}`}
+            contentContainerClassName="pt-2"
+            ItemSeparatorComponent={() => <Divider />}
+            renderItem={({ item, index }) => (
+              <LigneArticle
+                ligne={item}
+                montant={panier.argent(
+                  panier.devises.convertMoney(
+                    lineGross(item), panier.devises.primary, panier.deviseFacture
+                  )
+                )}
+                onPress={() => setEnEdition(index)}
+              />
+            )}
+          />
+
         </>
       )}
 
@@ -381,48 +402,47 @@ function BoiteEtiquette({
   onValider: () => void;
   onFermer: () => void;
 }) {
+  /**
+   * ⚠ `Dialog`, ET PLUS UNE `Modal` ÉCRITE À LA MAIN.
+   *
+   * La sienne ne posait AUCUNE zone sûre : centrée, elle s'en tirait tant que
+   * son contenu restait court, mais un dialogue assez haut pour remplir
+   * l'écran touche les deux bords - c'est le défaut que `dialog.tsx` a déjà
+   * corrigé, et qu'on aurait payé une seconde fois ici. En héritant du
+   * composant, elle hérite aussi de tout ce qui lui sera ajouté.
+   */
   return (
-    <Modal
-      visible={valeur !== null}
-      transparent
-      animationType="fade"
-      onRequestClose={onFermer}
+    <Dialog
+      ouvert={valeur !== null}
+      onFermer={onFermer}
+      titre="Mettre en attente"
+      description="Le panier sera rangé et le comptoir libéré pour le client suivant."
+      actions={
+        <View className="flex-row gap-3">
+          <View className="flex-1">
+            <Button variant="ghost" onPress={onFermer} fullWidth>
+              Annuler
+            </Button>
+          </View>
+          <View className="flex-1">
+            <Button onPress={onValider} fullWidth>
+              Ranger
+            </Button>
+          </View>
+        </View>
+      }
     >
-      <Pressable className="flex-1 justify-center bg-foreground/50 px-6" onPress={onFermer}>
-        <Pressable className="rounded-2xl bg-card p-5" onPress={() => {}}>
-          <Text variant="h4">Mettre en attente</Text>
-          <Text variant="bodySmall" className="mt-1 text-muted-foreground">
-            Le panier sera rangé et le comptoir libéré pour le client suivant.
-          </Text>
-
-          <View className="mt-4">
-            <FormField label="Nom du panier">
-              <Input
-                value={valeur ?? ""}
-                onChangeText={onChange}
-                placeholder="Client, table, repère…"
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={onValider}
-              />
-            </FormField>
-          </View>
-
-          <View className="mt-4 flex-row gap-3">
-            <View className="flex-1">
-              <Button variant="ghost" onPress={onFermer} fullWidth>
-                Annuler
-              </Button>
-            </View>
-            <View className="flex-1">
-              <Button onPress={onValider} fullWidth>
-                Ranger
-              </Button>
-            </View>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      <FormField label="Nom du panier">
+        <Input
+          value={valeur ?? ""}
+          onChangeText={onChange}
+          placeholder="Client, table, repère…"
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={onValider}
+        />
+      </FormField>
+    </Dialog>
   );
 }
 

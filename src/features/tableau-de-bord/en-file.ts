@@ -19,6 +19,7 @@
  * l'ancienne fusion ne l'était pas - elle vivait dans `data/`, elle ouvrait
  * SQLite, et elle n'avait aucun test.
  */
+import type { ContexteFile } from "@/features/perimetre/filtre-perimetre";
 import type { VenteEnAttenteDetaillee } from "@/features/ventes/attente";
 
 const nb = (v: string | number | null | undefined): number => {
@@ -153,6 +154,68 @@ export function quantiteVendue(
  */
 export function statutDeVente(resteAPayer: number): string {
   return resteAPayer > 0 ? "partially_paid" : "completed";
+}
+
+/**
+ * Une vente du journal concerne-t-elle ce périmètre ?
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE VENTE SANS ENTREPÔT N'EST PAS « TOUS LES ENTREPÔTS ».               │
+ * │                                                                          │
+ * │ C'est un entrepôt INCONNU : `buildSalePayload` n'écrit la clé que si la  │
+ * │ caisse en a un. L'imputer à celui qu'on regarde gonflerait son chiffre   │
+ * │ d'affaires d'une vente qu'un autre dépôt a peut-être faite, et la somme  │
+ * │ des dépôts dépasserait le total. Même règle que `memeEntrepot` de        │
+ * │ `features/pos/reserve-locale.ts`, et pour la même raison.                │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'AUTEUR EST CERTAIN, ET LA GARANTIE VIENT DE `proprietaire.ts`.        │
+ * │                                                                          │
+ * │ Le corps d'une vente ne porte PAS `sold_by` - le serveur l'attribue - et │
+ * │ `outbox_operations` n'a aucune colonne d'auteur. Mais                    │
+ * │ `session/proprietaire.ts` estampille la base et rend le verdict          │
+ * │ `etrangere` dès qu'un autre compte se présente, y compris après une      │
+ * │ déconnexion SANS purge : une vente encore en file appartient donc        │
+ * │ forcément à l'utilisateur connecté.                                      │
+ * │                                                                          │
+ * │ ⚠ Si cette estampille venait à disparaître, ce filtre deviendrait faux   │
+ * │ sans que rien ne le signale. Ne pas « simplifier » `proprietaire.ts`     │
+ * │ sans revenir ici.                                                        │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Sans nom d'utilisateur connu, on ne retient RIEN : attribuer des ventes à
+ * quelqu'un qu'on ne sait pas nommer fabriquerait un total par caissier qui
+ * est une fiction.
+ */
+export function retientVenteEnFile(
+  v: { corps: { warehouse?: string } },
+  perimetre: { entrepot: string | null; utilisateur: string | null },
+  file: ContexteFile
+): boolean {
+  const { moi, entrepotInconnuAdmis } = file;
+  const entrepot = v.corps.warehouse ?? null;
+  // ┌────────────────────────────────────────────────────────────────────┐
+  // │ SOUS UN VERROU, UN ENTREPÔT INCONNU PASSE. Voir                    │
+  // │ `entrepotInconnuAdmis`.                                            │
+  // │                                                                    │
+  // │ Un membre borné à UN SEUL dépôt porte son entrepôt en permanence,   │
+  // │ sans l'avoir choisi. Qu'il encaisse sur une caisse SANS entrepôt -  │
+  // │ configuration que l'écran d'ouverture tolère avec un avertissement  │
+  // │ - et sa vente disparaissait du tableau de bord ET de l'historique   │
+  // │ entre l'encaissement et la synchronisation. Sur les deux seuls      │
+  // │ écrans où il la cherche, ticket en main.                            │
+  // │                                                                    │
+  // │ Un verrou est le périmètre du RÔLE : la vente ne peut appartenir    │
+  // │ qu'à lui. Sous un CHOIX délibéré, en revanche, la question est      │
+  // │ « qu'y a-t-il eu dans le dépôt B ? », et une vente dont on ignore   │
+  // │ le dépôt n'y répond pas.                                            │
+  // └────────────────────────────────────────────────────────────────────┘
+  if (perimetre.entrepot && entrepot !== perimetre.entrepot) {
+    if (entrepot !== null || !entrepotInconnuAdmis) return false;
+  }
+  if (perimetre.utilisateur && perimetre.utilisateur !== moi) return false;
+  return true;
 }
 
 /** Met les ventes du journal à la forme de celles du tirage. */

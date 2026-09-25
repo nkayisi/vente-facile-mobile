@@ -52,6 +52,39 @@ export interface SessionMembership {
   assigned_warehouses: { id: string; name: string }[];
 }
 
+/**
+ * L'équipe de l'organisation, pour le filtre « Utilisateur ».
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ ELLE DESCEND PAR LA SESSION, ET C'EST LE SEUL CHEMIN POSSIBLE.          │
+ * │                                                                          │
+ * │ La table locale `memberships` ne porte PAS les affectations d'entrepôt,  │
+ * │ et le tirage ne peut pas les descendre : `describe_columns` n'itère que  │
+ * │ les champs concrets d'un modèle, un M2M n'y entre pas. Or un filtre      │
+ * │ « les utilisateurs de CET entrepôt » a besoin de ce croisement, et il    │
+ * │ doit l'avoir HORS LIGNE.                                                 │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export interface SessionTeamMember {
+  user_id: string;
+  /** Nom complet, ou l'email à défaut : une ligne muette ne désigne personne. */
+  name: string;
+  role: "owner" | "manager" | "stock_keeper" | "cashier";
+  /** Identifiants nus : les noms descendent déjà par la table `warehouses`. */
+  warehouses: string[];
+}
+
+export interface SessionTeam {
+  /**
+   * ⚠ EXPLICITE, JAMAIS DÉDUIT D'UNE LISTE VIDE. C'est ce qui distingue
+   * « roster fermé » (un caissier, qui n'en a pas l'usage) de « roster vide ».
+   */
+  visible: boolean;
+  /** Le serveur plafonne à 200 membres ; au-delà il le DIT. */
+  truncated: boolean;
+  members: SessionTeamMember[];
+}
+
 export interface SessionSettings {
   receipt_header?: string;
   receipt_footer?: string;
@@ -152,6 +185,14 @@ export interface SessionSnapshot {
    * obligatoire mettrait tout le parc dehors le jour de la mise à jour.
    */
   subscription?: SessionSubscription | null;
+  /**
+   * ⚠ FACULTATIF pour la même raison que `subscription` : un instantané mis en
+   * cache avant ce lot ne le porte pas. `undefined` veut dire « roster
+   * INCONNU » et se lit tout autrement qu'un roster vide - voir
+   * `offreDePerimetre`, qui verrouille le filtre plutôt que d'annoncer
+   * « aucun collègue » à un propriétaire qui en a cinquante.
+   */
+  team?: SessionTeam | null;
   /** Date du dernier réveil réussi : sert à dater la fraîcheur des droits. */
   fetched_at: string;
 }

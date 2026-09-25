@@ -304,45 +304,196 @@ describe("un seul propriétaire par bord de zone sûre", () => {
    * ┌──────────────────────────────────────────────────────────────────────────┐
    * │ DEUX COMPOSANTS QUI AJOUTENT LE MÊME INSET DOUBLENT LA MARGE.           │
    * │                                                                          │
-   * │ La règle est déjà écrite dans `AppBar` : « `AppBar` ne pose AUCUNE zone  │
-   * │ sûre, c'est `Screen` qui s'en charge », parce que deux composants qui    │
-   * │ ajoutent `insets.top` donnent une barre de quatre-vingt-dix points. Elle │
-   * │ vaut pour le bas de la même façon, et `Fab` l'avait enfreinte - sa       │
-   * │ docstring PROMETTAIT la zone sûre que son code n'appliquait pas, puis    │
-   * │ l'a appliquée en double le temps d'un correctif.                         │
+   * │ La règle est écrite dans `AppBar` : « `AppBar` ne pose AUCUNE zone sûre, │
+   * │ c'est `Screen` qui s'en charge », parce que deux composants qui ajoutent │
+   * │ `insets.top` donnent une barre de quatre-vingt-dix points. Elle vaut     │
+   * │ pour le bas de la même façon, et `Fab` l'avait enfreinte.                │
    * └──────────────────────────────────────────────────────────────────────────┘
    *
-   * `Screen` est le seul composant de `src/ui/` autorisé à lire les insets pour
-   * poser une marge de contenu. Les exceptions sont NOMMÉES, et chacune tient à
-   * ce qu'elle ne vit pas dans un `Screen` :
-   *   - `sheet.tsx`   : une modale, rendue hors de l'arbre de l'écran
-   *   - `dialog.tsx`  : une modale aussi, et pour la MÊME raison. Un dialogue
-   *                     assez haut pour remplir l'écran touchait les deux
-   *                     bords, et son action principale passait sous la barre
-   *                     gestuelle.
-   *   - `top-bar.tsx` : la barre système, au-dessus du contenu
-   *   - `toast.tsx`   : le fournisseur est monté AU-DESSUS du navigateur, pour
-   *                     servir aussi les écrans plein écran du comptoir
+   * ⚠ LA RÈGLE COUVRE DÉSORMAIS TOUT `src/`, ET ELLE N'A AUCUNE EXCEPTION.
+   *
+   * Elle ne balayait que `src/ui/`, si bien que quatre fichiers de
+   * `navigation/`, `features/` et `app/` lisaient les insets sans que rien ne
+   * le voie - et un cinquième serait apparu sans bruit. Surtout : tant que la
+   * lecture est éparpillée, le PLANCHER de `marge-basse.ts` devrait s'écrire à
+   * chaque endroit, donc il serait oublié quelque part, et l'endroit oublié
+   * serait un bouton sous la barre du système.
+   *
+   * L'exception naturelle - l'écran de relevé, qui doit montrer ce que le
+   * système ANNONCE - n'en est pas une : `useMargesSysteme` expose `brut` et
+   * `fenetre` précisément pour qu'il passe par la même porte. Une règle sans
+   * exception se tient ; une règle à cinq exceptions se négocie.
    */
-  const AUTORISES = ["screen.tsx", "sheet.tsx", "dialog.tsx", "top-bar.tsx", "toast.tsx"];
+  const SOURCE_UNIQUE = join("ui", "zone-sure.ts");
+  const LECTURE_BRUTE = /\buse(SafeAreaInsets|SafeAreaFrame)\b/;
 
-  it("aucun composant d'interface n'ajoute une zone sûre en plus de `Screen`", () => {
+  it("le balayage MORD, et il balaie bien tout le dossier", () => {
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien : ce
+    // dépôt l'a déjà payé trois fois.
+    expect(fichiers(RACINE).length).toBeGreaterThan(200);
+    expect(
+      LECTURE_BRUTE.test(readFileSync(join(RACINE, SOURCE_UNIQUE), "utf8"))
+    ).toBe(true);
+  });
+
+  it("un seul fichier de `src/` lit les marges du système", () => {
     const fautifs: string[] = [];
-    for (const f of fichiers(join(RACINE, "ui"))) {
+    for (const f of fichiers(RACINE)) {
       const nom = relative(RACINE, f);
-      if (AUTORISES.some((a) => nom.endsWith(a))) continue;
-      const code = sansCommentaires(readFileSync(f, "utf8"));
-      if (/useSafeAreaInsets/.test(code)) fautifs.push(nom);
+      if (nom === SOURCE_UNIQUE) continue;
+      // ⚠ On vise les HOOKS, jamais le paquet : `app/_layout.tsx` monte
+      // `SafeAreaProvider`, qui est le fournisseur et non un propriétaire de
+      // bord. Le condamner serait crier sur du code légitime.
+      if (LECTURE_BRUTE.test(sansCommentaires(readFileSync(f, "utf8")))) {
+        fautifs.push(nom);
+      }
     }
     expect(fautifs).toEqual([]);
   });
 
-  it("`Screen` applique bien les quatre bords, le bas compris", () => {
-    const code = readFileSync(join(RACINE, "ui", "screen.tsx"), "utf8");
-    // Le défaut est ce qui compte : 95 écrans ne passent pas `edges`, et
-    // c'est là que le bouton de formulaire se posait sur la barre gestuelle.
-    expect(code).toMatch(/edges = \["top", "bottom"\]/);
-    expect(code).toMatch(/paddingBottom: edges\.includes\("bottom"\)/);
+  it("aucune barre du bas n'est écrite à la main, sauf une, nommée", () => {
+    /**
+     * ┌──────────────────────────────────────────────────────────────────────────┐
+     * │ C'EST LE GARDE-FOU QUI AURAIT ATTRAPÉ L'ÉCRAN DE SCAN.                  │
+     * │                                                                          │
+     * │ Il était le seul écran dont le rendu principal vivait hors de `Screen` : │
+     * │ sa barre du bas réservait quarante points EN DUR, assez par accident     │
+     * │ face à une poignée gestuelle, huit points de trop peu face à une barre à │
+     * │ trois boutons. Rien ne le signalait - l'écran s'affiche dans les deux    │
+     * │ cas.                                                                     │
+     * └──────────────────────────────────────────────────────────────────────────┘
+     *
+     * ⚠ EXIGER QUE LE FICHIER CONTIENNE UN `<Screen` NE SUFFIT PAS, ET C'EST
+     * MESURÉ : `pos/scan.tsx` en contenait DEUX - ses branches de chargement et
+     * de permission - pendant que son rendu principal n'en avait aucun. Écrite
+     * ainsi, la règle passait au vert sur le défaut même qu'elle devait
+     * attraper. On interdit donc le MOTIF, avec des exceptions NOMMÉES.
+     */
+    const BARRE = /absolute[^"'`]*\bbottom-0\b|\bbottom-0\b[^"'`]*absolute/;
+
+    /**
+     * `(tabs)/vendre.tsx` : la barre y est géométriquement sûre - écran
+     * d'onglet, donc la scène est déjà dimensionnée au-dessus de la barre
+     * d'onglets - et elle ne porte AUCUN champ de saisie, donc rien ne se
+     * retrouve sous le clavier. C'est ce qui la distingue du panier, converti.
+     */
+    const NOMMEES = [join("app", "(app)", "(tabs)", "vendre.tsx")];
+
+    // Le balayage MORD : la barre que ce lot vient de retirer du scanner.
+    expect(BARRE.test("absolute inset-x-0 bottom-0 bg-black/70 px-4 pb-10 pt-4")).toBe(true);
+    expect(BARRE.test("absolute inset-x-0 top-0 flex-row items-center")).toBe(false);
+
+    const fautifs: string[] = [];
+    for (const f of fichiers(join(RACINE, "app"))) {
+      const nom = relative(RACINE, f);
+      if (NOMMEES.includes(nom)) continue;
+      if (BARRE.test(sansCommentaires(readFileSync(f, "utf8")))) fautifs.push(nom);
+    }
+    expect(fautifs).toEqual([]);
+
+    // Et les exceptions existent encore : une liste qui ne désigne plus rien
+    // se périme en silence, et on croirait la règle plus stricte qu'elle n'est.
+    for (const nom of NOMMEES) {
+      expect(BARRE.test(readFileSync(join(RACINE, nom), "utf8"))).toBe(true);
+    }
+  });
+
+  it("toute modale prend sa zone sûre, et déclare sa translucidité", () => {
+    /**
+     * ┌──────────────────────────────────────────────────────────────────────────┐
+     * │ UNE MODALE EST RENDUE HORS DE L'ARBRE DE `Screen`.                      │
+     * │                                                                          │
+     * │ Personne ne pose sa zone sûre à sa place : elle doit la prendre par la   │
+     * │ main unique. Le sélecteur de quantité du comptoir ne le faisait pas -    │
+     * │ vingt-quatre points en dur, soit une poignée gestuelle, et son bouton    │
+     * │ « Ajouter » passait sous une barre à trois boutons.                      │
+     * └──────────────────────────────────────────────────────────────────────────┘
+     *
+     * ⚠ LES DEUX PROPS DE TRANSLUCIDITÉ SONT INERTES AUJOURD'HUI, et on les
+     * exige quand même : `ReactModalHostView.kt` force leurs getters à `true`
+     * tant que le bord-à-bord est actif, or il l'est par un drapeau Gradle posé
+     * dans un dossier GITIGNORÉ que ce dépôt ne contrôle pas. Écrites, la
+     * géométrie des modales n'en dépend plus. `Modal.js` impose de poser les
+     * deux ensemble ou aucune.
+     */
+    const fautifs: string[] = [];
+    let vues = 0;
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/<Modal\b/.test(code)) continue;
+      vues += 1;
+      const nom = relative(RACINE, f);
+      if (!/\bstatusBarTranslucent\b/.test(code)) fautifs.push(`${nom} : statusBarTranslucent`);
+      if (!/\bnavigationBarTranslucent\b/.test(code)) fautifs.push(`${nom} : navigationBarTranslucent`);
+      // ⚠ L'APPEL, ET NON LE NOM : un import qui subsiste après le retrait du
+      // hook laisserait le balayage au vert. Mesuré en retirant la ligne.
+      if (!/useMargesSysteme\s*\(/.test(code)) fautifs.push(`${nom} : zone sûre`);
+    }
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien.
+    expect(vues).toBeGreaterThanOrEqual(3);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("la barre d'onglets passe par `styleBarreOnglets`", () => {
+    /**
+     * ⚠ C'EST LE SEUL BORD QU'UN COMPOSANT ÉTRANGER POSE À NOTRE PLACE.
+     *
+     * `BottomTabBar` lit l'inset lui-même, et on ne peut pas l'en empêcher :
+     * on ne peut que lui repasser la marge corrigée par `tabBarStyle`. Une
+     * hauteur écrite à la main dans ce style compterait l'inset une seconde
+     * fois sur tout appareil sain, et personne ne le verrait en relisant.
+     */
+    const code = sansCommentaires(
+      readFileSync(join(RACINE, "app", "(app)", "(tabs)", "_layout.tsx"), "utf8")
+    );
+    expect(code).toContain("tabBarStyle");
+    expect(code).toMatch(/styleBarreOnglets\(/);
+    expect(code).not.toMatch(/tabBarStyle:[\s\S]{0,200}?height:/);
+  });
+
+  it("l'interrupteur de simulation ne sort pas du diagnostic", () => {
+    /**
+     * ⚠ SON GARDE-FOU COMPTE PLUS QUE LUI.
+     *
+     * Il fabrique des mesures fausses. Inerte hors `__DEV__`, il ne peut rien
+     * casser en production - mais un écran qui l'appellerait en développement
+     * ferait conclure à un défaut là où il n'y en a pas, ou l'inverse. Deux
+     * appelants, tous deux nommés : la main qui lit les marges, et l'écran qui
+     * les montre.
+     */
+    const AUTORISES = [join("ui", "zone-sure.ts"), join("app", "(app)", "appareil", "affichage.tsx")];
+    const fautifs: string[] = [];
+    let vus = 0;
+    for (const f of fichiers(RACINE)) {
+      const nom = relative(RACINE, f);
+      if (!/diagnostic\/simulation/.test(sansCommentaires(readFileSync(f, "utf8")))) continue;
+      vus += 1;
+      if (!AUTORISES.includes(nom)) fautifs.push(nom);
+    }
+    expect(vus).toBe(AUTORISES.length);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("`Screen` DÉLÈGUE son rembourrage, il ne le recalcule pas", () => {
+    /**
+     * ⚠ CE TEST DE TEXTE EST LA MOITIÉ QUI MANQUE AU TEST PUR.
+     *
+     * `rembourrageZoneSure` est éprouvé ailleurs, sur l'objet. Mais il
+     * resterait vert sur un `Screen` qui ne l'appellerait plus : un écran sans
+     * sa marge basse s'affiche parfaitement, avec son dernier bouton sous la
+     * barre du système.
+     *
+     * Il vise un NOM DE SYMBOLE et non une mise en page : il survit à toute
+     * réécriture qui garde la délégation, et tombe sur celle qui la perd. Les
+     * deux regex qu'il remplace figeaient la graphie exacte de `screen.tsx`,
+     * et cassaient sur une réécriture pourtant légitime.
+     */
+    const code = sansCommentaires(
+      readFileSync(join(RACINE, "ui", "screen.tsx"), "utf8")
+    );
+    expect(code).toMatch(/rembourrageZoneSure\(/);
+    expect(code).toMatch(/edges = BORDS_PAR_DEFAUT/);
+    expect(code).not.toMatch(/padding(Top|Bottom|Left|Right)\s*:/);
   });
 });
 
@@ -1562,5 +1713,158 @@ describe("le paiement de l'abonnement ne sort pas de l'application", () => {
       if (m) fautifs.push(`${relative(RACINE, f)} : ${m[0]}`);
     }
     expect(fautifs).toEqual([]);
+  });
+});
+
+/**
+ * Le périmètre APPLIQUÉ borne les données, jamais le choix brut.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `applique` N'EST PAS `choix`, ET C'EST TOUT CE QUI TIENT LA RÈGLE.      │
+ * │                                                                          │
+ * │ `offreDePerimetre` rend deux choses : ce que l'écran PROPOSE, et ce      │
+ * │ qu'il APPLIQUE. Pour un caissier, le second est imposé - lui-même, dans  │
+ * │ son dépôt - quel que soit le premier. Un écran qui passerait son état    │
+ * │ brut à une lecture rouvrirait donc la porte, en silence : rien ne lève,  │
+ * │ la liste s'affiche simplement plus large qu'elle ne devrait.             │
+ * │                                                                          │
+ * │ Ce n'est pas théorique. Le tirage descend à un caissier les ventes de    │
+ * │ ses collègues du même dépôt (`_scope_to_warehouses` borne par entrepôt   │
+ * │ mais PAS par auteur) : les données sont là, sur le terminal, et seul ce  │
+ * │ filtre les retient.                                                      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le périmètre appliqué est la seule borne", () => {
+  const APPELLE = /\busePerimetre\s*\(/;
+  //: `use-perimetre.ts` DÉFINIT le hook : il est le seul à avoir le droit de
+  //: lire les entrepôts bruts et de rendre l'offre. Exception NOMMÉE, comme
+  //: `session/provider.tsx` l'est pour `logout`.
+  const DEFINIT = "features/perimetre/use-perimetre.ts";
+
+  it("le balayage voit bien les écrans à périmètre", () => {
+    // Un balayage qui ne balaie rien passe au vert sans rien démontrer : ce
+    // dépôt s'est fait prendre quatre fois.
+    const vus = fichiers(RACINE).filter((f) =>
+      APPELLE.test(sansCommentaires(readFileSync(f, "utf8")))
+    );
+    expect(vus.length).toBeGreaterThan(5);
+  });
+
+  it("tout écran qui demande un périmètre en lit l'APPLIQUÉ", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!APPELLE.test(code)) continue;
+      if (relative(RACINE, f) === DEFINIT) continue;
+      // `perimetre.applique` ou la variable `applique` qu'on en tire : les
+      // deux formes sont légitimes, ne pas lire l'appliqué du tout ne l'est
+      // pas.
+      if (!/\.applique\b/.test(code)) fautifs.push(relative(RACINE, f));
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("un écran qui exporte TRANSMET son périmètre au document", () => {
+    //: ┌──────────────────────────────────────────────────────────────────┐
+    //: │ LE GARDE-FOU D'À CÔTÉ VÉRIFIE LA LECTURE, PAS LA TRANSMISSION.   │
+    //: │                                                                  │
+    //: │ C'est par là que l'historique des ventes est passé au vert : il   │
+    //: │ lisait bien `applique` pour sa liste, et n'envoyait ni            │
+    //: │ `warehouse` ni `user` à `/sales/export/`. Le fichier couvrait     │
+    //: │ donc tous les dépôts sous un en-tête qui annonçait l'inverse -    │
+    //: │ l'invariant que tous les exports de ce dépôt ont dû corriger.     │
+    //: └──────────────────────────────────────────────────────────────────┘
+    const EXPORTE = /\btelechargerDocument\s*\(/;
+    //: Les trois formes légitimes, toutes en usage : le helper commun,
+    //: l'étalement dans un constructeur de paramètres qui le porte déjà, ou
+    //: la clé `warehouse` posée à la main depuis l'appliqué.
+    const TRANSMET =
+      /parametresDePerimetre|\.{3}\s*applique\b|warehouse:\s*applique\./;
+
+    const exportateurs: string[] = [];
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!APPELLE.test(code) || !EXPORTE.test(code)) continue;
+      exportateurs.push(relative(RACINE, f));
+      if (!TRANSMET.test(code)) fautifs.push(relative(RACINE, f));
+    }
+    //: Un balayage qui ne balaie rien passe au vert sans rien démontrer.
+    expect(exportateurs.length).toBeGreaterThan(3);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("aucun écran ne fabrique sa propre liste d'entrepôts pour un filtre", () => {
+    // `entrepots()` rend TOUS les dépôts descendus sur ce terminal, sans
+    // égard au rôle : le tirage ne borne pas `warehouses`. S'en servir pour
+    // peupler un filtre proposerait à un magasinier des dépôts que le serveur
+    // lui refusera ensuite. Les écrans de SAISIE, eux, ont leur propre règle
+    // (`entrepotsAccessibles` via `features/caisse/perimetre`).
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!APPELLE.test(code)) continue;
+      if (relative(RACINE, f) === DEFINIT) continue;
+      if (/\bentrepots\b\s*,\s*\{\s*tables/.test(code)) {
+        fautifs.push(relative(RACINE, f));
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
+
+describe("la règle de périmètre n'a qu'une seule écriture", () => {
+  /**
+   * Les trois motifs COMMUNS de verrou et leurs libellés vivent dans
+   * `@vente-facile/core` depuis v0.7.6. Ils étaient recopiés ici ET dans
+   * `hooks/use-perimeter.ts` du back-office, AU CARACTÈRE PRÈS et écrits
+   * séparément : deux copies d'une règle de visibilité divergent sans qu'aucune
+   * erreur ne le dise, et c'est un marchand qui s'en aperçoit, sur l'écran où
+   * un champ reste fermé sans raison lisible.
+   *
+   * ⚠ Ce garde-fou ne protège QUE le terminal. Le back-office n'a aucun
+   * lanceur de tests : de son côté, seul `tsc` retient la divergence, et il ne
+   * voit pas une chaîne recopiée.
+   */
+  const LIBELLES_COMMUNS = [
+    "Vous ne voyez que vos propres données.",
+    "Vous n'avez accès qu'à un seul entrepôt.",
+    "Aucun entrepôt ne vous est assigné. Demandez-en un au gérant.",
+  ];
+
+  const MODULE = "features/perimetre/filtre-perimetre.ts";
+  const sources = fichiers(RACINE);
+
+  it("le balayage MORD : il voit le module de périmètre", () => {
+    expect(sources.length).toBeGreaterThan(300);
+    expect(sources.some((f) => f.endsWith(MODULE))).toBe(true);
+  });
+
+  it("aucun libellé de verrou commun n'est recopié dans l'application", () => {
+    const fautifs: string[] = [];
+    for (const fichier of sources) {
+      const code = sansCommentaires(readFileSync(fichier, "utf8"));
+      for (const libelle of LIBELLES_COMMUNS) {
+        if (code.includes(libelle)) {
+          fautifs.push(`${relative(RACINE, fichier)} : « ${libelle} »`);
+        }
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le verrou d'entrepôt se DÉLÈGUE au paquet, il ne se recalcule pas", () => {
+    const code = readFileSync(join(RACINE, MODULE), "utf8");
+    expect(code).toContain("verrouEntrepot(");
+    expect(code).toContain("LIBELLES_VERROU_PERIMETRE[");
+    // Un motif commun AFFECTÉ, c'est un second calcul qui repart.
+    //
+    // ⚠ La négation exclut `=`, `!`, `<` et `>` juste avant : sans elle, elle
+    // mord sur le `=== "un-seul-entrepot"` de la ligne qui LIT le verrou pour
+    // appliquer l'entrepôt unique, laquelle est parfaitement légitime. Un
+    // garde-fou qui crie sur du code sain finit désactivé.
+    expect(sansCommentaires(code)).not.toMatch(
+      /(?<![=!<>])=\s*"(?:un-seul-entrepot|aucun-entrepot)"/
+    );
   });
 });

@@ -15,9 +15,14 @@ import {
   ScrollView,
   View,
 } from "react-native";
-import { useSafeAreaInsets, type Edge } from "react-native-safe-area-context";
+import type { Edge } from "react-native-safe-area-context";
 
 import { useTheme } from "./theme";
+import {
+  BORDS_PAR_DEFAUT,
+  rembourrageZoneSure,
+  useMargesSysteme,
+} from "./zone-sure";
 
 /**
  * Les deux fonds possibles d'un ecran, et ce que chacun fait du pied.
@@ -59,6 +64,9 @@ export interface ScreenProps {
    *
    * Un écran d'ONGLET passe `edges={[]}` : la barre d'onglets porte déjà les
    * deux bords, et les cumuler laisserait une bande vide au-dessus d'elle.
+   *
+   * Le défaut est `BORDS_PAR_DEFAUT`, dans `zone-sure.ts` : la valeur et sa
+   * raison vivent au même endroit que la marge qu'elle consomme.
    */
   edges?: Edge[];
   /** Enveloppe le contenu dans un défilement. */
@@ -146,7 +154,7 @@ export interface ScreenProps {
 
 export function Screen({
   children,
-  edges = ["top", "bottom"],
+  edges = BORDS_PAR_DEFAUT,
   scroll = false,
   onRefresh,
   refreshing = false,
@@ -156,15 +164,13 @@ export function Screen({
   fond = "background",
   className = "",
 }: ScreenProps) {
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
   const { colors } = useTheme();
 
-  const pad = {
-    paddingTop: edges.includes("top") ? insets.top : 0,
-    paddingBottom: edges.includes("bottom") ? insets.bottom : 0,
-    paddingLeft: edges.includes("left") ? insets.left : 0,
-    paddingRight: edges.includes("right") ? insets.right : 0,
-  };
+  // Le calcul vit dans `zone-sure.ts`, et c'est ce qui le rend eprouvable sans
+  // rendre un composant. `Screen` DELEGUE : s'il recalculait ici, le test pur
+  // resterait vert sur un code que plus personne n'appellerait.
+  const pad = rembourrageZoneSure(edges, marges);
 
   const contenu = {
     ...(padded ? { padding: 16 } : null),

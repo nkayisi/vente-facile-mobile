@@ -7,6 +7,15 @@ import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  nombreDeFiltresPerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import {
   STATUT_AJUSTEMENT,
   listeAjustements,
@@ -17,6 +26,7 @@ import { FeuilleNouvelAjustement } from "@/features/stock/feuille-ajustement";
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Chip, ChipRow, DataList, DataRow, Fab, Screen, SearchInput, Text,
+  BoutonFiltres,
 } from "@/ui";
 
 const TABLES = ["stock_adjustments", "stock_adjustment_items", "warehouses"];
@@ -27,13 +37,22 @@ export default function Ajustements() {
   const [feuille, setFeuille] = useState(false);
   const [statut, setStatut] = useState<string | null>(null);
 
+  // ENTREPÔT SEUL : cette donnée n'a pas d'auteur au sens du filtre.
+  // `avecAuteur: false` ferme le champ « Utilisateur » AVEC son motif,
+  // plutôt que de le retirer - un contrôle absent se lit comme une
+  // fonction manquante, un contrôle fermé se lit comme une règle.
+  const [choixPerimetre, setChoixPerimetre] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const [feuillePerimetre, setFeuillePerimetre] = useState(false);
+  const perimetre = usePerimetre(choixPerimetre, false);
+  const applique = perimetre.applique;
+
   const charger = useCallback(
-    () => listeAjustements({ recherche, statut }),
-    [recherche, statut]
+    () => listeAjustements({ recherche, statut, entrepot: applique.entrepot }),
+    [recherche, statut, applique]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, statut],
+    deps: [recherche, statut, applique],
   });
   const { donnees: attente } = useLecture(enAttenteSurStock, {
     tables: ["outbox_operations"],
@@ -43,11 +62,34 @@ export default function Ajustements() {
 
   const enTete = (
     <View className="gap-3 px-4 pb-3 pt-2">
-      <SearchInput
-        valeur={recherche}
-        onChange={setRecherche}
-        placeholder="Rechercher une référence ou un motif..."
-      />
+      <View className="flex-row items-center gap-2">
+        <View className="flex-1">
+          <SearchInput
+            valeur={recherche}
+            onChange={setRecherche}
+            placeholder="Rechercher une référence ou un motif..."
+          />
+        </View>
+        <BoutonFiltres
+          actifs={nombreDeFiltresPerimetre(perimetre)}
+          onPress={() => setFeuillePerimetre(true)}
+        />
+      </View>
+
+      {resumeDuPerimetre(perimetre).length > 0 ? (
+        <ChipRow>
+          {resumeDuPerimetre(perimetre).map((puce) => (
+            <Chip
+              key={puce.cle}
+              label={puce.label}
+              actif
+              onPress={() =>
+                setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
+              }
+            />
+          ))}
+        </ChipRow>
+      ) : null}
       <ChipRow>
         <Chip label="Tous" actif={statut === null} onPress={() => setStatut(null)} />
         {Object.entries(STATUT_AJUSTEMENT).map(([code, s]) => (
@@ -122,6 +164,14 @@ export default function Ajustements() {
           }}
         />
       ) : null}
+      <FeuilleFiltresPerimetre
+        ouvert={feuillePerimetre}
+        onFermer={() => setFeuillePerimetre(false)}
+        valeur={choixPerimetre}
+        onChanger={setChoixPerimetre}
+        offre={perimetre}
+        libelleResultats="Voir les ajustements"
+      />
     </Screen>
   );
 }

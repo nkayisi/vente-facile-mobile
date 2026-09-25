@@ -64,6 +64,13 @@
       "when": 1789013078525,
       "tag": "0008_photos_articles",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790289216308,
+      "tag": "0009_jeton_de_perimetre",
+      "breakpoints": true
     }
   ]
 }

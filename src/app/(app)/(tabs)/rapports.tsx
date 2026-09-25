@@ -62,12 +62,22 @@ import {
 } from "@/features/export/telecharger";
 import { ApiError } from "@/api/errors";
 import { useSession } from "@/session/provider";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  nombreDeFiltresPerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import {
   AreaChart,
   Badge,
   Banner,
   BarChart,
   BarChartHorizontal,
+  BoutonFiltres,
   Button,
   Card,
   ChampDate,
@@ -114,6 +124,20 @@ export default function Rapports() {
   const toast = useToast();
 
   const [onglet, setOnglet] = useState<OngletRapport>("overview");
+
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ LE PÉRIMÈTRE VAUT POUR LES HUIT ONGLETS.                              │
+  // │                                                                        │
+  // │ Il entre dans `periode()` de `data/rapports.ts`, seul constructeur de  │
+  // │ requête de tout l'écran : un onglet ne peut donc pas l'ignorer. Les    │
+  // │ RAPPORTS viennent du serveur, qui refuse un entrepôt hors périmètre    │
+  // │ par un 400 - il ne l'ignore pas en silence, ce qui afficherait         │
+  // │ « Dépôt B » au-dessus des chiffres de A.                               │
+  // └────────────────────────────────────────────────────────────────────────┘
+  const [choixPerimetre, setChoixPerimetre] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const [feuillePerimetre, setFeuillePerimetre] = useState(false);
+  const perimetre = usePerimetre(choixPerimetre, true);
+  const applique = perimetre.applique;
   const [periode, setPeriode] = useState<PeriodeRapport>("last_30_days");
   const [perso, setPerso] = useState({ debut: "", fin: "" });
   const [groupBy, setGroupBy] = useState<GroupBy>("day");
@@ -164,6 +188,10 @@ export default function Rapports() {
       dateJournaliere,
       utilisateur: onglet === "user-activity" ? utilisateur : undefined,
       granularite,
+      // Le périmètre de l'écran, appliqué aux HUIT onglets. Il est distinct du
+      // champ `utilisateur` ci-dessus, qui est le SUJET de l'onglet « Par
+      // utilisateur » et n'a pas de « tous ».
+      perimetre: applique,
     }),
     [
       organisation,
@@ -177,6 +205,7 @@ export default function Rapports() {
       onglet,
       utilisateur,
       granularite,
+      applique,
     ],
   );
 
@@ -260,7 +289,14 @@ export default function Rapports() {
           date_from: bornes.debut,
           date_to: bornes.fin,
           group_by: groupBy,
-          user: onglet === "user-activity" ? utilisateur : undefined,
+          // ⚠ L'onglet « Par utilisateur » impose son SUJET ; partout ailleurs,
+          // `user` est le filtre de périmètre. Les deux ne peuvent pas
+          // coexister : le serveur n'a qu'un paramètre.
+          user:
+            onglet === "user-activity"
+              ? utilisateur
+              : (applique.utilisateur ?? undefined),
+          warehouse: applique.entrepot ?? undefined,
           date: onglet === "daily-cash" ? dateJournaliere : undefined,
         },
         format,
@@ -308,16 +344,39 @@ export default function Rapports() {
 
         {/* ── Les filtres, ceux du back-office ────────────────────────────── */}
         <View className="gap-2">
-          <ChipRow>
-            {PERIODES_RAPPORT.map((p) => (
-              <Chip
-                key={p.valeur}
-                label={p.label}
-                actif={periode === p.valeur}
-                onPress={() => changerPeriode(p.valeur)}
-              />
-            ))}
-          </ChipRow>
+          <View className="flex-row items-center gap-2">
+            <View className="min-w-0 flex-1">
+              <ChipRow>
+                {PERIODES_RAPPORT.map((p) => (
+                  <Chip
+                    key={p.valeur}
+                    label={p.label}
+                    actif={periode === p.valeur}
+                    onPress={() => changerPeriode(p.valeur)}
+                  />
+                ))}
+              </ChipRow>
+            </View>
+            <BoutonFiltres
+              actifs={nombreDeFiltresPerimetre(perimetre)}
+              onPress={() => setFeuillePerimetre(true)}
+            />
+          </View>
+
+          {resumeDuPerimetre(perimetre).length > 0 ? (
+            <ChipRow>
+              {resumeDuPerimetre(perimetre).map((puce) => (
+                <Chip
+                  key={puce.cle}
+                  label={puce.label}
+                  actif
+                  onPress={() =>
+                    setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
+                  }
+                />
+              ))}
+            </ChipRow>
+          ) : null}
           {/* La fenêtre choisie s'écrit SOUS la rangée, pas dans la puce :
               « 2026-09-01 → 2026-09-02 » y sortait tronqué en « 2026-09-01 →
               20... », c'est-à-dire sans sa borne haute - la seule chose que
@@ -554,6 +613,14 @@ export default function Rapports() {
           ))}
         </View>
       </Sheet>
+      <FeuilleFiltresPerimetre
+        ouvert={feuillePerimetre}
+        onFermer={() => setFeuillePerimetre(false)}
+        valeur={choixPerimetre}
+        onChanger={setChoixPerimetre}
+        offre={perimetre}
+        libelleResultats="Voir le rapport"
+      />
     </Screen>
   );
 }

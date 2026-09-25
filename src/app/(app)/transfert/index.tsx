@@ -7,6 +7,15 @@ import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  nombreDeFiltresPerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import {
   STATUT_TRANSFERT,
   listeTransferts,
@@ -18,6 +27,7 @@ import { useSession } from "@/session/provider";
 import {
   AppBar,
   Badge,
+  BoutonFiltres,
   Chip,
   ChipRow,
   DataList,
@@ -36,13 +46,22 @@ export default function Transferts() {
   const [statut, setStatut] = useState<string | null>(null);
   const [feuille, setFeuille] = useState(false);
 
+  // ENTREPÔT SEUL : cette donnée n'a pas d'auteur au sens du filtre.
+  // `avecAuteur: false` ferme le champ « Utilisateur » AVEC son motif,
+  // plutôt que de le retirer - un contrôle absent se lit comme une
+  // fonction manquante, un contrôle fermé se lit comme une règle.
+  const [choixPerimetre, setChoixPerimetre] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const [feuillePerimetre, setFeuillePerimetre] = useState(false);
+  const perimetre = usePerimetre(choixPerimetre, false);
+  const applique = perimetre.applique;
+
   const charger = useCallback(
-    () => listeTransferts({ recherche, statut }),
-    [recherche, statut]
+    () => listeTransferts({ recherche, statut, entrepot: applique.entrepot }),
+    [recherche, statut, applique]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, statut],
+    deps: [recherche, statut, applique],
   });
   const { donnees: attente } = useLecture(enAttenteSurStock, {
     tables: ["outbox_operations"],
@@ -52,11 +71,34 @@ export default function Transferts() {
 
   const enTete = (
     <View className="gap-3 px-4 pb-3 pt-2">
-      <SearchInput
-        valeur={recherche}
-        onChange={setRecherche}
-        placeholder="Rechercher une référence..."
-      />
+      <View className="flex-row items-center gap-2">
+        <View className="flex-1">
+          <SearchInput
+            valeur={recherche}
+            onChange={setRecherche}
+            placeholder="Rechercher une référence..."
+          />
+        </View>
+        <BoutonFiltres
+          actifs={nombreDeFiltresPerimetre(perimetre)}
+          onPress={() => setFeuillePerimetre(true)}
+        />
+      </View>
+
+      {resumeDuPerimetre(perimetre).length > 0 ? (
+        <ChipRow>
+          {resumeDuPerimetre(perimetre).map((puce) => (
+            <Chip
+              key={puce.cle}
+              label={puce.label}
+              actif
+              onPress={() =>
+                setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
+              }
+            />
+          ))}
+        </ChipRow>
+      ) : null}
       <ChipRow>
         <Chip label="Tous" actif={statut === null} onPress={() => setStatut(null)} />
         {Object.entries(STATUT_TRANSFERT).map(([code, s]) => (
@@ -131,6 +173,14 @@ export default function Transferts() {
           }}
         />
       ) : null}
+      <FeuilleFiltresPerimetre
+        ouvert={feuillePerimetre}
+        onFermer={() => setFeuillePerimetre(false)}
+        valeur={choixPerimetre}
+        onChanger={setChoixPerimetre}
+        offre={perimetre}
+        libelleResultats="Voir les transferts"
+      />
     </Screen>
   );
 }

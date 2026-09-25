@@ -19,12 +19,22 @@ import {
 } from "@/data/inventaire";
 import { libelleEnvoi, pireEnvoi } from "@/data/envoi";
 import { useLecture } from "@/data/live";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  nombreDeFiltresPerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { creationsEnAttente, sessionsEnAttente } from "@/features/inventaire/actes";
 import { FeuilleNouvelInventaire } from "@/features/inventaire/feuille-session";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   Badge, Chip, ChipRow, DataList, DataRow, Fab, PageHeader, Screen,
+  BoutonFiltres,
   SearchInput, StatStrip, StatStripItem, Text,
 } from "@/ui";
 
@@ -39,13 +49,22 @@ export default function Inventaire() {
   // phase avec les champs qu'on ajoutera.
   const [creation, setCreation] = useState(false);
 
+  // ENTREPÔT SEUL : cette donnée n'a pas d'auteur au sens du filtre.
+  // `avecAuteur: false` ferme le champ « Utilisateur » AVEC son motif,
+  // plutôt que de le retirer - un contrôle absent se lit comme une
+  // fonction manquante, un contrôle fermé se lit comme une règle.
+  const [choixPerimetre, setChoixPerimetre] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const [feuillePerimetre, setFeuillePerimetre] = useState(false);
+  const perimetre = usePerimetre(choixPerimetre, false);
+  const applique = perimetre.applique;
+
   const charger = useCallback(
-    () => listeSessions({ recherche, statut }),
-    [recherche, statut]
+    () => listeSessions({ recherche, statut, entrepot: applique.entrepot }),
+    [recherche, statut, applique]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, statut],
+    deps: [recherche, statut, applique],
   });
   const { donnees: enFile } = useLecture(sessionsEnAttente, {
     tables: ["outbox_operations"],
@@ -128,11 +147,34 @@ export default function Inventaire() {
           icon="CheckCircle2"
         />
       </StatStrip>
-      <SearchInput
-        valeur={recherche}
-        onChange={setRecherche}
-        placeholder="Rechercher une session..."
-      />
+      <View className="flex-row items-center gap-2">
+        <View className="flex-1">
+          <SearchInput
+            valeur={recherche}
+            onChange={setRecherche}
+            placeholder="Rechercher une session..."
+          />
+        </View>
+        <BoutonFiltres
+          actifs={nombreDeFiltresPerimetre(perimetre)}
+          onPress={() => setFeuillePerimetre(true)}
+        />
+      </View>
+
+      {resumeDuPerimetre(perimetre).length > 0 ? (
+        <ChipRow>
+          {resumeDuPerimetre(perimetre).map((puce) => (
+            <Chip
+              key={puce.cle}
+              label={puce.label}
+              actif
+              onPress={() =>
+                setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
+              }
+            />
+          ))}
+        </ChipRow>
+      ) : null}
       <ChipRow>
         <Chip label="Toutes" actif={statut === null} onPress={() => setStatut(null)} />
         {Object.entries(STATUT_INVENTAIRE).map(([code, s]) => (
@@ -230,6 +272,14 @@ export default function Inventaire() {
           }}
         />
       ) : null}
+      <FeuilleFiltresPerimetre
+        ouvert={feuillePerimetre}
+        onFermer={() => setFeuillePerimetre(false)}
+        valeur={choixPerimetre}
+        onChanger={setChoixPerimetre}
+        offre={perimetre}
+        libelleResultats="Voir les sessions"
+      />
     </Screen>
   );
 }

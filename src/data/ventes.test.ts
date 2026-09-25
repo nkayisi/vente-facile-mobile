@@ -68,6 +68,7 @@ function enAttente(patch: Partial<VenteEnAttente> = {}): VenteEnAttente {
     client: null,
     total: 100,
     resteAPayer: 0,
+    entrepot: null,
     devise: "USD",
     date: ce_matin,
     nbArticles: 2,

@@ -43,6 +43,8 @@ export interface FiltresMouvements {
   /** `true` : entrées seules. `false` : sorties seules. `null` : les deux. */
   entree?: boolean | null;
   entrepot?: string | null;
+  /** Qui a SAISI le mouvement. `null` : tous. */
+  utilisateur?: string | null;
   /** Catégorie du produit. Le SOUS-ARBRE y est inclus, comme côté serveur. */
   categorie?: string | null;
   periode?: PeriodeFiltre;
@@ -103,6 +105,12 @@ function conditionsDe(p: PerimetreMouvements) {
         ? sql`1 = 0`
         : inArray(stockMovements.movementType, types),
     filtres.entrepot ? eq(stockMovements.warehouseId, filtres.entrepot) : undefined,
+    // L'AUTEUR du mouvement (`created_by` côté serveur, où `StockMovementFilter`
+    // le porte déjà). La colonne est nullable : un mouvement sans auteur ne
+    // ressort donc sous le nom de personne, ce qui est la vérité.
+    filtres.utilisateur
+      ? eq(stockMovements.createdById, filtres.utilisateur)
+      : undefined,
     p.categories ? inArray(products.categoryId, p.categories) : undefined,
     debutMs != null ? gte(stockMovements.createdAt, new Date(debutMs)) : undefined,
     finMs != null ? lte(stockMovements.createdAt, new Date(finMs)) : undefined,

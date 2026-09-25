@@ -37,10 +37,9 @@
  */
 import { useEffect, useState } from "react";
 import { Animated, Easing, useWindowDimensions, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { PullProgress } from "@/sync";
-import { useMouvementReduit, useTheme } from "@/ui";
+import { useMargesSysteme, useMouvementReduit, useTheme } from "@/ui";
 
 const HAUTEUR = 3;
 /** Part de la largeur occupée par le segment qui glisse. */
@@ -65,7 +64,7 @@ export function BarreProgressionSync({
   enCours: boolean;
   progression: PullProgress | null;
 }) {
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const reduit = useMouvementReduit();
@@ -126,7 +125,7 @@ export function BarreProgressionSync({
       importantForAccessibility="no-hide-descendants"
       style={{
         position: "absolute",
-        top: insets.top,
+        top: marges.haut,
         left: 0,
         right: 0,
         height: HAUTEUR,

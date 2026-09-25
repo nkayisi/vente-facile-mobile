@@ -71,6 +71,30 @@ export async function deleteRows(table: string, ids: string[]): Promise<void> {
 }
 
 /**
+ * Vide une table tirée, et TOUTES ses tables enfants.
+ *
+ * ⚠ LES ENFANTS PARTENT AVEC LE PARENT, sinon ils restent orphelins pour
+ * toujours. `replaceChildren` ne sait les retirer que par identifiant de
+ * parent : une fois le parent effacé, plus rien ne les désigne, et aucune
+ * pierre tombale ne circule pour eux (ils n'ont pas de suppression douce).
+ *
+ * Employé quand le PÉRIMÈTRE d'une table a changé : ni le curseur ni les
+ * pierres tombales ne peuvent rattraper un tel changement, dans un sens comme
+ * dans l'autre. Voir `sync/jeton-perimetre.ts`.
+ */
+export async function viderTable(
+  table: string,
+  enfants: readonly { table: string }[] = []
+): Promise<void> {
+  await connection.withTransactionAsync(async () => {
+    for (const enfant of enfants) {
+      await connection.runAsync(`DELETE FROM "${enfant.table}"`);
+    }
+    await connection.runAsync(`DELETE FROM "${table}"`);
+  });
+}
+
+/**
  * Remplace en bloc les enfants des parents reçus.
  *
  * Les lignes de vente et les règlements n'ont pas de suppression douce côté

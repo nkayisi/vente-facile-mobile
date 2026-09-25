@@ -24,17 +24,38 @@
  * est posee, et sur la bonne piece. Le reste se juge a l'oeil, sur un
  * terminal. C'est la meme reserve que `screen.test.tsx`.
  */
-import { ScrollView, Text as TexteNatif, View } from "react-native";
+import { Dimensions, ScrollView, Text as TexteNatif, View } from "react-native";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 
+import { PLANCHER_BARRE_SYSTEME } from "@/features/diagnostic/marge-basse";
+
+/** ⚠ Le prefixe `mock` est exige par `jest.mock`, qui refuse toute autre
+ *  variable hors de sa portee. */
+const mockMarges = {
+  insets: { top: 24, bottom: 16, left: 0, right: 0 },
+  frame: { width: 400, height: 800 },
+};
 jest.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockMarges.insets,
+  useSafeAreaFrame: () => mockMarges.frame,
 }));
 jest.mock("./theme", () => ({
   useTheme: () => ({ colors: { primary: "#f60", foreground: "#000" }, scheme: "light" }),
 }));
 
 import { Sheet } from "./sheet";
+
+beforeEach(() => {
+  mockMarges.insets = { top: 24, bottom: 16, left: 0, right: 0 };
+  mockMarges.frame = { width: 400, height: 800 };
+  jest
+    .spyOn(Dimensions, "get")
+    .mockReturnValue({ width: 400, height: 800, scale: 3, fontScale: 1 } as never);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 function rendre(element: React.ReactElement) {
   let rendu!: ReturnType<typeof create>;
@@ -109,5 +130,22 @@ describe("le pied d'une feuille", () => {
     expect(
       rendu.root.findAll((n) => String(n.props?.className ?? "").includes("border-t border-border px-4"))
     ).toHaveLength(0);
+  });
+
+  it("POSE LE PLANCHER sous le pied quand le systeme n'annonce rien", () => {
+    // `Math.max(marges.bas, 16)` valait 16 - soit moins qu'une barre a trois
+    // boutons. Le bouton qui valide un encaissement y etait a moitie dessous.
+    mockMarges.insets = { top: 24, bottom: 0, left: 0, right: 0 };
+    const rendu = rendre(
+      <Sheet ouvert onFermer={() => {}} pied={<TexteNatif>x</TexteNatif>}>
+        <View />
+      </Sheet>
+    );
+    const barre = rendu.root.find((n) =>
+      String(n.props?.className ?? "").includes("border-t border-border px-4")
+    );
+    expect((barre.props.style as { paddingBottom: number }).paddingBottom).toBe(
+      PLANCHER_BARRE_SYSTEME
+    );
   });
 });

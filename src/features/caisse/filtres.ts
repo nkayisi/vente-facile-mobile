@@ -18,13 +18,28 @@ import {
   type PeriodeFiltre,
 } from "@/data/periode-filtre";
 import { libelleTypeCaisse, STATUT_DEPENSE } from "@/data/types-caisse";
+import {
+  parametresDePerimetre,
+  type AssertPerimetre,
+} from "@/features/perimetre/filtre-perimetre";
 
 // ------------------------------------------------------- mouvements de caisse
+
+// Les deux jeux portent le périmètre : oublier une clé NOMME le module au
+// type-check, au lieu de se découvrir sur un écran qui ignore sa propre puce.
+/* eslint-disable @typescript-eslint/no-unused-vars -- Ces alias ne sont PAS
+   morts : c'est leur seule évaluation qui fait le garde-fou. Les employer
+   quelque part ne prouverait rien de plus. Même motif que `_CouvreTout`. */
+type _CaissePorteLePerimetre = AssertPerimetre<FiltresCaisse>;
+type _DepensePorteLePerimetre = AssertPerimetre<FiltresDepense>;
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 export const CLES_FILTRES_CAISSE = [
   "recherche",
   "sens",
   "type",
+  "entrepot",
+  "utilisateur",
   "devise",
   "periode",
 ] as const;
@@ -35,6 +50,10 @@ export interface FiltresCaisse {
   /** `in` : entrées seules. `out` : sorties seules. `null` : les deux. */
   sens: "in" | "out" | null;
   type: string | null;
+  /** L\'entrepôt se DÉRIVE : `cash_movements` n\'en porte aucun. */
+  entrepot: string | null;
+  /** Qui a saisi le mouvement (`created_by`). */
+  utilisateur: string | null;
   devise: string | null;
   periode: PeriodeFiltre;
 }
@@ -43,6 +62,8 @@ export const FILTRES_CAISSE_VIDES: FiltresCaisse = {
   recherche: "",
   sens: null,
   type: null,
+  entrepot: null,
+  utilisateur: null,
   devise: null,
   periode: PERIODE_TOUT,
 };
@@ -65,6 +86,8 @@ type _CaisseRienEnTrop = Assert<CleFiltreCaisse, keyof FiltresCaisse>;
  */
 export function nombreDeFiltresCaisse(f: FiltresCaisse): number {
   let n = 0;
+  if (f.entrepot) n += 1;
+  if (f.utilisateur) n += 1;
   if (f.type) n += 1;
   if (f.devise) n += 1;
   if (f.periode.mode !== "tout") n += 1;
@@ -82,6 +105,10 @@ export function sansLeFiltreCaisse(
   cle: CleFiltreCaisse
 ): FiltresCaisse {
   switch (cle) {
+    case "entrepot":
+      return { ...f, entrepot: null };
+    case "utilisateur":
+      return { ...f, utilisateur: null };
     case "recherche":
       return { ...f, recherche: "" };
     case "sens":
@@ -97,9 +124,16 @@ export function sansLeFiltreCaisse(
 
 export function resumeDesFiltresCaisse(
   f: FiltresCaisse,
+  noms: { entrepot?: string | null; utilisateur?: string | null },
   libellePeriode: (p: PeriodeFiltre) => string
 ): { cle: CleFiltreCaisse; label: string }[] {
   const puces: { cle: CleFiltreCaisse; label: string }[] = [];
+  // Un nom manquant s'écrit « inconnu » et JAMAIS l'identifiant : un UUID dans
+  // une puce n'est pas un nom, c'est du bruit.
+  if (f.entrepot) puces.push({ cle: "entrepot", label: noms.entrepot || "Entrepôt inconnu" });
+  if (f.utilisateur) {
+    puces.push({ cle: "utilisateur", label: noms.utilisateur || "Utilisateur inconnu" });
+  }
   if (f.type) puces.push({ cle: "type", label: libelleTypeCaisse(f.type) });
   if (f.devise) puces.push({ cle: "devise", label: f.devise });
   if (f.periode.mode !== "tout") {
@@ -125,6 +159,7 @@ export function parametresCaisse(
     search: f.recherche.trim() || undefined,
     direction: f.sens ?? undefined,
     movement_type: f.type ?? undefined,
+    ...parametresDePerimetre(f),
     currency: f.devise ?? undefined,
     is_cancelled: "false",
     ...parametresPeriodeEnDates(f.periode),
@@ -136,6 +171,8 @@ export function parametresCaisse(
 export const CLES_FILTRES_DEPENSE = [
   "recherche",
   "statut",
+  "entrepot",
+  "utilisateur",
   "categorie",
   "devise",
   "periode",
@@ -145,6 +182,9 @@ export type CleFiltreDepense = (typeof CLES_FILTRES_DEPENSE)[number];
 export interface FiltresDepense {
   recherche: string;
   statut: string | null;
+  entrepot: string | null;
+  /** Qui a SAISI la dépense (`created_by`). */
+  utilisateur: string | null;
   categorie: string | null;
   devise: string | null;
   periode: PeriodeFiltre;
@@ -153,6 +193,8 @@ export interface FiltresDepense {
 export const FILTRES_DEPENSE_VIDES: FiltresDepense = {
   recherche: "",
   statut: null,
+  entrepot: null,
+  utilisateur: null,
   categorie: null,
   devise: null,
   periode: PERIODE_TOUT,
@@ -165,6 +207,8 @@ type _DepenseRienEnTrop = Assert<CleFiltreDepense, keyof FiltresDepense>;
 /** Le statut a ses puces à l'écran : le compter ferait doublon avec elles. */
 export function nombreDeFiltresDepense(f: FiltresDepense): number {
   let n = 0;
+  if (f.entrepot) n += 1;
+  if (f.utilisateur) n += 1;
   if (f.categorie) n += 1;
   if (f.devise) n += 1;
   if (f.periode.mode !== "tout") n += 1;
@@ -182,6 +226,10 @@ export function sansLeFiltreDepense(
   cle: CleFiltreDepense
 ): FiltresDepense {
   switch (cle) {
+    case "entrepot":
+      return { ...f, entrepot: null };
+    case "utilisateur":
+      return { ...f, utilisateur: null };
     case "recherche":
       return { ...f, recherche: "" };
     case "statut":
@@ -197,10 +245,18 @@ export function sansLeFiltreDepense(
 
 export function resumeDesFiltresDepense(
   f: FiltresDepense,
-  noms: { categorie?: string | null },
+  noms: {
+    entrepot?: string | null;
+    utilisateur?: string | null;
+    categorie?: string | null;
+  },
   libellePeriode: (p: PeriodeFiltre) => string
 ): { cle: CleFiltreDepense; label: string }[] {
   const puces: { cle: CleFiltreDepense; label: string }[] = [];
+  if (f.entrepot) puces.push({ cle: "entrepot", label: noms.entrepot || "Entrepôt inconnu" });
+  if (f.utilisateur) {
+    puces.push({ cle: "utilisateur", label: noms.utilisateur || "Utilisateur inconnu" });
+  }
   // Un nom manquant s'écrit « inconnue » et JAMAIS l'identifiant : un UUID
   // dans une puce n'est pas un nom, c'est du bruit.
   if (f.categorie) {
@@ -226,6 +282,7 @@ export function parametresDepense(
   return {
     search: f.recherche.trim() || undefined,
     status: f.statut ?? undefined,
+    ...parametresDePerimetre(f),
     category: f.categorie ?? undefined,
     currency: f.devise ?? undefined,
     ...parametresPeriodeEnDates(f.periode),

@@ -2,29 +2,29 @@
  * Le relevé des marges système, à lire sur l'appareil qui pose problème.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ IL MESURE, IL NE CORRIGE RIEN. C'EST TOUT SON INTÉRÊT.                  │
+ * │ IL MESURE. C'EST TOUT SON INTÉRÊT, ET C'EST TOUJOURS VRAI.              │
  * │                                                                          │
- * │ Un marchand rapporte que la barre gestuelle de son téléphone recouvre    │
- * │ les éléments du bas. Mesuré sur l'émulateur - navigation par gestes,     │
- * │ marge de 24 points, Android 16 - le défaut ne s'y reproduit pas :        │
- * │ `Screen` pose bien `paddingBottom: insets.bottom`, et la barre d'onglets │
- * │ d'expo-router fait de même de son côté. Le mécanisme est donc juste, et  │
- * │ « corriger » à l'aveugle ajouterait une bande morte sur tous les         │
- * │ appareils qui, eux, fonctionnent.                                        │
- * │                                                                          │
- * │ Reste une hypothèse, et une seule qui explique « sur CERTAINS            │
- * │ téléphones » : la marge est rapportée à ZÉRO alors que le système        │
- * │ dessine bien une barre. Cet écran la met en évidence ou l'écarte.        │
+ * │ Un marchand rapporte que la barre de son téléphone recouvre les éléments │
+ * │ du bas. Mesuré sur l'émulateur - navigation par gestes, marge de 24      │
+ * │ points, Android 16 - le défaut ne s'y reproduit pas : `Screen` pose bien │
+ * │ la marge, et la barre d'onglets aussi. Reste une hypothèse, et une seule │
+ * │ qui explique « sur CERTAINS téléphones » : la marge est rapportée à ZÉRO │
+ * │ alors que le système dessine bien une barre. Cet écran la met en         │
+ * │ évidence ou l'écarte.                                                    │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
- * ⚠ IL EST DANS `app/`, PAS DANS `ui/`, et c'est ce qui l'autorise à lire les
- * insets. Le garde-fou « un seul propriétaire par bord » ne balaie que
- * `src/ui/`, où `Screen` est seul à poser une marge de contenu. Ici on ne
- * POSE rien : on affiche ce que le système annonce.
+ * ⚠ DEUX LIGNES, ET C'EST LEUR ÉCART QUI RENSEIGNE. « Marge annoncée » est ce
+ * que le système dit ; « marge posée » est ce que l'application en fait. Elles
+ * ne diffèrent que dans le cas `marge_absente`, et c'est ce qui distingue, sur
+ * la capture d'un marchand, « le système ment » de « on n'a pas compensé ».
+ *
+ * ⚠ IL PASSE PAR `useMargesSysteme` COMME TOUT LE MONDE. Il ne lit plus les
+ * hooks bruts : le hook expose `brut` et `fenetre` précisément pour qu'il n'ait
+ * pas à le faire, ce qui permet à la règle « une seule main » de n'avoir AUCUNE
+ * exception. Il ne POSE toujours rien : il affiche.
  */
 import { useCallback, useState } from "react";
-import { Dimensions, Platform, View } from "react-native";
-import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 
 import { HAUTEUR_ONGLETS } from "@/navigation/metriques";
@@ -37,36 +37,40 @@ import {
   ListItem,
   Screen,
   Section,
+  Segmented,
   Text,
+  useMargesSysteme,
 } from "@/ui";
-import { LIBELLES, verdict } from "@/features/diagnostic/marge-basse";
+import { LIBELLES, type Verdict } from "@/features/diagnostic/marge-basse";
+import { forcerVerdict, useVerdictForce } from "@/features/diagnostic/simulation";
 
 /** Deux décimales au plus : une marge est un nombre de points, pas une mesure. */
 const pt = (n: number): string => `${Math.round(n * 100) / 100} pt`;
 
+const SIMULATIONS: { valeur: Verdict | "reel"; label: string }[] = [
+  { valeur: "reel", label: "Réel" },
+  { valeur: "conforme", label: "Conforme" },
+  { valeur: "fenetre_inseree", label: "Insérée" },
+  { valeur: "marge_absente", label: "Le défaut" },
+];
+
 export default function Affichage() {
-  const insets = useSafeAreaInsets();
-  const frame = useSafeAreaFrame();
-  const fenetre = Dimensions.get("window");
-  const ecran = Dimensions.get("screen");
+  const m = useMargesSysteme();
+  const force = useVerdictForce();
   const [copie, setCopie] = useState(false);
 
-  const v = verdict({
-    hauteurEcran: ecran.height,
-    hauteurFenetre: frame.height,
-    margeBasse: insets.bottom,
-  });
-  const l = LIBELLES[v];
+  const l = LIBELLES[m.verdict];
+  const compense = m.bas !== m.brut.bottom;
 
   // Le texte plutôt que la capture : un relevé se recopie dans un message,
   // une capture se relit à la loupe.
   const releve = [
-    `verdict        ${v}`,
-    `insets         haut ${insets.top} / bas ${insets.bottom} / g ${insets.left} / d ${insets.right}`,
-    `frame          ${frame.width} x ${frame.height}`,
-    `window         ${fenetre.width} x ${fenetre.height} @${fenetre.scale}`,
-    `screen         ${ecran.width} x ${ecran.height} @${ecran.scale}`,
-    `barre onglets  ${HAUTEUR_ONGLETS} + ${insets.bottom} = ${HAUTEUR_ONGLETS + insets.bottom}`,
+    `verdict        ${m.verdict}${force ? " (SIMULÉ)" : ""}`,
+    `marge annoncée bas ${m.brut.bottom} / haut ${m.brut.top} / g ${m.brut.left} / d ${m.brut.right}`,
+    `marge posée    bas ${m.bas}`,
+    `frame          ${m.fenetre.largeur} x ${m.fenetre.hauteur}`,
+    `screen         ${m.ecran.largeur} x ${m.ecran.hauteur}`,
+    `barre onglets  ${HAUTEUR_ONGLETS} + ${m.bas} = ${HAUTEUR_ONGLETS + m.bas}`,
     `plateforme     ${Platform.OS} ${String(Platform.Version)}`,
   ].join("\n");
 
@@ -83,20 +87,49 @@ export default function Affichage() {
         {/* Le verdict AVANT les chiffres : c'est la seule ligne qui dit s'il y
             a quelque chose à faire, et les nombres ne parlent pas d'eux-mêmes. */}
         <Banner
-          tone={v === "marge_absente" ? "destructive" : "success"}
-          title={l.titre}
-          message={l.detail}
+          tone={m.verdict === "marge_absente" ? (compense ? "warning" : "destructive") : "success"}
+          // ⚠ LE MARQUEUR N'EST PAS DÉCORATIF. En simulation, « marge annoncée »
+          // reste la VRAIE valeur du système - c'est ce qu'elle doit être - et
+          // elle contredit alors le sous-titre « le système n'annonçait rien ».
+          // Sans le dire, on lirait un faux diagnostic sur sa propre capture.
+          title={`${
+            m.verdict === "marge_absente" && compense
+              ? "Compensé par l'application"
+              : l.titre
+          }${force ? " (simulé)" : ""}`}
+          message={
+            m.verdict === "marge_absente" && compense
+              ? `${l.detail} L'application réserve elle-même ${pt(m.bas)} en bas.`
+              : l.detail
+          }
         />
 
-        <Section title="Marges annoncées par le système">
+        <Section title="Marges en bas">
           <Card className="overflow-hidden p-0">
-            <ListItem title="En bas" icon="Ruler" value={pt(insets.bottom)} />
+            {/* Les DEUX lignes, l'une sous l'autre : c'est leur écart qui dit
+                si le système ment, et le lecteur doit le voir de l'oeil. */}
+            <ListItem
+              title="Annoncée par le système"
+              icon="Ruler"
+              value={pt(m.brut.bottom)}
+            />
             <Divider inset />
-            <ListItem title="En haut" value={pt(insets.top)} />
+            <ListItem
+              title="Posée par l'application"
+              value={pt(m.bas)}
+              valueTone={compense ? "success" : "muted"}
+              subtitle={compense ? "Plancher appliqué : le système n'annonçait rien" : undefined}
+            />
+          </Card>
+        </Section>
+
+        <Section title="Autres marges annoncées">
+          <Card className="overflow-hidden p-0">
+            <ListItem title="En haut" value={pt(m.brut.top)} />
             <Divider inset />
-            <ListItem title="À gauche" value={pt(insets.left)} />
+            <ListItem title="À gauche" value={pt(m.brut.left)} />
             <Divider inset />
-            <ListItem title="À droite" value={pt(insets.right)} />
+            <ListItem title="À droite" value={pt(m.brut.right)} />
           </Card>
         </Section>
 
@@ -107,22 +140,20 @@ export default function Affichage() {
             <ListItem
               title="Fenêtre de l'application"
               icon="Smartphone"
-              value={`${Math.round(frame.width)} × ${Math.round(frame.height)}`}
+              value={`${Math.round(m.fenetre.largeur)} × ${Math.round(m.fenetre.hauteur)}`}
             />
             <Divider inset />
             <ListItem
               title="Écran physique"
               icon="Monitor"
-              value={`${Math.round(ecran.width)} × ${Math.round(ecran.height)}`}
+              value={`${Math.round(m.ecran.largeur)} × ${Math.round(m.ecran.hauteur)}`}
             />
             <Divider inset />
             <ListItem
               title="Écart de hauteur"
-              value={pt(ecran.height - frame.height)}
-              valueTone={v === "fenetre_inseree" ? "success" : "muted"}
+              value={pt(m.ecran.hauteur - m.fenetre.hauteur)}
+              valueTone={m.verdict === "fenetre_inseree" ? "success" : "muted"}
             />
-            <Divider inset />
-            <ListItem title="Densité" value={`×${ecran.scale}`} />
           </Card>
         </Section>
 
@@ -131,8 +162,8 @@ export default function Affichage() {
             <ListItem
               title="Hauteur totale"
               icon="LayoutDashboard"
-              value={pt(HAUTEUR_ONGLETS + insets.bottom)}
-              subtitle={`${HAUTEUR_ONGLETS} de barre, plus la marge du bas`}
+              value={pt(HAUTEUR_ONGLETS + m.bas)}
+              subtitle={`${HAUTEUR_ONGLETS} de barre, plus la marge posée`}
             />
             <Divider inset />
             <ListItem
@@ -141,6 +172,25 @@ export default function Affichage() {
             />
           </Card>
         </Section>
+
+        {/* ┌──────────────────────────────────────────────────────────────────┐
+            │ L'INTERRUPTEUR N'EXISTE QU'EN DÉVELOPPEMENT.                    │
+            │                                                                  │
+            │ `marge_absente` ne se produit sur aucun émulateur : sans lui, le │
+            │ chemin qui pose le plancher ne serait jamais regardé. Il         │
+            │ fabrique des MESURES, jamais un verdict - voir `simulation.ts`.  │
+            └──────────────────────────────────────────────────────────────────┘ */}
+        {__DEV__ ? (
+          <Section title="Simuler un verdict (développement)">
+            <Card className="overflow-hidden p-0">
+              <Segmented
+                options={SIMULATIONS}
+                valeur={force ?? "reel"}
+                onChange={(v) => forcerVerdict(v === "reel" ? null : v)}
+              />
+            </Card>
+          </Section>
+        ) : null}
 
         <Button
           fullWidth
@@ -152,7 +202,7 @@ export default function Affichage() {
           {copie ? "Relevé copié" : "Copier le relevé"}
         </Button>
 
-        {/* La bande de contrôle : si la barre gestuelle la recouvre, le défaut
+        {/* La bande de contrôle : si la barre du système la recouvre, le défaut
             se voit sans lire un seul chiffre. */}
         <View className="rounded-lg border border-dashed border-border p-3">
           <Text variant="caption" className="text-center">

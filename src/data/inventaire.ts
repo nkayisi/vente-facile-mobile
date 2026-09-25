@@ -70,13 +70,22 @@ export interface SessionResume {
 }
 
 export async function listeSessions(
-  f: { recherche?: string; statut?: string | null; limite?: number } = {}
+  f: {
+    recherche?: string;
+    statut?: string | null;
+    /** ENTREPÔT SEUL : une session d'inventaire a un créateur, mais on ne
+     *  filtre pas un comptage sur qui l'a ouvert - c'est le RAYON qu'on
+     *  inventorie, pas une journée de travail. */
+    entrepot?: string | null;
+    limite?: number;
+  } = {}
 ): Promise<{ elements: SessionResume[]; total: number }> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
 
   const conditions = [
     f.statut ? eq(inventorySessions.status, f.statut) : undefined,
+    f.entrepot ? eq(inventorySessions.warehouseId, f.entrepot) : undefined,
     terme
       ? or(
           like(sql`lower(${inventorySessions.reference})`, motif),

@@ -39,6 +39,10 @@ import {
   type MouvementEnFile,
 } from "@/features/caisse/attente";
 import { lotEnAttente, type LotEnAttente } from "@/features/sync/attente";
+import {
+  FILE_SANS_PERIMETRE,
+  type ContexteFile,
+} from "@/features/perimetre/filtre-perimetre";
 import type { FiltresCaisse, FiltresDepense } from "@/features/caisse/filtres";
 import { type EtatEnvoi } from "@/sync";
 import { categoriesEnAttente } from "@/features/caisse/actes";
@@ -223,6 +227,23 @@ export interface JournalCaisse {
 }
 
 /**
+ * L'entrepôt d'un mouvement de caisse, par les trois chemins du serveur.
+ *
+ * ⚠ TOUTE REQUÊTE QUI EMPLOIE CETTE CONDITION DOIT PORTER LES TROIS JOINTURES
+ * (`sales`, `expenses`, `registerSessions` avec `registers`). Le décompte de
+ * `journalCaisse` vit dans une requête SÉPARÉE de sa liste : la joindre d'un
+ * côté seulement fait lever SQLite - ou, pire, rend un décompte qui annonce un
+ * autre périmètre que la liste sous laquelle il s'affiche.
+ */
+function entrepotDerive(entrepot: string) {
+  return or(
+    eq(sales.warehouseId, entrepot),
+    eq(expenses.warehouseId, entrepot),
+    eq(registers.warehouseId, entrepot)
+  );
+}
+
+/**
  * Le SQL du périmètre, partagé par la liste et son compte.
  *
  * ⚠ Les mouvements ANNULÉS sont exclus, comme le back-office qui envoie
@@ -239,6 +260,18 @@ function conditionsCaisse(f: FiltresCaisse) {
     f.sens ? eq(cashMovements.direction, f.sens) : undefined,
     f.type ? eq(cashMovements.movementType, f.type) : undefined,
     f.devise ? eq(cashMovements.currency, f.devise) : undefined,
+    // ⚠ L'ENTREPÔT SE DÉRIVE : `cash_movements` n'a aucune colonne d'entrepôt.
+    // Les trois chemins sont EXACTEMENT ceux du serveur
+    // (`_scope_cash_movements`) : la vente, la dépense, ou la session et son
+    // comptoir.
+    //
+    // ⚠ ET SANS AUCUN `isnull`. Le périmètre du RÔLE tolère les mouvements non
+    // rattachés - apports, retraits - pour ne pas les masquer ; un filtre
+    // VOLONTAIRE, non. Sinon le même apport apparaîtrait sous chaque dépôt, la
+    // somme des dépôts dépasserait le total du tiroir, et rien à l'écran ne
+    // l'expliquerait.
+    f.entrepot ? entrepotDerive(f.entrepot) : undefined,
+    f.utilisateur ? eq(cashMovements.createdById, f.utilisateur) : undefined,
     debutMs != null ? gte(cashMovements.movementDate, new Date(debutMs)) : undefined,
     finMs != null ? lte(cashMovements.movementDate, new Date(finMs)) : undefined,
     terme
@@ -255,8 +288,45 @@ function conditionsCaisse(f: FiltresCaisse) {
   return and(...conditions);
 }
 
-/** Le même périmètre, opposé à une ligne encore dans le journal. */
-function retientEnFile(f: FiltresCaisse, m: MouvementEnFile): boolean {
+/**
+ * Le même périmètre, opposé à une ligne encore dans le journal.
+ *
+ * ⚠ UNE LIGNE EN FILE N'A PAS D'ENTREPÔT, ET « PAS D'ENTREPÔT » N'EST PAS
+ * « TOUS LES ENTREPÔTS ». Le corps d'un `cash_movement.create` ne porte ni
+ * vente, ni dépense, ni session : son dépôt est INCONNU tant que le serveur ne
+ * l'a pas rattaché. Sous un CHOIX délibéré, l'imputer au dépôt qu'on regarde
+ * gonflerait son total d'un mouvement qu'un autre a peut-être produit.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ MAIS SOUS UN VERROU, ON LA GARDE. Voir `entrepotInconnuAdmis`.          │
+ * │                                                                          │
+ * │ Un verrou est le périmètre du RÔLE : la ligne ne peut appartenir qu'à    │
+ * │ lui. L'écarter faisait disparaître du Livre de caisse le mouvement que   │
+ * │ le marchand venait d'y saisir, jusqu'à la synchronisation suivante - sur │
+ * │ l'écran même où il le cherche, dans le mode de fonctionnement pour       │
+ * │ lequel ce terminal existe. Il le ressaisit, et le tiroir compte deux     │
+ * │ fois.                                                                    │
+ * │                                                                          │
+ * │ ⚠ ON NE DÉRIVE PAS l'entrepôt de la session ouverte pour le comparer :   │
+ * │ `get_open_session_for_user` résout à la POUSSÉE, pas à la saisie. Un     │
+ * │ caissier qui clôture son tiroir avant de synchroniser produit un         │
+ * │ mouvement SANS session, et la prédiction locale serait fausse.           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ L'AUTEUR, LUI, EST CERTAIN : `session/proprietaire.ts` estampille la base
+ * et rend le verdict `etrangere` dès qu'un autre compte se présente, y compris
+ * après une déconnexion sans purge. Une ligne encore en file appartient donc
+ * forcément à l'utilisateur connecté. Si cette estampille venait à disparaître,
+ * ce filtre deviendrait faux sans que rien ne le signale.
+ */
+function retientEnFile(
+  f: FiltresCaisse,
+  m: MouvementEnFile,
+  file: ContexteFile
+): boolean {
+  const { moi, entrepotInconnuAdmis } = file;
+  if (f.entrepot && !entrepotInconnuAdmis) return false;
+  if (f.utilisateur && f.utilisateur !== moi) return false;
   if (f.sens && m.direction !== f.sens) return false;
   if (f.type && m.type !== f.type) return false;
   if (f.devise && deviseOuPrincipale(m.devise) !== f.devise) return false;
@@ -272,9 +342,18 @@ function retientEnFile(f: FiltresCaisse, m: MouvementEnFile): boolean {
   return true;
 }
 
+/**
+ * @param file Ce qu'il faut savoir des lignes ENCORE DANS LE JOURNAL : à qui
+ *             elles appartiennent, et si le filtre d'entrepôt courant tolère
+ *             qu'on ignore le leur. Sans l'auteur, un filtre « Utilisateur »
+ *             les laisserait toutes passer quel que soit le nom choisi ; sans
+ *             la tolérance, le marchand perdrait de vue ce qu'il vient de
+ *             saisir. Voir `ContexteFile`.
+ */
 export async function journalCaisse(
   f: FiltresCaisse,
-  limite = 100
+  limite = 100,
+  file: ContexteFile = FILE_SANS_PERIMETRE
 ): Promise<JournalCaisse> {
   const ou = conditionsCaisse(f);
   const [lignes, compte, enFile] = await Promise.all([
@@ -290,17 +369,28 @@ export async function journalCaisse(
       .leftJoin(users, eq(users.id, cashMovements.createdById))
       .leftJoin(sales, eq(sales.id, cashMovements.saleId))
       .leftJoin(expenses, eq(expenses.id, cashMovements.expenseId))
+      // Les deux jointures de l'entrepôt dérivé. Elles sont posées même sans
+      // filtre : une requête qui change de forme selon les filtres est une
+      // requête dont on ne peut plus lire le périmètre.
+      .leftJoin(registerSessions, eq(registerSessions.id, cashMovements.sessionId))
+      .leftJoin(registers, eq(registers.id, registerSessions.registerId))
       .where(ou)
       .orderBy(desc(cashMovements.movementDate))
       .limit(limite),
     db
       .select({ n: sql<number>`count(*)` })
       .from(cashMovements)
+      // ⚠ LES MÊMES JOINTURES QUE LA LISTE. Sans elles, `entrepotDerive` vise
+      // des tables absentes de cette requête-ci.
+      .leftJoin(sales, eq(sales.id, cashMovements.saleId))
+      .leftJoin(expenses, eq(expenses.id, cashMovements.expenseId))
+      .leftJoin(registerSessions, eq(registerSessions.id, cashMovements.sessionId))
+      .leftJoin(registers, eq(registers.id, registerSessions.registerId))
       .where(ou),
     mouvementsEnFile(),
   ]);
 
-  const retenus = enFile.filter((m) => retientEnFile(f, m));
+  const retenus = enFile.filter((m) => retientEnFile(f, m, file));
   const nombreTable = nb(compte[0]?.n);
 
   const tirees: MouvementCaisse[] = lignes.map(({ m, prenom, nom, refVente, refDepense }) => ({
@@ -412,6 +502,9 @@ function conditionsDepense(f: FiltresDepense) {
 
   const conditions = [
     f.statut ? eq(expenses.status, f.statut) : undefined,
+    // La dépense, elle, PORTE son entrepôt : rien à dériver.
+    f.entrepot ? eq(expenses.warehouseId, f.entrepot) : undefined,
+    f.utilisateur ? eq(expenses.createdById, f.utilisateur) : undefined,
     f.categorie ? eq(expenses.categoryId, f.categorie) : undefined,
     f.devise ? eq(expenses.currency, f.devise) : undefined,
     debutMs != null ? gte(expenses.expenseDate, new Date(debutMs)) : undefined,
@@ -428,11 +521,25 @@ function conditionsDepense(f: FiltresDepense) {
   return conditions.length > 0 ? and(...conditions) : undefined;
 }
 
-function retientDepenseEnFile(f: FiltresDepense, d: DepenseEnFile): boolean {
+function retientDepenseEnFile(
+  f: FiltresDepense,
+  d: DepenseEnFile,
+  file: ContexteFile
+): boolean {
+  const { moi, entrepotInconnuAdmis } = file;
   // Une dépense en file est un BROUILLON : le serveur l'enregistre en `draft`
   // et ne la fait avancer que sur une décision. Filtrer sur un autre statut
   // doit donc l'écarter, sinon elle se rangerait sous « Payée ».
   if (f.statut && f.statut !== "draft") return false;
+  // Contrairement au mouvement de caisse, la dépense porte son entrepôt dans
+  // le corps de l'opération : quand il est là, on le COMPARE. `null` reste un
+  // entrepôt INCONNU, jamais « tous » - et un inconnu suit alors la même règle
+  // que partout : toléré sous un verrou, écarté sous un choix délibéré.
+  if (f.entrepot && d.entrepot !== f.entrepot) {
+    if (d.entrepot !== null || !entrepotInconnuAdmis) return false;
+  }
+  // L'auteur est garanti par `session/proprietaire.ts` : voir `retientEnFile`.
+  if (f.utilisateur && f.utilisateur !== moi) return false;
   if (f.categorie && d.categorieId !== f.categorie) return false;
   if (f.devise && deviseOuPrincipale(d.devise) !== f.devise) return false;
   const { debutMs, finMs } = bornesLocales(f.periode);
@@ -447,9 +554,11 @@ function retientDepenseEnFile(f: FiltresDepense, d: DepenseEnFile): boolean {
   return true;
 }
 
+/** @param file Voir `journalCaisse` : il ne sert qu'aux lignes en file. */
 export async function listeDepenses(
   f: FiltresDepense,
-  limite = 100
+  limite = 100,
+  file: ContexteFile = FILE_SANS_PERIMETRE
 ): Promise<JournalDepenses> {
   const ou = conditionsDepense(f);
   const [lignes, compte, totaux, enFile, categories] = await Promise.all([
@@ -493,7 +602,7 @@ export async function listeDepenses(
   ]);
 
   const nomDeCategorie = new Map(categories.map((c) => [c.id, c.nom]));
-  const retenues = enFile.filter((d) => retientDepenseEnFile(f, d));
+  const retenues = enFile.filter((d) => retientDepenseEnFile(f, d, file));
   const nombreTable = nb(compte[0]?.n);
 
   const tirees: DepenseResume[] = lignes.map((e) => ({

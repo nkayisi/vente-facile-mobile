@@ -12,15 +12,49 @@
  * │ appliqué. Il se découvre à l'oeil, sur un terminal, ou pas du tout.      │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { ScrollView, View } from "react-native";
+import { Dimensions, ScrollView, View } from "react-native";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 
+import { PLANCHER_BARRE_SYSTEME } from "@/features/diagnostic/marge-basse";
+
+/**
+ * Les marges que le systeme ANNONCE, pilotables depuis un test.
+ *
+ * ⚠ Le prefixe `mock` n'est pas decoratif : `jest.mock` refuse toute variable
+ * hors de sa portee, et ne fait exception que pour celles qui le portent.
+ */
+const mockMarges = {
+  insets: { top: 24, bottom: 16, left: 0, right: 0 },
+  frame: { width: 400, height: 800 },
+};
 jest.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockMarges.insets,
+  useSafeAreaFrame: () => mockMarges.frame,
 }));
 jest.mock("./theme", () => ({ useTheme: () => ({ colors: { primary: "#f60" } }) }));
 
 import { Screen } from "./screen";
+
+/** L'ecran PHYSIQUE. En bord-a-bord il vaut la fenetre ; sinon il la depasse. */
+function poserEcran(hauteur: number) {
+  jest
+    .spyOn(Dimensions, "get")
+    .mockImplementation((cle) =>
+      cle === "screen"
+        ? ({ width: 400, height: hauteur, scale: 3, fontScale: 1 } as never)
+        : ({ width: 400, height: hauteur, scale: 3, fontScale: 1 } as never)
+    );
+}
+
+beforeEach(() => {
+  mockMarges.insets = { top: 24, bottom: 16, left: 0, right: 0 };
+  mockMarges.frame = { width: 400, height: 800 };
+  poserEcran(800);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 function styleDuContenu(element: React.ReactElement): unknown {
   let rendu!: ReturnType<typeof create>;
@@ -130,5 +164,66 @@ describe("Screen fond", () => {
         )
       ).toContain("px-4 py-3");
     }
+  });
+});
+
+/**
+ * La zone sûre, éprouvée sur l'OBJET et non sur le texte de `screen.tsx`.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE QUE LE BALAYAGE DE DOCTRINE NE PEUT PAS VOIR.                        │
+ * │                                                                          │
+ * │ Il constate que `Screen` APPELLE `rembourrageZoneSure`. Il resterait     │
+ * │ vert si le résultat n'atteignait pas la vue - et un écran sans sa marge  │
+ * │ basse s'affiche parfaitement, simplement avec son dernier bouton sous la │
+ * │ barre du système. Il se découvre à l'oeil, ou pas du tout.               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+function rembourrageRendu(element: React.ReactElement): Record<string, number> {
+  let rendu!: ReturnType<typeof create>;
+  act(() => {
+    rendu = create(element);
+  });
+  const racine = rendu.root
+    .findAllByType(View)
+    .find((v) => {
+      const st = v.props.style as Record<string, unknown> | undefined;
+      return st !== undefined && st !== null && "paddingTop" in st;
+    });
+  if (!racine) throw new Error("aucune vue ne porte le rembourrage de zone sûre");
+  return racine.props.style as Record<string, number>;
+}
+
+describe("Screen et la zone sûre", () => {
+  it("réserve le haut ET le bas par défaut", () => {
+    // Les 95 écrans qui ne passent pas `edges` en dépendent : c'est là que le
+    // bouton « Enregistrer » se posait sur la barre gestuelle.
+    expect(rembourrageRendu(<Screen><View /></Screen>)).toMatchObject({
+      paddingTop: 24,
+      paddingBottom: 16,
+    });
+  });
+
+  it("`edges={[]}` renonce aux deux : la barre d'onglets les porte déjà", () => {
+    expect(rembourrageRendu(<Screen edges={[]}><View /></Screen>)).toMatchObject({
+      paddingTop: 0,
+      paddingBottom: 0,
+    });
+  });
+
+  it("POSE LE PLANCHER quand la fenêtre est bord-à-bord et la marge à zéro", () => {
+    // Le défaut rapporté : le système dessine sa barre et n'annonce rien.
+    mockMarges.insets = { top: 24, bottom: 0, left: 0, right: 0 };
+    expect(rembourrageRendu(<Screen><View /></Screen>).paddingBottom).toBe(
+      PLANCHER_BARRE_SYSTEME
+    );
+  });
+
+  it("n'ajoute RIEN quand le système insère lui-même la fenêtre", () => {
+    // 848 d'écran pour 800 de fenêtre : les 48 manquants SONT la barre, déjà
+    // retirés. Y poser un plancher ajouterait une bande morte.
+    mockMarges.insets = { top: 24, bottom: 0, left: 0, right: 0 };
+    poserEcran(848);
+    expect(rembourrageRendu(<Screen><View /></Screen>).paddingBottom).toBe(0);
   });
 });

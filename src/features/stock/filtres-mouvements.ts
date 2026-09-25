@@ -13,6 +13,10 @@
  * Module PUR : il n'ouvre pas la base.
  */
 import { parametresPeriode, PERIODE_TOUT, type PeriodeFiltre } from "@/data/periode-filtre";
+import {
+  parametresDePerimetre,
+  type AssertPerimetre,
+} from "@/features/perimetre/filtre-perimetre";
 import { TYPE_MOUVEMENT_STOCK, typesFiltres } from "@/data/types-mouvement";
 
 export const CLES_FILTRES = [
@@ -20,6 +24,7 @@ export const CLES_FILTRES = [
   "sens",
   "type",
   "entrepot",
+  "utilisateur",
   "categorie",
   "periode",
 ] as const;
@@ -31,6 +36,8 @@ export interface FiltresEcran {
   sens: boolean | null;
   type: string | null;
   entrepot: string | null;
+  /** Qui a SAISI le mouvement (`created_by` côté serveur). */
+  utilisateur: string | null;
   categorie: string | null;
   periode: PeriodeFiltre;
 }
@@ -40,6 +47,7 @@ export const FILTRES_VIDES: FiltresEcran = {
   sens: null,
   type: null,
   entrepot: null,
+  utilisateur: null,
   categorie: null,
   periode: PERIODE_TOUT,
 };
@@ -48,9 +56,13 @@ export const FILTRES_VIDES: FiltresEcran = {
 // l'ajouter à `CLES_FILTRES` (ou l'inverse) casse `pnpm type-check`, et le
 // balayage de `parametresDExport` ne peut donc pas devenir aveugle.
 type Assert<A extends B, B> = A;
-/* eslint-disable @typescript-eslint/no-unused-vars -- Ces deux alias ne sont
+// Et celui-ci NOMME le module si le périmètre venait à en disparaître : un
+// écran qui perd son filtre « Utilisateur » ne lève rien, il cesse simplement
+// de le proposer, et personne ne cherche un bug là où il n'y a pas d'erreur.
+/* eslint-disable @typescript-eslint/no-unused-vars -- Ces trois alias ne sont
    PAS morts : c'est leur seule évaluation qui fait le garde-fou. Les employer
    quelque part ne prouverait rien de plus. */
+type _PorteLePerimetre = AssertPerimetre<FiltresEcran>;
 type _CouvreTout = Assert<keyof FiltresEcran, CleFiltre>;
 type _RienEnTrop = Assert<CleFiltre, keyof FiltresEcran>;
 /* eslint-enable @typescript-eslint/no-unused-vars */
@@ -66,6 +78,7 @@ export function nombreDeFiltresActifs(f: FiltresEcran): number {
   let n = 0;
   if (f.type) n += 1;
   if (f.entrepot) n += 1;
+  if (f.utilisateur) n += 1;
   if (f.categorie) n += 1;
   if (f.periode.mode !== "tout") n += 1;
   return n;
@@ -86,11 +99,18 @@ export function aDesFiltres(f: FiltresEcran): boolean {
  */
 export function resumeDesFiltres(
   f: FiltresEcran,
-  noms: { entrepot?: string | null; categorie?: string | null },
+  noms: {
+    entrepot?: string | null;
+    utilisateur?: string | null;
+    categorie?: string | null;
+  },
   libellePeriode: (p: PeriodeFiltre) => string
 ): { cle: CleFiltre; label: string }[] {
   const puces: { cle: CleFiltre; label: string }[] = [];
   if (f.entrepot) puces.push({ cle: "entrepot", label: noms.entrepot || "Entrepôt inconnu" });
+  if (f.utilisateur) {
+    puces.push({ cle: "utilisateur", label: noms.utilisateur || "Utilisateur inconnu" });
+  }
   if (f.categorie) {
     puces.push({ cle: "categorie", label: noms.categorie || "Catégorie inconnue" });
   }
@@ -114,6 +134,8 @@ export function sansLeFiltre(f: FiltresEcran, cle: CleFiltre): FiltresEcran {
       return { ...f, type: null };
     case "entrepot":
       return { ...f, entrepot: null };
+    case "utilisateur":
+      return { ...f, utilisateur: null };
     case "categorie":
       return { ...f, categorie: null };
     default:
@@ -145,7 +167,7 @@ export function parametresDExport(f: FiltresEcran): Record<string, string | unde
     // filtrerait rien du tout, donc rendrait tout. L'écran ferme d'ailleurs
     // son bouton, son cadran comptant déjà zéro.
     movement_type: types && types.length > 0 ? types.join(",") : undefined,
-    warehouse: f.entrepot ?? undefined,
+    ...parametresDePerimetre(f),
     category: f.categorie ?? undefined,
     ...parametresPeriode(f.periode),
   };
@@ -163,7 +185,7 @@ export function parametresApprovisionnement(
   f: FiltresEcran
 ): Record<string, string | undefined> {
   return {
-    warehouse: f.entrepot ?? undefined,
+    ...parametresDePerimetre(f),
     category: f.categorie ?? undefined,
     ...parametresPeriode(f.periode),
   };

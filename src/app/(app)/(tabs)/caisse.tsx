@@ -43,6 +43,11 @@ import { journalCaisse, relevesCaisse, type MouvementCaisse } from "@/data/caiss
 import { libelleTypeCaisse } from "@/data/types-caisse";
 import { enAttenteCaisse } from "@/features/caisse/actes";
 import { FeuilleFiltresCaisse } from "@/features/caisse/feuille-filtres";
+import {
+  contexteFileDe,
+  perimetreAffichable,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { FeuilleMouvement } from "@/features/caisse/feuille-mouvement";
 import { FeuilleNouveauMouvement } from "@/features/caisse/feuille-nouveau-mouvement";
 import {
@@ -113,13 +118,22 @@ export default function Caisse() {
     tables: ["outbox_operations"],
   });
 
+  // Le périmètre décide de ce qui est proposé ET appliqué. Ici l'entrepôt se
+  // DÉRIVE (vente, dépense, session), `cash_movements` n'en portant aucun.
+  const perimetre = usePerimetre(filtres, true);
+  const applique = perimetre.applique;
+  const moi = snapshot?.user.id ?? null;
+  // Ce que les lignes ENCORE EN FILE ont besoin qu'on sache d'elles : leur
+  // auteur, et si le filtre d'entrepôt courant tolère qu'on ignore le leur.
+  const file = useMemo(() => contexteFileDe(perimetre, moi), [perimetre, moi]);
+
   const charger = useCallback(
-    () => journalCaisse(filtres, fenetre),
-    [filtres, fenetre]
+    () => journalCaisse({ ...filtres, ...applique }, fenetre, file),
+    [filtres, applique, fenetre, file]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [filtres, fenetre],
+    deps: [filtres, applique, fenetre, file],
   });
   const mouvements = donnees?.elements ?? [];
 
@@ -132,8 +146,22 @@ export default function Caisse() {
     [snapshot?.currencies]
   );
   const puces = useMemo(
-    () => resumeDesFiltresCaisse(filtres, (p) => libellePeriodeFiltre(p)),
-    [filtres]
+    () =>
+      resumeDesFiltresCaisse(
+        // Le périmètre AFFICHABLE : un verrou n'a pas de puce retirable, il
+        // promettrait de se retirer.
+        { ...filtres, ...perimetreAffichable(perimetre) },
+        {
+          entrepot: perimetre.entrepots.find(
+            (o) => o.valeur === perimetre.applique.entrepot
+          )?.label,
+          utilisateur: perimetre.utilisateurs.find(
+            (o) => o.valeur === perimetre.applique.utilisateur
+          )?.label,
+        },
+        (p) => libellePeriodeFiltre(p)
+      ),
+    [filtres, perimetre]
   );
 
   return (
@@ -236,7 +264,7 @@ export default function Caisse() {
             />
             <ChipRow>
               <BoutonFiltres
-                actifs={nombreDeFiltresCaisse(filtres)}
+                actifs={nombreDeFiltresCaisse({ ...filtres, ...perimetreAffichable(perimetre) })}
                 onPress={() => setFeuilleFiltres(true)}
               />
               <Chip label="Tout" actif={filtres.sens === null} onPress={() => changerSens(null)} />
@@ -307,6 +335,7 @@ export default function Caisse() {
       />
 
       <FeuilleFiltresCaisse
+        perimetre={perimetre}
         ouvert={feuilleFiltres}
         onFermer={() => setFeuilleFiltres(false)}
         valeur={filtres}

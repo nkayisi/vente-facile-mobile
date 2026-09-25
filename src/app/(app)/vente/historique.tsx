@@ -52,6 +52,18 @@ import { useMonnaie } from "@/data/devises";
 import { libelleEnvoi } from "@/data/envoi";
 import { depuisQuand } from "@/data/periodes";
 import { useLecture } from "@/data/live";
+import { useSession } from "@/session/provider";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  entrepotInconnuAdmis,
+  nombreDeFiltresPerimetre,
+  parametresDePerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import {
   STATUT_VENTE,
   historiqueVentes,
@@ -73,19 +85,20 @@ import { grouperParJour, type ElementHistorique } from "@/features/ventes/groupe
 import {
   AppBar,
   Badge,
-  IconButton,
+  BoutonFiltres,
   Chip,
   ChipRow,
   DataList,
   DataRow,
   DataSection,
+  IconButton,
+  Mesure,
   MultiCurrencyTotal,
   Screen,
   SearchInput,
   Segmented,
   StatStrip,
   StatStripItem,
-  Mesure,
   Text,
   useToast,
 } from "@/ui";
@@ -115,6 +128,7 @@ function libelleRetard(jours: number): string {
 }
 
 export default function Historique() {
+  const { snapshot } = useSession();
   const money = useMonnaie();
   const toast = useToast();
   const [envoiExport, setEnvoiExport] = useState(false);
@@ -151,13 +165,36 @@ export default function Historique() {
     setStatut(v);
   }, []);
 
+  const [choixPerimetre, setChoixPerimetre] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const [feuillePerimetre, setFeuillePerimetre] = useState(false);
+  const perimetre = usePerimetre(choixPerimetre, true);
+  const applique = perimetre.applique;
+  const tolereInconnu = entrepotInconnuAdmis(perimetre);
+  const moi = snapshot?.user.id ?? null;
+
   const charger = useCallback(
-    () => historiqueVentes({ recherche, periode, statut, limite: pages * PAGE }),
-    [recherche, periode, statut, pages]
+    () =>
+      historiqueVentes({
+        recherche,
+        periode,
+        statut,
+        // Le périmètre APPLIQUÉ, jamais le choix brut : c'est ce qui borne un
+        // caissier à ses propres ventes, alors que le tirage lui descend
+        // celles de ses collègues du même dépôt.
+        entrepot: applique.entrepot,
+        utilisateur: applique.utilisateur,
+        moi,
+        // Sous un VERROU, une vente dont on ignore le dépôt reste à l'écran :
+        // une caisse peut n'avoir aucun entrepôt, et la vente qu'on vient
+        // d'encaisser disparaissait alors de sa propre liste.
+        entrepotInconnuAdmis: tolereInconnu,
+        limite: pages * PAGE,
+      }),
+    [recherche, periode, statut, applique, moi, tolereInconnu, pages]
   );
   const { donnees, chargement, recharger } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, periode, statut, pages],
+    deps: [recherche, periode, statut, applique, moi, tolereInconnu, pages],
   });
 
   const ventes = useMemo(() => donnees?.elements ?? [], [donnees]);
@@ -208,6 +245,15 @@ export default function Historique() {
           date_to: jourISO(new Date()),
           status: statut ?? undefined,
           search: recherche || undefined,
+          // ⚠ LE PÉRIMÈTRE EN FAIT PARTIE, et il manquait ici seul.
+          //
+          // La liste lit `applique` (l. 181) ; l'export ne l'envoyait pas, si
+          // bien que le fichier couvrait tous les dépôts sous un en-tête qui
+          // annonçait le contraire. Et ce n'est pas rattrapé par le serveur :
+          // `SaleViewSet` porte `warehouse_scope_include_null = True` quand le
+          // TIRAGE, lui, ne tolère pas le nul - sans ce paramètre, le document
+          // porterait en plus les ventes anciennes que l'écran n'a jamais eues.
+          ...parametresDePerimetre(applique),
         },
         format,
         `Historique des ventes ${jourISO(new Date())}`
@@ -278,11 +324,35 @@ export default function Historique() {
         onChange={changerRecherche}
         placeholder="Rechercher par référence ou client..."
       />
-      <Segmented
-        options={PERIODES.map((p) => ({ valeur: p.valeur, label: p.label }))}
-        valeur={periode}
-        onChange={changerPeriode}
-      />
+      <View className="flex-row items-center gap-2">
+        <View className="flex-1">
+          <Segmented
+            options={PERIODES.map((p) => ({ valeur: p.valeur, label: p.label }))}
+            valeur={periode}
+            onChange={changerPeriode}
+          />
+        </View>
+        <BoutonFiltres
+          actifs={nombreDeFiltresPerimetre(perimetre)}
+          onPress={() => setFeuillePerimetre(true)}
+        />
+      </View>
+
+      {resumeDuPerimetre(perimetre).length > 0 ? (
+        <ChipRow>
+          {resumeDuPerimetre(perimetre).map((puce) => (
+            <Chip
+              key={puce.cle}
+              label={puce.label}
+              actif
+              onPress={() => {
+                setPages(1);
+                setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle));
+              }}
+            />
+          ))}
+        </ChipRow>
+      ) : null}
       {/* ┌──────────────────────────────────────────────────────────────┐
           │ LES PUCES PORTENT LEUR DÉCOMPTE, ET LES VIDES DISPARAISSENT. │
           │                                                              │
@@ -479,6 +549,19 @@ export default function Historique() {
         titre="Exporter l'historique"
         avertissement={avertissementExport}
         envoi={envoiExport}
+      />
+      <FeuilleFiltresPerimetre
+        ouvert={feuillePerimetre}
+        onFermer={() => setFeuillePerimetre(false)}
+        valeur={choixPerimetre}
+        onChanger={(f) => {
+          setPages(1);
+          setChoixPerimetre(f);
+        }}
+        offre={perimetre}
+        libelleResultats={
+          total === 1 ? "Voir la vente" : `Voir les ${total} ventes`
+        }
       />
     </Screen>
   );

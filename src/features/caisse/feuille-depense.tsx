@@ -51,7 +51,7 @@ import { jourISO } from "@/data/dates";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepots } from "@/data/stock";
+import { entrepotsSansValorisation } from "@/data/stock";
 import { creerDepense } from "@/features/caisse/actes";
 import { FeuilleCategorieCaisse } from "@/features/caisse/feuille-categorie";
 import { montrerConversion } from "@/features/caisse/montant-devise";
@@ -130,7 +130,7 @@ export function FeuilleNouvelleDepense({
   const { donnees: moyens } = useLecture(moyensDePaiement, {
     tables: ["payment_methods"],
   });
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
 
   const accessibles = useMemo(
     () => entrepotsAccessibles(role, assignes, depots ?? []),

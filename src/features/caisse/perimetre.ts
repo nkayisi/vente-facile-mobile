@@ -32,33 +32,20 @@
  * Module PUR : il décide de ce qui part au serveur, il doit s'éprouver sans
  * appareil.
  */
-import { entrepotParDefaut, type EntrepotChoisissable } from "@/data/entrepot-defaut";
+import { entrepotParDefaut } from "@/data/entrepot-defaut";
+import {
+  entrepotsAccessibles,
+  ROLES_BORNES_PAR_ENTREPOT as ROLES_BORNES,
+  type EntrepotNomme,
+  type RoleMembre,
+} from "@/features/perimetre/entrepots";
 
-export type RoleMembre = "owner" | "manager" | "stock_keeper" | "cashier" | null;
-
-/** Les rôles que le serveur borne par entrepôt sur la LISTE des dépenses. */
-const ROLES_BORNES: RoleMembre[] = ["manager", "stock_keeper"];
-
-export interface EntrepotNomme extends EntrepotChoisissable {
-  nom: string;
-}
-
-/**
- * Les entrepôts qu'un membre peut viser sans se faire refuser.
- *
- * Un propriétaire n'a pas d'affectation : `accessible_warehouse_ids` rend
- * `None` pour lui côté serveur, ce qui veut dire « tous ». Pour les autres,
- * c'est exactement `assigned_warehouses`.
- */
-export function entrepotsAccessibles(
-  role: RoleMembre,
-  assignes: { id: string }[],
-  tous: EntrepotNomme[]
-): EntrepotNomme[] {
-  if (role === "owner") return tous.filter((e) => e.actif);
-  const permis = new Set(assignes.map((a) => a.id));
-  return tous.filter((e) => e.actif && permis.has(e.id));
-}
+// La règle « quels entrepôts ce rôle peut-il viser » a DÉMÉNAGÉ dans
+// `features/perimetre/entrepots.ts` : elle sert désormais tous les filtres de
+// l'application, et un module qui parle de dépenses n'était pas sa place. On la
+// réexporte pour que les appelants existants n'aient rien à changer.
+export { entrepotsAccessibles };
+export type { EntrepotNomme, RoleMembre };
 
 /**
  * L'entrepôt à proposer d'emblée, pris dans les seuls accessibles.

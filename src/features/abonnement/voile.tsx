@@ -19,7 +19,6 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   etatAbonnement,
@@ -30,7 +29,15 @@ import {
 import { useEnLigne } from "@/data/reseau";
 import { useDeconnexion } from "@/session/deconnexion";
 import { useSession } from "@/session/provider";
-import { Badge, Button, Card, Icon, Text, useToast } from "@/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Icon,
+  Text,
+  useMargesSysteme,
+  useToast,
+} from "@/ui";
 
 import { planAProposer } from "./eligibilite";
 import { FeuillePaiement } from "./feuille-paiement";
@@ -62,7 +69,7 @@ export function VoileAbonnement({
   const { demander: demanderDeconnexion } = useDeconnexion();
   const enLigne = useEnLigne();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
   const [actualisation, setActualisation] = useState(false);
   const [feuille, setFeuille] = useState(false);
   const [plans, setPlans] = useState<PlanAbonnement[]>([]);
@@ -130,7 +137,7 @@ export function VoileAbonnement({
   return (
     <View
       className="absolute inset-0 z-50 bg-background"
-      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+      style={{ paddingTop: marges.haut, paddingBottom: marges.bas }}
     >
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}

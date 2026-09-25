@@ -10,6 +10,7 @@ import m0005 from './0005_personnes_et_appareils.sql';
 import m0006 from './0006_retours_et_devis.sql';
 import m0007 from './0007_index_inventaire.sql';
 import m0008 from './0008_photos_articles.sql';
+import m0009 from './0009_jeton_de_perimetre.sql';
 
   export default {
     journal,
@@ -22,7 +23,8 @@ m0004,
 m0005,
 m0006,
 m0007,
-m0008
+m0008,
+m0009
     }
   }
   

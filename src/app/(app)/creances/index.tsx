@@ -58,6 +58,15 @@ import { formatDateFr, formatTimeFr } from "@vente-facile/core";
 import { dateDepuisJourISO } from "@/data/dates";
 import { telephonesDesClients } from "@/data/contacts";
 import { useMonnaie } from "@/data/devises";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  nombreDeFiltresPerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import {
   chargerCreances,
   URL_EXPORT,
@@ -84,6 +93,7 @@ import { ApiError } from "@/api/errors";
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Banner, BarreEmpilee, Card, Chip, ChipRow, DataList, DataSection,
+  BoutonFiltres,
   HIT, Icon, IconButton, Mesure, Pressable, Screen, SearchInput, Segmented,
   StatStrip, StatStripItem, Text, useToast,
 } from "@/ui";
@@ -158,6 +168,11 @@ export default function EcranCreances() {
    * des téléphones, elle, est une lecture d'identité : aucun montant n'en
    * sort, et elle réussit même quand le rapport échoue.
    */
+  const [choixPerimetre, setChoixPerimetre] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const [feuillePerimetre, setFeuillePerimetre] = useState(false);
+  const perimetre = usePerimetre(choixPerimetre, true);
+  const applique = perimetre.applique;
+
   const charger = useCallback(
     async (mode: "initial" | "rafraichir") => {
       if (!organisation) return;
@@ -168,6 +183,7 @@ export default function EcranCreances() {
           organisation,
           money: money.money,
           devisePrincipale,
+          perimetre: applique,
         });
         const tels = await telephonesDesClients(rapport.debiteurs.map((d) => d.clientId));
         if (!vivant.current) return;
@@ -191,7 +207,10 @@ export default function EcranCreances() {
         setRafraichissement(false);
       }
     },
-    [organisation, devisePrincipale, money.money, enLigne]
+    // `applique` en dépendance : changer d'entrepôt doit relancer la
+    // requête, faute de quoi l'écran annoncerait un filtre qu'il n'a pas
+    // appliqué - c'est exactement le défaut qu'on referme partout ailleurs.
+    [organisation, devisePrincipale, money.money, enLigne, applique]
   );
 
   useEffect(() => {
@@ -246,7 +265,15 @@ export default function EcranCreances() {
     try {
       await telechargerDocument(
         URL_EXPORT,
-        { tab: "receivables" },
+        {
+          tab: "receivables",
+          // Le document couvre le même périmètre que l'écran. Les filtres
+          // LOCAUX de cet écran (recherche, devise, échus seuls) n'y entrent
+          // pas, et le sous-titre le dit : un fichier qui prétendrait porter
+          // un filtre que le serveur ignore serait pire qu'un fichier complet.
+          warehouse: applique.entrepot ?? undefined,
+          user: applique.utilisateur ?? undefined,
+        },
         format,
         `Créances ${creances.arreteAu}`
       );
@@ -424,11 +451,34 @@ export default function EcranCreances() {
             </Text>
           </View>
 
-          <SearchInput
-            valeur={recherche}
-            onChange={setRecherche}
-            placeholder="Rechercher un client ou un numéro..."
-          />
+          <View className="flex-row items-center gap-2">
+            <View className="min-w-0 flex-1">
+              <SearchInput
+                valeur={recherche}
+                onChange={setRecherche}
+                placeholder="Rechercher un client ou un numéro..."
+              />
+            </View>
+            <BoutonFiltres
+              actifs={nombreDeFiltresPerimetre(perimetre)}
+              onPress={() => setFeuillePerimetre(true)}
+            />
+          </View>
+
+          {resumeDuPerimetre(perimetre).length > 0 ? (
+            <ChipRow>
+              {resumeDuPerimetre(perimetre).map((puce) => (
+                <Chip
+                  key={puce.cle}
+                  label={puce.label}
+                  actif
+                  onPress={() =>
+                    setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
+                  }
+                />
+              ))}
+            </ChipRow>
+          ) : null}
 
           <ChipRow>
             <Chip
@@ -546,6 +596,14 @@ export default function EcranCreances() {
         onChoisir={(f) => void exporter(f)}
         titre="Exporter les créances"
         envoi={envoiExport}
+      />
+      <FeuilleFiltresPerimetre
+        ouvert={feuillePerimetre}
+        onFermer={() => setFeuillePerimetre(false)}
+        valeur={choixPerimetre}
+        onChanger={setChoixPerimetre}
+        offre={perimetre}
+        libelleResultats="Voir les créances"
       />
     </Screen>
   );

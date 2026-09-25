@@ -42,11 +42,12 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 import { Icon } from "./icon";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
+import { useMargesSysteme } from "./zone-sure";
 
 export function Sheet({
   ouvert,
@@ -105,7 +106,7 @@ export function Sheet({
   pied?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
   const { height } = useWindowDimensions();
   // `useState` d'initialisation paresseuse plutôt qu'un `useRef` : la valeur
   // animée est LUE au rendu (elle part dans le style), et un ref lu au rendu
@@ -132,7 +133,24 @@ export function Sheet({
       // mouvement et le rendrait mou.
       animationType="none"
       onRequestClose={onFermer}
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ LES DEUX PROPS SONT INERTES AUJOURD'HUI, ET ON LES ÉCRIT QUAND   │
+      // │ MÊME.                                                            │
+      // │                                                                  │
+      // │ `ReactModalHostView.kt` force leurs deux getters à `true` dès que │
+      // │ le bord-à-bord est actif, et il l'est : `edgeToEdgeEnabled=true`  │
+      // │ dans `gradle.properties`, que le prebuild pose. Mais ce fichier   │
+      // │ est GITIGNORÉ - le dépôt ne le contrôle pas et ne peut pas le     │
+      // │ garder. Le jour où une version d'Expo le repasserait à `false`,   │
+      // │ la fenêtre de dialogue serait insérée par le système et la marge  │
+      // │ qu'on pose ici deviendrait une DOUBLE marge. Écrites, elles       │
+      // │ rendent la géométrie indépendante de ce drapeau.                  │
+      // │                                                                  │
+      // │ ⚠ `Modal.js` impose de poser les deux ensemble ou aucune :        │
+      // │ `navigationBarTranslucent` seul est refusé en développement.      │
+      // └──────────────────────────────────────────────────────────────────┘
       statusBarTranslucent
+      navigationBarTranslucent
     >
       <View className="flex-1 justify-end">
         {/* Le voile lit un JETON. `bg-black/50` resterait noir en thème sombre
@@ -191,7 +209,7 @@ export function Sheet({
                 paddingTop: 4,
                 // Voir `pied` : quand il est la, c'est lui qui porte la
                 // zone sure, et les cumuler laisserait une bande vide.
-                paddingBottom: pied ? 16 : Math.max(insets.bottom, 16) + 16,
+                paddingBottom: pied ? 16 : Math.max(marges.bas, 16) + 16,
                 gap: 16,
               }}
             >
@@ -226,7 +244,7 @@ export function Sheet({
               // le `DialogFooter` du back-office.
               <View
                 className="border-t border-border px-4 pt-3"
-                style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+                style={{ paddingBottom: Math.max(marges.bas, 16) }}
               >
                 {pied}
               </View>

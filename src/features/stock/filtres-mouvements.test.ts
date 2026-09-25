@@ -20,6 +20,7 @@ const VALEURS: Record<CleFiltre, Partial<FiltresEcran>> = {
   sens: { sens: true },
   type: { type: "damage" },
   entrepot: { entrepot: "w1" },
+  utilisateur: { utilisateur: "u1" },
   categorie: { categorie: "c1" },
   periode: { periode: { mode: "mois", mois: "2026-07" } },
 };
@@ -32,16 +33,17 @@ describe("le décompte de la pastille", () => {
       .toBe(0);
   });
 
-  it("compte les quatre filtres de la feuille", () => {
+  it("compte les cinq filtres de la feuille", () => {
     expect(
       nombreDeFiltresActifs({
         ...FILTRES_VIDES,
         type: "damage",
         entrepot: "w1",
+        utilisateur: "u1",
         categorie: "c1",
         periode: { mode: "jour" },
       })
-    ).toBe(4);
+    ).toBe(5);
   });
 
   it("distingue « aucun filtre caché » de « aucun filtre du tout »", () => {
@@ -52,10 +54,10 @@ describe("le décompte de la pastille", () => {
 });
 
 describe("chaque filtre atteint RÉELLEMENT le document", () => {
-  it("le balayage balaie six clés", () => {
+  it("le balayage balaie sept clés", () => {
     // Sans ce compte, une boucle sur une table vidée passerait au vert sans
     // rien démontrer. Ce dépôt s'est fait prendre trois fois.
-    expect(CLES_FILTRES).toHaveLength(6);
+    expect(CLES_FILTRES).toHaveLength(7);
   });
 
   it.each(CLES_FILTRES)("« %s » change les paramètres d'export", (cle) => {
@@ -127,7 +129,8 @@ describe("retirer un filtre", () => {
   it.each(CLES_FILTRES)("« %s » revient à sa valeur vide sans toucher aux autres", (cle) => {
     const tout: FiltresEcran = {
       recherche: "x", sens: true, type: "damage",
-      entrepot: "w1", categorie: "c1", periode: { mode: "jour" },
+      entrepot: "w1", utilisateur: "u1", categorie: "c1",
+      periode: { mode: "jour" },
     };
     const apres = sansLeFiltre(tout, cle);
     expect(apres[cle]).toEqual(FILTRES_VIDES[cle]);

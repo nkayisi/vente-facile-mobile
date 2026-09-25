@@ -52,3 +52,34 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 export const HAUTEUR_ONGLETS = 49;
+
+/**
+ * Ce qu'il faut poser sur `tabBarStyle` pour que la barre franchisse une marge
+ * basse MENTEUSE, sans la compter deux fois quand elle est juste.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LES DEUX CLÉS VONT ENSEMBLE, ET DANS CET ORDRE DE RAISONNEMENT.         │
+ * │                                                                          │
+ * │ `getTabBarHeight` (expo-router, `views/BottomTabBar.js`) lit un `height` │
+ * │ NUMÉRIQUE du style et le prend pour la hauteur TOTALE, marge comprise :  │
+ * │ sans lui, la barre garderait `49 + inset` et notre rembourrage rognerait │
+ * │ les icônes. Et `tabBarStyle` est appliqué EN DERNIER dans son tableau de │
+ * │ styles, donc son `paddingBottom` écrase celui que la barre calcule       │
+ * │ elle-même - c'est ce qui empêche l'addition d'avoir lieu deux fois.      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ QUAND LE SYSTÈME NE MENT PAS, `bas` vaut exactement `insets.bottom` et ces
+ * deux lignes redonnent la géométrie d'origine. Ce n'est donc pas une couche
+ * posée par-dessus : c'est la même formule, avec une entrée corrigée. C'est ce
+ * qui la rend sûre à livrer sans avoir vu le défaut.
+ *
+ * ⚠ ET C'EST POURQUOI ELLE PREND LA MARGE, JAMAIS UNE « COMPENSATION ». Une
+ * soustraction faite chez l'appelant pourrait se tromper de sens, et personne
+ * ne le verrait sur un appareil sain.
+ */
+export function styleBarreOnglets(bas: number): {
+  height: number;
+  paddingBottom: number;
+} {
+  return { height: HAUTEUR_ONGLETS + bas, paddingBottom: bas };
+}

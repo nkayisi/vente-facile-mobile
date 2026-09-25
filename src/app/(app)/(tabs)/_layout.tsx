@@ -28,10 +28,17 @@ import { Tabs, router } from "expo-router";
 
 import { IndicateurSync } from "@/features/sync/indicateur";
 import { MENU } from "@/navigation/menu";
+import { styleBarreOnglets } from "@/navigation/metriques";
 import { NOMS_ONGLETS, ONGLETS } from "@/navigation/onglets";
 import { TiroirProvider, useTiroir } from "@/navigation/tiroir";
 import { useSession } from "@/session/provider";
-import { IconBrute, TopBar, useTheme, type IconName } from "@/ui";
+import {
+  IconBrute,
+  TopBar,
+  useMargesSysteme,
+  useTheme,
+  type IconName,
+} from "@/ui";
 
 /**
  * Tous les écrans déclarés : les onglets d'abord (leur ordre est celui de la
@@ -51,6 +58,12 @@ const ECRANS: { nom: string; titre: string; icon: IconName }[] = [
 
 function Coquille() {
   const { colors } = useTheme();
+  // ⚠ LA BARRE D'ONGLETS LIT L'INSET ELLE-MÊME, et c'est le seul endroit de
+  // l'application où on ne peut pas l'en empêcher. Quand le système annonce
+  // zéro alors qu'il dessine une barre, elle se pose DESSUS - à l'endroit le
+  // plus tapé de l'application, cinq cibles permanentes. `styleBarreOnglets`
+  // reprend sa formule avec la marge corrigée.
+  const { bas } = useMargesSysteme();
   const { ouvrir } = useTiroir();
   const { snapshot } = useSession();
 
@@ -71,7 +84,11 @@ function Coquille() {
         ),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+          ...styleBarreOnglets(bas),
+        },
         tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11 },
       }}
     >

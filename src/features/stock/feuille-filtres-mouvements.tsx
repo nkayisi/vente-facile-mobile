@@ -27,12 +27,14 @@ import { View } from "react-native";
 import {
   MODES_PERIODE,
   moisRecents,
-  PERIODE_TOUT,
   type ModePeriode,
 } from "@/data/periode-filtre";
 import { TYPE_MOUVEMENT_STOCK } from "@/data/types-mouvement";
+import { ChampsPerimetre } from "@/features/perimetre/champs-perimetre";
+import type { OffrePerimetre } from "@/features/perimetre/filtre-perimetre";
 import {
   aDesFiltres,
+  FILTRES_VIDES,
   type FiltresEcran,
 } from "@/features/stock/filtres-mouvements";
 import {
@@ -56,7 +58,7 @@ export function FeuilleFiltresMouvements({
   valeur,
   onChanger,
   nombreDeResultats,
-  entrepots,
+  perimetre,
   categories,
 }: {
   ouvert: boolean;
@@ -64,7 +66,8 @@ export function FeuilleFiltresMouvements({
   valeur: FiltresEcran;
   onChanger: (f: FiltresEcran) => void;
   nombreDeResultats: number;
-  entrepots: OptionSelect[];
+  /** Ce que le rôle autorise : la feuille n'en décide rien, elle le rend. */
+  perimetre: OffrePerimetre;
   /** Déjà indentées par profondeur : « Sodas » se lit sous « Boissons ». */
   categories: OptionSelect[];
 }) {
@@ -75,7 +78,6 @@ export function FeuilleFiltresMouvements({
     onFermer();
   };
 
-  const nomEntrepot = entrepots.find((o) => o.valeur === valeur.entrepot)?.label;
   const nomCategorie = categories.find((o) => o.valeur === valeur.categorie)?.label;
   const p = valeur.periode;
   const nomMode = MODES_PERIODE.find((m) => m.valeur === p.mode)?.label;
@@ -102,22 +104,12 @@ export function FeuilleFiltresMouvements({
         />
       ) : (
         <>
-          <FormField label="Entrepôt">
-            <DeclencheurSelect
-              libelle={nomEntrepot ?? "Tous les entrepôts"}
-              actif={Boolean(nomEntrepot)}
-              accessibilityLabel="Entrepôt"
-              onPress={() =>
-                setChoix({
-                  titre: "Entrepôt",
-                  options: entrepots,
-                  valeur: valeur.entrepot,
-                  onChoisir: (v) => onChanger({ ...valeur, entrepot: v }),
-                  messageVide: "Aucun entrepôt n'est encore descendu sur ce terminal.",
-                })
-              }
-            />
-          </FormField>
+          <ChampsPerimetre
+            offre={perimetre}
+            valeur={valeur}
+            onChanger={(perim) => onChanger({ ...valeur, ...perim })}
+            setChoix={setChoix}
+          />
 
           <FormField
             label="Catégorie"
@@ -248,14 +240,7 @@ export function FeuilleFiltresMouvements({
               variant="ghost"
               fullWidth
               onPress={() =>
-                onChanger({
-                  recherche: "",
-                  sens: null,
-                  type: null,
-                  entrepot: null,
-                  categorie: null,
-                  periode: PERIODE_TOUT,
-                })
+                onChanger(FILTRES_VIDES)
               }
             >
               Réinitialiser les filtres

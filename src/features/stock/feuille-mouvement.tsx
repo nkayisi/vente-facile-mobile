@@ -53,7 +53,7 @@ import { useMonnaie } from "@/data/devises";
 import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre, type LectureNombre } from "@/data/nombres";
-import { emplacementsDeLEntrepot, entrepots } from "@/data/stock";
+import { emplacementsDeLEntrepot, entrepotsSansValorisation } from "@/data/stock";
 import {
   TYPE_MOUVEMENT_STOCK,
   estEntreeValorisee,
@@ -167,7 +167,7 @@ export function FeuilleNouveauMouvement({
   const [panneauArticle, setPanneauArticle] = useState(false);
   const [recherche, setRecherche] = useState("");
 
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐

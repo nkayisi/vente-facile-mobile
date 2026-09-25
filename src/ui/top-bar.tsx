@@ -30,13 +30,13 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Avatar } from "./avatar";
 import { BasculeTheme } from "./bascule-theme";
 import { Icon } from "./icon";
 import { Pressable } from "./pressable";
 import { HIT } from "./tokens";
+import { useMargesSysteme } from "./zone-sure";
 
 export function TopBar({
   nomUtilisateur,
@@ -64,11 +64,11 @@ export function TopBar({
   onMenu: () => void;
   onAvatar?: () => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
   return (
     <View
       className="flex-row items-center justify-between border-b border-border bg-card px-2"
-      style={{ paddingTop: insets.top }}
+      style={{ paddingTop: marges.haut }}
     >
       <Pressable
         onPress={onMenu}

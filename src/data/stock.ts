@@ -121,6 +121,44 @@ export interface EntrepotResume {
 }
 
 /** Entrepôts, avec la valeur du stock qu'ils portent. */
+/**
+ * Les entrepôts, SANS leur valorisation.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ `entrepots()` CHARGE TOUTES LES LIGNES DE STOCK, ET UN FILTRE N'EN A    │
+ * │ QUE FAIRE.                                                               │
+ * │                                                                          │
+ * │ Elle joint `stocks` à `products` pour calculer une valeur de stock -     │
+ * │ quinze mille lignes pour cinq mille produits sur trois dépôts. Or les    │
+ * │ écrans filtrables surveillent `stocks` : la lecture se relancerait donc  │
+ * │ à CHAQUE vente, sur l'écran ouvert, pour peupler une liste de trois      │
+ * │ noms. C'est le défaut que `_get_stock_stats` a dû corriger côté serveur, │
+ * │ transposé au terminal.                                                   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Le type reste `EntrepotResume` pour rester interchangeable avec `entrepots()`
+ * là où la valorisation ne sert pas. ⚠ `valeurStock` y vaut ZÉRO, et le nom le
+ * dit : l'afficher mentirait. Tout le reste - nom, code, adresse, entrepôt par
+ * défaut, tolérance aux soldes négatifs - est exact.
+ *
+ * Employée par les filtres ET par les six feuilles de saisie, dont aucune ne
+ * lit la valorisation. `entrepots()` reste pour les deux écrans qui la
+ * montrent : le concentrateur de stock et la fiche d'un entrepôt.
+ */
+export async function entrepotsSansValorisation(): Promise<EntrepotResume[]> {
+  const liste = await db.select().from(warehouses);
+  return liste.map((w) => ({
+    id: w.id,
+    nom: w.name,
+    code: w.code,
+    adresse: w.address?.trim() || null,
+    parDefaut: Boolean(w.isDefault),
+    actif: Boolean(w.isActive),
+    valeurStock: 0,
+    stockNegatifAutorise: Boolean(w.allowNegativeStock),
+  }));
+}
+
 export async function entrepots(): Promise<EntrepotResume[]> {
   const liste = await db.select().from(warehouses);
   const lignes = await db

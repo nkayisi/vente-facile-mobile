@@ -41,7 +41,7 @@ import {
   entrepotADuStock,
 } from "@/data/inventaire";
 import { useLecture } from "@/data/live";
-import { entrepots } from "@/data/stock";
+import { entrepotsSansValorisation } from "@/data/stock";
 import { creerSession } from "@/features/inventaire/actes";
 import {
   verifierSaisie,
@@ -84,7 +84,7 @@ export function FeuilleNouvelInventaire({
   const [panneau, setPanneau] = useState<Panneau | null>(null);
   const [recherche, setRecherche] = useState("");
 
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐

@@ -24,7 +24,7 @@ import {
   type DetailDevis,
 } from "@/data/retours-devis";
 import { entrepotParDefaut } from "@/data/entrepot-defaut";
-import { entrepots } from "@/data/stock";
+import { entrepotsSansValorisation } from "@/data/stock";
 import { nomsDeProduits } from "@/data/articles";
 import {
   convertirDevis,
@@ -108,7 +108,7 @@ export default function DetailDevisEcran() {
   const { donnees: attente } = useLecture(enAttenteRetoursDevis, {
     tables: ["outbox_operations"],
   });
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
+  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
 
   if (chargement && !d) {
     return (

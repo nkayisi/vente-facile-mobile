@@ -20,6 +20,11 @@ import { formatDateFr, formatNumberFr } from "@vente-facile/core";
 import { listeDepenses, type DepenseResume } from "@/data/caisse";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
+import {
+  contexteFileDe,
+  perimetreAffichable,
+} from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { libellePeriodeFiltre } from "@/data/periode-filtre";
 import { STATUT_DEPENSE } from "@/data/types-caisse";
 import { FeuilleNouvelleDepense } from "@/features/caisse/feuille-depense";
@@ -67,13 +72,21 @@ export default function Depenses() {
     setFiltres((f) => ({ ...f, statut: v }));
   }, []);
 
+  // La dépense PORTE son entrepôt : rien à dériver ici, contrairement au
+  // journal de caisse.
+  const perimetre = usePerimetre(filtres, true);
+  const applique = perimetre.applique;
+  const moi = snapshot?.user.id ?? null;
+  // Voir `caisse.tsx` : ce que les lignes en file ont besoin qu'on sache.
+  const file = useMemo(() => contexteFileDe(perimetre, moi), [perimetre, moi]);
+
   const charger = useCallback(
-    () => listeDepenses(filtres, fenetre),
-    [filtres, fenetre]
+    () => listeDepenses({ ...filtres, ...applique }, fenetre, file),
+    [filtres, applique, fenetre, file]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [filtres, fenetre],
+    deps: [filtres, applique, fenetre, file],
   });
   const depenses = donnees?.elements ?? [];
 
@@ -86,12 +99,17 @@ export default function Depenses() {
    * périmètre lui-même. Règle déjà posée sur les statuts de l'historique.
    */
   const chargerDecomptes = useCallback(
-    () => listeDepenses({ ...filtres, statut: null }, 5000),
-    [filtres.recherche, filtres.categorie, filtres.devise, filtres.periode]
+    () => listeDepenses({ ...filtres, ...applique, statut: null }, 5000, file),
+    [filtres.recherche, filtres.categorie, filtres.devise, filtres.periode, applique, file]
   );
   const { donnees: tous } = useLecture(chargerDecomptes, {
     tables: TABLES,
-    deps: [filtres.recherche, filtres.categorie, filtres.devise, filtres.periode],
+    deps: [
+      filtres.recherche, filtres.categorie, filtres.devise, filtres.periode,
+      // Le périmètre réduit le périmètre lui-même : sans lui ici, les puces
+      // annonceraient des décomptes d'un autre entrepôt que la liste.
+      applique, file,
+    ],
   });
   const parStatut = useMemo(() => {
     const m = new Map<string, number>();
@@ -117,11 +135,19 @@ export default function Depenses() {
   const puces = useMemo(
     () =>
       resumeDesFiltresDepense(
-        filtres,
-        { categorie: optionsCategorie.find((c) => c.valeur === filtres.categorie)?.label },
+        { ...filtres, ...perimetreAffichable(perimetre) },
+        {
+          entrepot: perimetre.entrepots.find(
+            (o) => o.valeur === perimetre.applique.entrepot
+          )?.label,
+          utilisateur: perimetre.utilisateurs.find(
+            (o) => o.valeur === perimetre.applique.utilisateur
+          )?.label,
+          categorie: optionsCategorie.find((c) => c.valeur === filtres.categorie)?.label,
+        },
         (p) => libellePeriodeFiltre(p)
       ),
-    [filtres, optionsCategorie]
+    [filtres, perimetre, optionsCategorie]
   );
 
   const totaux = donnees?.totaux ?? [];
@@ -255,7 +281,7 @@ export default function Depenses() {
             />
             <ChipRow>
               <BoutonFiltres
-                actifs={nombreDeFiltresDepense(filtres)}
+                actifs={nombreDeFiltresDepense({ ...filtres, ...perimetreAffichable(perimetre) })}
                 onPress={() => setFeuille(true)}
               />
               <Chip
@@ -341,6 +367,7 @@ export default function Depenses() {
       ) : null}
 
       <FeuilleFiltresDepense
+        perimetre={perimetre}
         ouvert={feuille}
         onFermer={() => setFeuille(false)}
         valeur={filtres}

@@ -11,7 +11,8 @@ import { SYNC_TIMEOUT_MS } from "@/api/config";
 import { ApiError, readableMessage } from "@/api/errors";
 import { connection } from "@/db/client";
 
-import { deleteRows, replaceChildren, upsertRows } from "./ingest";
+import { deleteRows, replaceChildren, upsertRows, viderTable } from "./ingest";
+import { perimetreAChange } from "./jeton-perimetre";
 import { readAllStates, readState, writeState } from "./state";
 import type {
   ChangedTables,
@@ -174,6 +175,11 @@ export async function pullTable(
     lastFullSyncAt: new Date(),
     lastError: null,
     rowCount: (state?.rowCount ?? 0) + total,
+    // Le jeton s'écrit avec la fin du tirage, jamais avant : il certifie que
+    // CE contenu a été obtenu sous CE périmètre. Posé au début, une coupure en
+    // cours de route laisserait une table à moitié tirée sous un jeton qui la
+    // déclare complète, et plus rien ne viendrait jamais la reprendre.
+    ...(spec.scope_token !== undefined ? { scopeToken: spec.scope_token } : {}),
   });
   return total;
 }
@@ -293,7 +299,36 @@ export async function pullAll(options: PullOptions = {}): Promise<BilanPull> {
   let premiereErreur: unknown = null;
 
   for (const [index, spec] of manifest.tables.entries()) {
-    if (changed !== null && !changed.has(spec.name)) {
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ LE PÉRIMÈTRE PASSE AVANT LA SONDE, ET L'ORDRE EST TOUT.            │
+    // │                                                                    │
+    // │ Une table dont le périmètre a changé n'a justement « rien de neuf » │
+    // │ à annoncer : ses lignes devenues éligibles sont DERRIÈRE le        │
+    // │ curseur, et la sonde applique exactement la même séquence que le   │
+    // │ tirage. Vérifier après elle, c'est ne jamais vérifier.             │
+    // └────────────────────────────────────────────────────────────────────┘
+    const etat = await readState(spec.name);
+    const aChange = perimetreAChange(etat?.scopeToken ?? null, spec.scope_token);
+    if (aChange) {
+      // On efface AVANT de remettre le curseur à zéro : tué entre les deux, le
+      // lancement suivant retire une table vide, ce qui est juste. Dans
+      // l'autre sens, il retirerait par-dessus des lignes hors périmètre qui
+      // resteraient à jamais.
+      await viderTable(spec.name, spec.children);
+      await writeState(spec.name, {
+        cursor: null,
+        deletedCursor: null,
+        hasMore: false,
+        rowCount: 0,
+        lastFullSyncAt: null,
+        lastError: null,
+      });
+    } else if (spec.scope_token !== undefined && etat?.scopeToken == null) {
+      // On l'apprend sans rien contester : voir `perimetreAChange`.
+      await writeState(spec.name, { scopeToken: spec.scope_token });
+    }
+
+    if (!aChange && changed !== null && !changed.has(spec.name)) {
       // ┌──────────────────────────────────────────────────────────────────┐
       // │ « RIEN DE NEUF » EST UNE CONFIRMATION, PAS UNE ABSENCE DE        │
       // │ RÉPONSE. Elle s'enregistre.                                      │

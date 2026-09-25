@@ -122,6 +122,23 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ `enforceContrast: false` N'EST PAS UNE COQUETTERIE.              │
+      // │                                                                  │
+      // │ Android pose un voile de contraste derrière la barre de          │
+      // │ navigation, et tant qu'il est là `NavigationBar.setStyle` est    │
+      // │ SANS EFFET - la documentation du module le dit en toutes         │
+      // │ lettres. Sans ce drapeau, `ui/barres-systeme.tsx` serait inerte, │
+      // │ et on le croirait branché.                                       │
+      // │                                                                  │
+      // │ Le voile n'était de toute façon pas ce qui protégeait le bas :   │
+      // │ la place de la barre est RÉSERVÉE par la marge système, pas      │
+      // │ masquée par un voile.                                            │
+      // └──────────────────────────────────────────────────────────────────┘
+      "expo-navigation-bar",
+      { enforceContrast: false },
+    ],
+    [
       "expo-splash-screen",
       {
         // ┌────────────────────────────────────────────────────────────────┐

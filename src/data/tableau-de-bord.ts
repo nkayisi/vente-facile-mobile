@@ -24,8 +24,13 @@ import {
 import { ventesEnAttenteDetaillees } from "@/features/ventes/attente";
 import {
   fusionnerVentesEnFile,
+  retientVenteEnFile,
   type Fusion,
 } from "@/features/tableau-de-bord/en-file";
+import type {
+  ContexteFile,
+  FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
 import { referencesDejaTirees } from "./deja-tirees";
 import {
   cumulerProduits,
@@ -113,8 +118,29 @@ export const LABELS_PERIODE: Record<Periode, { bouton: string; phrase: string }>
  * LIRE : le journal, les références déjà tirées, et le catalogue local d'où
  * viennent le facteur de conditionnement et le prix d'achat.
  */
-async function ventesEnFile(): Promise<Fusion> {
-  const attente = await ventesEnAttenteDetaillees();
+/**
+ * Les conditions SQL du périmètre sur `sales`.
+ *
+ * Rendues en TABLEAU pour se glisser dans un `and(...)` existant : la table
+ * porte les deux colonnes en direct (`warehouse_id`, `sold_by_id`), aucune
+ * jointure n'est donc nécessaire, et les listes `TABLES_*` n'ont pas à gagner
+ * `registers` ni `register_sessions`.
+ */
+function conditionsDePerimetre(perimetre: FiltrePerimetre) {
+  return [
+    perimetre.entrepot ? eq(sales.warehouseId, perimetre.entrepot) : undefined,
+    perimetre.utilisateur ? eq(sales.soldById, perimetre.utilisateur) : undefined,
+  ].filter(Boolean);
+}
+
+async function ventesEnFile(
+  perimetre: FiltrePerimetre,
+  file: ContexteFile
+): Promise<Fusion> {
+  const toutes = await ventesEnAttenteDetaillees();
+  // On filtre AVANT la fusion : une passe au lieu de deux, et le
+  // dédoublonnage se calcule alors sur la population réellement retenue.
+  const attente = toutes.filter((v) => retientVenteEnFile(v, perimetre, file));
   if (attente.length === 0) return { ventes: [], lignes: [], reglements: [] };
 
   const dejaTirees = await referencesDejaTirees(attente.map((v) => v.reference));
@@ -184,7 +210,11 @@ function variation(courant: number, precedent: number): number {
   return Math.round(((courant - precedent) / precedent) * 1000) / 10;
 }
 
-export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
+export async function relevesTableauDeBord(
+  p: Periode,
+  perimetre: FiltrePerimetre,
+  file: ContexteFile
+): Promise<CarteReleve> {
   const { debut, fin, debutPrecedent, finPrecedent } = bornes(p);
 
   // SEULES LES VENTES TERMINEES COMPTENT, et non supprimées. Le serveur filtre
@@ -200,9 +230,13 @@ export async function relevesTableauDeBord(p: Periode): Promise<CarteReleve> {
       status: sales.status,
       isDeleted: sales.isDeleted,
     })
-    .from(sales);
+    .from(sales)
+    // ⚠ CETTE LECTURE N'AVAIT AUCUN `.where()` : elle chargeait toute la table
+    // pour filtrer en JavaScript. Le périmètre la force à devenir une vraie
+    // requête, et c'est un gain que le filtre rend obligatoire.
+    .where(and(...conditionsDePerimetre(perimetre)));
 
-  const enFile = await ventesEnFile();
+  const enFile = await ventesEnFile(perimetre, file);
   const duJournal: VenteTiree[] = enFile.ventes.map((v) => ({
     id: v.id,
     // Le total est DÉJÀ en principale : le taux a été appliqué par le module de
@@ -374,20 +408,23 @@ export interface GraphesTableauDeBord {
  * « facturé » d'un côté, « encaissé » de l'autre.
  */
 export async function graphesTableauDeBord(
-  p: Periode
+  p: Periode,
+  perimetre: FiltrePerimetre,
+  file: ContexteFile
 ): Promise<GraphesTableauDeBord> {
   const { debut, fin } = bornes(p);
   const dansLaPeriode = and(
     eq(sales.status, "completed"),
     eq(sales.isDeleted, false),
     gte(sales.saleDate, debut),
-    lt(sales.saleDate, fin)
+    lt(sales.saleDate, fin),
+    ...conditionsDePerimetre(perimetre)
   );
 
   // La courbe compte les ventes du JOURNAL comme les autres : sans elles, une
   // journée encaissée hors ligne dessine un zéro, ce qui se lit comme un
   // effondrement et non comme un retard de synchronisation.
-  const enFile = await ventesEnFile();
+  const enFile = await ventesEnFile(perimetre, file);
   const lignesVentes = [
     ...(await db
       .select({
@@ -551,7 +588,12 @@ export interface ProduitVendu {
  * pu changer depuis la vente. C'est la règle posée dans tout le stock, et le
  * serveur l'applique ici de la même façon.
  */
-export async function topProduits(p: Periode, limite = 10): Promise<ProduitVendu[]> {
+export async function topProduits(
+  p: Periode,
+  perimetre: FiltrePerimetre,
+  file: ContexteFile,
+  limite = 10
+): Promise<ProduitVendu[]> {
   const { debut, fin } = bornes(p);
   const uniteDetail = alias(units, "unite_detail");
   const uniteContenant = alias(units, "unite_contenant");
@@ -581,7 +623,8 @@ export async function topProduits(p: Periode, limite = 10): Promise<ProduitVendu
         eq(sales.status, "completed"),
         eq(sales.isDeleted, false),
         gte(sales.saleDate, debut),
-        lt(sales.saleDate, fin)
+        lt(sales.saleDate, fin),
+        ...conditionsDePerimetre(perimetre)
       )
     );
 
@@ -626,7 +669,7 @@ export async function topProduits(p: Periode, limite = 10): Promise<ProduitVendu
   // │ est celui d'aujourd'hui, et non celui figé sur la ligne, parce qu'une    │
   // │ vente en file n'a pas encore de ligne serveur. Voir `ventesEnFile`.      │
   // └──────────────────────────────────────────────────────────────────────────┘
-  const enFile = await ventesEnFile();
+  const enFile = await ventesEnFile(perimetre, file);
   const idsRetenus = new Set(
     enFile.ventes
       .filter(
@@ -727,7 +770,14 @@ export interface ReleveInventaire {
  * écritures côté serveur, et le même stock s'affichait à deux valeurs selon
  * l'écran ouvert ; il n'y en a plus qu'une, et c'est celle-ci que l'on suit.
  */
-export async function releveInventaire(): Promise<ReleveInventaire> {
+/**
+ * ⚠ ENTREPÔT SEUL. Un stock est un ÉTAT, pas un acte : filtrer par utilisateur
+ * n'a pas de sens et viderait une carte que le marchand lit ailleurs. L'écran
+ * le DIT plutôt que d'afficher zéro.
+ */
+export async function releveInventaire(
+  perimetre: FiltrePerimetre
+): Promise<ReleveInventaire> {
   const lignes = await db
     .select({
       quantity: stocks.quantity,
@@ -738,7 +788,15 @@ export async function releveInventaire(): Promise<ReleveInventaire> {
     })
     .from(stocks)
     .innerJoin(products, eq(products.id, stocks.productId))
-    .where(eq(products.isDeleted, false));
+    .where(
+      and(
+        eq(products.isDeleted, false),
+        // Entrepôt SEUL : un stock est un état, pas un acte. `perimetre.utilisateur`
+        // est ignoré ici, et l'écran le DIT - vider une carte que le marchand
+        // lit ailleurs est pire que de l'expliquer.
+        perimetre.entrepot ? eq(stocks.warehouseId, perimetre.entrepot) : undefined
+      )
+    );
 
   let stockBas = 0;
   let valeurStock = 0;

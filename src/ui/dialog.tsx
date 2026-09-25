@@ -14,10 +14,10 @@
  * **l'action principale est EN HAUT**, « Annuler » dessous.
  */
 import { Modal, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "./button";
 import { Text } from "./text";
+import { useMargesSysteme } from "./zone-sure";
 
 export function Dialog({
   ouvert,
@@ -34,10 +34,33 @@ export function Dialog({
   children?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
+  const marges = useMargesSysteme();
 
   return (
-    <Modal visible={ouvert} transparent animationType="fade" onRequestClose={onFermer}>
+    <Modal
+      visible={ouvert}
+      transparent
+      animationType="fade"
+      onRequestClose={onFermer}
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ LES DEUX PROPS SONT INERTES AUJOURD'HUI, ET ON LES ÉCRIT QUAND   │
+      // │ MÊME.                                                            │
+      // │                                                                  │
+      // │ `ReactModalHostView.kt` force leurs deux getters à `true` dès que │
+      // │ le bord-à-bord est actif, et il l'est : `edgeToEdgeEnabled=true`  │
+      // │ dans `gradle.properties`, que le prebuild pose. Mais ce fichier   │
+      // │ est GITIGNORÉ - le dépôt ne le contrôle pas et ne peut pas le     │
+      // │ garder. Le jour où une version d'Expo le repasserait à `false`,   │
+      // │ la fenêtre de dialogue serait insérée par le système et la marge  │
+      // │ qu'on pose ici deviendrait une DOUBLE marge. Écrites, elles       │
+      // │ rendent la géométrie indépendante de ce drapeau.                  │
+      // │                                                                  │
+      // │ ⚠ `Modal.js` impose de poser les deux ensemble ou aucune :        │
+      // │ `navigationBarTranslucent` seul est refusé en développement.      │
+      // └──────────────────────────────────────────────────────────────────┘
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       {/* Le voile lit un jeton : `bg-black/50` resterait noir en thème sombre
           alors que le fond, lui, aurait changé. */}
       <View
@@ -61,8 +84,8 @@ export function Dialog({
         // │ un, pas avant.                                                  │
         // └────────────────────────────────────────────────────────────────┘
         style={{
-          paddingTop: insets.top + 16,
-          paddingBottom: insets.bottom + 16,
+          paddingTop: marges.haut + 16,
+          paddingBottom: marges.bas + 16,
         }}
       >
         <View

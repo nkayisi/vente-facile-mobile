@@ -13,6 +13,7 @@
 import {
   fusionnerVentesEnFile,
   quantiteVendue,
+  retientVenteEnFile,
   statutDeVente,
   type EntreesFusion,
 } from "./en-file";
@@ -38,6 +39,7 @@ const vente = (p: Partial<VenteEnAttenteDetaillee> = {}): VenteEnAttenteDetaille
   date: new Date("2026-09-04T10:00:00Z"),
   nbArticles: 1,
   session: "s1",
+  entrepot: null,
   envoi: "en_attente",
   versionDonnees: 2,
   brutsTicket: [100],
@@ -230,5 +232,53 @@ describe("les opérations bloquées", () => {
     // vide pendant tout le blocage, qui dure.
     const f = fusion([vente({ envoi: "bloque" })]);
     expect(f.ventes).toHaveLength(1);
+  });
+});
+
+describe("une vente encaissée sur une caisse SANS entrepôt", () => {
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ ELLE DISPARAISSAIT DU TABLEAU DE BORD ET DE L'HISTORIQUE.            │
+  // │                                                                      │
+  // │ `buildSalePayload` n'écrit la clé `warehouse` que si la caisse en a   │
+  // │ un - configuration que l'écran d'ouverture tolère avec un             │
+  // │ avertissement. Un membre borné à UN SEUL dépôt porte son entrepôt en  │
+  // │ permanence, sans l'avoir choisi : la comparaison plate rejetait donc  │
+  // │ sa propre vente, entre l'encaissement et la synchronisation, sur les  │
+  // │ deux seuls écrans où il la cherche, ticket en main.                   │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const sansEntrepot = { corps: {} } as { corps: { warehouse?: string } };
+  const dansB = { corps: { warehouse: "wh-b" } };
+  const perimetre = { entrepot: "wh-a", utilisateur: null };
+
+  it("survit sous un VERROU", () => {
+    expect(
+      retientVenteEnFile(sansEntrepot, perimetre, {
+        moi: "u-1",
+        entrepotInconnuAdmis: true,
+      })
+    ).toBe(true);
+  });
+
+  it("est écartée sous un CHOIX délibéré", () => {
+    // « Qu'y a-t-il eu dans le dépôt A ? » : une vente dont on ignore le
+    // dépôt n'y répond pas, et l'y compter gonflerait son total.
+    expect(
+      retientVenteEnFile(sansEntrepot, perimetre, {
+        moi: "u-1",
+        entrepotInconnuAdmis: false,
+      })
+    ).toBe(false);
+  });
+
+  it("une vente d'un AUTRE dépôt reste écartée, verrou ou pas", () => {
+    // Le contrôle : sans lui, tout laisser passer passerait le premier test.
+    for (const tolere of [true, false]) {
+      expect(
+        retientVenteEnFile(dansB, perimetre, {
+          moi: "u-1",
+          entrepotInconnuAdmis: tolere,
+        })
+      ).toBe(false);
+    }
   });
 });

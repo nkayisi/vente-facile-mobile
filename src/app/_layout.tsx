@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
@@ -20,6 +19,7 @@ import { DatabaseProvider } from "@/db/provider";
 import { DeconnexionProvider } from "@/session/deconnexion";
 import { SessionGate } from "@/session/gate";
 import { SessionProvider } from "@/session/provider";
+import { BarresSysteme } from "@/ui/barres-systeme";
 import { ThemeProvider } from "@/ui/theme";
 
 import "../global.css";
@@ -101,7 +101,7 @@ export default function RootLayout() {
           └──────────────────────────────────────────────────────────────┘ */}
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ThemeProvider>
-          <StatusBar style="auto" />
+          <BarresSysteme />
           <DatabaseProvider>
             <SessionProvider>
               <SessionGate />

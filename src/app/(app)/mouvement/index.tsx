@@ -64,9 +64,10 @@ import { dateCourteFr } from "@/data/dates";
 import { useLecture } from "@/data/live";
 import { journalMouvements } from "@/data/mouvements";
 import { libellePeriodeFiltre } from "@/data/periode-filtre";
-import { entrepots } from "@/data/stock";
 import { useEnLigne } from "@/data/reseau";
 import { avertissementDeMouvementsEnFile } from "@/features/export/en-file";
+import { perimetreAffichable } from "@/features/perimetre/filtre-perimetre";
+import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { FeuilleFormat } from "@/features/export/feuille-format";
 import {
   telechargerDocument,
@@ -150,32 +151,39 @@ export default function Mouvements() {
   }, []);
 
   const { recherche, sens } = filtres;
+
+  // Le périmètre décide de ce qui est proposé ET de ce qui est appliqué : un
+  // magasinier n'y voit que ses dépôts, et le filtre « Utilisateur » se ferme
+  // avec son motif s'il n'a pas de roster.
+  const perimetre = usePerimetre(filtres, true);
+  const applique = perimetre.applique;
+
   const charger = useCallback(
     () =>
       journalMouvements({
         recherche: filtres.recherche,
         type: filtres.type,
         entree: filtres.sens,
-        entrepot: filtres.entrepot,
+        // ⚠ LE PÉRIMÈTRE APPLIQUÉ, JAMAIS `filtres.entrepot`. C'est ce qui fait
+        // qu'un rôle borné ne peut pas lire au-delà de ses dépôts, même avec un
+        // état d'écran resté d'une session précédente ou d'un rôle changé
+        // au back-office pendant qu'il travaillait.
+        entrepot: applique.entrepot,
+        utilisateur: applique.utilisateur,
         categorie: filtres.categorie,
         periode: filtres.periode,
         limite: fenetre,
       }),
-    [filtres, fenetre]
+    [filtres, applique, fenetre]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [filtres, fenetre],
+    deps: [filtres, applique, fenetre],
   });
   const mouvements = donnees?.elements ?? [];
   const releves = donnees?.releves;
 
-  const { donnees: depots } = useLecture(entrepots, { tables: ["warehouses"] });
   const { donnees: cats } = useLecture(categoriesPourFiltre, { tables: ["categories"] });
-  const optionsEntrepot: OptionSelect[] = useMemo(
-    () => (depots ?? []).map((d) => ({ valeur: d.id, label: d.nom })),
-    [depots]
-  );
   const optionsCategorie: OptionSelect[] = useMemo(
     () =>
       (cats ?? []).map((c) => ({
@@ -186,16 +194,24 @@ export default function Mouvements() {
       })),
     [cats]
   );
-  const nomEntrepot = optionsEntrepot.find((o) => o.valeur === filtres.entrepot)?.label;
+  const nomEntrepot = perimetre.entrepots.find(
+    (o) => o.valeur === perimetre.applique.entrepot
+  )?.label;
+  const nomUtilisateur = perimetre.utilisateurs.find(
+    (o) => o.valeur === perimetre.applique.utilisateur
+  )?.label;
   const nomCategorie = (cats ?? []).find((c) => c.id === filtres.categorie)?.nom;
   const puces = useMemo(
     () =>
       resumeDesFiltres(
-        filtres,
-        { entrepot: nomEntrepot, categorie: nomCategorie },
+        // ⚠ LE PÉRIMÈTRE APPLIQUÉ, JAMAIS LE CHOIX BRUT. Un caissier porte deux
+        // contraintes qu'il n'a pas posées : les afficher en puces retirables
+        // lui promettrait de pouvoir les retirer.
+        { ...filtres, ...perimetreAffichable(perimetre) },
+        { entrepot: nomEntrepot, utilisateur: nomUtilisateur, categorie: nomCategorie },
         (pp) => libellePeriodeFiltre(pp)
       ),
-    [filtres, nomEntrepot, nomCategorie]
+    [filtres, perimetre, nomEntrepot, nomUtilisateur, nomCategorie]
   );
 
   // Les saisies encore dans le journal ne sont NI dans la liste (la table est
@@ -263,7 +279,7 @@ export default function Mouvements() {
     try {
       await telechargerDocument(
         "/stock-movements/export/",
-        parametresDExport(filtres),
+        parametresDExport({ ...filtres, ...applique }),
         format,
         // La PÉRIODE nomme le fichier, et non la date du jour : deux tirages
         // du même mois écraseraient sinon deux périmètres sous un seul nom.
@@ -294,7 +310,7 @@ export default function Mouvements() {
     try {
       await telechargerDocument(
         "/stock-movements/supplies-export/",
-        { ...parametresApprovisionnement(filtres), source, group_by: presentation },
+        { ...parametresApprovisionnement({ ...filtres, ...applique }), source, group_by: presentation },
         format,
         `Approvisionnement ${libellePeriodeFiltre(filtres.periode)}`
       );
@@ -441,7 +457,7 @@ export default function Mouvements() {
                 └──────────────────────────────────────────────────────────┘ */}
             <ChipRow>
               <BoutonFiltres
-                actifs={nombreDeFiltresActifs(filtres)}
+                actifs={nombreDeFiltresActifs({ ...filtres, ...perimetreAffichable(perimetre) })}
                 onPress={() => setFeuille("filtres")}
               />
               <Chip label="Tout" actif={sens === null} onPress={() => changerSens(null)} />
@@ -566,7 +582,7 @@ export default function Mouvements() {
         valeur={filtres}
         onChanger={changerFiltres}
         nombreDeResultats={releves?.nombre ?? 0}
-        entrepots={optionsEntrepot}
+        perimetre={perimetre}
         categories={optionsCategorie}
       />
 
