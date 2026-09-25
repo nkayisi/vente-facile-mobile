@@ -1,176 +1,151 @@
 /**
- * Verrou local de l'application.
+ * Verrou local de l'application : celui de l'APPAREIL, et aucun autre.
  *
- * Ce que ce verrou protège, et ce qu'il ne protège pas. Il empêche un passant
- * d'encaisser sur un terminal laissé sur le comptoir. Il ne résiste pas à un
- * attaquant qui a l'appareil, le temps, et les droits root.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ NOUS NE POSSÉDONS PLUS DE SECRET. LE SYSTÈME S'EN CHARGE.               │
+ * │                                                                          │
+ * │ Ce module tenait un code à quatre ou six chiffres, haché en SHA-256      │
+ * │ salé, avec son compteur d'essais et sa temporisation. Il argumentait     │
+ * │ longuement qu'aucune dérivation ne rend 10 000 possibilités résistantes  │
+ * │ à une attaque hors ligne - ce qui était vrai, et reste le meilleur       │
+ * │ argument CONTRE le fait d'en tenir un.                                   │
+ * │                                                                          │
+ * │ Le marchand connaît déjà le code de son téléphone. Lui en imposer un     │
+ * │ second, c'est un secret de plus à retenir, un de plus à oublier, et un   │
+ * │ de plus à écrire au dos du terminal. On demande donc au système          │
+ * │ d'authentifier son propriétaire, et il choisit lui-même par quoi : code, │
+ * │ schéma, mot de passe, empreinte ou visage.                               │
+ * │                                                                          │
+ * │ Les défenses réelles passent de trois à deux, et ce sont les deux qui    │
+ * │ tenaient déjà :                                                          │
+ * │   1. l'identifiant vit dans le matériel (Keystore Android, Trousseau     │
+ * │      iOS), et c'est le système qui le vérifie - nous ne le voyons        │
+ * │      jamais, donc nous ne pouvons pas le perdre ;                        │
+ * │   2. le gérant révoque le terminal depuis le back-office, ce qui coupe   │
+ * │      l'accès serveur quoi qu'il arrive au verrou local.                  │
+ * │                                                                          │
+ * │ La troisième, notre compteur d'essais, appartient désormais à l'OS. On   │
+ * │ ne peut ni le lire, ni le remettre à zéro, ni forcer une reconnexion par │
+ * │ mot de passe après dix échecs. C'est la contrepartie assumée, et elle    │
+ * │ est compensée par une issue de secours PERMANENTE sur l'écran de         │
+ * │ déverrouillage (voir `(locked)/unlock.tsx`).                             │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
- * Autant le dire franchement plutôt que de se donner l'air de faire mieux : un
- * code à quatre ou six chiffres, c'est 10 000 à 1 000 000 de possibilités.
- * AUCUNE fonction de dérivation ne rend cet espace résistant à une attaque
- * hors ligne. Alourdir le hachage donnerait une fausse assurance, et
- * `expo-crypto` n'expose de toute façon pas de PBKDF2 : l'imiter en JavaScript
- * imposerait 150 000 passages du pont natif, soit des minutes d'attente à
- * chaque déverrouillage.
- *
- * Les trois défenses réelles sont ailleurs :
- *   1. l'empreinte vit dans le Keystore Android ou le Trousseau iOS, adossés au
- *      matériel, et ne s'extrait pas sans compromettre l'appareil ;
- *   2. les essais sont comptés et temporisés, ici, et la temporisation survit
- *      au redémarrage de l'application ;
- *   3. le gérant révoque le terminal depuis le back-office, ce qui coupe l'accès
- *      serveur quoi qu'il arrive au verrou local.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ ⚠ UN TERMINAL SANS VERROU D'ÉCRAN N'A AUCUNE BARRIÈRE, ET C'EST UN      │
+ * │   CHOIX EXPLICITE DU PRODUIT.                                           │
+ * │                                                                          │
+ * │ Beaucoup de terminaux de caisse partagés n'ont jamais reçu de            │
+ * │ verrouillage : `getEnrolledLevelAsync()` rend alors `NONE`, et il n'y a  │
+ * │ littéralement rien à quoi s'authentifier. L'application s'ouvre          │
+ * │ directement plutôt que d'exiger la pose d'un verrou, ce qui ferait d'un  │
+ * │ réglage système un cul-de-sac au comptoir. Elle le DIT, sans rien        │
+ * │ bloquer : voir le bandeau de `profil.tsx`.                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
-import * as Crypto from "expo-crypto";
 import * as LocalAuthentication from "expo-local-authentication";
 
-import {
-  clearPin,
-  readPin,
-  readPinAttempts,
-  readPinLockedUntil,
-  writePin,
-  writePinAttempts,
-  writePinLockedUntil,
-} from "./storage";
+/**
+ * Ce que le SYSTÈME sait vérifier sur cet appareil.
+ *
+ * ⚠ CE N'EST PAS `isEnrolledAsync()`, QUI NE PARLE QUE DE BIOMÉTRIE. Un
+ * terminal sans lecteur d'empreinte mais protégé par un schéma rend `false`
+ * là, et `SECRET` ici : s'en remettre à la première ferait passer pour
+ * « sans verrou » la configuration la plus répandue du parc visé.
+ */
+export type NiveauVerrou = LocalAuthentication.SecurityLevel;
 
-export const PIN_MIN_LENGTH = 4;
-export const PIN_MAX_LENGTH = 6;
-
-/** Nombre d'essais avant la première temporisation. */
-const FREE_ATTEMPTS = 5;
-/** Au-delà, une connexion en ligne par mot de passe est exigée. */
-const MAX_ATTEMPTS = 10;
-const BASE_DELAY_MS = 30_000;
-
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function hashPin(pin: string, salt: string): Promise<string> {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    `${salt}:${pin}`,
-    { encoding: Crypto.CryptoEncoding.HEX }
-  );
-}
-
-export async function hasPin(): Promise<boolean> {
-  return (await readPin()) !== null;
-}
-
-/** Définit ou remplace le code. Remet les compteurs d'essais à zéro. */
-export async function setPin(pin: string): Promise<void> {
-  if (pin.length < PIN_MIN_LENGTH || pin.length > PIN_MAX_LENGTH) {
-    throw new Error(
-      `Le code doit compter entre ${PIN_MIN_LENGTH} et ${PIN_MAX_LENGTH} chiffres.`
-    );
+export async function niveauDeVerrou(): Promise<NiveauVerrou> {
+  try {
+    return await LocalAuthentication.getEnrolledLevelAsync();
+  } catch {
+    // ⚠ ON OUVRE, ET CELA SE LIT À L'ENVERS SANS CETTE PHRASE. Un appareil
+    // incapable de dire s'il a un verrou ne peut pas en honorer un : rendre
+    // `SECRET` par prudence enfermerait le marchand derrière une invitation
+    // que le système refusera ensuite d'afficher. C'est le même arbitrage que
+    // `storage.ts` fait pour le trousseau - sur cette voie, on ne détruit
+    // jamais et on ne bloque jamais.
+    return LocalAuthentication.SecurityLevel.NONE;
   }
-  const salt = toHex(Crypto.getRandomBytes(16));
-  await writePin({ salt, hash: await hashPin(pin, salt) });
-  await Promise.all([writePinAttempts(0), writePinLockedUntil(0)]);
 }
 
-export async function removePin(): Promise<void> {
-  await clearPin();
-  await Promise.all([writePinAttempts(0), writePinLockedUntil(0)]);
-}
-
-export type UnlockOutcome =
-  | { status: "ok" }
-  | { status: "wrong"; remaining: number }
-  | { status: "delayed"; retryInMs: number }
-  | { status: "exhausted" }
-  | { status: "no_pin" };
-
-/** Temps restant avant de pouvoir réessayer, 0 si la voie est libre. */
-export async function unlockDelayRemaining(): Promise<number> {
-  const until = await readPinLockedUntil();
-  return Math.max(0, until - Date.now());
-}
-
-export async function verifyPin(pin: string): Promise<UnlockOutcome> {
-  const record = await readPin();
-  if (!record) return { status: "no_pin" };
-
-  const delay = await unlockDelayRemaining();
-  if (delay > 0) return { status: "delayed", retryInMs: delay };
-
-  const attempts = await readPinAttempts();
-  if (attempts >= MAX_ATTEMPTS) return { status: "exhausted" };
-
-  const candidate = await hashPin(pin, record.salt);
-  if (candidate === record.hash) {
-    await Promise.all([writePinAttempts(0), writePinLockedUntil(0)]);
-    return { status: "ok" };
-  }
-
-  const next = attempts + 1;
-  await writePinAttempts(next);
-
-  if (next >= MAX_ATTEMPTS) return { status: "exhausted" };
-
-  if (next >= FREE_ATTEMPTS) {
-    // Doublement à chaque série : 30 s, 1 min, 2 min. On ne détruit rien, on
-    // fait seulement perdre du temps. Effacer la base après des essais ratés
-    // serait le défaut de l'ancienne application, déguisé en mesure de sécurité.
-    const wait = BASE_DELAY_MS * 2 ** (next - FREE_ATTEMPTS);
-    await writePinLockedUntil(Date.now() + wait);
-    return { status: "delayed", retryInMs: wait };
-  }
-
-  return { status: "wrong", remaining: MAX_ATTEMPTS - next };
-}
-
-// ---------------------------------------------------------------- biométrie
-
-export interface BiometricSupport {
-  available: boolean;
-  /** Vrai quand l'utilisateur a réellement enregistré une empreinte ou un visage. */
-  enrolled: boolean;
-  label: string;
+/** Vrai quand le système a de quoi authentifier son propriétaire. */
+export async function appareilVerrouille(): Promise<boolean> {
+  return (await niveauDeVerrou()) !== LocalAuthentication.SecurityLevel.NONE;
 }
 
 /**
- * Double garde volontaire : beaucoup de terminaux POS d'entrée de gamme n'ont
- * pas de lecteur, et beaucoup de ceux qui en ont un ne l'ont jamais configuré.
- * Proposer la biométrie dans ces cas-là mène à un bouton qui ne fait rien.
+ * Le verdict d'une tentative de déverrouillage.
+ *
+ * ⚠ IL N'Y A PAS DE `lockout_permanent`, et ce n'est pas un oubli.
+ * `LocalAuthenticationError` ne le déclare pas, et les deux natifs écrasent le
+ * cas permanent sur le transitoire (`ERROR_LOCKOUT, ERROR_LOCKOUT_PERMANENT ->
+ * "lockout"` côté Android, `return "lockout"` côté iOS). On ne peut donc pas
+ * distinguer « attendez trente secondes » de « cette empreinte est morte », et
+ * c'est POUR CELA que l'issue de secours de l'écran est inconditionnelle.
  */
-export async function biometricSupport(): Promise<BiometricSupport> {
+export type Deverrouillage =
+  | { statut: "ok" }
+  | { statut: "sans_verrou" }
+  | { statut: "annule" }
+  | { statut: "temporise" }
+  | { statut: "indisponible"; motif: string };
+
+const ANNULATIONS = ["user_cancel", "app_cancel", "system_cancel", "user_fallback"];
+/** Le système dit lui-même qu'il n'a rien à vérifier. */
+const SANS_VERROU = ["not_enrolled", "passcode_not_set"];
+
+/**
+ * Demande au système d'authentifier son propriétaire.
+ *
+ * ⚠ LE NIVEAU EST SONDÉ AVANT D'INVITER, et c'est le filet anti-enfermement.
+ * Le marchand peut retirer le verrou de son téléphone pendant que
+ * l'application est verrouillée ; sans cette sonde, l'invitation échouerait en
+ * `not_enrolled` à chaque appui et l'écran n'aurait plus aucune issue. On rend
+ * `sans_verrou` SANS rien afficher, et l'appelant fait entrer.
+ */
+export async function deverrouiller(): Promise<Deverrouillage> {
+  if (!(await appareilVerrouille())) return { statut: "sans_verrou" };
+
   try {
-    const [available, enrolled, types] = await Promise.all([
+    const resultat = await LocalAuthentication.authenticateAsync({
+      promptMessage: "Déverrouiller Vente Facile",
+      // ⚠ `disableDeviceFallback` N'EST PLUS POSÉ. Il valait `true`, pour
+      // garder NOTRE code et NOTRE compteur ; le défaut de la bibliothèque est
+      // `false`, donc le système propose le code de l'appareil quand la
+      // biométrie échoue ou n'existe pas. C'est tout l'objet de ce lot.
+      fallbackLabel: "Code de l'appareil",
+    });
+    if (resultat.success) return { statut: "ok" };
+
+    const motif = resultat.error;
+    if (SANS_VERROU.includes(motif)) return { statut: "sans_verrou" };
+    if (ANNULATIONS.includes(motif)) return { statut: "annule" };
+    if (motif === "lockout") return { statut: "temporise" };
+    return { statut: "indisponible", motif };
+  } catch {
+    // Une exception du module n'est pas un refus d'identité : on n'invente ni
+    // succès ni verdict, on laisse l'écran proposer de réessayer.
+    return { statut: "indisponible", motif: "unknown" };
+  }
+}
+
+/**
+ * De quoi NOMMER le moyen sur le bouton : « Empreinte digitale » se reconnaît
+ * là où « Déverrouiller » ne dit pas par quoi.
+ */
+export async function libelleBiometrie(): Promise<string | null> {
+  try {
+    const [materiel, enrole, types] = await Promise.all([
       LocalAuthentication.hasHardwareAsync(),
       LocalAuthentication.isEnrolledAsync(),
       LocalAuthentication.supportedAuthenticationTypesAsync(),
     ]);
-
-    const face = types.includes(
-      LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION
-    );
-    return {
-      available,
-      enrolled,
-      label: face ? "Reconnaissance faciale" : "Empreinte digitale",
-    };
+    if (!materiel || !enrole) return null;
+    return types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)
+      ? "Reconnaissance faciale"
+      : "Empreinte digitale";
   } catch {
-    return { available: false, enrolled: false, label: "Biométrie" };
-  }
-}
-
-export async function unlockWithBiometrics(): Promise<boolean> {
-  try {
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Déverrouiller Vente Facile",
-      cancelLabel: "Utiliser le code",
-      // Le repli système est écarté : c'est NOTRE code que l'on veut, avec
-      // notre compteur d'essais, pas celui de l'appareil.
-      disableDeviceFallback: true,
-    });
-    if (result.success) {
-      await Promise.all([writePinAttempts(0), writePinLockedUntil(0)]);
-    }
-    return result.success;
-  } catch {
-    return false;
+    return null;
   }
 }

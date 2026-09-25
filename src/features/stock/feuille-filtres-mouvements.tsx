@@ -52,6 +52,9 @@ const OPTIONS_MODE: OptionSelect[] = MODES_PERIODE.map((m) => ({
   label: m.label,
 }));
 
+const TOUTES_CATEGORIES = "Toutes les catégories";
+const TOUS_TYPES = "Tous les types";
+
 export function FeuilleFiltresMouvements({
   ouvert,
   onFermer,
@@ -100,6 +103,7 @@ export function FeuilleFiltresMouvements({
             choix.onChoisir(v);
             setChoix(null);
           }}
+          libelleVide={choix.libelleVide}
           messageVide={choix.messageVide}
         />
       ) : (
@@ -119,7 +123,7 @@ export function FeuilleFiltresMouvements({
             hint="Les sous-catégories sont incluses."
           >
             <DeclencheurSelect
-              libelle={nomCategorie ?? "Toutes les catégories"}
+              libelle={nomCategorie ?? TOUTES_CATEGORIES}
               actif={Boolean(nomCategorie)}
               accessibilityLabel="Catégorie"
               onPress={() =>
@@ -128,6 +132,7 @@ export function FeuilleFiltresMouvements({
                   options: categories,
                   valeur: valeur.categorie,
                   onChoisir: (v) => onChanger({ ...valeur, categorie: v }),
+                  libelleVide: TOUTES_CATEGORIES,
                   messageVide: "Aucune catégorie.",
                 })
               }
@@ -139,7 +144,7 @@ export function FeuilleFiltresMouvements({
               libelle={
                 valeur.type
                   ? (TYPE_MOUVEMENT_STOCK[valeur.type]?.label ?? valeur.type)
-                  : "Tous les types"
+                  : TOUS_TYPES
               }
               actif={Boolean(valeur.type)}
               accessibilityLabel="Type de mouvement"
@@ -149,6 +154,7 @@ export function FeuilleFiltresMouvements({
                   options: OPTIONS_TYPE,
                   valeur: valeur.type,
                   onChoisir: (v) => onChanger({ ...valeur, type: v }),
+                  libelleVide: TOUS_TYPES,
                 })
               }
             />
@@ -196,6 +202,15 @@ export function FeuilleFiltresMouvements({
                     // Douze entrées, une colonne, un coup d'oeil : il n'y a pas
                     // de sélecteur de mois natif, et aller au-delà se fait par
                     // la plage personnalisée.
+                    //
+                    // ⚠ PAS DE `libelleVide` ICI, ET C'EST LE SEUL CHAMP DE
+                    // FILTRE QUI N'EN PREND PAS. `parametresPeriode` fait
+                    // `case "mois": return { month: p.mois || moisCourant() }` :
+                    // un mois nul devient LE MOIS COURANT, jamais « tous les
+                    // mois ». « Tous » serait donc une entrée qui applique
+                    // silencieusement un autre filtre que celui qu'elle
+                    // annonce. Et « tous les mois » existe déjà, c'est le mode
+                    // « Tout l'historique » du champ juste au-dessus.
                     options: moisRecents(),
                     valeur: p.mois ?? null,
                     onChoisir: (v) =>

@@ -30,7 +30,6 @@ const ROUTE_FOR: Record<Exclude<SessionStatus, "loading">, string> = {
   // Une base étrangère se tranche AVANT de vendre : l'écran nomme l'ancien
   // propriétaire, ses opérations en attente, et n'offre que deux issues.
   base_etrangere: "/(locked)/reprise",
-  needs_pin: "/(auth)/pin",
   locked: "/(locked)/unlock",
   ready: "/(app)",
 };
@@ -78,7 +77,7 @@ export function SessionGate() {
     // l'usage - l'écran clignote et revient - jamais en relisant la table.
     //
     // Les autres états visent un écran précis, et on n'y renvoie que si on n'y
-    // est pas déjà : `needs_pin` doit ramener au code, où qu'on aille.
+    // est pas déjà : `locked` doit ramener au déverrouillage, où qu'on aille.
     const alreadyThere =
       status === "ready"
         ? segments[0] === "(app)"

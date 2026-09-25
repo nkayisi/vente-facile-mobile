@@ -73,7 +73,7 @@ const config: ExpoConfig = {
       NSCameraUsageDescription:
         "L'appareil photo sert à scanner les codes-barres des articles.",
       NSFaceIDUsageDescription:
-        "Face ID déverrouille l'application sans saisir votre code.",
+        "Face ID déverrouille ce terminal, comme le code de l'appareil.",
       NSPhotoLibraryUsageDescription:
         "Choisissez une image pour illustrer un article.",
     },
@@ -217,7 +217,7 @@ const config: ExpoConfig = {
       "expo-local-authentication",
       {
         faceIDPermission:
-          "Face ID déverrouille l'application sans saisir votre code.",
+          "Face ID déverrouille ce terminal, comme le code de l'appareil.",
       },
     ],
     [

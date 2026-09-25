@@ -52,6 +52,7 @@ export function FeuilleFiltresPerimetre({
             choix.onChoisir(v);
             setChoix(null);
           }}
+          libelleVide={choix.libelleVide}
           messageVide={choix.messageVide}
         />
       ) : (

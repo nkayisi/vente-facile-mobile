@@ -38,6 +38,11 @@ const DEMANDES = [
   "Search", "Filter",
   // Etats, retours, gardes.
   "CheckCircle2", "AlertTriangle", "AlertCircle", "Info", "Lock", "ShieldAlert",
+  // `ShieldCheck` vient de `components/marketing/capability-grid.tsx`, dont la
+  // presentation du terminal reprend les huit glyphes. `ShieldAlert` ne peut
+  // pas en tenir lieu : un point d'exclamation dans un bouclier se lit comme
+  // un avertissement, la ou la carte dit « qui peut faire quoi ».
+  "ShieldCheck",
   "Ban", "XCircle", "Inbox",
   // Actions.
   "Trash2", "RefreshCw", "LogOut", "Save", "Download", "Upload", "Eye", "EyeOff",

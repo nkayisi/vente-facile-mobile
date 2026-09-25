@@ -1,151 +1,113 @@
 /**
- * Politique du verrou local.
+ * Le verrou de l'appareil, et les cinq verdicts qu'il peut rendre.
  *
- * Ce que ces tests protègent : un passant ne doit pas pouvoir encaisser sur un
- * terminal laissé sur le comptoir, et une série d'essais ratés ne doit JAMAIS
- * détruire quoi que ce soit. L'ancienne application effaçait la base au
- * moindre doute sur la session, ce qui emportait les ventes non synchronisées ;
- * ici, la seule sanction est du temps perdu.
+ * ⚠ CES TESTS REMPLACENT CEUX DU CODE PIN. L'application ne possède plus de
+ * secret : il n'y a plus de hachage à éprouver, plus de compteur d'essais,
+ * plus de temporisation à faire survivre au redémarrage. Ce qui reste à tenir
+ * est la TRADUCTION de ce que le système répond, et elle a deux propriétés qui
+ * ne se voient pas en relisant : « pas de verrou » fait ENTRER, et le blocage
+ * ne se distingue pas du blocage définitif.
  */
-import {
-  PIN_MAX_LENGTH,
-  PIN_MIN_LENGTH,
-  hasPin,
-  removePin,
-  setPin,
-  unlockDelayRemaining,
-  verifyPin,
-} from "./lock";
-import {
-  readPin,
-  readSnapshot,
-  writePinLockedUntil,
-  writeSnapshot,
-} from "./storage";
+import * as LocalAuthentication from "expo-local-authentication";
+
+import { appareilVerrouille, deverrouiller, niveauDeVerrou } from "./lock";
+
+const auth = LocalAuthentication as unknown as {
+  getEnrolledLevelAsync: jest.Mock;
+  authenticateAsync: jest.Mock;
+  hasHardwareAsync: jest.Mock;
+  isEnrolledAsync: jest.Mock;
+  supportedAuthenticationTypesAsync: jest.Mock;
+};
 
 beforeEach(() => {
-  (global as unknown as { __resetKeychain: () => void }).__resetKeychain();
+  jest.clearAllMocks();
+  auth.getEnrolledLevelAsync.mockResolvedValue(1);
+  auth.authenticateAsync.mockResolvedValue({ success: true });
 });
 
-describe("définition du code", () => {
-  it("range un sel et une empreinte, jamais le code lui-même", async () => {
-    await setPin("1234");
-
-    const record = await readPin();
-    expect(record).not.toBeNull();
-    expect(record!.salt).toBeTruthy();
-    expect(record!.hash).not.toContain("1234");
-    expect(await hasPin()).toBe(true);
+describe("le niveau de verrou de l'appareil", () => {
+  it("rend ce que le système déclare", async () => {
+    auth.getEnrolledLevelAsync.mockResolvedValue(3);
+    expect(await niveauDeVerrou()).toBe(3);
+    expect(await appareilVerrouille()).toBe(true);
   });
 
-  it("refuse un code trop court ou trop long", async () => {
-    await expect(setPin("123")).rejects.toThrow();
-    await expect(setPin("1".repeat(PIN_MAX_LENGTH + 1))).rejects.toThrow();
-    await expect(setPin("1".repeat(PIN_MIN_LENGTH))).resolves.toBeUndefined();
+  it("un schéma ou un code suffit : ce n'est pas une affaire de biométrie", async () => {
+    // ⚠ LE PIÈGE QUE CE TEST FERME. `isEnrolledAsync()` ne parle QUE de
+    // biométrie : un terminal sans lecteur d'empreinte mais protégé par un
+    // schéma y rend `false`. S'en remettre à elle ferait passer pour « sans
+    // verrou » la configuration la plus répandue du parc visé.
+    auth.getEnrolledLevelAsync.mockResolvedValue(1); // SECRET
+    auth.isEnrolledAsync.mockResolvedValue(false);
+    auth.hasHardwareAsync.mockResolvedValue(false);
+    expect(await appareilVerrouille()).toBe(true);
   });
 
-  it("deux codes identiques donnent des empreintes différentes", async () => {
-    await setPin("1234");
-    const first = await readPin();
-    await removePin();
-    await setPin("1234");
-    const second = await readPin();
-
-    // Le sel est aléatoire : deux terminaux avec le même code ne se
-    // reconnaissent pas à leur empreinte.
-    expect(first!.salt).not.toBe(second!.salt);
-  });
-});
-
-describe("vérification", () => {
-  it("accepte le bon code et refuse un autre", async () => {
-    await setPin("1234");
-
-    expect(await verifyPin("1234")).toEqual({ status: "ok" });
-    expect((await verifyPin("9999")).status).toBe("wrong");
+  it("aucun verrou enrôlé", async () => {
+    auth.getEnrolledLevelAsync.mockResolvedValue(0);
+    expect(await appareilVerrouille()).toBe(false);
   });
 
-  it("annonce le nombre d'essais restants", async () => {
-    await setPin("1234");
-
-    const first = await verifyPin("0000");
-    expect(first).toEqual({ status: "wrong", remaining: 9 });
-
-    const second = await verifyPin("0000");
-    expect(second).toEqual({ status: "wrong", remaining: 8 });
-  });
-
-  it("remet le compteur à zéro dès qu'un essai réussit", async () => {
-    await setPin("1234");
-    await verifyPin("0000");
-    await verifyPin("0000");
-
-    expect(await verifyPin("1234")).toEqual({ status: "ok" });
-    expect(await verifyPin("0000")).toEqual({ status: "wrong", remaining: 9 });
-  });
-
-  it("répond « pas de code » quand aucun n'est défini", async () => {
-    expect(await verifyPin("1234")).toEqual({ status: "no_pin" });
+  it("une sonde qui lève OUVRE, elle ne ferme pas", async () => {
+    // Un appareil incapable de dire s'il a un verrou ne peut pas en honorer
+    // un : rendre « verrouillé » par prudence enfermerait le marchand derrière
+    // une invitation que le système refusera ensuite d'afficher.
+    auth.getEnrolledLevelAsync.mockRejectedValue(new Error("module absent"));
+    expect(await niveauDeVerrou()).toBe(0);
+    expect(await appareilVerrouille()).toBe(false);
   });
 });
 
-describe("temporisation", () => {
-  it("temporise à partir du cinquième essai raté", async () => {
-    await setPin("1234");
+describe("déverrouiller", () => {
+  it("laisse entrer quand le système a reconnu son propriétaire", async () => {
+    expect(await deverrouiller()).toEqual({ statut: "ok" });
+  });
 
-    for (let i = 0; i < 4; i++) {
-      expect((await verifyPin("0000")).status).toBe("wrong");
+  it("n'invite MÊME PAS quand l'appareil n'a pas de verrou", async () => {
+    // Le filet anti-enfermement : le marchand a retiré son verrou pendant que
+    // l'application était verrouillée. Afficher une invitation qui échouera en
+    // `not_enrolled` à chaque appui laisserait l'écran sans aucune issue.
+    auth.getEnrolledLevelAsync.mockResolvedValue(0);
+    expect(await deverrouiller()).toEqual({ statut: "sans_verrou" });
+    expect(auth.authenticateAsync).not.toHaveBeenCalled();
+  });
+
+  it("traite un verrou disparu entre la sonde et l'invitation", async () => {
+    // La course : la sonde a vu un verrou, le système n'en a plus. Le verdict
+    // doit faire ENTRER, pas laisser tourner en rond.
+    auth.authenticateAsync.mockResolvedValue({ success: false, error: "not_enrolled" });
+    expect(await deverrouiller()).toEqual({ statut: "sans_verrou" });
+  });
+
+  it("distingue une annulation d'un échec", async () => {
+    for (const motif of ["user_cancel", "app_cancel", "system_cancel", "user_fallback"]) {
+      auth.authenticateAsync.mockResolvedValue({ success: false, error: motif });
+      expect(await deverrouiller()).toEqual({ statut: "annule" });
     }
-
-    const fifth = await verifyPin("0000");
-    expect(fifth.status).toBe("delayed");
-    expect(await unlockDelayRemaining()).toBeGreaterThan(0);
   });
 
-  it("refuse même le BON code pendant la temporisation", async () => {
-    await setPin("1234");
-    for (let i = 0; i < 5; i++) await verifyPin("0000");
-
-    // Sinon la temporisation ne coûterait rien : il suffirait d'attendre le
-    // bon coup pour la traverser.
-    expect((await verifyPin("1234")).status).toBe("delayed");
+  it("le blocage du système est TRANSITOIRE, faute de pouvoir dire le contraire", async () => {
+    // ⚠ `lockout_permanent` N'EXISTE PAS. `LocalAuthenticationError` ne le
+    // déclare pas, et les deux natifs écrasent le cas permanent sur le
+    // transitoire. On ne peut donc pas savoir quand une biométrie est morte
+    // pour de bon, et c'est ce qui rend l'issue de secours de l'écran
+    // inconditionnelle.
+    auth.authenticateAsync.mockResolvedValue({ success: false, error: "lockout" });
+    expect(await deverrouiller()).toEqual({ statut: "temporise" });
   });
 
-  it("la temporisation survit à un redémarrage de l'application", async () => {
-    await setPin("1234");
-    for (let i = 0; i < 5; i++) await verifyPin("0000");
-
-    // Le trousseau la porte, pas la mémoire du processus : relire suffit à
-    // prouver qu'un redémarrage ne l'efface pas.
-    const remaining = await unlockDelayRemaining();
-    expect(remaining).toBeGreaterThan(0);
+  it("n'invente ni succès ni verdict quand le module lève", async () => {
+    auth.authenticateAsync.mockRejectedValue(new Error("boom"));
+    expect(await deverrouiller()).toEqual({ statut: "indisponible", motif: "unknown" });
   });
 
-  it("bloque définitivement au dixième essai, sans rien détruire", async () => {
-    await setPin("1234");
-
-    let outcome = await verifyPin("0000");
-    for (let i = 1; i < 10 && outcome.status !== "exhausted"; i++) {
-      // On force l'écoulement de la temporisation : le test porte sur le
-      // compteur d'essais, pas sur l'horloge.
-      await writePinLockedUntil(0);
-      outcome = await verifyPin("0000");
-    }
-
-    expect(outcome.status).toBe("exhausted");
-
-    // Et surtout : le code et l'identité mise en cache sont TOUJOURS là. Un
-    // caissier bloqué se reconnecte, il ne perd pas sa journée.
-    expect(await hasPin()).toBe(true);
-  });
-});
-
-describe("l'instantané survit à tout ce qui précède", () => {
-  it("n'est pas touché par les essais ratés", async () => {
-    await writeSnapshot({ marqueur: "ventes du jour" });
-    await setPin("1234");
-    for (let i = 0; i < 6; i++) await verifyPin("0000");
-
-    expect(await readSnapshot()).toEqual({ marqueur: "ventes du jour" });
+  it("le repli système n'est JAMAIS désactivé", async () => {
+    // C'est tout l'objet du lot : `disableDeviceFallback: true` gardait NOTRE
+    // code. Le remettre couperait le code de l'appareil, donc le seul moyen de
+    // déverrouiller un terminal sans biométrie.
+    await deverrouiller();
+    const options = auth.authenticateAsync.mock.calls[0][0];
+    expect(options.disableDeviceFallback).toBeUndefined();
   });
 });

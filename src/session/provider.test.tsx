@@ -67,9 +67,15 @@ jest.mock("./storage", () => ({
   readSnapshot: async () => mockInstantane,
   readTokens: async () => ({ access: "a", refresh: "r" }),
   writeSnapshot: async () => {},
+  purgerClesHeritees: async () => {},
 }));
 
-jest.mock("./lock", () => ({ hasPin: async () => true }));
+// Un appareil VERROUILLÉ par défaut : c'est ce qui fait atterrir le démarrage
+// sur `locked`, l'état que ces tests éprouvent.
+let mockVerrouAppareil = true;
+jest.mock("./lock", () => ({
+  appareilVerrouille: async () => mockVerrouAppareil,
+}));
 
 jest.mock("./estampille", () => ({
   lireEstampille: async () => mockEstampille,
@@ -141,6 +147,7 @@ const ETRANGERE: Estampille = {
 };
 
 beforeEach(() => {
+  mockVerrouAppareil = true;
   mockAppels.length = 0;
   mockEstampille = null;
   mockPurgeLeve = false;
@@ -217,5 +224,21 @@ describe("le coût d'un démarrage ordinaire", () => {
     expect(mockAppels).toContain("baseHabitee");
     expect(mockAppels).toContain("estampille");
     expect(vu.status).toBe("locked");
+  });
+
+  /**
+   * ⚠ LE CHOIX EXPLICITE DU PRODUIT, ET IL DOIT ÊTRE TENU PAR UN TEST.
+   *
+   * Un terminal de caisse partagé n'a souvent aucun verrouillage d'écran :
+   * `getEnrolledLevelAsync()` rend `NONE`, et il n'y a littéralement rien à
+   * quoi s'authentifier. Atterrir sur `locked` y donnerait un écran dont
+   * l'invitation ne peut pas aboutir - une caisse fermée pour de bon. On
+   * entre, et `profil.tsx` le DIT sans rien bloquer.
+   */
+  it("entre directement quand l'appareil n'a aucun verrou", async () => {
+    mockEstampille = { ...ETRANGERE, userId: "u-1", organizationId: "o-1" };
+    mockVerrouAppareil = false;
+    await demarrer();
+    expect(vu.status).toBe("ready");
   });
 });

@@ -16,11 +16,31 @@ const KEYS = {
   device: "vf.device_token",
   /** Identité mise en cache : c'est ce qui permet de démarrer sans réseau. */
   snapshot: "vf.session_snapshot",
-  pinSalt: "vf.pin_salt",
-  pinHash: "vf.pin_hash",
-  pinAttempts: "vf.pin_attempts",
-  pinLockedUntil: "vf.pin_locked_until",
 } as const;
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CLÉS HÉRITÉES : ELLES NE S'ÉCRIVENT PLUS, ET ELLES DOIVENT PARTIR.      │
+ * │                                                                          │
+ * │ L'application tenait son propre code de déverrouillage ; c'est le verrou │
+ * │ de l'appareil qui s'en charge désormais (`session/lock.ts`). Il ne       │
+ * │ suffit PAS de cesser d'écrire ces clés : une empreinte de code dort dans │
+ * │ le Keystore de chaque installation existante, et un marchand qui ne se   │
+ * │ déconnecte jamais la garderait indéfiniment. On la retire une fois au    │
+ * │ démarrage, et `clearSession` continue de les viser.                      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+const CLES_HERITEES = [
+  "vf.pin_salt",
+  "vf.pin_hash",
+  "vf.pin_attempts",
+  "vf.pin_locked_until",
+] as const;
+
+/** Idempotente, et silencieuse : `remove` avale déjà ses erreurs. */
+export async function purgerClesHeritees(): Promise<void> {
+  await Promise.all(CLES_HERITEES.map(remove));
+}
 
 async function read(key: string): Promise<string | null> {
   try {
@@ -112,45 +132,6 @@ export const clearSnapshot = () => remove(KEYS.snapshot);
 
 // -------------------------------------------------------------- verrou local
 
-export interface PinRecord {
-  salt: string;
-  hash: string;
-}
-
-export async function readPin(): Promise<PinRecord | null> {
-  const [salt, hash] = await Promise.all([read(KEYS.pinSalt), read(KEYS.pinHash)]);
-  return salt && hash ? { salt, hash } : null;
-}
-
-export async function writePin(record: PinRecord): Promise<void> {
-  await Promise.all([
-    write(KEYS.pinSalt, record.salt),
-    write(KEYS.pinHash, record.hash),
-  ]);
-}
-
-export const clearPin = () =>
-  Promise.all([remove(KEYS.pinSalt), remove(KEYS.pinHash)]).then(() => undefined);
-
-export async function readPinAttempts(): Promise<number> {
-  return Number((await read(KEYS.pinAttempts)) ?? "0");
-}
-
-export const writePinAttempts = (n: number) => write(KEYS.pinAttempts, String(n));
-
-/**
- * Fin de la temporisation après des essais ratés, en millisecondes.
- *
- * Persistée : redémarrer l'application ne doit pas remettre le compteur à zéro,
- * sinon la temporisation ne coûte rien à qui essaie des codes au hasard.
- */
-export async function readPinLockedUntil(): Promise<number> {
-  return Number((await read(KEYS.pinLockedUntil)) ?? "0");
-}
-
-export const writePinLockedUntil = (at: number) =>
-  write(KEYS.pinLockedUntil, String(at));
-
 /**
  * Efface tout ce qui touche à la session.
  *
@@ -164,8 +145,8 @@ export async function clearSession(): Promise<void> {
     clearTokens(),
     clearDeviceToken(),
     clearSnapshot(),
-    clearPin(),
-    remove(KEYS.pinAttempts),
-    remove(KEYS.pinLockedUntil),
+    // Voir `CLES_HERITEES` : elles ne s'écrivent plus, on continue de les
+    // effacer tant qu'un parc peut encore en porter.
+    purgerClesHeritees(),
   ]);
 }

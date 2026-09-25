@@ -221,6 +221,7 @@ export function FeuilleNouvelInventaire({
             choix.onChoisir(v);
             setChoix(null);
           }}
+          libelleVide={choix.libelleVide}
           messageVide={choix.messageVide}
         />
       ) : panneau === "categories" ? (

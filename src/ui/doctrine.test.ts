@@ -1004,11 +1004,27 @@ describe("le parcours d'authentification centre son contenu", () => {
    * `HorsLigneBloquant` porte son propre centrage (`flex-1 items-center
    * justify-center`), et c'est écrit dans son fichier : ajouter `centre` sur le
    * `Screen` qui l'enveloppe serait une redondance posée pour faire passer un
-   * test. Les écrans de code PIN, eux, centrent à la main dans un `Screen` non
-   * défilant, la pavé numérique ayant besoin de sa hauteur.
+   * test.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ ⚠ LA CLAUSE `justify-center` A ÉTÉ RETIRÉE, ET C'EST UN RESSERREMENT.  │
+   * │                                                                        │
+   * │ Elle couvrait les deux écrans de code PIN, qui centraient à la main    │
+   * │ dans un `Screen` non défilant - le pavé numérique avait besoin de sa   │
+   * │ hauteur. Ces deux écrans ont disparu avec le code de l'application :   │
+   * │ `(auth)/pin.tsx` est supprimé, `(locked)/unlock.tsx` prend le vrai     │
+   * │ prop `centre`.                                                         │
+   * │                                                                        │
+   * │ La garder serait pire que l'ôter. Ses seuls satisfaisants restants     │
+   * │ sont INCIDENTS : le rond d'icône de `unlock.tsx` et une case à cocher  │
+   * │ de `inscription/etablissement.tsx`, deux `justify-center` qui ne       │
+   * │ centrent pas une page. Elle laisserait donc passer au vert un écran    │
+   * │ réellement collé en haut, pour une raison qui n'est pas la sienne -    │
+   * │ le motif que ce fichier combat partout ailleurs.                       │
+   * └────────────────────────────────────────────────────────────────────────┘
    */
   const centreAutrement = (code: string): boolean =>
-    code.includes("justify-center") || code.includes("HorsLigneBloquant");
+    code.includes("HorsLigneBloquant");
 
   /**
    * ┌────────────────────────────────────────────────────────────────────────┐
@@ -1020,14 +1036,17 @@ describe("le parcours d'authentification centre son contenu", () => {
    * │ horizontal pleine hauteur, surmonté d'une barre et suivi d'un pied     │
    * │ fixe. Le centrer empêcherait son corps de remplir la fenêtre, donc de  │
    * │ paginer sur une page entière : le balayage s'arrêterait entre deux     │
-   * │ vues. C'est chaque VUE qui centre son contenu, dans `carrousel.tsx`.   │
+   * │ vues. C'est chaque VUE qui empile sa maquette et son texte sur toute   │
+   * │ la hauteur, dans `carrousel.tsx`.                                      │
    * │                                                                        │
-   * │ ⚠ L'EXCEPTION EST NOMMÉE PLUTÔT QU'IMPLICITE. Sans elle, le test       │
-   * │ passerait quand même - les vues contiennent `justify-center`, que      │
-   * │ `centreAutrement` accepte - mais il passerait PAR ACCIDENT, et le      │
-   * │ jour où ce mot disparaîtrait du fichier voisin, un écran sans rapport  │
-   * │ se retrouverait fautif. Ce dépôt a déjà payé trois fois le prix d'un   │
-   * │ balayage vert pour une raison qui n'était pas la sienne.               │
+   * │ ⚠ L'EXCEPTION EST LE SEUL VERROU, ET SA NOTE AFFIRMAIT LE CONTRAIRE.   │
+   * │ Elle disait que le test « passerait quand même, les vues contenant     │
+   * │ `justify-center` ». C'était faux, et depuis toujours : `centreAutrement`│
+   * │ lit le fichier BALAYÉ, c'est-à-dire `bienvenue.tsx`, lequel n'a jamais │
+   * │ porté ce mot - `carrousel.tsx` vit dans `features/`, que ce balayage   │
+   * │ ne visite pas. Retirer l'exception fait donc réellement échouer la     │
+   * │ suite. Le principe qu'elle défendait reste bon : une exception nommée  │
+   * │ dit POURQUOI, là où un balayage vert par accident ne dit rien.         │
    * └────────────────────────────────────────────────────────────────────────┘
    */
   const EXCEPTIONS = ["app/(auth)/bienvenue.tsx"];
@@ -1866,5 +1885,117 @@ describe("la règle de périmètre n'a qu'une seule écriture", () => {
     expect(sansCommentaires(code)).not.toMatch(
       /(?<![=!<>])=\s*"(?:un-seul-entrepot|aucun-entrepot)"/
     );
+  });
+});
+
+describe("un filtre à choix unique offre toujours de le retirer", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ TOUT FILTRE QUI SE POSE DOIT POUVOIR SE DÉPOSER, ET DEPUIS SA LISTE.     │
+   * │                                                                          │
+   * │ Le mécanisme existait : `ListeChoix` prend un `libelleVide` et en fait   │
+   * │ une première entrée « aucun choix ». Mais `DemandeChoix.libelleVide`     │
+   * │ était DÉCLARÉ et transmis par AUCUN des huit panneaux, si bien que       │
+   * │ « Tous les entrepôts » n'était qu'un texte indicatif sur le déclencheur  │
+   * │ fermé : une fois une valeur choisie, la liste n'offrait plus aucun       │
+   * │ retour. Le défaut ne lève rien - le filtre marche, il ne se défait pas.  │
+   * │                                                                          │
+   * │ Le motif était exact : toute puce avait son « Tous », toute feuille n'en │
+   * │ avait pas. Et le web, lui, le faisait déjà (`emptyLabel`).               │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+
+  //: Une PHRASE de portée, pas n'importe quel mot : « Tout l'historique » est
+  //: une valeur d'énumération réelle et « Choisir un mois » est une consigne.
+  //: Ni l'une ni l'autre ne décrit « aucun filtre », et ni l'une ni l'autre ne
+  //: satisfait `Tous ` / `Toutes `. L'exclusion est donc par CONSTRUCTION, et
+  //: c'est ce qui dispense ce garde-fou de toute liste d'exceptions.
+  const PHRASE = /^Tou(?:s|tes) /;
+
+  /** Les feuilles qui posent un choix unique de filtre. */
+  function feuillesDeFiltres(): string[] {
+    return fichiers(join(RACINE, "features")).filter((f) => {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      return code.includes("setChoix({") && /=\s*"Tou(?:s|tes) /.test(code);
+    });
+  }
+
+  it("le balayage voit bien les feuilles de filtres", () => {
+    //: Ce dépôt s'est fait prendre au moins quatre fois par un balayage qui ne
+    //: balayait rien et passait au vert. On compte AVANT d'affirmer.
+    expect(feuillesDeFiltres().length).toBeGreaterThan(2);
+  });
+
+  it("toute phrase « Tous … » sert au déclencheur ET à la liste", () => {
+    const fautifs: string[] = [];
+    for (const f of feuillesDeFiltres()) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      //: La phrase est hissée en constante parce qu'elle sert deux fois : la
+      //: ligne qu'on touche doit lire EXACTEMENT ce que lisait le déclencheur
+      //: fermé, sinon on ne sait pas qu'on revient au point de départ.
+      for (const m of code.matchAll(/const (\w+) = "([^"]+)";/g)) {
+        const [, nom, valeur] = m;
+        if (!PHRASE.test(valeur)) continue;
+        if (!new RegExp(`libelle=\\{[^}]*\\b${nom}\\b`).test(code)) {
+          fautifs.push(`${relative(RACINE, f)} : ${nom} ne sert à aucun déclencheur`);
+        }
+        if (!new RegExp(`libelleVide:\\s*${nom}\\b`).test(code)) {
+          fautifs.push(`${relative(RACINE, f)} : ${nom} n'est l'entrée « aucun choix » d'aucune liste`);
+        }
+      }
+      //: Et la forme non hissée, celle d'un filtre ajouté demain sans relire ceci.
+      const brut = code.match(/libelle=\{[^}]*\?\?\s*"(Tou(?:s|tes) [^"]+)"/);
+      if (brut) {
+        fautifs.push(`${relative(RACINE, f)} : « ${brut[1] } » est écrite en clair, donc une seule fois`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("les panneaux transmettent libelleVide à leur liste", () => {
+    //: `messageVide` seul, c'est le panneau qui sait dire pourquoi une liste est
+    //: vide mais pas comment la vider. Les deux props voyagent ensemble.
+    const porteurs: string[] = [];
+    const fautifs: string[] = [];
+    for (const f of fichiers(join(RACINE, "features"))) {
+      const code = readFileSync(f, "utf8");
+      if (!code.includes("messageVide={choix.messageVide}")) continue;
+      porteurs.push(relative(RACINE, f));
+      const attendus = code.split("messageVide={choix.messageVide}").length - 1;
+      const rendus = code.split("libelleVide={choix.libelleVide}").length - 1;
+      if (rendus !== attendus) {
+        fautifs.push(`${relative(RACINE, f)} : ${rendus}/${attendus} liste(s) transmettent libelleVide`);
+      }
+    }
+    expect(porteurs.length).toBeGreaterThan(5);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("une puce de filtre posé porte sa croix de retrait", () => {
+    //: `Chip.onRetirer` était documenté « puce de filtre actif » et n'avait
+    //: AUCUN appelant : la puce de résumé était indiscernable des puces de
+    //: sélection posées dans la même rangée, et rien ne disait laquelle se
+    //: retire. Un prop documenté sans appelant est une promesse écrite que
+    //: personne ne tient.
+    const fautifs: string[] = [];
+    let puces = 0;
+    for (const f of fichiers(join(RACINE, "app"))) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/sansLeFiltre\w*\(/.test(code)) continue;
+      puces += 1;
+      if (!code.includes("onRetirer=")) {
+        fautifs.push(`${relative(RACINE, f)} : puce de filtre posé sans croix de retrait`);
+      }
+    }
+    expect(puces).toBeGreaterThan(5);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le balayage MORD", () => {
+    expect(PHRASE.test("Tous les entrepôts")).toBe(true);
+    expect(PHRASE.test("Toutes les devises")).toBe(true);
+    //: Les deux formes légitimes que ce garde-fou ne doit JAMAIS réclamer.
+    expect(PHRASE.test("Tout l'historique")).toBe(false);
+    expect(PHRASE.test("Choisir un mois")).toBe(false);
   });
 });

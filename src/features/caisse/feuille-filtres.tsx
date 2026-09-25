@@ -186,6 +186,12 @@ function Pied({
   );
 }
 
+/* Les mêmes phrases sur le déclencheur fermé et sur la première ligne de la
+   liste : voir `features/perimetre/champs-perimetre.tsx`, qui porte le motif. */
+const TOUS_TYPES = "Tous les types";
+const TOUTES_CATEGORIES = "Toutes les catégories";
+const TOUTES_DEVISES = "Toutes les devises";
+
 export function FeuilleFiltresCaisse({
   ouvert,
   onFermer,
@@ -223,6 +229,7 @@ export function FeuilleFiltresCaisse({
             choix.onChoisir(v);
             setChoix(null);
           }}
+          libelleVide={choix.libelleVide}
           messageVide={choix.messageVide}
         />
       ) : (
@@ -236,7 +243,7 @@ export function FeuilleFiltresCaisse({
 
           <FormField label="Type de mouvement">
             <DeclencheurSelect
-              libelle={valeur.type ? libelleTypeCaisse(valeur.type) : "Tous les types"}
+              libelle={valeur.type ? libelleTypeCaisse(valeur.type) : TOUS_TYPES}
               actif={Boolean(valeur.type)}
               accessibilityLabel="Type de mouvement"
               onPress={() =>
@@ -245,6 +252,7 @@ export function FeuilleFiltresCaisse({
                   options: OPTIONS_TYPE,
                   valeur: valeur.type,
                   onChoisir: (v) => onChanger({ ...valeur, type: v }),
+                  libelleVide: TOUS_TYPES,
                 })
               }
             />
@@ -258,7 +266,7 @@ export function FeuilleFiltresCaisse({
               hint="Celle des billets. Le tiroir contient des liasses distinctes."
             >
               <DeclencheurSelect
-                libelle={valeur.devise ?? "Toutes les devises"}
+                libelle={valeur.devise ?? TOUTES_DEVISES}
                 actif={Boolean(valeur.devise)}
                 accessibilityLabel="Devise"
                 onPress={() =>
@@ -267,6 +275,7 @@ export function FeuilleFiltresCaisse({
                     options: devises,
                     valeur: valeur.devise,
                     onChoisir: (v) => onChanger({ ...valeur, devise: v }),
+                    libelleVide: TOUTES_DEVISES,
                   })
                 }
               />
@@ -331,6 +340,7 @@ export function FeuilleFiltresDepense({
             choix.onChoisir(v);
             setChoix(null);
           }}
+          libelleVide={choix.libelleVide}
           messageVide={choix.messageVide}
         />
       ) : (
@@ -344,7 +354,7 @@ export function FeuilleFiltresDepense({
 
           <FormField label="Catégorie">
             <DeclencheurSelect
-              libelle={nomCategorie ?? "Toutes les catégories"}
+              libelle={nomCategorie ?? TOUTES_CATEGORIES}
               actif={Boolean(nomCategorie)}
               accessibilityLabel="Catégorie"
               onPress={() =>
@@ -353,6 +363,7 @@ export function FeuilleFiltresDepense({
                   options: categories,
                   valeur: valeur.categorie,
                   onChoisir: (v) => onChanger({ ...valeur, categorie: v }),
+                  libelleVide: TOUTES_CATEGORIES,
                   messageVide:
                     "Aucune catégorie de dépense n'est encore descendue sur ce terminal.",
                 })
@@ -363,7 +374,7 @@ export function FeuilleFiltresDepense({
           {devises.length > 1 ? (
             <FormField label="Devise">
               <DeclencheurSelect
-                libelle={valeur.devise ?? "Toutes les devises"}
+                libelle={valeur.devise ?? TOUTES_DEVISES}
                 actif={Boolean(valeur.devise)}
                 accessibilityLabel="Devise"
                 onPress={() =>
@@ -372,6 +383,7 @@ export function FeuilleFiltresDepense({
                     options: devises,
                     valeur: valeur.devise,
                     onChoisir: (v) => onChanger({ ...valeur, devise: v }),
+                    libelleVide: TOUTES_DEVISES,
                   })
                 }
               />

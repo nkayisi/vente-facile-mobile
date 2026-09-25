@@ -1,179 +1,138 @@
 /**
- * Déverrouillage.
+ * Déverrouillage, par le verrou de l'APPAREIL.
  *
  * Aucun appel réseau : c'est le point d'entrée d'un terminal qui peut être
- * hors ligne depuis trois semaines. Tout se vérifie contre le trousseau.
+ * hors ligne depuis trois semaines. C'est le système qui vérifie l'identité, et
+ * il choisit lui-même par quoi - code, schéma, mot de passe, empreinte, visage.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'ISSUE DE SECOURS EST PERMANENTE, ET C'EST LA PIÈCE MAÎTRESSE.         │
+ * │                                                                          │
+ * │ Elle ne vivait que dans la branche « trop d'essais » de l'ancien code    │
+ * │ PIN. Cette branche n'existe plus : le compteur appartient à l'OS, et     │
+ * │ `expo-local-authentication` ne distingue même pas un blocage temporaire  │
+ * │ d'un blocage définitif - les deux natifs rendent `lockout` (voir         │
+ * │ `session/lock.ts`). On ne peut donc plus savoir QUAND offrir une sortie. │
+ * │                                                                          │
+ * │ Elle est donc offerte TOUT LE TEMPS. C'est la seule chose entre un       │
+ * │ marchand qui a oublié le code de son TÉLÉPHONE et une caisse qu'il ne    │
+ * │ peut plus ouvrir. Elle n'efface rien : `useDeconnexion` envoie d'abord   │
+ * │ ce qui attend, nomme ce qui ne peut pas partir, et laisse toujours       │
+ * │ « se déconnecter sans effacer ».                                         │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
-import {
-  PIN_MAX_LENGTH,
-  PIN_MIN_LENGTH,
-  biometricSupport,
-  unlockDelayRemaining,
-  unlockWithBiometrics,
-  verifyPin,
-  type BiometricSupport,
-} from "@/session/lock";
 import { useDeconnexion } from "@/session/deconnexion";
+import { deverrouiller, libelleBiometrie } from "@/session/lock";
 import { useSession } from "@/session/provider";
-import { Banner, Button, PinDots, PinPad, Screen, Text } from "@/ui";
-
-function formatDelay(ms: number): string {
-  const seconds = Math.ceil(ms / 1000);
-  if (seconds < 60) return `${seconds} seconde${seconds > 1 ? "s" : ""}`;
-  const minutes = Math.ceil(seconds / 60);
-  return `${minutes} minute${minutes > 1 ? "s" : ""}`;
-}
+import { Banner, Button, Icon, Screen, Text } from "@/ui";
 
 export default function Unlock() {
   const { snapshot, markUnlocked } = useSession();
   const { demander } = useDeconnexion();
 
-  const [pin, setPin] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const [exhausted, setExhausted] = useState(false);
-  const [delayMs, setDelayMs] = useState(0);
-  const [biometrics, setBiometrics] = useState<BiometricSupport | null>(null);
+  const [temporise, setTemporise] = useState(false);
+  const [enCours, setEnCours] = useState(false);
+  const [biometrie, setBiometrie] = useState<string | null>(null);
 
-  useEffect(() => {
-    void biometricSupport().then(setBiometrics);
-    void unlockDelayRemaining().then(setDelayMs);
-  }, []);
+  const tenter = useCallback(async () => {
+    setEnCours(true);
+    const verdict = await deverrouiller();
+    setEnCours(false);
 
-  // Décompte de la temporisation, pour que l'utilisateur voie qu'elle s'écoule
-  // plutôt que de taper dans le vide.
-  useEffect(() => {
-    if (delayMs <= 0) return;
-    const timer = setInterval(() => {
-      setDelayMs((ms) => Math.max(0, ms - 1000));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [delayMs > 0]);
-
-  const tryBiometrics = useCallback(async () => {
-    if (await unlockWithBiometrics()) markUnlocked();
+    switch (verdict.statut) {
+      case "ok":
+        markUnlocked();
+        return;
+      case "sans_verrou":
+        // ⚠ ON ENTRE, ET C'EST LE FILET ANTI-ENFERMEMENT. Le marchand a retiré
+        // le verrou de son téléphone pendant que l'application était fermée :
+        // il n'y a plus rien à vérifier, et refuser l'entrée fermerait la
+        // caisse pour de bon. `provider.tsx` fait la même lecture au premier
+        // plan, souvent avant même qu'on arrive ici.
+        markUnlocked();
+        return;
+      case "annule":
+        setTemporise(false);
+        setMessage(null);
+        return;
+      case "temporise":
+        setTemporise(true);
+        setMessage(null);
+        return;
+      case "indisponible":
+        setTemporise(false);
+        setMessage("Le déverrouillage n'a pas abouti. Réessayez.");
+    }
   }, [markUnlocked]);
 
-  // Proposée d'emblée quand le matériel la porte ET qu'elle est configurée :
-  // le geste attendu au comptoir est de poser le doigt, pas de taper.
+  /**
+   * ⚠ UNE SEULE INVITATION AUTOMATIQUE PAR MONTAGE, ET LE VERROU EST UN `ref`.
+   *
+   * Sur iOS, l'invitation système rend l'application `inactive` : un effet qui
+   * se relancerait sur un état modifié par la tentative rouvrirait le prompt
+   * aussitôt fermé, et le marchand ne pourrait plus l'annuler. C'est la boucle
+   * annulation → ré-invitation classique, et elle ne se voit pas en relisant.
+   */
+  const dejaTente = useRef(false);
   useEffect(() => {
-    if (biometrics?.available && biometrics.enrolled && delayMs === 0) {
-      void tryBiometrics();
-    }
-  }, [biometrics?.available, biometrics?.enrolled]);
-
-  const submit = useCallback(
-    async (code: string) => {
-      const outcome = await verifyPin(code);
-      setPin("");
-
-      switch (outcome.status) {
-        case "ok":
-          markUnlocked();
-          return;
-        case "wrong":
-          setMessage(
-            `Code incorrect. ${outcome.remaining} essai${outcome.remaining > 1 ? "s" : ""} avant blocage.`
-          );
-          return;
-        case "delayed":
-          setDelayMs(outcome.retryInMs);
-          setMessage(null);
-          return;
-        case "exhausted":
-          setExhausted(true);
-          return;
-        case "no_pin":
-          markUnlocked();
-      }
-    },
-    [markUnlocked]
-  );
-
-  const onDigit = (digit: string) => {
-    if (delayMs > 0 || exhausted) return;
-    const next = pin + digit;
-    setPin(next);
-    setMessage(null);
-    if (next.length >= PIN_MIN_LENGTH) {
-      // On tente dès la longueur minimale : la plupart des codes font quatre
-      // chiffres, et exiger une validation ajouterait un geste par ouverture.
-      void submit(next);
-    }
-    if (next.length >= PIN_MAX_LENGTH) setPin("");
-  };
-
-  if (exhausted) {
-    return (
-      <Screen>
-        <View className="flex-1 justify-center">
-          <Banner
-            tone="destructive"
-            title="Trop d'essais"
-            // La promesse est devenue CONDITIONNELLE, et elle doit le dire. La
-            // modale envoie d'abord ce qui attend, puis remet le terminal à
-            // neuf ; ce qui ne peut pas partir - pas de réseau, un droit
-            // manquant, un refus du serveur - n'est jamais effacé, elle n'offre
-            // aucune issue destructrice.
-            message="Reconnectez-vous avec votre mot de passe. Ce qui attend encore son envoi partira d'abord, et ce qui ne peut pas partir est conservé."
-          />
-          <View className="mt-6">
-            <Button fullWidth size="lg" onPress={demander}>
-              Se reconnecter
-            </Button>
-          </View>
-        </View>
-      </Screen>
-    );
-  }
+    void libelleBiometrie().then(setBiometrie);
+    if (dejaTente.current) return;
+    dejaTente.current = true;
+    void tenter();
+  }, [tenter]);
 
   return (
-    <Screen>
-      <View className="flex-1 justify-center">
-        <View className="mb-10 items-center">
+    // ⚠ LE RYTHME VIENT D'UN `gap`, PAS DE MARGES VERTICALES. Sous `centre`,
+    // une marge de tête décale le bloc SOUS l'axe au lieu de l'espacer, et
+    // c'est la première chose qu'on remet par réflexe - un garde-fou de
+    // doctrine la refuse.
+    <Screen centre>
+      <View className="gap-8">
+        <View className="items-center">
           <Text variant="h3">{snapshot?.organization.name ?? "Vente Facile"}</Text>
           <Text variant="muted" className="mt-1">
             {snapshot?.user.full_name}
           </Text>
         </View>
 
-        <View className="mb-8">
-          <Text variant="label" className="mb-5 text-center">
-            {delayMs > 0 ? "Trop d'essais" : "Entrez votre code"}
+        <View className="items-center gap-4">
+          <View className="h-20 w-20 items-center justify-center rounded-full bg-accent">
+            <Icon name="Lock" size={32} color="accentForeground" />
+          </View>
+          <Text variant="body" className="text-center text-muted-foreground">
+            {biometrie
+              ? `Déverrouillez avec ${biometrie.toLowerCase()} ou le code de l'appareil.`
+              : "Déverrouillez avec le code de l'appareil."}
           </Text>
-          <PinDots length={PIN_MIN_LENGTH} filled={pin.length} />
         </View>
 
-        {delayMs > 0 ? (
-          <Text variant="muted" className="mb-4 text-center">
-            Réessayez dans {formatDelay(delayMs)}.
-          </Text>
+        {temporise ? (
+          <Banner
+            tone="warning"
+            title="Trop de tentatives"
+            // ⚠ AUCUN COMPTE À REBOURS. Le minuteur appartient au système, on ne
+            // peut ni le lire ni le prévoir : annoncer « réessayez dans trente
+            // secondes » serait une durée inventée. Et comme `lockout` recouvre
+            // aussi le blocage définitif, la seconde phrase est la vraie issue.
+            message="Le système a suspendu le déverrouillage. Réessayez dans un moment, ou reconnectez-vous avec votre mot de passe."
+          />
         ) : message ? (
-          <Text variant="error" className="mb-4 text-center">
-            {message}
-          </Text>
+          <Banner tone="destructive" title="Déverrouillage impossible" message={message} />
         ) : null}
 
-        <PinPad
-          onDigit={onDigit}
-          onBackspace={() => setPin((p) => p.slice(0, -1))}
-          disabled={delayMs > 0}
-        />
-
-        {biometrics?.available && biometrics.enrolled ? (
-          <View className="mt-6 items-center">
-            <Button
-              variant="ghost"
-              leftIcon="ion:finger-print"
-              onPress={tryBiometrics}
-              disabled={delayMs > 0}
-            >
-              {biometrics.label}
-            </Button>
-          </View>
-        ) : null}
+        <View className="gap-3">
+          <Button fullWidth size="lg" onPress={tenter} loading={enCours}>
+            Déverrouiller
+          </Button>
+          {/* Voir l'encadré de tête : offerte dans TOUS les états, sans condition. */}
+          <Button fullWidth variant="ghost" onPress={demander}>
+            Se reconnecter avec le mot de passe
+          </Button>
+        </View>
       </View>
     </Screen>
   );

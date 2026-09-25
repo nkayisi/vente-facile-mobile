@@ -18,6 +18,7 @@ import { useSession } from "@/session/provider";
 import {
   Avatar,
   Badge,
+  Banner,
   Button,
   Card,
   Divider,
@@ -41,7 +42,7 @@ function dateLisible(v: string | null | undefined): string {
 }
 
 export default function Profil() {
-  const { snapshot, lock } = useSession();
+  const { snapshot, lock, verrouAppareil } = useSession();
   const { demander } = useDeconnexion();
   const u = snapshot?.user;
   const role = snapshot?.membership?.role ?? null;
@@ -132,9 +133,34 @@ export default function Profil() {
             </View>
           </View>
           <View className="mt-4 gap-2">
-            <Button variant="outline" fullWidth leftIcon="Lock" onPress={lock}>
-              Verrouiller le terminal
-            </Button>
+            {/* ┌──────────────────────────────────────────────────────────┐
+                │ UN TERMINAL SANS VERROU LE DIT, ET NE BLOQUE RIEN.      │
+                │                                                          │
+                │ L'application s'ouvre directement quand l'appareil n'a   │
+                │ ni code, ni schéma, ni empreinte : c'est un choix        │
+                │ explicite du produit, et exiger la pose d'un verrou      │
+                │ ferait d'un réglage système un cul-de-sac au comptoir.   │
+                │ Mais se taire ferait croire à une protection qui         │
+                │ n'existe pas.                                            │
+                │                                                          │
+                │ ⚠ ON REMPLACE LE BOUTON, ON NE LE GRISE PAS. Verrouiller │
+                │ mènerait à un écran dont l'invitation ne peut pas        │
+                │ aboutir ; et un bouton éteint sans explication, c'est    │
+                │ très exactement se taire. `warning` et non               │
+                │ `destructive` : c'est un état que le marchand a choisi,  │
+                │ pas une panne.                                           │
+                └──────────────────────────────────────────────────────────┘ */}
+            {verrouAppareil === false ? (
+              <Banner
+                tone="warning"
+                title="Ce terminal n'a pas de verrou"
+                message="Aucun code, schéma ni empreinte n'est configuré sur l'appareil : l'application s'ouvre directement. Ajoutez un verrouillage d'écran dans les réglages du téléphone pour la protéger."
+              />
+            ) : (
+              <Button variant="outline" fullWidth leftIcon="Lock" onPress={lock}>
+                Verrouiller le terminal
+              </Button>
+            )}
             <Button variant="destructive" fullWidth leftIcon="LogOut" onPress={demander}>
               Se déconnecter
             </Button>

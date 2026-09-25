@@ -126,9 +126,10 @@ du backend là où c'est l'adresse qui est fausse.
 2. **Choix de l'organisation**, si le compte en sert plusieurs.
 3. **Enrôlement** : le serveur attribue à l'appareil son code de quatre
    caractères, celui qui numérote les documents (`VT-20260909-Q5L8-0001`).
-4. **Code de verrouillage** de quatre à six chiffres, saisi deux fois puis
-   redemandé à chaque ouverture. Il est LOCAL : il ne déverrouille pas le
-   compte, il déverrouille ce terminal.
+4. **Rien à créer.** L'application se déverrouille avec le verrou de
+   l'APPAREIL : code, schéma, mot de passe, empreinte ou visage, celui que le
+   marchand connaît déjà. Un terminal sans verrouillage d'écran s'ouvre
+   directement, et « Mon profil » le dit sans rien bloquer.
 
 La première synchronisation tire une trentaine de tables et peut prendre une
 minute. Les suivantes ne coûtent qu'une requête quand rien n'a changé.

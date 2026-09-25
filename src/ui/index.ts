@@ -24,7 +24,6 @@ export {
 export { Card, CardHeader, Section } from "./card";
 export { ListItem, type ListItemProps } from "./list-item";
 export { Divider } from "./divider";
-export { PinPad, PinDots } from "./pin-pad";
 export { Badge, type BadgeTone } from "./badge";
 export { BarresSysteme } from "./barres-systeme";
 export { Screen, type ScreenProps } from "./screen";

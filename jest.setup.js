@@ -39,8 +39,17 @@ jest.mock("expo-local-authentication", () => ({
   hasHardwareAsync: jest.fn(async () => false),
   isEnrolledAsync: jest.fn(async () => false),
   supportedAuthenticationTypesAsync: jest.fn(async () => []),
-  authenticateAsync: jest.fn(async () => ({ success: false })),
+  authenticateAsync: jest.fn(async () => ({ success: false, error: "user_cancel" })),
+  // Le niveau de verrou de l'APPAREIL, celui qui décide du démarrage. Par
+  // défaut `NONE` : une suite qui n'en parle pas ne doit pas dépendre d'un
+  // verrou qu'aucun test n'a posé.
+  getEnrolledLevelAsync: jest.fn(async () => 0),
   AuthenticationType: { FINGERPRINT: 1, FACIAL_RECOGNITION: 2 },
+  // ⚠ UN OBJET LITTÉRAL, JAMAIS UN RÉ-EXPORT DE L'ENUM RÉELLE.
+  // `SecurityLevel.BIOMETRIC` y est un accesseur déprécié qui `console.warn` à
+  // chaque lecture : la suite se couvrirait d'avertissements sans que rien
+  // d'autre ne change.
+  SecurityLevel: { NONE: 0, SECRET: 1, BIOMETRIC_WEAK: 2, BIOMETRIC_STRONG: 3 },
 }));
 
 jest.mock("expo-constants", () => ({

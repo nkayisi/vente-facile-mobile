@@ -365,16 +365,23 @@ export default function Rapports() {
 
           {resumeDuPerimetre(perimetre).length > 0 ? (
             <ChipRow>
-              {resumeDuPerimetre(perimetre).map((puce) => (
-                <Chip
-                  key={puce.cle}
-                  label={puce.label}
-                  actif
-                  onPress={() =>
-                    setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
-                  }
-                />
-              ))}
+              {resumeDuPerimetre(perimetre).map((puce) => {
+                // Un SEUL handler pour la croix et pour le corps de la puce : ils ne
+                // peuvent donc pas diverger, et l'appui que le `Pressable` imbriqué
+                // fait éventuellement remonter est sans conséquence - retirer deux
+                // fois le même filtre donne le même état qu'une fois.
+                const retirer = () =>
+                setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle));
+                return (
+                  <Chip
+                    key={puce.cle}
+                    label={puce.label}
+                    actif
+                    onPress={retirer}
+                    onRetirer={retirer}
+                  />
+                );
+              })}
             </ChipRow>
           ) : null}
           {/* La fenêtre choisie s'écrit SOUS la rangée, pas dans la puce :

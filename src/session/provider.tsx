@@ -29,7 +29,7 @@ import { baseHabitee, purgeInachevee, purgerBaseLocale } from "@/db/purge";
 import { nbEnFile } from "./deconnexion-regles";
 import { lireEnSouffrance } from "./en-souffrance";
 import { ecrireEstampille, lireEstampille } from "./estampille";
-import { hasPin } from "./lock";
+import { appareilVerrouille } from "./lock";
 import {
   comparerProprietaire,
   doitRattraper,
@@ -38,6 +38,7 @@ import {
   type Estampille,
 } from "./proprietaire";
 import {
+  purgerClesHeritees,
   readSnapshot,
   readTokens,
   writeSnapshot,
@@ -109,6 +110,22 @@ interface SessionValue {
   /** Range le drapeau, et le dit tout de suite à la garde. */
   marquerAccueilVu: () => Promise<void>;
 
+  /**
+   * Le SYSTÈME a-t-il de quoi authentifier son propriétaire ? `null` tant
+   * qu'on l'ignore.
+   *
+   * ⚠ IL VIT ICI ET NULLE PART AILLEURS. Les sondes du démarrage et du passage
+   * au premier plan l'alimentent toutes les deux ; un écran qui referait la
+   * sienne ouvrirait une seconde souscription `AppState` et une seconde
+   * vérité, dont rien ne garantirait qu'elles répondent la même chose au même
+   * instant. Le booléen ne change presque jamais, donc son coût de rendu est
+   * nul.
+   *
+   * Un seul lecteur aujourd'hui : le bandeau de « Mon profil », qui DIT qu'un
+   * terminal sans verrou s'ouvre directement, sans rien bloquer.
+   */
+  verrouAppareil: boolean | null;
+
   /** Raccourcis de garde, lus depuis l'instantané mis en cache. */
   can: (permission: string) => boolean;
   canAny: (permissions: string[]) => boolean;
@@ -122,6 +139,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [lostReason, setLostReason] = useState<string | null>(null);
   const [baseEtrangere, setBaseEtrangere] = useState<Estampille | null>(null);
   const [accueilVu, setAccueilVu] = useState<boolean | null>(null);
+  const [verrouAppareil, setVerrouAppareil] = useState<boolean | null>(null);
   const backgroundedAt = useRef<number | null>(null);
 
   // Le client HTTP prévient quand le serveur a refusé les DEUX jetons. C'est le
@@ -227,10 +245,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Le filet ci-dessous constatera la discordance et fera arbitrer.
       }
 
-      const [cached, tokens, pinSet] = await Promise.all([
+      // Le code de l'application a disparu au profit du verrou de l'appareil,
+      // mais son empreinte dort encore dans le Keystore des installations
+      // existantes. Une fois, au démarrage, sans rien attendre en retour.
+      void purgerClesHeritees();
+
+      const [cached, tokens, verrou] = await Promise.all([
         readSnapshot<SessionSnapshot>(),
         readTokens(),
-        hasPin(),
+        appareilVerrouille(),
       ]);
 
       if (!cached || !tokens) {
@@ -271,11 +294,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       setSnapshot(cached);
       setOrganizationId(cached.organization.id);
-      // Un terminal enrôlé SANS code repasse par sa définition. Le laisser entrer
-      // lui donnerait une session de 30 jours et les ventes du jour sans aucun
-      // verrou, ce que le lot 1 s'interdit. Le cas se produit si l'application a
-      // été fermée entre l'enrôlement et la saisie du code.
-      setStatus(pinSet ? "locked" : "needs_pin");
+      setVerrouAppareil(verrou);
+      // ⚠ SONDE N° 1, ET ELLE DÉCIDE DU DÉMARRAGE À FROID. Sans verrou
+      // d'appareil il n'y a rien à demander : on entre. C'est le choix explicite
+      // du produit, et `profil.tsx` le DIT sans rien bloquer.
+      setStatus(verrou ? "locked" : "ready");
     } catch {
       setLostReason(MOTIF_DEMARRAGE);
       setStatus("anonymous");
@@ -328,14 +351,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         backgroundedAt.current = Date.now();
         return;
       }
-      if (next === "active" && backgroundedAt.current) {
-        const away = Date.now() - backgroundedAt.current;
+      if (next === "active") {
+        const away = backgroundedAt.current ? Date.now() - backgroundedAt.current : 0;
         backgroundedAt.current = null;
-        if (away > LOCK_AFTER_BACKGROUND_MS) {
-          void hasPin().then((set) => {
-            if (set) setStatus((s) => (s === "ready" ? "locked" : s));
-          });
-        }
+        // ┌──────────────────────────────────────────────────────────────────┐
+        // │ SONDE N° 3, ET C'EST LE SEUL INSTANT OÙ LE NIVEAU PEUT CHANGER. │
+        // │                                                                  │
+        // │ Les Réglages du téléphone sont une AUTRE application : poser ou  │
+        // │ retirer un verrou d'écran est donc forcément suivi d'un front    │
+        // │ `background → active`. Sonder ici suffit, et sonder ailleurs     │
+        // │ serait du travail pour rien.                                     │
+        // │                                                                  │
+        // │ ⚠ LA BRANCHE INVERSE S'ÉVALUE EN PREMIER. Un terminal dont le    │
+        // │ verrou a été retiré pendant six minutes d'arrière-plan serait    │
+        // │ sinon verrouillé par la règle des cinq minutes, et secouru       │
+        // │ seulement au premier plan SUIVANT : entre les deux, l'écran de   │
+        // │ déverrouillage ne peut plus aboutir, puisqu'il n'y a plus rien   │
+        // │ à quoi s'authentifier.                                           │
+        // └──────────────────────────────────────────────────────────────────┘
+        void appareilVerrouille().then((verrou) => {
+          setVerrouAppareil(verrou);
+          if (!verrou) {
+            setStatus((s) => (s === "locked" ? "ready" : s));
+            return;
+          }
+          if (away > LOCK_AFTER_BACKGROUND_MS) {
+            // Le garde `s === "ready"` empêche l'invitation système, qui rend
+            // l'application `inactive` sur iOS, de reverrouiller `(locked)`
+            // sous elle-même.
+            setStatus((s) => (s === "ready" ? "locked" : s));
+          }
+        });
       }
     };
     const subscription = AppState.addEventListener("change", onChange);
@@ -355,8 +401,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!(await appliquerVerdictBase(fresh))) return;
       setSnapshot(fresh);
       setLostReason(null);
-      // Le code vient tout de suite : c'est la contrepartie d'une session longue.
-      setStatus((await hasPin()) ? "ready" : "needs_pin");
+      setStatus("ready");
     },
     [appliquerVerdictBase]
   );
@@ -372,15 +417,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!(await appliquerVerdictBase(fresh))) return;
       setSnapshot(fresh);
       setLostReason(null);
-      setStatus((await hasPin()) ? "ready" : "needs_pin");
+      setStatus("ready");
     },
     [appliquerVerdictBase]
   );
 
   const markUnlocked = useCallback(() => setStatus("ready"), []);
 
+  /**
+   * Verrouille à la demande, depuis « Mon profil ».
+   *
+   * ⚠ SANS VERROU D'APPAREIL, C'EST UN NON-ÉVÉNEMENT : verrouiller mènerait à
+   * un écran dont l'invitation ne peut pas aboutir, donc à un terminal fermé
+   * pour de bon. `profil.tsx` remplace d'ailleurs le bouton par un bandeau
+   * dans ce cas ; ce garde est la ceinture.
+   */
   const lock = useCallback(() => {
-    void hasPin().then((set) => setStatus(set ? "locked" : "ready"));
+    void appareilVerrouille().then((verrou) => {
+      setVerrouAppareil(verrou);
+      setStatus(verrou ? "locked" : "ready");
+    });
   }, []);
 
   /**
@@ -429,7 +485,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setOrganizationId(fresh.organization.id);
     }
     setBaseEtrangere(null);
-    setStatus(fresh ? ((await hasPin()) ? "ready" : "needs_pin") : "anonymous");
+    setStatus(fresh ? "ready" : "anonymous");
   }, []);
 
   /**
@@ -496,6 +552,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       effacerBaseEtrangere,
       accueilVu,
       marquerAccueilVu,
+      verrouAppareil,
       can,
       canAny,
     }),
@@ -516,6 +573,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       marquerAccueilVu,
       can,
       canAny,
+      verrouAppareil,
     ]
   );
 

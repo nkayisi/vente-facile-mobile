@@ -34,6 +34,28 @@ import {
   type OffrePerimetre,
 } from "./filtre-perimetre";
 
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │ LA MÊME PHRASE SUR LE DÉCLENCHEUR ET SUR LA PREMIÈRE LIGNE DE LA LISTE. │
+   │                                                                          │
+   │ Ces deux chaînes servent DEUX fois chacune : en texte indicatif quand     │
+   │ rien n'est choisi, et en entrée « aucun choix » une fois qu'une valeur    │
+   │ l'est. Les écrire deux fois, c'est se donner rendez-vous pour qu'elles    │
+   │ divergent - et la ligne qu'on touche doit lire exactement ce que lisait   │
+   │ le déclencheur fermé, sinon on ne sait pas qu'on revient au point de      │
+   │ départ.                                                                  │
+   │                                                                          │
+   │ ⚠ AUCUN SECOND GARDE N'EST NÉCESSAIRE POUR LES VERROUS. `disabled` plus   │
+   │ bas ferme le déclencheur, donc `onPress` ne part jamais et le panneau ne  │
+   │ s'ouvre pas : la sentinelle est hors d'atteinte pour les quatre motifs.   │
+   │ `un-seul-entrepot` est le cas qui le mérite le plus - son entrepôt est    │
+   │ IMPOSÉ (`filtre-perimetre.ts`, `applique`), donc « Tous les entrepôts »   │
+   │ y serait un mensonge que le serveur refuserait ensuite en 400. Ne pas     │
+   │ ajouter de condition redondante ici : un lecteur futur la « simplifierait »│
+   │ et ne saurait pas laquelle des deux tenait vraiment.                     │
+   └──────────────────────────────────────────────────────────────────────────┘ */
+const TOUS_ENTREPOTS = "Tous les entrepôts";
+const TOUS_UTILISATEURS = "Tous les utilisateurs";
+
 export function ChampsPerimetre({
   offre,
   valeur,
@@ -59,7 +81,7 @@ export function ChampsPerimetre({
         hint={offre.entrepotVerrouille ? libelleDuVerrou(offre.entrepotVerrouille) : undefined}
       >
         <DeclencheurSelect
-          libelle={nomEntrepot ?? "Tous les entrepôts"}
+          libelle={nomEntrepot ?? TOUS_ENTREPOTS}
           actif={Boolean(nomEntrepot) && !offre.entrepotVerrouille}
           disabled={Boolean(offre.entrepotVerrouille)}
           accessibilityLabel="Entrepôt"
@@ -69,6 +91,7 @@ export function ChampsPerimetre({
               options: offre.entrepots,
               valeur: valeur.entrepot,
               onChoisir: (v) => onChanger({ ...valeur, entrepot: v }),
+              libelleVide: TOUS_ENTREPOTS,
               messageVide: "Aucun entrepôt n'est encore descendu sur ce terminal.",
             })
           }
@@ -85,7 +108,7 @@ export function ChampsPerimetre({
           }
         >
           <DeclencheurSelect
-            libelle={nomUtilisateur ?? "Tous les utilisateurs"}
+            libelle={nomUtilisateur ?? TOUS_UTILISATEURS}
             actif={Boolean(nomUtilisateur) && !offre.utilisateurVerrouille}
             disabled={Boolean(offre.utilisateurVerrouille)}
             accessibilityLabel="Utilisateur"
@@ -95,6 +118,7 @@ export function ChampsPerimetre({
                 options: offre.utilisateurs,
                 valeur: valeur.utilisateur,
                 onChoisir: (v) => onChanger({ ...valeur, utilisateur: v }),
+                libelleVide: TOUS_UTILISATEURS,
                 messageVide: "Aucun utilisateur à proposer.",
               })
             }

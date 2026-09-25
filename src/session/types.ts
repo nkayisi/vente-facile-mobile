@@ -211,14 +211,17 @@ export type SessionStatus =
   | "loading"
   /** Aucune session : écran de connexion. */
   | "anonymous"
-  /** Session valide, application verrouillée : code ou biométrie. */
-  | "locked"
   /**
-   * Terminal enrôlé mais sans code. Un appareil qui porte une session de
-   * 30 jours et les ventes du jour ne reste pas sans verrou : le code est exigé
-   * à l'enrôlement, il ne se propose pas.
+   * Session valide, application verrouillée par le VERROU DE L'APPAREIL.
+   *
+   * ⚠ `needs_pin` A DISPARU AVEC NOTRE CODE. Il n'existait que parce que
+   * l'application possédait un secret qu'elle devait faire créer ; elle n'en
+   * possède plus aucun, et un terminal sans verrou d'écran entre directement
+   * (choix explicite du produit, voir `session/lock.ts`). Le rouvrir pour dire
+   * « votre appareil n'a pas de verrou » serait un blocage, c'est-à-dire
+   * exactement ce qu'on a écarté.
    */
-  | "needs_pin"
+  | "locked"
   /** Utilisable, en ligne comme hors ligne. */
   | "ready"
   /**

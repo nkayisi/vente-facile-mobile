@@ -1,15 +1,17 @@
 /**
  * La présentation, vue au tout premier lancement.
  *
- * Quatre vues balayables qui disent ce que ce terminal fait de différent, puis
- * la connexion. Elle ne paraît qu'une fois : `SessionGate` n'y envoie que
- * lorsque le drapeau `accueil.vu` est absent.
+ * Quatre vues balayables qui montrent les huit modules du produit, deux par
+ * deux, puis la connexion. Elle ne paraît qu'une fois : `SessionGate` n'y
+ * envoie que lorsque le drapeau `accueil.vu` est absent.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ IL Y A DEUX SORTIES, ET ELLES PASSENT PAR LA MÊME FONCTION.             │
  * │                                                                          │
  * │ « Passer » et « Commencer » mènent au même endroit et doivent écrire le  │
- * │ même drapeau. Un second chemin vers la connexion laisserait le drapeau   │
+ * │ même drapeau. (« Revoir », sur la dernière vue, ne sort pas : elle       │
+ * │ ramène au début.)                                                        │
+ * │ Un second chemin vers la connexion laisserait le drapeau                 │
  * │ non écrit, et la présentation reviendrait à CHAQUE lancement sans que    │
  * │ rien ne le signale - l'écran s'affiche, il est simplement de trop. Un    │
  * │ garde-fou de doctrine refuse toute navigation vers la connexion qui ne   │
@@ -20,7 +22,14 @@
  * `ui/doctrine.test.ts`. Le garde-fou du parcours d'authentification vise les
  * FORMULAIRES, dont le contenu est la page entière ; ici le corps est un pager
  * pleine hauteur, et le centrer l'empêcherait de remplir la fenêtre, donc de
- * paginer sur une page entière. C'est chaque VUE qui centre son contenu.
+ * paginer sur une page entière. C'est chaque VUE qui empile sa maquette et son
+ * texte sur toute la hauteur.
+ *
+ * ⚠ L'EXCEPTION EST LE SEUL VERROU. Sa note affirmait que le garde-fou
+ * passerait de toute façon, les vues portant un `justify-center` ; c'était
+ * faux depuis toujours, `centreAutrement` lisant CE fichier-ci et non
+ * `carrousel.tsx`, qui vit dans `features/` et n'est pas balayé. La retirer
+ * fait réellement échouer la suite.
  */
 import { useCallback } from "react";
 import { View } from "react-native";
@@ -29,7 +38,7 @@ import { router } from "expo-router";
 import { useSession } from "@/session/provider";
 import { Apparition, Logo, Screen } from "@/ui";
 import {
-  BoutonPasser,
+  ActionEntete,
   PagesCarrousel,
   PiedCarrousel,
   useCarrousel,
@@ -64,22 +73,34 @@ export default function Bienvenue() {
       // │ contenu qui defile dessous.                                      │
       // └──────────────────────────────────────────────────────────────────┘
       fond="card"
+      /* ⚠ UN COMMENTAIRE JSX (`{/* … *\/}`) EST INVALIDE DANS UNE VALEUR
+         D'ATTRIBUT : `pied={…}` attend une expression, pas des enfants. Écrit
+         ainsi, il fait échouer la compilation - et la suite de tests, elle,
+         reste verte, parce qu'elle ne compile pas cet écran.
+
+         Rang 3 : la cascade est barre du haut, pile, texte, pied. Le pied
+         entre en dernier parce qu'il est ce qu'on regarde en dernier. */
       pied={
-        <Apparition index={2}>
+        <Apparition index={3}>
           <PiedCarrousel c={c} onTerminer={terminer} />
         </Apparition>
       }
     >
       <Apparition index={0}>
-        <View className="flex-row items-center justify-between px-4 py-2">
+        {/* ⚠ `px-6`, COMME LE BLOC DE TEXTE ET COMME LE PIED. Cette barre
+            était à `px-4` : le logo tombait huit points à gauche du titre, et
+            un bord gauche en escalier est le genre de défaut qui se voit sans
+            qu'on sache le nommer. C'est la même correction qu'a demandée le
+            bord gauche des documents imprimés. */}
+        <View className="flex-row items-center justify-between px-6 py-2">
           <Logo hauteur={44} />
-          <BoutonPasser onTerminer={terminer} />
+          <ActionEntete c={c} onTerminer={terminer} />
         </View>
       </Apparition>
 
       {/* `flex-1` ici et non sur une `Apparition` : celle-ci rend une vue sans
           flex, et l'y envelopper réduirait le pager à zéro pixel de haut.
-          L'entrée des vues se joue DANS chaque page, au rang 1. */}
+          L'entrée des vues se joue DANS chaque page, aux rangs 1 et 2. */}
       <View className="flex-1">
         <PagesCarrousel c={c} />
       </View>

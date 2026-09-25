@@ -307,6 +307,7 @@ export function FeuilleNouveauMouvement({
             choix.onChoisir(v);
             setChoix(null);
           }}
+          libelleVide={choix.libelleVide}
           messageVide={choix.messageVide}
         />
       ) : panneauArticle ? (

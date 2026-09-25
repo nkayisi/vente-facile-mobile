@@ -270,14 +270,22 @@ export default function Caisse() {
               <Chip label="Tout" actif={filtres.sens === null} onPress={() => changerSens(null)} />
               <Chip label="Entrées" actif={filtres.sens === "in"} onPress={() => changerSens("in")} />
               <Chip label="Sorties" actif={filtres.sens === "out"} onPress={() => changerSens("out")} />
-              {puces.map((puce) => (
-                <Chip
-                  key={puce.cle}
-                  label={puce.label}
-                  actif
-                  onPress={() => changerFiltres(sansLeFiltreCaisse(filtres, puce.cle))}
-                />
-              ))}
+              {puces.map((puce) => {
+                // Un SEUL handler pour la croix et pour le corps de la puce : ils ne
+                // peuvent donc pas diverger, et l'appui que le `Pressable` imbriqué
+                // fait éventuellement remonter est sans conséquence - retirer deux
+                // fois le même filtre donne le même état qu'une fois.
+                const retirer = () => changerFiltres(sansLeFiltreCaisse(filtres, puce.cle));
+                return (
+                  <Chip
+                    key={puce.cle}
+                    label={puce.label}
+                    actif
+                    onPress={retirer}
+                    onRetirer={retirer}
+                  />
+                );
+              })}
             </ChipRow>
 
             {/* Le compte porte le PÉRIMÈTRE, jamais la fenêtre chargée :

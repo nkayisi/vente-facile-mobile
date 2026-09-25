@@ -295,6 +295,7 @@ export function FeuilleNouveauTransfert({
             choix.onChoisir(v);
             setChoix(null);
           }}
+          libelleVide={choix.libelleVide}
           messageVide={choix.messageVide}
         />
       ) : panneauArticle ? (
