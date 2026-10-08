@@ -2,36 +2,42 @@
  * Bascule depuis l'ancienne application.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ LES DEUX APPLICATIONS PORTENT LE MÊME IDENTIFIANT NATIF.                │
+ * │ ⚠ CE MODULE EST INERTE DEPUIS LE PASSAGE À `com.cdir.ventefacile`.       │
  * │                                                                          │
- * │ `mobile/vente-facile/app.json` déclare `com.ventefacile.app`, et le      │
- * │ profil de PRODUCTION de celle-ci n'ajoute aucun suffixe : c'est le même. │
- * │ Installer la nouvelle par-dessus l'ancienne n'est donc pas une seconde   │
- * │ application, c'est une MISE À JOUR EN PLACE, et elle hérite du bac à     │
- * │ sable - la base WatermelonDB de l'ancienne comprise.                     │
+ * │ Il a été écrit parce que les deux applications portaient le MÊME         │
+ * │ identifiant natif : l'ancienne `app.json` déclarait                      │
+ * │ `com.ventefacile.app`, et le profil de production de celle-ci n'ajoutait │
+ * │ aucun suffixe. Installer la nouvelle par-dessus était une mise à jour EN │
+ * │ PLACE, qui héritait du bac à sable - la base WatermelonDB de l'ancienne  │
+ * │ comprise. Le danger n'était pas la collision, c'était le SILENCE : les   │
+ * │ ventes que l'ancienne n'avait pas poussées restaient dans un fichier que │
+ * │ la nouvelle ne lisait jamais.                                            │
  * │                                                                          │
- * │ Le danger n'est pas la collision, c'est le SILENCE : les ventes que      │
- * │ l'ancienne app n'avait pas encore poussées restent dans un fichier que   │
- * │ la nouvelle ne lit jamais. Elles ne sont ni perdues ni visibles - elles  │
- * │ n'existent plus pour personne, et le marchand ne l'apprend qu'en         │
- * │ cherchant une vente qu'il se souvient d'avoir faite.                     │
+ * │ L'identifiant est désormais `com.cdir.ventefacile` (voir                 │
+ * │ `app.config.ts`). Les deux applications COHABITENT : le bac à sable de   │
+ * │ l'ancienne est hors de portée - Android et iOS l'interdisent - donc      │
+ * │ `dossiersCandidats()`, qui part de la racine de CETTE application, ne    │
+ * │ trouvera jamais `watermelon.db`.                                         │
+ * │                                                                          │
+ * │ Ce n'est pas une perte : le silence que ce module existait pour rompre a │
+ * │ disparu avec lui. L'ancienne application reste INSTALLÉE, avec ses       │
+ * │ données, et le marchand peut l'ouvrir. La règle tient toujours en une    │
+ * │ phrase, et elle se dit maintenant à l'installation : on vide l'ancienne  │
+ * │ app avant de la désinstaller.                                            │
+ * │                                                                          │
+ * │ Conservé tel quel plutôt que supprimé à la va-vite : son retrait touche  │
+ * │ aussi le bandeau du tableau de bord, et c'est une décision à prendre,    │
+ * │ pas un effet de bord d'un renommage. Son coût est de trois existences de │
+ * │ fichier au montage du tableau de bord ; il rend toujours `null`,         │
+ * │ c'est-à-dire « rien à reprendre ».                                       │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
- * D'où cette lecture, faite UNE fois au démarrage : si le fichier de l'ancienne
- * est là, on compte ce qu'il reste à pousser et on le DIT, avant de laisser
- * vendre. La règle de la bascule est simple et elle tient dans une phrase :
- * **on vide l'ancienne app avant d'installer la nouvelle.**
- *
- * On ne tente PAS de rejouer ces enregistrements. Leur schéma n'est pas le
- * nôtre, leurs numéros de document ont été fabriqués par le serveur d'alors, et
- * une migration silencieuse de données comptables est exactement ce qu'on ne
- * veut pas faire dans le dos d'un marchand.
- *
- * L'ancienne voie de synchronisation (`POST /api/v1/sync/`) a été retirée du
- * serveur avec l'application qu'elle servait : réinstaller celle-ci ne remonte
- * plus rien. Ce module ne fait donc plus qu'une chose, et c'est la seule qui
- * reste vraie : DIRE que ces écritures n'existent que dans ce fichier, avant
- * qu'une désinstallation ne l'emporte.
+ * On ne tentait de toute façon PAS de rejouer ces enregistrements : leur
+ * schéma n'est pas le nôtre, leurs numéros de document ont été fabriqués par
+ * le serveur d'alors, et une migration silencieuse de données comptables est
+ * exactement ce qu'on ne veut pas faire dans le dos d'un marchand. L'ancienne
+ * voie de synchronisation (`POST /api/v1/sync/`) a par ailleurs été retirée du
+ * serveur avec l'application qu'elle servait.
  */
 import { File } from "expo-file-system";
 import * as SQLite from "expo-sqlite";

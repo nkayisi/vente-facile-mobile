@@ -20,8 +20,8 @@ type Profile = "development" | "preview" | "production";
  * │ par le CLI sur la machine du développeur, pour résoudre l'identité de      │
  * │ l'application et donc ses IDENTIFIANTS DE SIGNATURE, puis par le serveur.  │
  * │ Avec la seule variable d'EAS, `eas build --profile production` demandait   │
- * │ une clé pour `com.ventefacile.app.dev` et livrait un binaire déclarant     │
- * │ `com.ventefacile.app` : un paquet signé de la mauvaise clé, que Google     │
+ * │ une clé pour `com.cdir.ventefacile.dev` et livrait un binaire déclarant    │
+ * │ `com.cdir.ventefacile` : un paquet signé de la mauvaise clé, que Google    │
  * │ Play refuse - et rien à l'écran ne l'annonce, la ligne fautive étant un    │
  * │ nom d'application juste.                                                   │
  * │                                                                            │
@@ -50,7 +50,28 @@ const NAME: Record<Profile, string> = {
   production: "Vente Facile",
 };
 
-const BUNDLE = `com.ventefacile.app${SUFFIX[profile]}`;
+/**
+ * ┌────────────────────────────────────────────────────────────────────────────┐
+ * │ L'ESPACE DE NOMS EST `com.cdir`, ET IL NE COLLISIONNE PLUS.                │
+ * │                                                                            │
+ * │ L'ancienne application déclarait `com.ventefacile.app`, et le profil de    │
+ * │ PRODUCTION de celle-ci n'ajoutait aucun suffixe : c'était le MÊME          │
+ * │ identifiant, donc une installation par-dessus était une mise à jour en     │
+ * │ place, qui héritait du bac à sable - base WatermelonDB comprise, et        │
+ * │ invisible.                                                                 │
+ * │                                                                            │
+ * │ Avec `com.cdir.ventefacile`, les deux applications cohabitent : l'ancienne │
+ * │ garde ses données et reste ouvrable, ce qui vaut mieux qu'un héritage      │
+ * │ muet. CONTREPARTIE À CONNAÎTRE : `session/bascule.ts` ne peut plus lire ce │
+ * │ fichier, le bac à sable d'une autre application étant hors de portée. Il   │
+ * │ rend désormais toujours « rien à reprendre ».                              │
+ * │                                                                            │
+ * │ ⚠ Sur un terminal DÉJÀ enrôlé sous l'ancien identifiant, la nouvelle       │
+ * │ compilation s'installe À CÔTÉ : son journal, sa session et ses ventes non  │
+ * │ poussées restent dans l'ancienne. Synchroniser AVANT d'installer.          │
+ * └────────────────────────────────────────────────────────────────────────────┘
+ */
+const BUNDLE = `com.cdir.ventefacile${SUFFIX[profile]}`;
 
 const config: ExpoConfig = {
   name: NAME[profile],

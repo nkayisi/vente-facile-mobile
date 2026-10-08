@@ -50,12 +50,20 @@ export function nbEnFile(f: EtatFile): number {
   return f.pending + f.inflight + f.quarantined + f.blocked + f.photos;
 }
 
-/** Une opération, ou plusieurs. Le français ne pardonne pas l'approximation. */
-function pluriel(n: number, singulier: string, plur: string): string {
+/**
+ * Une opération, ou plusieurs. Le français ne pardonne pas l'approximation.
+ *
+ * ⚠ **EXPORTÉS pour `carte-en-souffrance.ts`, et il faut les partager.** Les deux
+ * voiles disent la même chose que cette modale, sur les mêmes compteurs : une
+ * seconde pluralisation écrite à côté finirait par rendre « 1 opération
+ * attendent », le défaut exact que ces deux fonctions existent pour éviter - et
+ * qui vivait bel et bien dans le voile d'abonnement, écrit au gabarit.
+ */
+export function pluriel(n: number, singulier: string, plur: string): string {
   return `${n} ${n > 1 ? plur : singulier}`;
 }
 
-function operations(n: number): string {
+export function operations(n: number): string {
   return pluriel(n, "opération", "opérations");
 }
 

@@ -13,6 +13,12 @@
  * │  2. Sur Android, la base de WatermelonDB n'est PAS dans le dossier des   │
  * │     documents mais dans son parent - donc l'avertissement ne se          │
  * │     déclenchait jamais sur la plateforme qu'il vise.                     │
+ * │                                                                          │
+ * │ ⚠ DEPUIS LE PASSAGE À `com.cdir.ventefacile`, CE CHEMIN NE PEUT PLUS     │
+ * │ SE DÉCLENCHER EN PRODUCTION : le bac à sable de l'ancienne               │
+ * │ application est hors de portée. Ces tests gardent la LOGIQUE - dont      │
+ * │ la garantie qu'aucune base n'est ouverte quand rien n'existe - pour      │
+ * │ le jour où le module serait retiré, ou reciblé.                          │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
@@ -56,7 +62,7 @@ jest.mock("expo-sqlite", () => ({
 
 import { resteDeLAncienneApp } from "./bascule";
 
-const ANDROID = "/data/user/0/com.ventefacile.app/files/SQLite";
+const ANDROID = "/data/user/0/com.cdir.ventefacile/files/SQLite";
 const IOS = "/var/mobile/Containers/Data/Application/ABC/Documents/SQLite";
 
 beforeEach(() => {
@@ -70,27 +76,27 @@ describe("resteDeLAncienneApp", () => {
   it("trouve la base ANDROID, qui est au-dessus du dossier des documents", async () => {
     // `WMDatabase.java` : `getDatabasePath(name).getPath().replace("/databases", "")`
     // La chercher sous `files/` ne la trouve jamais.
-    mockFichiers.add("file:///data/user/0/com.ventefacile.app/watermelon.db");
+    mockFichiers.add("file:///data/user/0/com.cdir.ventefacile/watermelon.db");
     mockTables.set("sales", 3);
     mockTables.set("payments", 2);
 
     const reste = await resteDeLAncienneApp();
 
     expect(reste?.total).toBe(5);
-    expect(reste?.chemin).toBe("/data/user/0/com.ventefacile.app/watermelon.db");
+    expect(reste?.chemin).toBe("/data/user/0/com.cdir.ventefacile/watermelon.db");
   });
 
   it("ouvre par NOM et DOSSIER, jamais par URI", async () => {
     // `createDatabasePath` recolle `dossier + "/" + nom` : un URI passé en
     // premier argument est traité comme un nom de fichier, et SQLite crée une
     // base vide au lieu de lire l'ancienne.
-    mockFichiers.add("file:///data/user/0/com.ventefacile.app/watermelon.db");
+    mockFichiers.add("file:///data/user/0/com.cdir.ventefacile/watermelon.db");
     mockTables.set("sales", 1);
 
     await resteDeLAncienneApp();
 
     expect(mockOuvertures).toEqual([
-      { nom: "watermelon.db", dossier: "/data/user/0/com.ventefacile.app" },
+      { nom: "watermelon.db", dossier: "/data/user/0/com.cdir.ventefacile" },
     ]);
   });
 
@@ -117,7 +123,7 @@ describe("resteDeLAncienneApp", () => {
   });
 
   it("se tait quand l'ancienne base est là mais vidée", async () => {
-    mockFichiers.add("file:///data/user/0/com.ventefacile.app/watermelon.db");
+    mockFichiers.add("file:///data/user/0/com.cdir.ventefacile/watermelon.db");
     mockTables.set("sales", 0);
     mockTables.set("payments", 0);
 
@@ -126,7 +132,7 @@ describe("resteDeLAncienneApp", () => {
 
   it("ignore une table absente du schéma sans condamner les autres", async () => {
     // Les versions de l'ancienne app n'avaient pas toutes les mêmes tables.
-    mockFichiers.add("file:///data/user/0/com.ventefacile.app/watermelon.db");
+    mockFichiers.add("file:///data/user/0/com.cdir.ventefacile/watermelon.db");
     mockTables.set("sales", 2);
     // ni `payments`, ni `customers`, ni les autres.
 

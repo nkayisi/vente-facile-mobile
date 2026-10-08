@@ -51,6 +51,7 @@ import {
   type SaisieEtablissement,
   logout as logoutOp,
   refreshSnapshot as refreshSnapshotOp,
+  type RelectureSession,
   type OrganizationChoice,
 } from "./session";
 import type { SessionSnapshot, SessionStatus } from "./types";
@@ -85,7 +86,7 @@ interface SessionValue {
   markUnlocked: () => void;
   lock: () => void;
   logout: () => Promise<void>;
-  refresh: () => Promise<SessionSnapshot | null>;
+  refresh: () => Promise<RelectureSession>;
 
   /**
    * L'ancien propriétaire de la base, quand `status` vaut `base_etrangere`.
@@ -511,19 +512,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Rafraîchit l'identité en tâche de fond. Un échec ne change rien.
+   * Rafraîchit l'identité en tâche de fond. Un échec ne change rien, et le DIT.
    *
    * ⚠ Elle REND l'instantané frais, et l'appelant en a besoin : décider de
    * libérer les opérations bloquées demande le verdict d'abonnement de CE
    * réveil-ci, pas celui que React n'a pas encore rendu.
+   *
+   * ⚠ Elle rend AUSSI `frais`. Sans lui, un écran ne peut pas distinguer « le
+   * serveur a répondu, le seuil est toujours là » de « le serveur n'a pas
+   * répondu » - et le bouton qui lève une porte posée trop haut paraissait
+   * inerte au marchand qu'on venait de libérer.
    */
-  const refresh = useCallback(async (): Promise<SessionSnapshot | null> => {
-    const fresh = await refreshSnapshotOp();
-    if (fresh) {
-      setSnapshot(fresh);
-      await writeSnapshot(fresh);
+  const refresh = useCallback(async (): Promise<RelectureSession> => {
+    const relu = await refreshSnapshotOp();
+    if (relu.snapshot) {
+      setSnapshot(relu.snapshot);
+      await writeSnapshot(relu.snapshot);
     }
-    return fresh ?? null;
+    return relu;
   }, []);
 
   const permissions = snapshot?.membership.permissions ?? [];

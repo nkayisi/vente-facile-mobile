@@ -170,6 +170,47 @@ export interface SessionSubscription {
   can_manage: boolean;
 }
 
+/**
+ * La porte de mise à jour, telle que le terminal doit la comprendre.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE SERVEUR DESCEND UN SEUIL, PAS UN VERDICT.                            │
+ * │                                                                          │
+ * │ Il ne peut pas trancher : `Device.app_version` est figée au jour de      │
+ * │ l'enrôlement et ne dit donc plus rien. Et un terminal sur lequel on vient│
+ * │ de poser un APK à la main, hors ligne, resterait bloqué par un verdict   │
+ * │ serveur périmé, sans aucun moyen de le lever. La comparaison appartient  │
+ * │ à celui qui connaît sa propre version.                                   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export interface SessionAppUpdate {
+  /**
+   * En dessous, le terminal est inutilisable. `null` veut dire « aucune
+   * exigence », et c'est l'état par défaut comme la sortie d'urgence.
+   */
+  minimum_version: string | null;
+  /**
+   * Ce que le magasin sert aujourd'hui. Sert à la NOMMER : un marchand qui doit
+   * réclamer sa mise à jour à un revendeur a besoin du numéro.
+   */
+  current_version: string | null;
+  /**
+   * Les adresses à essayer, DANS L'ORDRE. Liste VIDE = aucun magasin
+   * atteignable, donc AUCUN bouton : un bouton qui ne mène nulle part est pire
+   * que pas de bouton.
+   *
+   * ⚠ Elles viennent du serveur et ne se fabriquent jamais ici : les APK de
+   * préproduction portent un identifiant natif suffixé, dont la fiche de
+   * magasin n'existe pas.
+   */
+  store_urls: string[];
+  /**
+   * Ce que le marchand lit, à la place du texte par défaut. C'est la SEULE
+   * issue d'un terminal de comptoir sans magasin.
+   */
+  message: string | null;
+}
+
 /** Ce qui est rangé dans le trousseau et relu au démarrage. */
 export interface SessionSnapshot {
   user: SessionUser;
@@ -193,6 +234,13 @@ export interface SessionSnapshot {
    * « aucun collègue » à un propriétaire qui en a cinquante.
    */
   team?: SessionTeam | null;
+  /**
+   * ⚠ FACULTATIF, comme `subscription`, et pour la même raison : un instantané
+   * écrit avant ce lot ne le porte pas. Le rendre obligatoire bloquerait tout
+   * le parc le jour de la mise à jour, ce qui est exactement l'accident que
+   * cette porte existe pour éviter.
+   */
+  app_update?: SessionAppUpdate | null;
   /** Date du dernier réveil réussi : sert à dater la fraîcheur des droits. */
   fetched_at: string;
 }

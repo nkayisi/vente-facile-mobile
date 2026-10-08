@@ -294,7 +294,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
           // │ passées.                                                     │
           // └──────────────────────────────────────────────────────────────┘
           try {
-            const frais = await rafraichirSession();
+            const relu = await rafraichirSession();
             // ⚠ ON NE DÉBLOQUE QUE SI LA PORTE EST OUVERTE.
             //
             // Depuis qu'un 402 range le lot en `blocked`, un `unblockAll()`
@@ -302,6 +302,13 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
             // renvoyer -> 402 -> bloquer, à CHAQUE cycle, pour un abonnement
             // qui ne sera réglé que dans trois jours. On juge sur le verdict
             // de CE réveil-ci, d'où le retour de `rafraichirSession`.
+            // ⚠ On ne CONDITIONNE pas au `frais`, et c'est délibéré : quand le
+            // serveur n'a pas répondu, `relu.snapshot` est celui d'avant, donc on
+            // juge sur le verdict le plus récent qu'on ait - exactement ce que ce
+            // chemin faisait déjà. Exiger la fraîcheur ferait sauter un
+            // déblocage pour un aller-retour manqué, sur un cycle qui vient
+            // pourtant de réussir sa poussée.
+            const frais = relu.snapshot;
             if (jugerAcces(frais?.subscription, frais?.fetched_at, new Date()).ouvert) {
               await unblockAll();
             }

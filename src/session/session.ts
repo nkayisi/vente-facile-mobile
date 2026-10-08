@@ -4,12 +4,12 @@
  * Séparées du fournisseur React : elles sont testables sans arbre de rendu, et
  * c'est là que vivent les règles qui ne doivent jamais être enfreintes.
  */
-import * as Application from "expo-application";
 import * as Device from "expo-device";
 import { Platform } from "react-native";
 
 import { api, request, setOrganizationId } from "@/api/client";
 import { ApiError } from "@/api/errors";
+import { versionInstallee } from "@/features/mise-a-jour/version-installee";
 import {
   clearSession,
   clearTokens,
@@ -69,7 +69,7 @@ function describeDevice(): {
     platform: Platform.OS === "ios" ? "ios" : "android",
     model,
     os_version: Device.osVersion ?? "",
-    app_version: Application.nativeApplicationVersion ?? "",
+    app_version: versionInstallee() ?? "",
   };
 }
 
@@ -86,6 +86,10 @@ function toSnapshot(data: SessionResponse): SessionSnapshot {
     // la distinction « absent » / « nul » n'a aucun sens ici - les deux se
     // lisent « pas de verdict », donc porte ouverte (`jugerAcces`, règle 1).
     subscription: data.subscription ?? null,
+    // Même forme que `subscription`, et pour la même raison : « absent » et
+    // « nul » se lisent tous deux « aucune exigence », donc porte ouverte
+    // (`jugerMiseAJour`, règles 1 et 2). Les distinguer n'aurait aucun sens.
+    app_update: data.app_update ?? null,
     // ⚠ ICI, `undefined` ET `null` NE SE VALENT PAS, contrairement à
     // `subscription` juste au-dessus. Un serveur antérieur n'envoie pas la clé :
     // la laisser `undefined` fait dire « roster inconnu », donc verrouille le
@@ -208,17 +212,45 @@ export async function registerAndEnroll(
 }
 
 /**
+ * Ce qu'une relecture d'identité rapporte.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA FRAÎCHEUR SE DIT, ELLE NE SE DEVINE PAS.                             │
+ * │                                                                          │
+ * │ Rendre le seul instantané ne distinguait pas « le serveur a répondu et   │
+ * │ rien n'a changé » de « le serveur n'a pas répondu du tout ». Or c'est    │
+ * │ exactement ce qu'un marchand enfermé a besoin de savoir : un             │
+ * │ administrateur vient peut-être de vider le seuil qui le bloque, et le    │
+ * │ bouton « Vérifier à nouveau » est la main qui lève la porte. Derrière un │
+ * │ portail captif, il ne levait rien et ne disait rien.                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export interface RelectureSession {
+  /** L'instantané à retenir : le frais, ou celui d'avant. */
+  snapshot: SessionSnapshot | null;
+  /** Le serveur a-t-il répondu ? `false` = rien n'a bougé. */
+  frais: boolean;
+}
+
+/**
  * Rafraîchit l'identité mise en cache, sans bloquer.
  *
- * Appelée en tâche de fond quand le réseau revient. Un échec ne change RIEN :
- * l'instantané précédent reste valable, c'est tout l'intérêt du cache.
+ * Appelée en tâche de fond quand le réseau revient. Un échec ne CHANGE rien -
+ * l'instantané précédent reste valable, c'est tout l'intérêt du cache - mais il
+ * se RAPPORTE, par `frais: false`.
+ *
+ * ⚠ **Elle ne lève jamais.** C'est délibéré : ouvrir l'application sans réseau ne
+ * doit pas enfermer dehors, et un appelant qui oublierait un `catch` ne doit pas
+ * casser un démarrage à froid. Le prix de cette garantie est précisément que
+ * l'échec doit se lire dans la valeur rendue.
  */
-export async function refreshSnapshot(): Promise<SessionSnapshot | null> {
+export async function refreshSnapshot(): Promise<RelectureSession> {
   const previous = await readSnapshot<SessionSnapshot>();
-  if (!previous) return null;
+  // Aucune session en cache : il n'y a rien à rafraîchir, et rien n'a échoué.
+  if (!previous) return { snapshot: null, frais: false };
 
   const deviceToken = await readDeviceToken();
-  if (!deviceToken) return previous;
+  if (!deviceToken) return { snapshot: previous, frais: false };
 
   try {
     setOrganizationId(previous.organization.id);
@@ -227,9 +259,9 @@ export async function refreshSnapshot(): Promise<SessionSnapshot | null> {
     });
     const snapshot = toSnapshot(data);
     await writeSnapshot(snapshot);
-    return snapshot;
+    return { snapshot, frais: true };
   } catch {
-    return previous;
+    return { snapshot: previous, frais: false };
   }
 }
 

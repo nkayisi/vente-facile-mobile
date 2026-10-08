@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 
 import { useDeviseParDefaut } from "@/data/devises";
 import { GardeAbonnement } from "@/features/abonnement/garde";
+import { GardeMiseAJour } from "@/features/mise-a-jour/garde";
 import { PanierProvider } from "@/features/pos/panier";
 import { SynchronisationProvider } from "@/features/sync/provider";
 import { ToastProvider } from "@/ui";
@@ -64,13 +65,24 @@ export default function AppLayout() {
             le back-office. La monter plus haut figerait le verdict pour
             toujours.
           */}
-          <GardeAbonnement>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
-              <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
-            </Stack>
-          </GardeAbonnement>
+          {/*
+            La mise à jour ENVELOPPE l'abonnement, et l'ordre n'est pas
+            ergonomique : on force une mise à jour parce qu'on ne fait plus
+            confiance au binaire installé. Laisser encaisser avec l'ancien code
+            sous prétexte qu'il faut d'abord régler l'abonnement, ce serait
+            laisser tourner ce qu'on cherche à retirer. Et la dissymétrie
+            tranche : une mise à jour peut réparer un verdict d'abonnement
+            faux, un paiement ne répare jamais un vieux binaire.
+          */}
+          <GardeMiseAJour>
+            <GardeAbonnement>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
+                <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
+              </Stack>
+            </GardeAbonnement>
+          </GardeMiseAJour>
         </PanierProvider>
       </SynchronisationProvider>
     </ToastProvider>

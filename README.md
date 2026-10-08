@@ -73,7 +73,7 @@ Bluetooth, SVG) qu'Expo Go ne porte pas. Comptez plusieurs minutes la première
 fois, quelques secondes ensuite.
 
 L'application s'installe sous le nom **VF (dev)**, identifiant
-`com.ventefacile.app.dev`. Le suffixe existe pour que la préproduction et la
+`com.cdir.ventefacile.dev`. Le suffixe existe pour que la préproduction et la
 production cohabitent sur le même terminal (voir « Profils de compilation »).
 
 ### Ensuite : Metro seul suffit
@@ -209,17 +209,26 @@ marquant « synchronisées ».
 ## Profils de compilation
 
 `app.config.ts` calcule le nom, l'identifiant natif et l'URL d'API depuis
-`EAS_BUILD_PROFILE`, pour que les trois variantes cohabitent sur un même
-terminal :
+`VF_PROFILE` (déclaré dans l'`env` de chaque profil d'`eas.json`), pour que les
+trois variantes cohabitent sur un même terminal :
 
 | Profil | Nom affiché | Identifiant |
 | --- | --- | --- |
-| `development` | VF (dev) | `com.ventefacile.app.dev` |
-| `preview` | VF (préprod) | `com.ventefacile.app.preview` |
-| `production` | Vente Facile | `com.ventefacile.app` |
+| `development` | VF (dev) | `com.cdir.ventefacile.dev` |
+| `preview` | VF (préprod) | `com.cdir.ventefacile.preview` |
+| `production` | Vente Facile | `com.cdir.ventefacile` |
 
 Le profil `preview` produit un **APK** et non un AAB : on l'installe à la main
 sur un POS, sans passer par le Play Store.
+
+⚠ **L'espace de noms est `com.cdir`, et ce n'est plus celui de l'ancienne
+application** (`com.ventefacile.app`). Les deux cohabitent donc au lieu de se
+remplacer : une installation n'est plus une mise à jour en place, et le bac à
+sable de l'ancienne - sa base WatermelonDB comprise - reste le sien. Deux
+conséquences à connaître : `src/session/bascule.ts` ne peut plus le lire et rend
+toujours « rien à reprendre » ; et **un terminal déjà enrôlé sous l'ancien
+identifiant garde sa session, son journal et ses ventes non poussées dans
+l'ancienne application - il faut synchroniser AVANT d'installer la nouvelle.**
 
 ## Conventions
 

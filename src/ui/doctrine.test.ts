@@ -1999,3 +1999,165 @@ describe("un filtre à choix unique offre toujours de le retirer", () => {
     expect(PHRASE.test("Choisir un mois")).toBe(false);
   });
 });
+
+describe("la porte de mise à jour", () => {
+  const SOURCES = fichiers(RACINE);
+
+  it("le balayage MORD", () => {
+    expect(SOURCES.length).toBeGreaterThan(300);
+    expect(existsSync(join(RACINE, "features/mise-a-jour/magasin.ts"))).toBe(true);
+    expect(existsSync(join(RACINE, "features/mise-a-jour/version-installee.ts"))).toBe(true);
+  });
+
+  it("aucune adresse de magasin n'est fabriquée dans l'application", () => {
+    //: L'URL vient du SERVEUR, résolue par plateforme, et ce n'est pas un
+    //: raffinement : les APK de préproduction portent un identifiant natif
+    //: suffixé (`app.config.ts`), dont la fiche de magasin n'existe pas. Un
+    //: client qui la fabriquerait depuis `Application.applicationId` enverrait
+    //: ces terminaux vers une page vide. Et un terminal de comptoir sans Play
+    //: Store doit pouvoir recevoir l'adresse d'un revendeur ou d'un APK direct,
+    //: changée sans publier de version.
+    const MOTIFS = [
+      /market:\/\//,
+      /play\.google\.com/,
+      /apps\.apple\.com/,
+      /itms-apps:/,
+      /\bapplicationId\b/,
+    ];
+    const fautifs: string[] = [];
+    for (const f of SOURCES) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      for (const motif of MOTIFS) {
+        if (motif.test(code)) {
+          fautifs.push(`${relative(RACINE, f)} : ${motif.source}`);
+        }
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("`canOpenURL` n'est employé nulle part", () => {
+    //: MESURÉ sur le manifeste engendré : il ne déclare `<queries>` que pour
+    //: `https`, donc depuis Android 11 `canOpenURL("market://…")` rend FAUX même
+    //: sur un terminal qui a le Play Store. Le bouton disparaîtrait sur
+    //: exactement les appareils capables de mettre à jour. Déclarer le schéma
+    //: demanderait un greffon de manifeste et un binaire neuf, c'est-à-dire le
+    //: cycle même que cette porte cherche à forcer.
+    const fautifs = SOURCES.filter((f) =>
+      /canOpenURL/.test(sansCommentaires(readFileSync(f, "utf8"))),
+    ).map((f) => relative(RACINE, f));
+    expect(fautifs).toEqual([]);
+  });
+
+  it("la version installée n'a qu'UN lecteur", () => {
+    //: Deux lecteurs, c'est deux réponses possibles, et celui qu'on oublierait
+    //: perdrait la règle qui compte : « illisible ⇒ on n'exige rien ». Un
+    //: terminal ne doit jamais se bloquer sur un défaut d'instrument.
+    const AUTORISE = "features/mise-a-jour/version-installee.ts";
+    const lecteurs = SOURCES.filter((f) =>
+      /nativeApplicationVersion|nativeBuildVersion/.test(
+        sansCommentaires(readFileSync(f, "utf8")),
+      ),
+    ).map((f) => relative(RACINE, f));
+    expect(lecteurs).toEqual([AUTORISE]);
+  });
+
+  it("`Linking.openURL` a une liste d'appelants NOMMÉE", () => {
+    //: Égalité et non inclusion : un appelant RETIRÉ doit faire tomber la règle
+    //: aussi, sinon la liste cesse de désigner quoi que ce soit et se périme en
+    //: silence.
+    //: `appareil/imprimante.tsx` n'est PAS de la liste : il appelle
+    //: `Linking.openSettings()`, qui n'ouvre aucune adresse. C'est ce
+    //: garde-fou qui l'a établi, contre une liste écrite de mémoire.
+    const ATTENDUS = [
+      "data/telephone.ts",
+      "features/mise-a-jour/magasin.ts",
+    ];
+    const appelants = SOURCES.filter((f) =>
+      /Linking\.openURL\(/.test(sansCommentaires(readFileSync(f, "utf8"))),
+    ).map((f) => relative(RACINE, f));
+    expect(appelants.sort()).toEqual(ATTENDUS);
+  });
+
+  it("le voile de mise à jour garde TOUJOURS une sortie", () => {
+    //: Assertion POSITIVE, et elle est nécessaire : la règle qui encadre
+    //: `logout` n'attrape qu'une déstructuration depuis `useSession()`, elle ne
+    //: verrait pas l'ABSENCE de sortie. Un mur sans issue sur un terminal qui ne
+    //: peut atteindre aucun magasin est le seul défaut irréparable depuis le
+    //: terminal lui-même.
+    const code = sansCommentaires(
+      readFileSync(join(RACINE, "features/mise-a-jour/voile.tsx"), "utf8"),
+    );
+    expect(code).toContain("useDeconnexion(");
+    expect(code).not.toMatch(/\blogout\(/);
+  });
+
+  it("un voile plein écran prend ses marges système", () => {
+    //: Il vit HORS de l'arbre de `Screen` : personne ne pose sa zone sûre à sa
+    //: place, et son dernier bouton atterrirait sous la barre du système. C'est
+    //: le raisonnement déjà écrit pour les modales, généralisé au cas qui lui
+    //: échappe.
+    const fautifs: string[] = [];
+    let voiles = 0;
+    for (const f of SOURCES) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/absolute inset-0/.test(code) || !/\bz-50\b/.test(code)) continue;
+      voiles += 1;
+      if (!/useMargesSysteme\s*\(/.test(code)) {
+        fautifs.push(`${relative(RACINE, f)} : voile plein écran sans marges système`);
+      }
+    }
+    expect(voiles).toBeGreaterThanOrEqual(2);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("aucune GARDE de porte ne lit la base", () => {
+    //: Une garde est montée sur CHAQUE terminal, y compris ceux dont la porte est
+    //: ouverte - c'est-à-dire presque tous. Un `useLecture` posé là ouvre un
+    //: abonnement permanent à `outbox_operations` et rejoue son agrégat à chaque
+    //: vente, sur le chemin chaud du comptoir, pour un écran qu'on ne verra pas.
+    //: Le décompte appartient au VOILE, qui ne monte que porte fermée.
+    const gardes = SOURCES.filter((f) => /features\/[^/]+\/garde\.tsx$/.test(f));
+    expect(gardes.length).toBeGreaterThanOrEqual(2);
+    const fautifs = gardes
+      .filter((f) => /useLecture\s*\(/.test(sansCommentaires(readFileSync(f, "utf8"))))
+      .map((f) => relative(RACINE, f));
+    expect(fautifs).toEqual([]);
+  });
+
+  it("un voile lit `useEnSouffrance`, jamais `countByState` en direct", () => {
+    //: `lireEnSouffrance` joint les PHOTOS et refuse de rendre zéro sur une base
+    //: illisible ; `countByState` ne fait ni l'un ni l'autre. Une photo en attente
+    //: est la SEULE copie de son fichier, et les deux voiles conseillent des
+    //: gestes qui la détruisent - l'APK posé à la main d'un côté, la déconnexion
+    //: de l'autre. La carte affirmait « tout est parti » et le marchand suivait.
+    //:
+    //: ⚠ La règle ne peut PAS être « `countByState` n'a qu'un lecteur » :
+    //: `appareil/synchronisation.tsx` et `features/sync/indicateur.tsx`
+    //: l'emploient légitimement - ils montrent l'état du journal, ils ne décident
+    //: pas de détruire.
+    const voiles = SOURCES.filter((f) => /features\/[^/]+\/voile\.tsx$/.test(f));
+    expect(voiles.length).toBeGreaterThanOrEqual(2);
+    const fautifs: string[] = [];
+    for (const f of voiles) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/useEnSouffrance\s*\(/.test(code)) {
+        fautifs.push(`${relative(RACINE, f)} : ne lit pas useEnSouffrance`);
+      }
+      if (/countByState/.test(code)) {
+        fautifs.push(`${relative(RACINE, f)} : lit countByState en direct`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("la version d'`app.config.ts` est un semver à trois segments", () => {
+    //: Le seuil se compare à CETTE chaîne. « 1.0 » ou « 1.0.0-rc1 » rendrait le
+    //: réglage d'administration ambigu, et le défaut ne se verrait qu'au moment
+    //: d'armer la porte - c'est-à-dire trop tard.
+    const config = readFileSync(resolve(RACINE, "../app.config.ts"), "utf8");
+    const trouve = /\bversion:\s*"([^"]+)"/.exec(config);
+    expect(trouve).not.toBeNull();
+    expect(trouve?.[1]).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});

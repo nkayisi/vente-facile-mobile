@@ -27,8 +27,11 @@ import {
   type PlanAbonnement,
 } from "@/data/abonnement";
 import { useEnLigne } from "@/data/reseau";
+import { useSynchronisation } from "@/features/sync/provider";
+import { carteAbonnement } from "@/session/carte-en-souffrance";
 import { useDeconnexion } from "@/session/deconnexion";
 import { useSession } from "@/session/provider";
+import { useEnSouffrance } from "@/session/use-en-souffrance";
 import {
   Badge,
   Button,
@@ -51,17 +54,9 @@ function titreDe(statut: string, motif: MotifPorteFermee): string {
   return "Renouvellement requis";
 }
 
-export function VoileAbonnement({
-  motif,
-  enAttente,
-  onActualiser,
-}: {
-  motif: MotifPorteFermee;
-  /** Opérations encore dans le journal : ce qui n'est pas perdu. */
-  enAttente: number;
-  onActualiser: () => Promise<void>;
-}) {
-  const { snapshot } = useSession();
+export function VoileAbonnement({ motif }: { motif: MotifPorteFermee }) {
+  const { snapshot, refresh } = useSession();
+  const { lancer } = useSynchronisation();
   // ⚠ Jamais `logout()` en direct : la séquence de déconnexion tente D'ABORD
   // de vider la file, et elle NOMME ce qui ne peut pas partir. Sous un voile
   // d'abonnement, rien ne peut partir - c'est exactement ce que le marchand
@@ -74,6 +69,13 @@ export function VoileAbonnement({
   const [feuille, setFeuille] = useState(false);
   const [plans, setPlans] = useState<PlanAbonnement[]>([]);
   const [etat, setEtat] = useState<EtatAbonnement | null>(null);
+
+  // ⚠ La lecture vit ICI, pas dans la garde : elle ne tourne donc que sur un
+  // terminal réellement bloqué, et non à chaque vente de tout le parc. Elle passe
+  // par `lireEnSouffrance`, qui compte les PHOTOS et refuse de rendre zéro sur
+  // une base illisible.
+  const vue = useEnSouffrance();
+  const carte = carteAbonnement(vue);
 
   const abonnement = snapshot?.subscription ?? null;
   const peutRegler = abonnement?.can_manage ?? false;
@@ -119,6 +121,17 @@ export function VoileAbonnement({
 
   const fermerFeuille = useCallback(() => setFeuille(false), []);
 
+  /**
+   * ⚠ **L'ORDRE COMPTE, ET LA FRAÎCHEUR SE LIT.** On rafraîchit l'instantané,
+   * PUIS on lance un cycle : le premier ramène le verdict, le second pousse ce
+   * qui attendait si la porte s'ouvre. L'inverse repartirait avec les droits
+   * d'hier et se ferait rebloquer.
+   *
+   * `refresh` ne lève JAMAIS : elle rend l'instantané précédent quand le serveur
+   * n'a pas répondu. Ignorer son `frais` faisait passer un portail captif pour
+   * « l'abonnement est toujours échu », sur le bouton même qui doit constater le
+   * contraire après un paiement.
+   */
   const actualiser = async () => {
     if (!enLigne) {
       // ⚠ Ni « réessayez », ni « synchronisez » : hors ligne, les deux sont
@@ -128,7 +141,12 @@ export function VoileAbonnement({
     }
     setActualisation(true);
     try {
-      await onActualiser();
+      const relu = await refresh();
+      if (!relu.frais) {
+        toast.erreur("Le serveur n'a pas répondu : l'abonnement n'a pas pu être relu.");
+        return;
+      }
+      void lancer("bandeau");
     } finally {
       setActualisation(false);
     }
@@ -165,15 +183,23 @@ export function VoileAbonnement({
         </View>
 
         {/* Ce qui n'est PAS perdu : la question que le marchand se pose. */}
+        {/*
+          ⚠ Les phrases viennent d'un module PUR. Écrites au gabarit, elles
+          rendaient « 1 opération ATTENDENT sur ce terminal. ELLES repartiront » -
+          verbe et pronom faux au singulier, le défaut exact que le voile d'en
+          face avait déjà dû corriger.
+        */}
         <Card className="mt-6">
           <View className="flex-row items-start gap-3">
-            <Icon name="ShieldAlert" size={18} color="mutedForeground" />
+            <Icon
+              name={carte.ton === "neutre" ? "ShieldCheck" : "ShieldAlert"}
+              size={18}
+              color="mutedForeground"
+            />
             <View className="min-w-0 flex-1 gap-1">
-              <Text variant="label">Vos ventes sont intactes</Text>
+              <Text variant="label">{carte.titre}</Text>
               <Text variant="bodySmall" className="text-muted-foreground">
-                {enAttente > 0
-                  ? `${enAttente} opération${enAttente > 1 ? "s" : ""} attendent sur ce terminal. Elles repartiront seules dès que l'abonnement sera réglé. Rien n'est perdu.`
-                  : "Tout ce qui a été encaissé sur ce terminal est conservé et repartira dès que l'abonnement sera réglé."}
+                {carte.phrase}
               </Text>
             </View>
           </View>
