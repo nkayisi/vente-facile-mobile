@@ -28,6 +28,7 @@ import type {
 import type { SessionSnapshot } from "@/session/types";
 
 import type { EtatPanier, LignePanier } from "./etat-panier";
+import { logoCourant } from "@/printing/logo-courant";
 
 /**
  * « 2 casiers + 3 bouteilles », ce que le client emporte réellement.
@@ -59,6 +60,10 @@ export function chromeDeLaSession(snapshot: SessionSnapshot | null): ReceiptChro
   const org = snapshot?.organization;
   return {
     org: {
+      // Le logo est chargé au démarrage et lu sans attente : le rendre
+      // asynchrone ici ferait attendre le premier ticket devant un client.
+      // `null` tant qu'il n'y en a pas, et le bloc disparaît.
+      logo: logoCourant() ?? undefined,
       name: org?.name ?? "Vente Facile",
       address: org?.address,
       city: org?.city,

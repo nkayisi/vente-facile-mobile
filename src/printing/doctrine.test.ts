@@ -186,3 +186,62 @@ describe("le rastériseur ne dessine que la page", () => {
     expect(code).toContain("showsHorizontalScrollIndicator = false");
   });
 });
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE SOCLE DU LOGO EXISTAIT DEPUIS LONGTEMPS, ET PERSONNE NE LE PASSAIT.  │
+ * │                                                                          │
+ * │ `core/receipt/identity.ts` émettait déjà un bloc `logo`, `render-html`   │
+ * │ le rendait, `logoMaxHeight` suivait la largeur du papier, et le          │
+ * │ back-office imprimait le sien. Seul `chromeDeLaSession` ne portait pas   │
+ * │ le champ : une omission d'un mot, qu'aucun type ne signalait puisque     │
+ * │ `logo` est facultatif. Le ticket sortait donc avec logo au bureau et     │
+ * │ sans au comptoir, pour la même vente.                                    │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le logo atteint bien le document", () => {
+  const ticket = readFileSync(join(SRC, "features/pos/ticket.ts"), "utf8");
+
+  it("le balayage MORD", () => {
+    expect(ticket).toContain("export function chromeDeLaSession");
+  });
+
+  it("`chromeDeLaSession` porte le logo", () => {
+    const corps = ticket.slice(ticket.indexOf("export function chromeDeLaSession"));
+    const fin = corps.indexOf("\n}");
+    expect(corps.slice(0, fin)).toMatch(/logo:/);
+  });
+
+  it("il est lu SANS attente, jamais chargé au moment d'imprimer", () => {
+    // Un `await` ici ferait attendre le premier ticket devant un client.
+    const corps = ticket.slice(ticket.indexOf("export function chromeDeLaSession"));
+    const fin = corps.indexOf("\n}");
+    expect(corps.slice(0, fin)).toMatch(/logoCourant\(\)/);
+    expect(corps.slice(0, fin)).not.toMatch(/await/);
+  });
+
+  it("l'état du logo reste PUR, et c'est une leçon payée", () => {
+    // Première écriture : le hook vivait dans `logo-courant.ts`, donc ce
+    // module importait `@/session/provider`, qui tire `@/db/client`, qui OUVRE
+    // SQLite au chargement. `ticket.test.ts` et `proforma.test.ts` ont CESSÉ
+    // de se lancer - deux suites entières, pour un import.
+    //
+    // ⚠ ON VISE L'IMPORT, PAS LE MOT. La docstring de ce module NOMME
+    // `@/session/provider` pour expliquer pourquoi il l'exclut : un garde-fou
+    // qui crie sur de la prose finit désactivé, et on perd le contrôle avec
+    // lui. C'est la leçon déjà écrite sur le balayage des écritures en masse.
+    const etat = readFileSync(join(SRC, "printing/logo-courant.ts"), "utf8");
+    const imports = [...etat.matchAll(/^\s*import[^;]*from\s+"([^"]+)"/gm)].map(
+      (m) => m[1]
+    );
+    expect(imports.filter((i) => /^@\/(session|db|data)\//.test(i))).toEqual([]);
+    expect(imports).not.toContain("react");
+  });
+
+  it("il est chargé au démarrage du groupe applicatif", () => {
+    // Sans cet appel, `logoCourant()` rendrait `null` pour toujours et le
+    // socle resterait inerte - l'état exact d'avant ce lot.
+    const layout = readFileSync(join(SRC, "app/(app)/_layout.tsx"), "utf8");
+    expect(layout).toMatch(/useLogoDeLEtablissement\(\)/);
+  });
+});

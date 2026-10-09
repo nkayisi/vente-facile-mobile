@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 
 import { useDeviseParDefaut } from "@/data/devises";
+import { useLogoDeLEtablissement } from "@/printing/use-logo-etablissement";
 import { GardeAbonnement } from "@/features/abonnement/garde";
 import { GardeMiseAJour } from "@/features/mise-a-jour/garde";
 import { PanierProvider } from "@/features/pos/panier";
@@ -71,6 +72,9 @@ export default function AppLayout() {
   // Avant tout écran : sans cela, `formatPrice` écrit en francs congolais
   // quelle que soit la devise de l'établissement.
   useDeviseParDefaut();
+  // Le logo des documents imprimés, chargé une fois : `chromeDeLaSession` le
+  // lit sans attendre, au moment d'imprimer.
+  useLogoDeLEtablissement();
 
   return (
     <ToastProvider>
