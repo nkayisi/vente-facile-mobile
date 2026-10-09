@@ -70,6 +70,12 @@ const DEMANDES = [
   // dépense synchronisée en brouillon, c'est-à-dire sur le seul écran qui porte
   // la réimpression de son reçu.
   "Send",
+  // ⚠ « Ma journée » du tiroir : la journée RENDUE, pas une date à choisir.
+  // `Calendar` seul se lit « choisissez un jour », et l'entrée n'ouvre pas un
+  // sélecteur. Déclaré ICI et jamais à la main dans le fichier engendré : une
+  // entrée qui ne vit que là ne survit pas à la commande qui l'engendre, et
+  // c'est exactement ainsi que `Send` avait disparu - écran blanc à la clé.
+  "CalendarCheck",
   "Calculator", "Percent", "CreditCard", "Calendar", "Clock", "ArrowUpRight",
   "ArrowDownRight", "Bell", "Sparkles",
   // Encaissement : les quatre glyphes de la modale du back-office.
@@ -148,6 +154,10 @@ function trace(dir, nom, ext) {
  */
 const DIVERGENCES_ACCEPTEES = new Map([
   ["Calendar", "reproportionne : encoches 2v4 -> 2v3, filet a y=9 au lieu de 10"],
+  // Le MEME reproportionnement que `Calendar`, mesure trace par trace :
+  // encoches 2v4 -> 2v3, cadre y=4 -> y=3, filet y=10 -> y=9, coche m9 16 ->
+  // m9 15. Le glyphe est redessine d'une unite vers le haut, pas remplace.
+  ["CalendarCheck", "reproportionne comme Calendar : tout le dessin remonte d'une unite"],
   ["Coins", "redessine et MIROITE : la grande piece passe de gauche a droite"],
   ["Ban", "redessine"],
   ["Gift", "redessine"],

@@ -28,15 +28,21 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { CHEMIN_CREANCES, CHEMIN_EXPORT, CHEMINS_STATISTIQUES } from "./rapports";
+import {
+  CHEMIN_CREANCES,
+  CHEMIN_EXPORT,
+  CHEMIN_MA_JOURNEE,
+  CHEMINS_STATISTIQUES,
+} from "./rapports";
 
-/** Relevé le 2026-09-03 sur `StatisticsViewSet.get_extra_actions()`. */
+/** Relevé le 2026-10-09 sur `StatisticsViewSet.get_extra_actions()`. */
 const CHEMINS_DU_SERVEUR = [
   "cash_flow",
   "cashbook",
   "customers",
   "daily_cash_report",
   "export",
+  "my-activity",
   "product_profits",
   "product_supplies",
   "profit_margins",
@@ -61,6 +67,7 @@ describe("les chemins des rapports existent sur le serveur", () => {
       ...CHEMINS_STATISTIQUES,
       creances: CHEMIN_CREANCES,
       export: CHEMIN_EXPORT,
+      "ma-journee": CHEMIN_MA_JOURNEE,
     })
       .filter(([, chemin]) => !CHEMINS_DU_SERVEUR.includes(chemin))
       .map(([onglet, chemin]) => `${onglet} -> ${chemin}`);

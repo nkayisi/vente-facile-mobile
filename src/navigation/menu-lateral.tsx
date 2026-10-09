@@ -158,6 +158,47 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
 
         <Divider />
 
+        {/*
+          ┌──────────────────────────────────────────────────────────────────┐
+          │ « MA JOURNÉE » NE PEUT PAS VIVRE DANS `MENU`.                   │
+          │                                                                  │
+          │ `MENU` est recopié ligne à ligne de la barre latérale du web, et  │
+          │ `menu.test.ts` compare les libellés, les glyphes, les permissions │
+          │ ET la longueur : y ajouter une entrée propre au mobile ferait     │
+          │ échouer trois assertions, à juste titre - c'est ce test qui       │
+          │ empêche les deux surfaces de dériver.                             │
+          │                                                                  │
+          │ Elle est donc dans son propre bloc, et le registre est différent  │
+          │ de celui du menu : les onze entrées ci-dessus sont les SECTIONS   │
+          │ de l'établissement, celle-ci est MA lecture.                      │
+          │                                                                  │
+          │ Elle est ouverte à tous les rôles, et c'est tout son objet : les  │
+          │ huit onglets de « Rapports & statistiques » sont gardés par       │
+          │ `reports.view`, accordé au seul propriétaire et au gérant. Un     │
+          │ caissier n'avait donc aucune lecture de sa propre journée, ce qui  │
+          │ est la contrepartie du cloisonnement.                             │
+          └──────────────────────────────────────────────────────────────────┘
+        */}
+        <View className="px-3 pt-2">
+          <Text variant="caption" className="px-4 pb-1 uppercase">
+            Moi
+          </Text>
+          <Pressable
+            onPress={aller("/(app)/ma-journee")}
+            haptic="selection"
+            accessibilityRole="link"
+            accessibilityLabel="Ma journée : mes ventes, mes encaissements, mes dépenses"
+            className="flex-row items-center gap-3 rounded-lg px-4 py-2.5"
+          >
+            <Icon name="CalendarCheck" size={18} color="foreground" />
+            <Text variant="bodySmall" className="flex-1 font-sans-medium text-foreground">
+              Ma journée
+            </Text>
+          </Pressable>
+        </View>
+
+        <Divider />
+
         {/* Bloc propre au terminal : sans miroir dans le back-office. */}
         <View className="px-3 pt-2">
           <Text variant="caption" className="px-4 pb-1 uppercase">

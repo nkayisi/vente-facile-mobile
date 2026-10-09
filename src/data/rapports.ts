@@ -89,6 +89,30 @@ export const CHEMIN_EXPORT = "export";
 /** Le chemin complet d'un export, pour l'écran qui télécharge. */
 export const URL_EXPORT = `/reports/statistics/${CHEMIN_EXPORT}/`;
 
+/**
+ * Ma propre journée : ce que J'AI vendu, encaissé, dépensé.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE N'EST PAS `user_activity`, ET LA DIFFÉRENCE EST UN DROIT.            │
+ * │                                                                          │
+ * │ Les huit onglets ci-dessus sont gardés par `reports.view`, accordé au    │
+ * │ seul propriétaire et au gérant : un caissier qui ouvrait la rubrique     │
+ * │ recevait 403 sur les huit. Il n'avait donc aucune lecture de sa propre   │
+ * │ journée, ce qui est la contrepartie du cloisonnement.                    │
+ * │                                                                          │
+ * │ `my-activity` est gardée par `dashboard.view`, que les quatre rôles      │
+ * │ portent, et elle N'ACCEPTE AUCUNE CIBLE : le serveur neutralise même le  │
+ * │ filtre volontaire, si bien qu'un `?user=` qui traînerait resterait sans  │
+ * │ effet. Le périmètre n'est pas une règle à tenir, c'est la forme de       │
+ * │ l'endpoint.                                                              │
+ * │                                                                          │
+ * │ ⚠ Elle porte un TIRET parce qu'elle déclare un `url_path` explicite,     │
+ * │ comme `sales-by-packaging`. C'est l'exception, pas la règle : sans       │
+ * │ `url_path`, le chemin garde les soulignés du nom de méthode.             │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export const CHEMIN_MA_JOURNEE = "my-activity";
+
 
 /** Vingt lignes par page, comme le back-office. */
 export const TAILLE_PAGE = 20;
@@ -404,7 +428,15 @@ export async function chargerReleves(ctx: ContexteRapport): Promise<RelevesGloba
 }
 
 /** « 09/08 » : un axe de graphique n'a pas la place d'une année. */
-function etiquetteJour(iso: unknown): string {
+/**
+ * « 2026-10-09 » rendu « 09/10 », pour un axe de graphique.
+ *
+ * Exportée : « Ma journée » dessine le même genre d'axe, et deux graphiques de
+ * la même application qui formatent un jour différemment se liraient comme
+ * deux données différentes. `Intl` est proscrit, d'où la lecture directe de la
+ * chaîne ISO - aucune `Date` n'est construite, donc aucun fuseau n'intervient.
+ */
+export function etiquetteJour(iso: unknown): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ""));
   return m ? `${m[3]}/${m[2]}` : String(iso ?? "");
 }

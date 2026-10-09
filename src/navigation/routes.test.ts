@@ -139,6 +139,38 @@ describe("cibles de navigation", () => {
     expect(casses).toEqual([]);
   });
 
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ LE TIROIR PORTE DES DESTINATIONS QUE `menu.ts` NE DÉCLARE PAS.          │
+   * │                                                                          │
+   * │ `MENU` est verrouillé à onze entrées, comparées une à une à la barre     │
+   * │ latérale du web : tout ce qui est propre au terminal s'écrit donc EN DUR │
+   * │ dans `menu-lateral.tsx` - les quatre entrées de « Cet appareil », et     │
+   * │ « Ma journée ». Aucune n'était contrôlée.                                │
+   * │                                                                          │
+   * │ Une faute de frappe y est muette : `aller()` navigue, expo-router ne     │
+   * │ trouve rien, et l'entrée ne fait simplement RIEN. C'est le défaut qui a  │
+   * │ laissé l'écran de diagnostic sans aucun chemin d'accès pendant deux      │
+   * │ sessions - « un outil qu'on ne peut pas atteindre ne sert qu'à celui qui │
+   * │ l'a écrit ».                                                             │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  it("chaque destination écrite en dur dans le tiroir mène quelque part", () => {
+    const tiroir = readFileSync(join(SRC, "navigation/menu-lateral.tsx"), "utf8");
+    const casses: string[] = [];
+    let vus = 0;
+    // Les deux formes qu'emploie ce fichier : `href: "…"` dans ses tables, et
+    // `aller("…")` pour une entrée seule.
+    for (const m of tiroir.matchAll(/(?:href:\s*|aller\(\s*)"([^"]+)"/g)) {
+      vus += 1;
+      if (!existe(routes, normaliser(m[1]))) casses.push(m[1]);
+    }
+    // Un balayage qui ne balaie rien passe et ne prouve rien : les quatre
+    // entrées de « Cet appareil » plus « Ma journée » en font au moins cinq.
+    expect(vus).toBeGreaterThanOrEqual(5);
+    expect(casses).toEqual([]);
+  });
+
   it("chaque onglet déclaré correspond à un fichier de route", () => {
     const onglets = readFileSync(join(SRC, "navigation/onglets.ts"), "utf8");
     const noms = [...onglets.matchAll(/nom:\s*"([a-z]+)"/g)].map((m) => m[1]);
