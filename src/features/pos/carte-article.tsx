@@ -17,6 +17,15 @@ interface Props {
   article: ArticlePos;
   /** Montant formaté par l'appelant : les décimales dépendent de la devise. */
   prix: string;
+  /**
+   * Le même prix dans une AUTRE devise, au taux en vigueur. `null` sinon.
+   *
+   * ⚠ IL NE REMPLACE JAMAIS `prix`, il le suit. Un prix converti affiché seul
+   * se lirait comme le prix de vente, et le ticket sortirait alors dans une
+   * autre monnaie que celle annoncée au client - la facture reste libellée en
+   * devise principale. T10 du retour de test.
+   */
+  prixConverti?: string | null;
   prixGros?: string | null;
   /** Quantité déjà au panier, pour la signaler sans rouvrir la fiche. */
   auPanier?: number;
@@ -24,7 +33,9 @@ interface Props {
   onPress: () => void;
 }
 
-export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, onPress }: Props) {
+export function CarteArticle({
+  article, prix, prixConverti, prixGros, auPanier = 0, epuise, onPress,
+}: Props) {
   const conditionnement = getPackaging(article);
   // ┌────────────────────────────────────────────────────────────────────────┐
   // │ LE VERROU REND LA CARTE INERTE. L'ÉPUISEMENT, NON.                    │
@@ -80,6 +91,11 @@ export function CarteArticle({ article, prix, prixGros, auPanier = 0, epuise, on
       <Text variant="bodyLarge" className="mt-2 font-sans-semibold text-primary">
         {prix}
       </Text>
+      {prixConverti ? (
+        <Text variant="caption" className="text-muted-foreground">
+          {prixConverti}
+        </Text>
+      ) : null}
       {conditionnement && prixGros ? (
         <Text variant="caption" className="text-muted-foreground">
           {/* « par » et non « le » : le GENRE d'un nom de contenant n'est pas

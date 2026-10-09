@@ -21,6 +21,13 @@ import {
 } from "@/features/pos/catalogue";
 import { messageGrilleVide, type DiagnosticCatalogue } from "@/features/pos/etat-catalogue";
 import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
+import {
+  CLE_DEVISE_AFFICHAGE,
+  deviseAffichageValide,
+  devisesAffichables,
+  prixAffiche,
+} from "@/features/pos/affichage-devise";
+import { ecrireReglage, lireReglage } from "@/data/reglages";
 import { useMonnaie } from "@/data/devises";
 import { analyserFond } from "@/features/caisse/fond";
 import { compterEnAttente } from "@/features/pos/attente";
@@ -80,6 +87,31 @@ export default function Comptoir() {
   // est celui de la CAISSE, d'où le stock est lu ; celui-ci est celui du
   // MEMBRE, qui borne ce que le catalogue montre - la règle du back-office.
   const entrepotsCatalogue = usePerimetreCatalogue();
+
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LA DEVISE D'AFFICHAGE, ET CE N'EST PAS LA DEVISE DE FACTURATION.    │
+  // │                                                                      │
+  // │ T10 du retour de test : un marchand dont le catalogue est tenu en    │
+  // │ dollars doit pouvoir annoncer un prix en francs sans calculer de     │
+  // │ tête. La FACTURE reste en devise principale, le ticket n'est pas     │
+  // │ touché, et la carte montre les deux chiffres - jamais le converti    │
+  // │ seul, qui se lirait comme le prix de vente.                          │
+  // │                                                                      │
+  // │ `useMonnaie()` et non `panier.devises` : la seconde est la table      │
+  // │ d'ARITHMÉTIQUE du panier, celle-ci l'aide d'AFFICHAGE, et elle seule │
+  // │ porte la liste des devises et la parité lisible.                     │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const money = useMonnaie();
+  const [deviseAffichage, setDeviseAffichage] = useState<string | null>(null);
+  useEffect(() => {
+    void lireReglage<string | null>(CLE_DEVISE_AFFICHAGE, null).then(setDeviseAffichage);
+  }, []);
+  const devisesPossibles = useMemo(() => devisesAffichables(money), [money]);
+  const deviseRetenue = deviseAffichageValide(deviseAffichage, money);
+  const choisirDevise = (code: string) => {
+    setDeviseAffichage(code);
+    void ecrireReglage(CLE_DEVISE_AFFICHAGE, code);
+  };
 
   // Recherche différée : à chaque frappe, la requête part 250 ms plus tard, et
   // une frappe suivante annule la précédente. Sans cela, taper « coca » lance
@@ -203,6 +235,48 @@ export default function Comptoir() {
         />
       </View>
 
+      {/*
+        ┌────────────────────────────────────────────────────────────────────┐
+        │ UN CHOIX UNIQUE N'EST PAS UN CHOIX.                               │
+        │                                                                    │
+        │ La rangée ne paraît QUE sur un établissement réellement            │
+        │ multi-devise : sur un établissement mono-devise elle n'offrirait    │
+        │ qu'un bouton déjà actif, et occuperait onze points de hauteur sur   │
+        │ la grille du comptoir pour rien.                                    │
+        │                                                                    │
+        │ Elle dit « Afficher en », pas « Devise » : ce n'est PAS la devise  │
+        │ de facturation, et le confondre ferait croire qu'on change ce qui  │
+        │ sortira sur le ticket.                                             │
+        └────────────────────────────────────────────────────────────────────┘
+      */}
+      {devisesPossibles.length > 1 ? (
+        <View className="mt-2 flex-row items-center gap-2">
+          <Text variant="caption" className="text-muted-foreground">
+            Afficher en
+          </Text>
+          {devisesPossibles.map((code) => {
+            const actif = code === deviseRetenue;
+            return (
+              <Pressable
+                key={code}
+                onPress={() => choisirDevise(code)}
+                className={`h-9 justify-center rounded-full border px-3 ${
+                  actif ? "border-primary bg-primary" : "border-border"
+                }`}
+                accessibilityLabel={`Afficher les prix en ${code}`}
+              >
+                <Text
+                  variant="bodySmall"
+                  className={actif ? "text-primary-foreground" : "text-muted-foreground"}
+                >
+                  {code}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       {rubriques.length > 0 ? (
         <FlatList
           horizontal
@@ -252,6 +326,9 @@ export default function Comptoir() {
             <CarteArticle
               article={item}
               prix={panier.argent(Number(item.selling_price), panier.devises.primary)}
+              prixConverti={
+                prixAffiche(Number(item.selling_price), deviseRetenue, money).converti
+              }
               prixGros={
                 item.wholesale_price
                   ? panier.argent(Number(item.wholesale_price), panier.devises.primary)

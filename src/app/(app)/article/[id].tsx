@@ -13,12 +13,19 @@
  * `null` ne se lit jamais comme zéro : un prix non défini s'écrit « Non
  * défini », et une marge inconnue « — » plutôt que « 0 % ».
  */
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { formatFixedFr, formatPrice, pluralizeUnit } from "@vente-facile/core";
 
 import { detailArticle } from "@/data/articles";
+import { useMonnaie } from "@/data/devises";
+import { lireReglage } from "@/data/reglages";
+import {
+  CLE_DEVISE_AFFICHAGE,
+  deviseAffichageValide,
+  prixAffiche,
+} from "@/features/pos/affichage-devise";
 import { VignetteArticle } from "@/ui";
 import { useLecture } from "@/data/live";
 import {
@@ -43,6 +50,16 @@ function Paire({ label, valeur }: { label: string; valeur: string }) {
 
 export default function FicheArticle() {
   const { id } = useLocalSearchParams<{ id: string }>();
+
+  // La devise d'AFFICHAGE, réglée au comptoir et propre à l'appareil : la
+  // facture reste libellée en devise principale. T10 du retour de test.
+  const money = useMonnaie();
+  const [deviseAffichage, setDeviseAffichage] = useState<string | null>(null);
+  useEffect(() => {
+    void lireReglage<string | null>(CLE_DEVISE_AFFICHAGE, null).then(setDeviseAffichage);
+  }, []);
+  const converti = (prix: number) =>
+    prixAffiche(prix, deviseAffichageValide(deviseAffichage, money), money).converti;
   const charger = useCallback(() => detailArticle(id), [id]);
   const { donnees: a, chargement, erreur } = useLecture(charger, {
     tables: TABLES,
@@ -144,6 +161,16 @@ export default function FicheArticle() {
                   label="Vente"
                   valeur={c.vente != null ? formatPrice(c.vente) : "Non défini"}
                 />
+                {/*
+                  ⚠ LE PRIX CONVERTI SUIT LE PRIX DE VENTE, il ne le remplace
+                  pas, et il ne paraît que sur un établissement multi-devise.
+                  La facture reste libellée en devise principale : montrer le
+                  converti seul ferait croire que le ticket sortira ainsi.
+                  T10 du retour de test.
+                */}
+                {c.vente != null && converti(c.vente) ? (
+                  <Paire label="Soit" valeur={converti(c.vente)!} />
+                ) : null}
                 <Paire
                   label="Marge (sur le prix de vente)"
                   valeur={
