@@ -16,8 +16,10 @@ import {
   articleParCodeBarres,
   categoriesVendables,
   chercherArticles,
+  diagnostiquerCatalogue,
   type ArticlePos,
 } from "@/features/pos/catalogue";
+import { messageGrilleVide, type DiagnosticCatalogue } from "@/features/pos/etat-catalogue";
 import { useMonnaie } from "@/data/devises";
 import { analyserFond } from "@/features/caisse/fond";
 import { compterEnAttente } from "@/features/pos/attente";
@@ -40,6 +42,9 @@ export default function Comptoir() {
 
   const [session, setSession] = useState<SessionCaisse | null | undefined>(undefined);
   const [articles, setArticles] = useState<ArticlePos[]>([]);
+  // Ce que la table CONTIENT, relevé seulement quand la grille sort vide : sur
+  // une grille pleine il n'y a rien à expliquer, et ce comptage balaie tout.
+  const [diagnostic, setDiagnostic] = useState<DiagnosticCatalogue | null>(null);
   const [rubriques, setRubriques] = useState<{ id: string; name: string }[]>([]);
   const [terme, setTerme] = useState("");
   const [rubrique, setRubrique] = useState<string | null>(null);
@@ -81,7 +86,26 @@ export default function Comptoir() {
     if (minuteur.current) clearTimeout(minuteur.current);
     minuteur.current = setTimeout(() => {
       chercherArticles({ warehouseId: entrepot, terme, categoryId: rubrique })
-        .then(setArticles)
+        .then(async (trouves) => {
+          setArticles(trouves);
+          // ┌──────────────────────────────────────────────────────────────┐
+          // │ LE DIAGNOSTIC NE SE PAIE QUE SUR UNE GRILLE VIDE.           │
+          // │                                                              │
+          // │ Et il doit être posé AVANT que l'état vide ne s'affiche,     │
+          // │ sinon l'écran rend un message par défaut le temps d'un       │
+          // │ aller-retour - c'est-à-dire qu'il affirme une cause qu'il    │
+          // │ n'a pas encore mesurée, le défaut même qu'on referme.        │
+          // └──────────────────────────────────────────────────────────────┘
+          setDiagnostic(
+            trouves.length === 0
+              ? {
+                  ...(await diagnostiquerCatalogue()),
+                  recherche: terme.trim().length > 0,
+                  rubrique: rubrique !== null,
+                }
+              : null
+          );
+        })
         .finally(() => setChargement(false));
     }, 250);
     return () => {
@@ -210,15 +234,7 @@ export default function Comptoir() {
           <ActivityIndicator />
         </View>
       ) : articles.length === 0 ? (
-        <EmptyState
-          icon="Package"
-          title={terme ? "Aucun article trouvé" : "Catalogue vide"}
-          message={
-            terme
-              ? "Essayez un autre mot, ou scannez le code-barres."
-              : "Synchronisez pour recevoir le catalogue de votre organisation."
-          }
-        />
+        <GrilleVide diagnostic={diagnostic} />
       ) : (
         <FlatList
           data={articles}
@@ -327,6 +343,51 @@ export default function Comptoir() {
  * l'ISSUE. Sans lui, un caissier devant trois articles grisés conclut que son
  * appareil est cassé plutôt qu'à un comptage en cours dans le dépôt.
  */
+/**
+ * L'état vide de la grille, qui DIT sa cause.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ « CATALOGUE VIDE · SYNCHRONISEZ » ÉTAIT FAUX DÈS QUE LES ARTICLES       │
+ * │ ÉTAIENT LÀ MAIS HORS VENTE.                                              │
+ * │                                                                          │
+ * │ Le caissier synchronisait, tout réussissait, la grille restait vide, et  │
+ * │ il recommençait. Un message qui désigne le mauvais geste coûte plus      │
+ * │ qu'un message absent : il occupe la seule piste que le caissier ait.     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Le bouton ne paraît que là où le geste ABOUTIT, et c'est le drapeau du
+ * module pur qui le décide, jamais la prose - le message d'« aucun article en
+ * vente » parle lui aussi de synchronisation, pour dire qu'elle est inutile.
+ */
+function GrilleVide({ diagnostic }: { diagnostic: DiagnosticCatalogue | null }) {
+  const { enCours, lancer } = useSynchronisation();
+
+  // Pas encore mesuré : on n'affirme aucune cause. Le cas ne dure qu'un
+  // aller-retour, et inventer une explication en attendant est précisément ce
+  // que ce composant existe pour empêcher.
+  if (!diagnostic) {
+    return <EmptyState icon="Package" title="Aucun article à afficher" />;
+  }
+
+  const { icone, titre, message, leveParSynchronisation } = messageGrilleVide(diagnostic);
+
+  return (
+    <EmptyState
+      icon={icone}
+      title={titre}
+      message={message}
+      action={
+        leveParSynchronisation
+          ? {
+              label: enCours ? "Synchronisation…" : "Synchroniser",
+              onPress: () => void lancer("bandeau"),
+            }
+          : undefined
+      }
+    />
+  );
+}
+
 function BandeauInventaire({
   articles,
   arrete,

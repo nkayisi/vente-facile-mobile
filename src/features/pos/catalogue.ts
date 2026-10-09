@@ -443,6 +443,45 @@ export async function articlesParIds(
   return new Map(lignes.map((l) => versArticle(l, ctx)).map((a) => [a.id, a]));
 }
 
+/**
+ * Ce que la table CONTIENT, pour expliquer une grille vide.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE GRILLE VIDE A PLUSIEURS CAUSES, ET LE RÉSULTAT FILTRÉ N'EN DIT      │
+ * │ AUCUNE.                                                                  │
+ * │                                                                          │
+ * │ `vendable()` exige `is_active` ET `is_sellable` : un catalogue descendu   │
+ * │ sans ces drapeaux rend zéro article, exactement comme une table vide.    │
+ * │ Les distinguer demande de compter ce que la table porte AVANT le filtre. │
+ * │                                                                          │
+ * │ Un seul aller-retour, par agrégat conditionnel : deux requêtes pourraient│
+ * │ tomber de part et d'autre d'un tirage et rendre `vendables > recus`, un  │
+ * │ état impossible dont aucune cause ne se déduirait.                       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Appelée SEULEMENT quand la grille est vide : sur une grille pleine il n'y a
+ * rien à expliquer, et ce comptage balaie toute la table.
+ */
+export async function diagnostiquerCatalogue(): Promise<{
+  recus: number;
+  vendables: number;
+}> {
+  const [ligne] = await db
+    .select({
+      recus: sql<number>`count(*)`,
+      vendables: sql<number>`sum(case when ${products.isActive} = 1 and ${products.isSellable} = 1 then 1 else 0 end)`,
+    })
+    .from(products)
+    .where(or(eq(products.isDeleted, false), isNull(products.isDeleted)));
+
+  // `sum()` de SQLite rend NULL sur zéro ligne, jamais 0 : le lire comme un
+  // nombre donnerait `NaN`, et l'écran afficherait « NaN articles reçus ».
+  return {
+    recus: Number(ligne?.recus ?? 0),
+    vendables: Number(ligne?.vendables ?? 0),
+  };
+}
+
 export async function categoriesVendables(): Promise<{ id: string; name: string }[]> {
   return db
     .select({ id: categories.id, name: categories.name })
