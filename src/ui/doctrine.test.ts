@@ -32,6 +32,24 @@ function sansCommentaires(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
+/**
+ * Comme `sansCommentaires`, mais les POSITIONS sont préservées.
+ *
+ * Retirer les commentaires décale tous les index : un garde-fou qui compte ses
+ * lignes dans la source amputée NOMME une ligne qui ne correspond à rien dans
+ * le fichier réel, et envoie chercher au mauvais endroit. Mesuré : le défaut de
+ * `types-caisse.ts` était rapporté ligne 64 pour une ligne 138.
+ *
+ * On blanchit donc chaque caractère de commentaire, en gardant les sauts de
+ * ligne : le code lu est le même, et `relative(…):ligne` devient cliquable.
+ */
+function commentairesBlanchis(source: string): string {
+  const blanchir = (bloc: string) => bloc.replace(/[^\n]/g, " ");
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, blanchir)
+    .replace(/^\s*\/\/.*$/gm, blanchir);
+}
+
 describe("aucune couleur en dur", () => {
   /**
    * Le viseur de la caméra est NOIR par nature : un scanner de code-barres qui
@@ -976,6 +994,185 @@ describe("le registre d'icônes ne diverge pas de son générateur", () => {
   it("chaque icône demandée est bien dans le registre", () => {
     const manquantes = [...demandes].filter((n) => !importes.has(n));
     expect(manquantes).toEqual([]);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'ÉCRAN D'ERREUR NE DÉPEND DE RIEN, ET C'EST TOUTE SA VALEUR.           │
+ * │                                                                          │
+ * │ Il est posé à la RACINE, au-dessus de `ThemeProvider`, de               │
+ * │ `DatabaseProvider` et de `SessionProvider` : il doit rendre alors même   │
+ * │ que l'un des trois est ce qui a levé. Un `useTheme()` y relèverait       │
+ * │ aussitôt, et React remplacerait l'écran blanc par un écran blanc.        │
+ * │                                                                          │
+ * │ Rien ne le signalerait : le fichier compile, les tests passent, et le    │
+ * │ défaut ne se voit que le jour où un fournisseur lève - c'est-à-dire      │
+ * │ exactement le jour où cet écran est la seule chose qui reste.            │
+ * │                                                                          │
+ * │ D'où ce test. Il verrouille une ABSENCE, et une absence ne se défend     │
+ * │ pas autrement.                                                           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("l'écran d'erreur ne dépend d'aucun fournisseur", () => {
+  const chemin = join(RACINE, "ui/ecran-erreur.tsx");
+  const code = commentairesBlanchis(readFileSync(chemin, "utf8"));
+
+  it("le balayage MORD", () => {
+    expect(existsSync(chemin)).toBe(true);
+    // Le fichier doit bien contenir le composant qu'on prétend éprouver.
+    expect(code).toContain("export function EcranErreur");
+  });
+
+  it("il ne lit ni le thème ni aucun contexte", () => {
+    // `useTheme` tire `ThemeProvider` ; les trois autres tirent la base, la
+    // session et les toasts. Aucun n'est monté quand la racine lève.
+    for (const interdit of ["useTheme", "useSession", "useToast", "useDatabase"]) {
+      expect(code).not.toContain(interdit);
+    }
+  });
+
+  it("il n'importe pas le barrel `@/ui`", () => {
+    // Le barrel réexporte `Text`, `Button`, `Screen`… qui lisent tous le
+    // thème. Un seul import suffirait à rouvrir le défaut.
+    expect(code).not.toMatch(/from "@\/ui"/);
+    expect(code).not.toMatch(/from "\.\/index"/);
+  });
+
+  it("il ne lit que les palettes, à la source", () => {
+    // La seule dépendance tolérée, et elle est PURE : `tokens.ts` n'a aucun
+    // import. C'est aussi la seule exception du dépôt à « pas de couleur en
+    // dur », puisqu'il n'y a pas de thème pour les servir.
+    expect(code).toMatch(/import \{ PALETTES \} from "\.\/tokens"/);
+    const imports = [...code.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+    expect(imports.sort()).toEqual(["./tokens", "react-native"]);
+  });
+
+  it("il est posé aux DEUX endroits", () => {
+    // La racine attrape un fournisseur qui lève ; `(app)` attrape un écran
+    // sans démonter le panier du caissier. Il faut les deux, et c'est le
+    // câblage qu'on oublie.
+    const racine = commentairesBlanchis(readFileSync(join(RACINE, "app/_layout.tsx"), "utf8"));
+    expect(racine).toMatch(/export \{ EcranErreur as ErrorBoundary \}/);
+
+    const app = commentairesBlanchis(
+      readFileSync(join(RACINE, "app/(app)/_layout.tsx"), "utf8")
+    );
+    expect(app).toMatch(/screenErrorBoundary:\s*EcranErreur/);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN NOM DE GLYPHE EST UN `IconName`, JAMAIS UNE CHAÎNE.                  │
+ * │                                                                          │
+ * │ `TRANSITION_DEPENSE.submit.icone` était typé `string` et valait `"Send"`,│
+ * │ qui n'était PAS dans le registre. `icon.tsx` fait                        │
+ * │ `const Glyphe = LUCIDE[name]` puis `<Glyphe …/>` : le glyphe valait      │
+ * │ `undefined`, React levait « Element type is invalid », et faute de       │
+ * │ garde-fou de rendu l'arbre ENTIER était démonté. ECRAN BLANC sur toute   │
+ * │ dépense synchronisée en brouillon, c'est-à-dire sur le seul écran qui    │
+ * │ porte la réimpression de son reçu.                                      │
+ * │                                                                          │
+ * │ Rien ne pouvait l'attraper : le champ était `string`, donc `tsc` n'avait │
+ * │ rien à dire, et l'appel portait le seul `as IconName` du dépôt, qui      │
+ * │ désactivait la seule vérification qui restait.                           │
+ * │                                                                          │
+ * │ Ce test vise donc la CAUSE et non le symptôme, par trois bouts : le      │
+ * │ champ doit être typé, le cast qui le contournait est proscrit, et tout   │
+ * │ nom littéral doit exister dans le registre - cette dernière règle étant  │
+ * │ la ceinture pour le jour où un cast reviendra par une autre porte.       │
+ * │                                                                          │
+ * │ Le test existant juste au-dessus compare registre et GÉNÉRATEUR : il ne  │
+ * │ dit rien des USAGES, et c'est par là que le défaut est passé.            │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("tout nom de glyphe est un IconName valide", () => {
+  const sources = fichiers(RACINE).filter((f) => !f.endsWith("icons/registre.ts"));
+
+  /**
+   * Le registre est lu en TEXTE, jamais importé : un import tirerait les 96
+   * modules de `lucide-react-native` dans un test qui n'a besoin que de noms.
+   */
+  const connus = new Set(
+    (readFileSync(join(RACINE, "ui/icons/registre.ts"), "utf8").match(
+      /^import (\w+) from "lucide-react-native\/icons\//gm
+    ) ?? []).map((l) => l.replace(/^import (\w+).*/, "$1"))
+  );
+
+  /** Les quatre props et les deux champs de table qui portent un glyphe. */
+  const CHAMPS = String.raw`icon|icone|leftIcon|rightIcon`;
+
+  /**
+   * ⚠ `icon` ne porte PAS toujours un glyphe : `ui/button.tsx` et
+   * `ui/stat-strip.tsx` ont un champ `icon: keyof Palette` qui porte la COULEUR
+   * de l'icône. Un garde-fou qui crie sur du code légitime finit désactivé, et
+   * on perd le contrôle avec lui. On écarte donc les clés de palette, lues à la
+   * source plutôt que recopiées : aucun glyphe lucide ne s'appelle
+   * `mutedForeground`, donc l'exception ne peut rien laisser passer.
+   */
+  const JETONS = new Set(Object.keys(PALETTES.light));
+
+  it("le balayage MORD", () => {
+    // Un balayage qui ne trouve rien passe et ne prouve rien : ce dépôt l'a
+    // déjà payé cinq fois.
+    expect(connus.size).toBeGreaterThan(80);
+    expect(sources.length).toBeGreaterThan(200);
+    const porteurs = sources.filter((f) =>
+      new RegExp(String.raw`\b(${CHAMPS})\s*[:=]`).test(commentairesBlanchis(readFileSync(f, "utf8")))
+    );
+    expect(porteurs.length).toBeGreaterThan(30);
+  });
+
+  it("aucun champ de glyphe n'est déclaré `string`", () => {
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      // `icone: string` dans une déclaration de type ou d'interface. C'est la
+      // forme EXACTE du défaut : le champ accepte alors n'importe quel mot.
+      for (const m of code.matchAll(new RegExp(String.raw`\b(${CHAMPS})\??\s*:\s*string\b`, "g"))) {
+        const ligne = code.slice(0, m.index).split("\n").length;
+        fautifs.push(`${relative(RACINE, f)}:${ligne} — ${m[0]}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("aucun cast vers IconName", () => {
+    // Un cast dit au compilateur « fais-moi confiance » sur la seule chose
+    // qu'il savait vérifier. Si un champ doit être converti, c'est sa
+    // DÉCLARATION qu'il faut corriger.
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      for (const m of code.matchAll(/\bas\s+IconName\b/g)) {
+        const ligne = code.slice(0, m.index).split("\n").length;
+        fautifs.push(`${relative(RACINE, f)}:${ligne}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("tout nom littéral existe dans le registre", () => {
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      const motif = new RegExp(
+        String.raw`\b(${CHAMPS})\s*[:=]\s*"([^"]+)"`,
+        "g"
+      );
+      for (const m of code.matchAll(motif)) {
+        const nom = m[2];
+        // Le préfixe `ion:` est l'autre famille, et il est OBLIGATOIRE
+        // justement pour qu'on puisse la distinguer ici sans ambiguïté.
+        if (nom.startsWith("ion:")) continue;
+        if (connus.has(nom)) continue;
+        if (JETONS.has(nom)) continue;
+        const ligne = code.slice(0, m.index).split("\n").length;
+        fautifs.push(`${relative(RACINE, f)}:${ligne} — « ${nom} » absent du registre`);
+      }
+    }
+    expect(fautifs).toEqual([]);
   });
 });
 

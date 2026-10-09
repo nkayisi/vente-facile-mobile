@@ -14,7 +14,7 @@
  * barrel reexporte plus de 3 500 icones et Metro ne sait pas les elaguer de
  * facon fiable. Ici, ce qui n'est pas liste n'entre pas dans le paquet.
  *
- * 95 glyphes.
+ * 96 glyphes.
  *
  * Renommes entre les deux versions de lucide :
  *   BarChart3 (bar-chart-3) -> chart-column
@@ -108,6 +108,7 @@ import MapPin from "lucide-react-native/icons/map-pin";
 import Truck from "lucide-react-native/icons/truck";
 import Receipt from "lucide-react-native/icons/receipt";
 import Table from "lucide-react-native/icons/table";
+import Send from "lucide-react-native/icons/send";
 import Calculator from "lucide-react-native/icons/calculator";
 import Percent from "lucide-react-native/icons/percent";
 import CreditCard from "lucide-react-native/icons/credit-card";
@@ -205,6 +206,7 @@ export const LUCIDE = {
   Truck,
   Receipt,
   Table,
+  Send,
   Calculator,
   Percent,
   CreditCard,

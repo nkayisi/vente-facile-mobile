@@ -62,6 +62,14 @@ const DEMANDES = [
   // a cessé de compiler. Une entrée qui ne vit que dans le fichier ENGENDRÉ ne
   // survit pas à la commande qui l'engendre : elle se déclare ICI.
   "Table",
+  // ⚠ `Send` coiffe le bouton « Soumettre » d'une dépense, exactement comme dans
+  // `app/dashboard/cashbook/expenses/page.tsx` du back-office. Il manquait, et
+  // `TRANSITION_DEPENSE.submit.icone` le demandait quand même : `LUCIDE["Send"]`
+  // rendait `undefined`, React levait « Element type is invalid », et faute de
+  // garde-fou de rendu l'arbre entier était démonté - ECRAN BLANC sur toute
+  // dépense synchronisée en brouillon, c'est-à-dire sur le seul écran qui porte
+  // la réimpression de son reçu.
+  "Send",
   "Calculator", "Percent", "CreditCard", "Calendar", "Clock", "ArrowUpRight",
   "ArrowDownRight", "Bell", "Sparkles",
   // Encaissement : les quatre glyphes de la modale du back-office.

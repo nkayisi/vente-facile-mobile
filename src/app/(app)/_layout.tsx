@@ -5,6 +5,7 @@ import { GardeAbonnement } from "@/features/abonnement/garde";
 import { GardeMiseAJour } from "@/features/mise-a-jour/garde";
 import { PanierProvider } from "@/features/pos/panier";
 import { SynchronisationProvider } from "@/features/sync/provider";
+import { EcranErreur } from "@/ui/ecran-erreur";
 import { ToastProvider } from "@/ui";
 
 /**
@@ -47,6 +48,25 @@ import { ToastProvider } from "@/ui";
  * sa première sollicitation - ce qui reste la condition du démarrage à froid
  * sans réseau.
  */
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN ÉCRAN QUI LÈVE N'EMPORTE PLUS NI LES ONGLETS NI LES FOURNISSEURS.    │
+ * │                                                                          │
+ * │ `screenErrorBoundary` sur une route de LAYOUT installe un garde autour   │
+ * │ de chaque écran enfant. C'est la seule forme qui convienne ici : un      │
+ * │ `export ErrorBoundary` sur ce fichier attraperait le plantage en         │
+ * │ REMPLAÇANT tout le groupe, donc en démontant `PanierProvider` - et le    │
+ * │ caissier perdrait le panier qu'il était en train de constituer.          │
+ * │                                                                          │
+ * │ Ici, le panier, la file de synchronisation et la session survivent :     │
+ * │ seul l'écran fautif est remplacé, et « Revenir à l'accueil » ramène sur  │
+ * │ un arbre intact.                                                         │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export const unstable_settings = {
+  screenErrorBoundary: EcranErreur,
+};
+
 export default function AppLayout() {
   // Avant tout écran : sans cela, `formatPrice` écrit en francs congolais
   // quelle que soit la devise de l'établissement.

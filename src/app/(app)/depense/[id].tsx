@@ -49,7 +49,7 @@ import { documentParNumero, enregistrerEtImprimer, imprimerDocument } from "@/pr
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Button, Card, CardHeader, EmptyState, FormField, Icon, Input,
-  Screen, Sheet, Spinner, StatValue, Text, useToast, type IconName,
+  Screen, Sheet, Spinner, StatValue, Text, useToast,
 } from "@/ui";
 
 const TABLES = ["expenses", "expense_categories", "payment_methods", "outbox_operations"];
@@ -201,7 +201,7 @@ export default function DetailDepense() {
                   <Button
                     fullWidth
                     variant={TRANSITION_DEPENSE[t].destructif ? "outline" : "primary"}
-                    leftIcon={TRANSITION_DEPENSE[t].icone as IconName}
+                    leftIcon={TRANSITION_DEPENSE[t].icone}
                     disabled={Boolean(transitionEnFile)}
                     onPress={() => {
                       setMotif("");

@@ -20,6 +20,7 @@ import { DeconnexionProvider } from "@/session/deconnexion";
 import { SessionGate } from "@/session/gate";
 import { SessionProvider } from "@/session/provider";
 import { BarresSysteme } from "@/ui/barres-systeme";
+import { EcranErreur } from "@/ui/ecran-erreur";
 import { ThemeProvider } from "@/ui/theme";
 
 import "../global.css";
@@ -61,6 +62,17 @@ initSentry();
  * Aucun de ces fournisseurs ne touche au réseau au montage. C'est la condition
  * pour qu'un démarrage à froid sans connexion aboutisse.
  */
+/**
+ * Le garde-fou de rendu de la RACINE. expo-router le câble lui-même autour de
+ * cette route (`<Try catch={ErrorBoundary}>`), et il masque le splash au
+ * passage - sans quoi un plantage au montage laisserait le splash pour
+ * toujours, ce qui est l'écran blanc sous un autre nom.
+ *
+ * Il attrape ce que le garde de `(app)` ne peut pas : un fournisseur qui lève
+ * (thème, base, session). D'où un écran d'erreur qui ne dépend d'AUCUN d'eux.
+ */
+export { EcranErreur as ErrorBoundary };
+
 export default function RootLayout() {
   // Les QUATRE graisses, pas une seule : Android ne synthétise pas les graisses
   // d'une famille custom. Voir `tailwind.config.js`.

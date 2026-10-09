@@ -33,6 +33,7 @@
  * Régénérer par :
  *   sed -n '/class MovementType/,/^$/p' backend/apps/cashbook/models.py
  */
+import type { IconName } from "@/ui";
 
 /**
  * Les douze types, avec le libellé du serveur et le SENS que la caisse leur
@@ -134,7 +135,7 @@ export function decisionsPossibles(
 /** Ce que chaque transition demande comme droit, et ce qu'elle dit à l'écran. */
 export const TRANSITION_DEPENSE: Record<
   TransitionDepense,
-  { label: string; permission: string; destructif: boolean; icone: string }
+  { label: string; permission: string; destructif: boolean; icone: IconName }
 > = {
   // ⚠ `submit` relève de `cashbook.create_expense`, PAS de `.approve_expense` :
   // c'est l'auteur qui soumet sa propre dépense. Les quatre autres sont des
