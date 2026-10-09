@@ -113,6 +113,18 @@ export const URL_EXPORT = `/reports/statistics/${CHEMIN_EXPORT}/`;
  */
 export const CHEMIN_MA_JOURNEE = "my-activity";
 
+/**
+ * Le rapport financier ventilé par entrepôt (T6).
+ *
+ * Une RUBRIQUE, pas un neuvième onglet : les huit se filtrent par dépôt, elle
+ * en rend une ligne par dépôt. Même rangement que les créances, et le serveur
+ * la sert par le même registre d'exports, donc elle porte la même marque.
+ *
+ * ⚠ Tiret VOULU : l'action déclare un `url_path`, comme `my-activity` et
+ * `sales-by-packaging`. Sans `url_path`, le chemin garderait les soulignés.
+ */
+export const CHEMIN_RAPPORT_ENTREPOTS = "by-warehouse";
+
 
 /** Vingt lignes par page, comme le back-office. */
 export const TAILLE_PAGE = 20;

@@ -71,6 +71,7 @@ import {
   type FiltrePerimetre,
 } from "@/features/perimetre/filtre-perimetre";
 import { usePerimetre } from "@/features/perimetre/use-perimetre";
+import { router } from "expo-router";
 import {
   AreaChart,
   Badge,
@@ -340,6 +341,20 @@ export default function Rapports() {
         <PageHeader
           title="Rapports & Statistiques"
           subtitle="Analysez les performances de votre entreprise"
+          // Le rapport VENTILÉ par entrepôt est une rubrique à part, comme les
+          // créances : les huit onglets ci-dessous se FILTRENT par dépôt, ils
+          // n'en rendent jamais plusieurs à la fois. Miroir du bouton « Par
+          // entrepôt » du back-office.
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon="Building2"
+              onPress={() => router.push("/rapport-entrepots")}
+            >
+              Par entrepôt
+            </Button>
+          }
         />
 
         {/* ── Les filtres, ceux du back-office ────────────────────────────── */}

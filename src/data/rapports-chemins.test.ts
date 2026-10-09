@@ -32,6 +32,7 @@ import {
   CHEMIN_CREANCES,
   CHEMIN_EXPORT,
   CHEMIN_MA_JOURNEE,
+  CHEMIN_RAPPORT_ENTREPOTS,
   CHEMINS_STATISTIQUES,
 } from "./rapports";
 
@@ -41,6 +42,7 @@ const CHEMINS_DU_SERVEUR = [
   "cashbook",
   "customers",
   "daily_cash_report",
+  "by-warehouse",
   "export",
   "my-activity",
   "product_profits",
@@ -68,6 +70,7 @@ describe("les chemins des rapports existent sur le serveur", () => {
       creances: CHEMIN_CREANCES,
       export: CHEMIN_EXPORT,
       "ma-journee": CHEMIN_MA_JOURNEE,
+      "rapport-entrepots": CHEMIN_RAPPORT_ENTREPOTS,
     })
       .filter(([, chemin]) => !CHEMINS_DU_SERVEUR.includes(chemin))
       .map(([onglet, chemin]) => `${onglet} -> ${chemin}`);
