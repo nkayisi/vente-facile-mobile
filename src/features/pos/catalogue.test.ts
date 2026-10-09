@@ -238,48 +238,48 @@ describe("le contexte est MÉMORISÉ entre deux lectures", () => {
   });
 
   it("ne relit qu'UNE fois pour plusieurs recherches", async () => {
-    await chercherArticles({ warehouseId: "w1", terme: "c" });
-    await chercherArticles({ warehouseId: "w1", terme: "co" });
-    await chercherArticles({ warehouseId: "w1", terme: "coc" });
+    await chercherArticles({ warehouseId: "w1", terme: "c", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1", terme: "co", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1", terme: "coc", entrepotsCatalogue: null });
 
     expect(lireLeVerrou).toHaveBeenCalledTimes(1);
     expect(lireLaReserve).toHaveBeenCalledTimes(1);
   });
 
   it("relit dès que la base bouge, JAMAIS après un simple délai", async () => {
-    await chercherArticles({ warehouseId: "w1", terme: "c" });
+    await chercherArticles({ warehouseId: "w1", terme: "c", entrepotsCatalogue: null });
     expect(lireLaReserve).toHaveBeenCalledTimes(1);
 
     // Une vente vient d'être mise en file : le stock qu'elle a sorti doit être
     // retenu à la frappe SUIVANTE, pas à l'expiration d'une échéance. Une
     // seconde de retard suffit à reproposer un article déjà parti.
     for (const rappel of mockEcouteurs) rappel({ tableName: "outbox_operations" });
-    await chercherArticles({ warehouseId: "w1", terme: "c" });
+    await chercherArticles({ warehouseId: "w1", terme: "c", entrepotsCatalogue: null });
 
     expect(lireLaReserve).toHaveBeenCalledTimes(2);
   });
 
   it("relit aussi quand l'INVENTAIRE bouge", async () => {
-    await chercherArticles({ warehouseId: "w1" });
+    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
     for (const rappel of mockEcouteurs) rappel({ tableName: "inventory_sessions" });
-    await chercherArticles({ warehouseId: "w1" });
+    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
 
     expect(lireLeVerrou).toHaveBeenCalledTimes(2);
   });
 
   it("ignore les tables dont le contexte ne dépend pas", async () => {
-    await chercherArticles({ warehouseId: "w1" });
+    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
     // Le catalogue lui-même : un prix qui change se relit par la requête, pas
     // par le contexte. Tout invalider ferait de la mémoire une décoration.
     for (const rappel of mockEcouteurs) rappel({ tableName: "products" });
-    await chercherArticles({ warehouseId: "w1" });
+    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
 
     expect(lireLeVerrou).toHaveBeenCalledTimes(1);
   });
 
   it("ne sert JAMAIS le contexte d'un autre entrepôt", async () => {
-    await chercherArticles({ warehouseId: "w1" });
-    await chercherArticles({ warehouseId: "w2" });
+    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w2", entrepotsCatalogue: null });
 
     // Le verrou comme la réserve portent sur un dépôt : servir celui d'en face
     // retiendrait du stock que personne n'y a vendu, et en libérerait ici.

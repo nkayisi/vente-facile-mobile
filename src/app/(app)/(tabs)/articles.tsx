@@ -20,6 +20,7 @@ import { router } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
 import { compteursRubriques, listeArticles, type ArticleListe } from "@/data/articles";
+import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
 import { useLecture } from "@/data/live";
 import { FeuilleImportArticles } from "@/features/inventaire/feuille-import";
 import { VignetteArticle } from "@/ui";
@@ -46,7 +47,13 @@ export default function Articles() {
   // compteur force la relecture, et la feuille dit d'aller synchroniser.
   const [apresImport, setApresImport] = useState(0);
 
-  const charger = useCallback(() => listeArticles({ recherche, limite: 100 }), [recherche]);
+  // Le catalogue est BORNÉ au périmètre du membre, comme au back-office : un
+  // caissier de WH-MAIN ne voit pas un article stocké au seul WH-NORD.
+  const entrepotsCatalogue = usePerimetreCatalogue();
+  const charger = useCallback(
+    () => listeArticles({ recherche, limite: 100, entrepotsCatalogue }),
+    [recherche, entrepotsCatalogue]
+  );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
     deps: [recherche, apresImport],

@@ -44,6 +44,7 @@ import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
 import { entrepotsSansValorisation } from "@/data/stock";
 import { chercherArticles } from "@/features/pos/catalogue";
+import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
 import { chercherClients } from "@/features/pos/donnees";
 import { creerDevis, type LigneDevisSaisie } from "@/features/ventes/retours-devis";
 import {
@@ -105,6 +106,7 @@ export function FeuilleNouveauDevis({
 
   const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
   const entrepot = entrepotParDefaut(depots);
+  const entrepotsCatalogue = usePerimetreCatalogue();
 
   const chargerClients = useCallback(
     () => (panneau === "client" ? chercherClients(recherche, 12) : Promise.resolve([])),
@@ -118,9 +120,14 @@ export function FeuilleNouveauDevis({
   const chargerArticles = useCallback(
     () =>
       panneau === "article" && entrepot
-        ? chercherArticles({ warehouseId: entrepot, terme: recherche, limite: 20 })
+        ? chercherArticles({
+            warehouseId: entrepot,
+            terme: recherche,
+            limite: 20,
+            entrepotsCatalogue,
+          })
         : Promise.resolve([]),
-    [panneau, recherche, entrepot]
+    [panneau, recherche, entrepot, entrepotsCatalogue]
   );
   const { donnees: articles } = useLecture(chargerArticles, {
     tables: ["products", "stocks"],

@@ -16,6 +16,7 @@ import { addDatabaseChangeListener } from "expo-sqlite";
 
 import { db } from "@/db/client";
 import { categories, products, stocks, units, warehouses } from "@/db/schema";
+import { conditionCatalogue } from "@/data/perimetre-catalogue";
 import { reservesEnAttente, type ReserveLocale } from "./reserve-locale";
 import { produitsVerrouilles, type VerrouInventaire } from "./verrou-inventaire";
 
@@ -331,6 +332,21 @@ interface Filtre {
   terme?: string;
   categoryId?: string | null;
   limite?: number;
+  /**
+   * Les entrepôts qui bornent le catalogue. **Requis**, et c'est voulu.
+   *
+   * ⚠ CE N'EST PAS `warehouseId`, et les confondre serait un défaut. Celui-ci
+   * est l'entrepôt de LA CAISSE, d'où le stock est lu ; celui-là est le
+   * périmètre du MEMBRE, qui peut en couvrir plusieurs. Le back-office borne
+   * son catalogue sur le second, et c'est lui que T5 du retour de test
+   * demande : un caissier de WH-MAIN ne voit pas un article stocké au seul
+   * WH-NORD, mais il voit ceux de ses autres dépôts - où le stock sortira
+   * « inconnu », ce qui est l'état vrai.
+   *
+   * Un champ requis fait NOMMER chaque appelant par le compilateur ; `null`
+   * est la décision explicite « aucune restriction », le cas du propriétaire.
+   */
+  entrepotsCatalogue: string[] | null;
 }
 
 function base(warehouseId?: string | null) {
@@ -375,9 +391,14 @@ export async function chercherArticles({
   terme,
   categoryId,
   limite = 80,
+  entrepotsCatalogue,
 }: Filtre): Promise<ArticlePos[]> {
   const motif = terme?.trim();
   const conditions = [vendable()];
+
+  // Le périmètre du MEMBRE, en plus de la vendabilité. Voir `Filtre`.
+  const perimetre = conditionCatalogue(entrepotsCatalogue);
+  if (perimetre) conditions.push(perimetre);
 
   if (motif) {
     // `like` de SQLite est insensible à la casse sur l'ASCII ; les accents, non.
@@ -411,10 +432,19 @@ export async function chercherArticles({
  */
 export async function articleParCodeBarres(
   code: string,
-  warehouseId?: string | null
+  warehouseId: string | null | undefined,
+  /**
+   * Le périmètre du membre. ⚠ IL FAUT LE BORNER ICI AUSSI : un scan qui
+   * passerait outre serait une porte dérobée dans la règle de catalogue, et
+   * c'est précisément le geste le plus rapide du comptoir.
+   */
+  entrepotsCatalogue: string[] | null
 ): Promise<ArticlePos | null> {
+  const perimetre = conditionCatalogue(entrepotsCatalogue);
   const [lignes, ctx] = await Promise.all([
-    base(warehouseId).where(and(vendable(), eq(products.barcode, code.trim()))).limit(1),
+    base(warehouseId)
+      .where(and(vendable(), eq(products.barcode, code.trim()), perimetre))
+      .limit(1),
     contexteDe(warehouseId),
   ]);
   return lignes[0] ? versArticle(lignes[0], ctx) : null;
@@ -422,6 +452,14 @@ export async function articleParCodeBarres(
 
 /**
  * Les articles portant ces identifiants, indexés par identifiant.
+ *
+ * ⚠ ELLE N'EST PAS BORNÉE PAR LE PÉRIMÈTRE DU CATALOGUE, délibérément.
+ *
+ * C'est une relecture PAR IDENTIFIANT, et les identifiants viennent d'un panier
+ * rangé à cette même caisse : il n'y a rien à filtrer qu'on n'ait déjà laissé
+ * entrer. Y poser le périmètre ferait DISPARAÎTRE des lignes d'un panier qu'un
+ * caissier croit retrouver intact, là où `verifierAjout` refusera de lui-même
+ * ce qui n'est plus vendable - avec son motif, au lieu du silence.
  *
  * Sert la reprise d'un panier mis en attente : le prix et le stock sont RELUS,
  * jamais restitués depuis une copie rangée avec le panier. Un article devenu

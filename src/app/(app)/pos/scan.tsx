@@ -17,6 +17,7 @@ import { router } from "expo-router";
 
 import { articleParCodeBarres } from "@/features/pos/catalogue";
 import { sessionOuverte } from "@/features/pos/caisse";
+import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
 import { usePanier } from "@/features/pos/panier";
 import { Button, Icon, Pressable, Screen, Text } from "@/ui";
 
@@ -32,6 +33,9 @@ const FORMATS = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"] as cons
 const TEMPS_MORT_MS = 1200;
 
 export default function Scan() {
+  // Le scan est borné comme la grille : sans cela, il serait une porte dérobée
+  // dans la règle de catalogue, et c'est le geste le plus rapide du comptoir.
+  const entrepotsCatalogue = usePerimetreCatalogue();
   const panier = usePanier();
   const [permission, demanderPermission] = useCameraPermissions();
   const [message, setMessage] = useState<{ texte: string; ok: boolean } | null>(null);
@@ -47,7 +51,11 @@ export default function Scan() {
 
       try {
         const session = await sessionOuverte();
-        const article = await articleParCodeBarres(data, session?.warehouseId ?? null);
+        const article = await articleParCodeBarres(
+          data,
+          session?.warehouseId ?? null,
+          entrepotsCatalogue
+        );
 
         if (!article) {
           setMessage({ texte: `Aucun article pour le code ${data}.`, ok: false });
@@ -72,7 +80,10 @@ export default function Scan() {
         enCours.current = false;
       }
     },
-    [panier]
+    // `entrepotsCatalogue` EST une dépendance : sans elle, le rappel figerait
+    // le périmètre du premier rendu, et un changement d'affectation laisserait
+    // le scan borné sur l'ancien dépôt.
+    [panier, entrepotsCatalogue]
   );
 
   // Permission encore en cours de lecture : un écran vide plutôt qu'un

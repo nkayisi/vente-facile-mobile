@@ -20,6 +20,7 @@ import {
   type ArticlePos,
 } from "@/features/pos/catalogue";
 import { messageGrilleVide, type DiagnosticCatalogue } from "@/features/pos/etat-catalogue";
+import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
 import { useMonnaie } from "@/data/devises";
 import { analyserFond } from "@/features/caisse/fond";
 import { compterEnAttente } from "@/features/pos/attente";
@@ -75,6 +76,10 @@ export default function Comptoir() {
   }, []);
 
   const entrepot = session?.warehouseId ?? null;
+  // ⚠ DEUX PÉRIMÈTRES DISTINCTS, et les confondre serait un défaut : `entrepot`
+  // est celui de la CAISSE, d'où le stock est lu ; celui-ci est celui du
+  // MEMBRE, qui borne ce que le catalogue montre - la règle du back-office.
+  const entrepotsCatalogue = usePerimetreCatalogue();
 
   // Recherche différée : à chaque frappe, la requête part 250 ms plus tard, et
   // une frappe suivante annule la précédente. Sans cela, taper « coca » lance
@@ -85,7 +90,7 @@ export default function Comptoir() {
     setChargement(true);
     if (minuteur.current) clearTimeout(minuteur.current);
     minuteur.current = setTimeout(() => {
-      chercherArticles({ warehouseId: entrepot, terme, categoryId: rubrique })
+      chercherArticles({ warehouseId: entrepot, terme, categoryId: rubrique, entrepotsCatalogue })
         .then(async (trouves) => {
           setArticles(trouves);
           // ┌──────────────────────────────────────────────────────────────┐
@@ -111,7 +116,7 @@ export default function Comptoir() {
     return () => {
       if (minuteur.current) clearTimeout(minuteur.current);
     };
-  }, [terme, rubrique, entrepot, session]);
+  }, [terme, rubrique, entrepot, session, entrepotsCatalogue]);
 
   const quantitesAuPanier = useMemo(() => {
     const carte = new Map<string, number>();

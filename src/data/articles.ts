@@ -18,6 +18,7 @@ import {
 } from "@vente-facile/core";
 
 import { ordreArbre } from "@/data/categories-arbre";
+import { conditionCatalogue } from "@/data/perimetre-catalogue";
 import { db } from "@/db/client";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
 import type { GenreReferentiel } from "@/features/inventaire/referentiel";
@@ -41,10 +42,27 @@ export interface FiltresArticles {
   recherche?: string;
   limite?: number;
   offset?: number;
+  /**
+   * Les entrepôts qui bornent le catalogue. **Requis**, et c'est voulu.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ UN PÉRIMÈTRE FACULTATIF EST UN PÉRIMÈTRE QU'UN APPELANT OUBLIERA.     │
+   * │                                                                        │
+   * │ Le rendre obligatoire fait NOMMER chaque site par le compilateur, au   │
+   * │ lieu de laisser un écran montrer le catalogue entier sans que rien ne  │
+   * │ le signale. `null` est une décision explicite : « aucune restriction », │
+   * │ le cas du propriétaire.                                                │
+   * └────────────────────────────────────────────────────────────────────────┘
+   *
+   * Il vient de `usePerimetreCatalogue()`.
+   */
+  entrepotsCatalogue: string[] | null;
 }
 
 export async function listeArticles(
-  f: FiltresArticles = {}
+  // Aucun défaut : un `= {}` laisserait un appelant lire le catalogue entier
+  // sans périmètre, ce que le champ requis existe pour empêcher.
+  f: FiltresArticles
 ): Promise<{ elements: ArticleListe[]; total: number }> {
   const terme = (f.recherche ?? "").trim();
   const motif = `%${terme.toLowerCase()}%`;
@@ -56,10 +74,15 @@ export async function listeArticles(
       )
     : undefined;
 
+  // ⚠ LA MÊME CONDITION DANS LE COMPTE ET DANS LES LIGNES. Un compteur qui
+  // annonce un périmètre plus large que la liste qu'il coiffe se lit comme une
+  // troncature, et le marchand cherche les articles manquants.
+  const perimetre = conditionCatalogue(f.entrepotsCatalogue);
+
   const [{ n: total } = { n: 0 }] = await db
     .select({ n: sql<number>`count(*)` })
     .from(products)
-    .where(and(eq(products.isDeleted, false), filtre));
+    .where(and(eq(products.isDeleted, false), filtre, perimetre));
 
   const lignes = await db
     .select({
@@ -80,15 +103,29 @@ export async function listeArticles(
     .leftJoin(categories, eq(categories.id, products.categoryId))
     .leftJoin(brands, eq(brands.id, products.brandId))
     .leftJoin(units, eq(units.id, products.unitId))
-    .where(and(eq(products.isDeleted, false), filtre))
+    .where(and(eq(products.isDeleted, false), filtre, perimetre))
     .orderBy(products.name)
     .limit(f.limite ?? 50)
     .offset(f.offset ?? 0);
 
-  // Les compteurs de stock, en une requête plutôt qu'une par article.
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LE STOCK AFFICHÉ EST BORNÉ AU PÉRIMÈTRE, ET IL NE L'ÉTAIT PAS.      │
+  // │                                                                      │
+  // │ Cette lecture chargeait TOUTE la table `stocks` puis sommait en       │
+  // │ JavaScript : la liste annonçait donc à un caissier de WH-MAIN le      │
+  // │ stock de WH-NORD compris, quand le serveur annote le total BORNÉ      │
+  // │ (`_annotate_product_total_stock(queryset, effective_wh_ids)`). Deux   │
+  // │ chiffres pour le même article selon la surface.                       │
+  // │                                                                      │
+  // │ La sélection descend en SQL du même coup : balayer la table entière   │
+  // │ pour en garder cinquante lignes coûtait d'autant plus que le          │
+  // │ catalogue grandit, et `ids.includes` en faisait une comparaison par   │
+  // │ ligne et par article.                                                 │
+  // └──────────────────────────────────────────────────────────────────────┘
   const ids = lignes.map((l) => l.id);
   const compteurs = new Map<string, { paquets: number; vrac: number; total: number }>();
   if (ids.length > 0) {
+    const bornes = f.entrepotsCatalogue;
     const s = await db
       .select({
         productId: stocks.productId,
@@ -96,9 +133,16 @@ export async function listeArticles(
         packageQuantity: stocks.packageQuantity,
         looseQuantity: stocks.looseQuantity,
       })
-      .from(stocks);
+      .from(stocks)
+      .where(
+        and(
+          inArray(stocks.productId, ids),
+          // `null` : aucune restriction. Une liste VIDE ne laisse passer aucun
+          // stock, ce qui est juste - le membre n'accède à aucun dépôt.
+          bornes === null ? undefined : inArray(stocks.warehouseId, bornes)
+        )
+      );
     for (const r of s) {
-      if (!ids.includes(r.productId)) continue;
       const c = compteurs.get(r.productId) ?? { paquets: 0, vrac: 0, total: 0 };
       c.paquets += Number(r.packageQuantity ?? 0);
       c.vrac += Number(r.looseQuantity ?? 0);
