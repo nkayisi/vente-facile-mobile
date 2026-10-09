@@ -1503,7 +1503,17 @@ describe("la déconnexion passe par un seul chemin", () => {
   });
 
   it("une seule main efface la base locale", () => {
-    const autorises = ["session/deconnexion.tsx", "session/provider.tsx"];
+    const autorises = [
+      "session/deconnexion.tsx",
+      "session/provider.tsx",
+      // ⚠ LA REMISE À ZÉRO D'UN ESSAI (T8), et elle est nommée pour deux
+      // raisons. D'abord le serveur a DÉJÀ effacé quand on arrive là : la
+      // purge locale ne décide de rien, elle suit. Ensuite l'ordre compte -
+      // purger d'abord laisserait un terminal vide face à un serveur plein, et
+      // le prochain tirage ramènerait tout, si bien que le marchand croirait
+      // la remise à zéro sans effet.
+      "features/parametres/remise-a-zero.tsx",
+    ];
     const fautifs: string[] = [];
     let balayes = 0;
 

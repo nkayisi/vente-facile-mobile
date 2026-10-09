@@ -44,6 +44,7 @@ import {
   TuileChoix,
   useToast,
 } from "@/ui";
+import { CarteRemiseAZero } from "@/features/parametres/remise-a-zero";
 
 const TABLES = ["organizations", "organization_settings"];
 
@@ -284,6 +285,10 @@ export default function InfosGenerales() {
             : "Reconnectez-vous à Internet pour enregistrer."}
         </Text>
       ) : null}
+
+      {/* La remise à zéro d'un essai : la carte ne PARAÎT que sur un essai, le
+          composant s'en charge. T8 du retour de test, demandé deux fois. */}
+      <CarteRemiseAZero />
     </View>
   );
 }
