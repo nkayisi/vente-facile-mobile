@@ -2095,6 +2095,78 @@ describe("la règle de périmètre n'a qu'une seule écriture", () => {
   });
 });
 
+describe("la notification poussée ne s'invite pas, et ne se tait pas", () => {
+  //: ⚠ TROIS RÈGLES QUE RIEN D'AUTRE NE RETIENT. Aucune ne lève : une invite
+  //: posée au démarrage se refuse et ne se rouvre PLUS JAMAIS, et un canal
+  //: Android absent rend la notification MUETTE - elle se pose dans le volet
+  //: d'un terminal que personne ne regarde.
+
+  //: ⚠ SANS COMMENTAIRES. Ce module EXPLIQUE `requestPermissionsAsync` dans sa
+  //: docstring : lire le texte brut en compterait deux, et le balayage
+  //: échouerait sur sa propre prose. C'est le piège déjà payé par
+  //: `permissions.test.ts`, qui validait des codes cités en exemple.
+  const jetonPush = () =>
+    sansCommentaires(
+      readFileSync(join(RACINE, "notifications/jeton-push.ts"), "utf8")
+    );
+
+  it("le balayage voit bien le module", () => {
+    //: Un balayage qui ne balaie rien passe au vert. Ce dépôt l'a payé
+    //: quatre fois.
+    expect(jetonPush().length).toBeGreaterThan(500);
+  });
+
+  it("la permission ne se demande QUE depuis un geste", () => {
+    //: `requestPermissionsAsync` n'a qu'UN appelant, `demanderPush`, et les
+    //: écrans l'appellent depuis un `onPress`. Posée dans un effet de
+    //: démarrage, l'invite arrive avant que le marchand ait compris ce que
+    //: l'application fait : il refuse, et Android ne redemande plus.
+    const appels = [...jetonPush().matchAll(/requestPermissionsAsync/g)];
+    expect(appels).toHaveLength(1);
+
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      if (f.endsWith("notifications/jeton-push.ts")) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/requestPermissionsAsync|requestPushPermission/.test(code)) {
+        fautifs.push(relative(RACINE, f));
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("un refus DÉFINITIF se distingue d'un refus simple", () => {
+    //: `canAskAgain` est la seule façon de le savoir, et la différence change
+    //: ce qu'on propose : un bouton « Autoriser » sur un refus définitif
+    //: ferait appuyer dans le vide, l'invite ne s'ouvrant plus.
+    expect(jetonPush()).toContain("canAskAgain");
+    expect(jetonPush()).toContain("refuse_definitivement");
+  });
+
+  it("le canal Android est préparé", () => {
+    //: Sans canal, Android 8+ rend la notification SANS SON et sans
+    //: vibration. Et son nom doit être celui que le serveur envoie dans
+    //: `channelId`, sinon le son ne s'applique à rien.
+    expect(jetonPush()).toContain("setNotificationChannelAsync");
+    expect(jetonPush()).toContain('"alertes"');
+  });
+
+  it("aucun identifiant de projet Expo écrit en dur", () => {
+    //: Il vit dans `app.config.ts` ; recopié ici, il dériverait le jour où le
+    //: projet est relié à un autre compte, et les envois partiraient vers un
+    //: identifiant qui n'existe pas.
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      //: Un UUID nu à côté de `projectId` : c'est la forme qu'Expo délivre.
+      if (/projectId[^\n]*["'][0-9a-f]{8}-[0-9a-f]{4}/.test(code)) {
+        fautifs.push(relative(RACINE, f));
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
+
 describe("un filtre à choix unique offre toujours de le retirer", () => {
   /**
    * ┌──────────────────────────────────────────────────────────────────────────┐

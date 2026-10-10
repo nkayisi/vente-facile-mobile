@@ -244,6 +244,27 @@ export interface RelectureSession {
  * casser un démarrage à froid. Le prix de cette garantie est précisément que
  * l'échec doit se lire dans la valeur rendue.
  */
+/**
+ * Ce que le réveil dit de la notification poussée, s'il a quelque chose à dire.
+ *
+ * ⚠ ELLE NE DEMANDE RIEN et ne lève jamais : `etatPush` lit l'autorisation sans
+ * ouvrir d'invite, et un module natif absent ne doit pas empêcher un terminal
+ * de réveiller sa session. C'est le réveil qui compte ici, pas le rappel.
+ */
+async function champsPush(): Promise<Record<string, unknown>> {
+  try {
+    const { etatPush } = await import("@/notifications/jeton-push");
+    const etat = await etatPush();
+    if (etat.etat === "accorde") return { push_token: etat.jeton };
+    if (etat.etat === "refuse" || etat.etat === "refuse_definitivement") {
+      return { push_refused: true };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
 export async function refreshSnapshot(): Promise<RelectureSession> {
   const previous = await readSnapshot<SessionSnapshot>();
   // Aucune session en cache : il n'y a rien à rafraîchir, et rien n'a échoué.
@@ -256,6 +277,13 @@ export async function refreshSnapshot(): Promise<RelectureSession> {
     setOrganizationId(previous.organization.id);
     const data = await api.post<SessionResponse>("/auth/devices/session/", {
       device_token: deviceToken,
+      // ⚠ L'ADRESSE DE NOTIFICATION VOYAGE AVEC LE RÉVEIL, et pas sur un
+      // endpoint à elle. Expo la renouvelle sans prévenir - réinstallation,
+      // restauration, mise à jour du système - et c'est le seul chemin qu'un
+      // terminal emprunte à coup sûr, à chaque démarrage et à chaque retour au
+      // premier plan. Un endpoint appelé une seule fois laisserait les envois
+      // partir dans le vide pendant des semaines sans que rien ne le signale.
+      ...(await champsPush()),
     });
     const snapshot = toSnapshot(data);
     await writeSnapshot(snapshot);

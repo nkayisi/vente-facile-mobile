@@ -39,6 +39,7 @@ import {
   useTheme,
   type IconName,
 } from "@/ui";
+import { ClocheNotifications } from "@/notifications/cloche";
 
 /**
  * Tous les écrans déclarés : les onglets d'abord (leur ordre est celui de la
@@ -77,7 +78,17 @@ function Coquille() {
             // Le témoin s'abonne LUI-MÊME à l'état de synchronisation : le lire
             // ici le ferait remonter dans `Coquille`, donc re-rendre tout le
             // `Tabs` à chaque battement d'un cycle.
-            right={<IndicateurSync />}
+            //
+            // ⚠ DEUX PIÈCES, UN SEUL EMPLACEMENT, et c'est voulu : `src/ui/`
+            // reste PUR, donc la barre ne connaît ni les notifications ni la
+            // synchronisation - elles entrent par ici. La cloche d'abord : ce
+            // qui APPORTE une information passe avant ce qui en décrit l'état.
+            right={
+              <>
+                <ClocheNotifications />
+                <IndicateurSync />
+              </>
+            }
             onMenu={ouvrir}
             onAvatar={() => router.push("/profil")}
           />

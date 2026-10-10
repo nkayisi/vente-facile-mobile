@@ -82,6 +82,12 @@ export function TopBar({
       </Pressable>
 
       <View className="flex-row items-center">
+        {/* ⚠ `right` EST LA PORTE DES PIÈCES DE FEATURE. La cloche de
+            notifications y entre depuis l'unique point de montage de cette
+            barre : l'importer ICI coupletait `src/ui/` à `src/data/`, donc au
+            client HTTP, et rendrait `import { Text } from "@/ui"` lourd à
+            charger dans un test pur. C'est la raison qui tient déjà
+            `features/sync/bandeau.ts` hors de ce dossier. */}
         {right}
         <BasculeTheme />
         <Pressable
