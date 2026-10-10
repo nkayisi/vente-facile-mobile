@@ -31,6 +31,11 @@ const SORTIE = "src/ui/icons/registre.ts";
 const DEMANDES = [
   // Les 11 entrees de la barre laterale web, dans son ordre.
   "LayoutDashboard", "ShoppingCart", "Package", "Boxes", "ClipboardList",
+  // La réquisition de produits : ce qu'il faut ACHETER. Distinct du panier de
+  // vente (`ShoppingCart`) et du journal des mouvements (`ClipboardList`) :
+  // les trois cohabitent sur le concentrateur de stock, et deux glyphes
+  // identiques y feraient confondre une demande d'achat avec une sortie.
+  "ShoppingBasket",
   "Wallet", "BarChart3", "Users", "UserCog", "Crown", "Settings",
   // Coquille, navigation, en-tetes.
   "Store", "ChevronRight", "ChevronLeft", "ChevronDown", "ChevronUp", "ArrowRight",

@@ -60,6 +60,7 @@ const CODES_SERVEUR = new Set([
   "payment_methods.manage", "payment_methods.view",
   "products.create", "products.delete", "products.edit", "products.view",
   "purchases.create", "purchases.edit", "purchases.receive", "purchases.view",
+  "requisitions.approve", "requisitions.create", "requisitions.view",
   "reports.create", "reports.delete", "reports.export", "reports.view",
   "sale_returns.approve", "sale_returns.create", "sale_returns.view",
   "sales.cancel", "sales.create", "sales.discount", "sales.manage_registers",

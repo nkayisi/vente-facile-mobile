@@ -84,6 +84,11 @@ const KIND_LABELS: Record<string, string> = {
   "expense_category.create": "Nouvelle catégorie de dépense",
   "income_category.update": "Modification d'un type d'entrée",
   "expense_category.update": "Modification d'une catégorie de dépense",
+  "requisition.create": "Réquisition de produits",
+  "requisition.submit": "Soumission d'une réquisition",
+  "requisition.cancel": "Annulation d'une réquisition",
+  "requisition.approve": "Approbation d'une réquisition",
+  "requisition.reject": "Rejet d'une réquisition",
 };
 
 /** Ce qu'on peut dire d'une opération sans ouvrir son contenu. */

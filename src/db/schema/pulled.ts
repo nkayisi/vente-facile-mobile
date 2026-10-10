@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 38 tables, 567 colonnes.
+ * 39 tables, 581 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -820,6 +820,41 @@ export const stockTransferItems = sqliteTable("stock_transfer_items", {
 
 export type StockTransferItemsRow =
   typeof stockTransferItems.$inferSelect;
+
+export const requisitions = sqliteTable("requisitions", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  reference: text("reference").notNull(),
+  warehouseId: text("warehouse_id").notNull(),
+  status: text("status").notNull(),
+  notes: text("notes").notNull(),
+  requestedById: text("requested_by_id"),
+  decidedById: text("decided_by_id"),
+  decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+  decisionNotes: text("decision_notes").notNull(),
+  requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export type RequisitionsRow =
+  typeof requisitions.$inferSelect;
+
+export const requisitionItems = sqliteTable("requisition_items", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  requisitionId: text("requisition_id").notNull(),
+  productId: text("product_id").notNull(),
+  quantityRequested: text("quantity_requested").notNull(),
+  stockAtRequest: text("stock_at_request").notNull(),
+  reorderPointAtRequest: text("reorder_point_at_request").notNull(),
+  notes: text("notes").notNull(),
+});
+
+export type RequisitionItemsRow =
+  typeof requisitionItems.$inferSelect;
 
 export const stockAdjustments = sqliteTable("stock_adjustments", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

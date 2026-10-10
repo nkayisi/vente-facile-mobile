@@ -50,6 +50,17 @@ export const PREFIXE = {
    * désigner. Le préfixe est celui que `DOCUMENT_IDENTITIES.proforma` attend.
    */
   proforma: "PRO",
+  /**
+   * La réquisition de produits.
+   *
+   * ⚠ ELLE S'IMPRIME PAR LE SERVEUR, et elle a pourtant son numéro ici. Ce
+   * n'est pas la règle habituelle - un numéro de terminal existe parce que le
+   * papier sort AVANT le réseau - mais le motif tient : une réquisition se
+   * saisit au fond d'un dépôt, et le magasinier en crée plusieurs d'affilée.
+   * Sans numéro, sa propre liste lui en montre trois qu'il ne distingue pas.
+   * `create_requisition` reprend la référence du client telle quelle.
+   */
+  requisition: "REQ",
 } as const;
 
 export type Prefixe = (typeof PREFIXE)[keyof typeof PREFIXE];

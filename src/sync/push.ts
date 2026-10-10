@@ -83,6 +83,16 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   "stock_adjustment.create": ["stock_adjustments"],
   "stock_adjustment.approve": ["stock_adjustments", "stocks", "stock_movements"],
   "stock_adjustment.reject": ["stock_adjustments"],
+  // ⚠ UNE RÉQUISITION NE BOUGE AUCUN STOCK, et c'est tout son objet : elle dit
+  // « il nous manque ceci », elle n'achète rien. Même approuvée, elle ne
+  // touche que sa propre table - c'est une COMMANDE qui sortira du stock, et
+  // elle n'existe pas encore. Y mettre `stocks` ferait retirer un périmètre de
+  // tables à chaque réquisition, pour rien.
+  "requisition.create": ["requisitions", "requisition_items"],
+  "requisition.submit": ["requisitions"],
+  "requisition.cancel": ["requisitions"],
+  "requisition.approve": ["requisitions"],
+  "requisition.reject": ["requisitions"],
   "inventory_session.create": ["inventory_sessions"],
   // Démarrer engendre les lignes de comptage : elles descendent avec la
   // session, sans quoi le magasinier ouvrirait une feuille vide.

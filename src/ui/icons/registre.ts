@@ -14,7 +14,7 @@
  * barrel reexporte plus de 3 500 icones et Metro ne sait pas les elaguer de
  * facon fiable. Ici, ce qui n'est pas liste n'entre pas dans le paquet.
  *
- * 97 glyphes.
+ * 98 glyphes.
  *
  * Renommes entre les deux versions de lucide :
  *   BarChart3 (bar-chart-3) -> chart-column
@@ -41,6 +41,7 @@ import ShoppingCart from "lucide-react-native/icons/shopping-cart";
 import Package from "lucide-react-native/icons/package";
 import Boxes from "lucide-react-native/icons/boxes";
 import ClipboardList from "lucide-react-native/icons/clipboard-list";
+import ShoppingBasket from "lucide-react-native/icons/shopping-basket";
 import Wallet from "lucide-react-native/icons/wallet";
 import BarChart3 from "lucide-react-native/icons/chart-column";
 import Users from "lucide-react-native/icons/users";
@@ -140,6 +141,7 @@ export const LUCIDE = {
   Package,
   Boxes,
   ClipboardList,
+  ShoppingBasket,
   Wallet,
   BarChart3,
   Users,

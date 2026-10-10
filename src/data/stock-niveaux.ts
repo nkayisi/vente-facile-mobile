@@ -80,6 +80,17 @@ export interface LigneNiveau {
 
   seuilReassort: number;
   etat: Exclude<EtatStock, "tous">;
+  /**
+   * `Product.track_inventory`.
+   *
+   * ⚠ RENDU, parce que l'état ne suffit pas à rejouer le critère du serveur.
+   * `etatDuRayon` range un rayon vide en « rupture » SANS regarder le suivi -
+   * c'est juste pour l'affichage, `out` du serveur ne le teste pas non plus -
+   * alors que les critères d'ALERTE et de RÉQUISITION l'exigent tous deux
+   * (`check_low_stock_alerts`, `lignes_proposees`). Un appelant qui doit les
+   * rejouer n'a donc pas à relire le catalogue pour un drapeau déjà lu ici.
+   */
+  suitLeStock: boolean;
   coutUnitaire: number;
   valeur: number;
 }
@@ -287,6 +298,7 @@ export async function niveauxDeStock(
       conditionnement: cond,
       seuilReassort: seuil,
       etat,
+      suitLeStock: Boolean(l.trackInventory),
       coutUnitaire: cout,
       valeur: total * cout,
     };
@@ -391,6 +403,7 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
       seuil,
       suitLeStock: Boolean(l.trackInventory),
     }),
+    suitLeStock: Boolean(l.trackInventory),
     coutUnitaire: cout,
     valeur: total * cout,
     emplacement: null,

@@ -100,7 +100,16 @@ export type OperationKind =
   // silence, et surtout aucune des deux tables n'émet de pierre tombale au
   // tirage - une suppression serveur n'atteindrait donc jamais un terminal.
   | "income_category.update"
-  | "expense_category.update";
+  | "expense_category.update"
+  // Une RÉQUISITION se constate au fond du dépôt, devant un rayon vide, et
+  // c'est l'endroit du magasin où il y a le moins de réseau. Ses cinq actes
+  // passent donc par le journal. Un refus de transition y est DÉTERMINISTE
+  // (« déjà soumise », « déjà décidée ») : quarantaine, jamais un nouvel essai.
+  | "requisition.create"
+  | "requisition.submit"
+  | "requisition.cancel"
+  | "requisition.approve"
+  | "requisition.reject";
 
 export type OutboxState = OutboxOperation["state"];
 

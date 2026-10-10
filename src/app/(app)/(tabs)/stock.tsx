@@ -146,6 +146,17 @@ export default function Stock() {
             icon="SlidersHorizontal"
             accent="primary"
           />
+          {/* ⚠ Une RÉQUISITION n'achète rien et ne bouge aucun stock : elle dit
+              « il nous manque ceci ». Elle est ici parce que c'est devant le
+              rayon qu'on la constate, pas dans un écran d'achats. */}
+          <ActionTile
+            forme="grille"
+            href="/requisition"
+            title="Réquisitions"
+            description="Ce qu'il faut acheter"
+            icon="ShoppingBasket"
+            accent="chart2"
+          />
         </View>
       </View>
 
