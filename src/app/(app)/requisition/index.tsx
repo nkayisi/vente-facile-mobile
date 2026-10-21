@@ -44,6 +44,14 @@ import {
   Screen, SearchInput, Text,
 } from "@/ui";
 
+/**
+ * La taille d'un cran de fenêtre.
+ *
+ * Même valeur que l'historique des ventes : assez pour remplir plusieurs
+ * écrans, assez peu pour qu'un terminal d'entrée de gamme ne la sente pas.
+ */
+const PAGE = 50;
+
 /** Le ton de chaque statut. Celui du serveur, pas un jugement d'écran. */
 const TON: Record<string, "neutral" | "warning" | "success" | "destructive"> = {
   draft: "neutral",
@@ -68,16 +76,41 @@ export default function Requisitions() {
   const perimetre = usePerimetre(choixPerimetre, false);
   const applique = perimetre.applique;
 
+  // ┌──────────────────────────────────────────────────────────────────────────┐
+  // │ UNE FENÊTRE QUI S'AGRANDIT, ET UN TOTAL QUI DIT LA VÉRITÉ.              │
+  // │                                                                          │
+  // │ La liste s'arrêtait à deux cents lignes SANS RIEN DIRE : au-delà, une    │
+  // │ réquisition n'était atteignable par aucun geste, et le sous-titre        │
+  // │ annonçait pourtant « au total ». Le motif est celui de l'historique des  │
+  // │ ventes - `limite: pages * PAGE`, un total calculé à part, et le `onFin`  │
+  // │ de `DataList` qui agrandit.                                              │
+  // └──────────────────────────────────────────────────────────────────────────┘
+  const [pages, setPages] = useState(1);
+
+  // Chaque changement de filtre repart de la première fenêtre : garder trois
+  // pages d'un résultat qui n'en compte plus qu'une ferait défiler dans le vide.
+  const refiltrer = useCallback((geste: () => void) => {
+    setPages(1);
+    geste();
+  }, []);
+
   const charger = useCallback(
-    () => listeRequisitions({ recherche, statut, entrepot: applique.entrepot }),
-    [recherche, statut, applique]
+    () =>
+      listeRequisitions({
+        recherche,
+        statut,
+        entrepot: applique.entrepot,
+        limite: pages * PAGE,
+      }),
+    [recherche, statut, applique, pages]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES_REQUISITIONS,
-    deps: [recherche, statut, applique],
+    deps: [recherche, statut, applique, pages],
   });
 
-  const elements = donnees ?? [];
+  const elements = donnees?.elements ?? [];
+  const total = donnees?.total ?? 0;
 
   const enTete = (
     <View className="gap-3 px-4 pb-3 pt-2">
@@ -85,7 +118,7 @@ export default function Requisitions() {
         <View className="flex-1">
           <SearchInput
             valeur={recherche}
-            onChange={setRecherche}
+            onChange={(v) => refiltrer(() => setRecherche(v))}
             placeholder="Rechercher une référence..."
           />
         </View>
@@ -99,7 +132,9 @@ export default function Requisitions() {
         <ChipRow>
           {resumeDuPerimetre(perimetre).map((puce) => {
             const retirer = () =>
-              setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle));
+              refiltrer(() =>
+                setChoixPerimetre(sansLeFiltrePerimetre(choixPerimetre, puce.cle))
+              );
             return (
               <Chip key={puce.cle} label={puce.label} actif onPress={retirer} onRetirer={retirer} />
             );
@@ -108,13 +143,17 @@ export default function Requisitions() {
       ) : null}
 
       <ChipRow>
-        <Chip label="Toutes" actif={statut === null} onPress={() => setStatut(null)} />
+        <Chip
+          label="Toutes"
+          actif={statut === null}
+          onPress={() => refiltrer(() => setStatut(null))}
+        />
         {Object.entries(STATUT_REQUISITION).map(([code, label]) => (
           <Chip
             key={code}
             label={label}
             actif={statut === code}
-            onPress={() => setStatut(code)}
+            onPress={() => refiltrer(() => setStatut(code))}
           />
         ))}
       </ChipRow>
@@ -154,7 +193,7 @@ export default function Requisitions() {
     <Screen padded={false}>
       <AppBar
         title="Réquisitions"
-        subtitle={`Ce qu'il faut acheter (${elements.length} au total)`}
+        subtitle={`Ce qu'il faut acheter (${total} au total)`}
       />
       <DataList
         donnees={elements}
@@ -162,6 +201,18 @@ export default function Requisitions() {
         rendu={rendu}
         enTete={enTete}
         chargement={chargement && elements.length === 0}
+        onFin={
+          elements.length < total ? () => setPages((p) => p + 1) : undefined
+        }
+        pied={
+          elements.length < total ? (
+            <View className="items-center px-4 py-4">
+              <Text variant="caption">
+                {elements.length} sur {total} - chargement de la suite...
+              </Text>
+            </View>
+          ) : undefined
+        }
         vide={{
           icon: "ShoppingBasket",
           titre: "Aucune réquisition",
@@ -190,7 +241,7 @@ export default function Requisitions() {
         ouvert={feuillePerimetre}
         onFermer={() => setFeuillePerimetre(false)}
         valeur={choixPerimetre}
-        onChanger={setChoixPerimetre}
+        onChanger={(v) => refiltrer(() => setChoixPerimetre(v))}
         offre={perimetre}
         libelleResultats="Voir les réquisitions"
       />

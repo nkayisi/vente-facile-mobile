@@ -163,7 +163,7 @@ export default function DetailDepense() {
     if (!decision || envoi) return;
     setEnvoi(true);
     try {
-      await transitionDepense(`expense.${decision}` as never, d.id, motif);
+      await transitionDepense(`expense.${decision}`, d.id, motif);
       toast.succes(
         `${TRANSITION_DEPENSE[decision].label} : l'opération partira à la prochaine synchronisation.`
       );

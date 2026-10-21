@@ -91,7 +91,7 @@ export async function transitionRequisition(
   notes?: string
 ): Promise<string> {
   const id = Crypto.randomUUID();
-  await enqueue(id, `requisition.${transition}` as never, {
+  await enqueue(id, `requisition.${transition}`, {
     id,
     requisition: requisitionId,
     notes: notes ?? "",

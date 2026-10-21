@@ -108,7 +108,7 @@ export async function transitionTransfert(
   lignesRecues?: { ligne: string; contenants?: number; vrac?: number; total?: number }[]
 ): Promise<string> {
   const id = Crypto.randomUUID();
-  await enqueue(id, `stock_transfer.${transition}` as never, {
+  await enqueue(id, `stock_transfer.${transition}`, {
     id,
     transfer: transfertId,
     ...(transition === "receive" && lignesRecues
@@ -163,7 +163,7 @@ export async function transitionAjustement(
   transition: "approve" | "reject"
 ): Promise<string> {
   const id = Crypto.randomUUID();
-  await enqueue(id, `stock_adjustment.${transition}` as never, {
+  await enqueue(id, `stock_adjustment.${transition}`, {
     id,
     adjustment: ajustementId,
   });

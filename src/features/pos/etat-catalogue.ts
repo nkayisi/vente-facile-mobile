@@ -36,6 +36,15 @@ export interface DiagnosticCatalogue {
   recus: number;
   /** Celles qui passent le filtre de vendabilité du comptoir. */
   vendables: number;
+  /**
+   * Celles que CE membre peut voir : vendables, ET dans son périmètre.
+   *
+   * ⚠ C'est la différence avec `vendables` qui distingue « le catalogue est
+   * fermé par une affectation d'entrepôt » de « c'est la rubrique qui est
+   * vide ». Sans elle, la première se présentait comme la seconde, et l'écran
+   * envoyait choisir « Tout » alors que « Tout » était déjà choisi.
+   */
+  visibles: number;
   /** Un terme de recherche est saisi. */
   recherche: boolean;
   /** Une rubrique est sélectionnée. */
@@ -47,10 +56,25 @@ export type CauseGrilleVide =
   | "catalogue-absent"
   /** Des articles sont là, aucun n'est marqué en vente. */
   | "aucun-vendable"
+  /**
+   * Des articles vendables existent, mais AUCUN dans le périmètre de ce
+   * membre - son affectation d'entrepôt les retient tous.
+   */
+  | "perimetre"
   /** Le catalogue est vendable, c'est le terme qui ne trouve rien. */
   | "recherche"
   /** Le catalogue est vendable, c'est la rubrique qui est vide. */
-  | "rubrique";
+  | "rubrique"
+  /**
+   * Rien ne filtre, et il y a pourtant des articles visibles.
+   *
+   * ⚠ C'EST LA CAUSE QU'ON NE SAIT PAS NOMMER, et il faut qu'elle existe. La
+   * fonction retombait sur `"rubrique"` par défaut : elle affirmait donc une
+   * cause qu'elle n'avait pas mesurée, et le message envoyait choisir « Tout »
+   * alors que « Tout » était déjà sélectionné. Mieux vaut dire qu'on ne sait
+   * pas et offrir une synchronisation que donner une fausse piste.
+   */
+  | "indetermine";
 
 export interface MessageGrilleVide {
   cause: CauseGrilleVide;
@@ -89,8 +113,17 @@ export interface MessageGrilleVide {
 export function causeGrilleVide(d: DiagnosticCatalogue): CauseGrilleVide {
   if (d.recus === 0) return "catalogue-absent";
   if (d.vendables === 0) return "aucun-vendable";
+  // Le périmètre est une cause STRUCTURELLE : il passe donc avant les filtres,
+  // comme les deux au-dessus. Des articles vendables existent, aucun n'est à
+  // portée de ce membre, et aucun filtre n'y changera rien.
+  if (d.visibles === 0) return "perimetre";
   if (d.recherche) return "recherche";
-  return "rubrique";
+  // ⚠ ON LIT ENFIN `d.rubrique`. Le champ était déclaré, collecté par l'écran
+  //   et lu NULLE PART : la fonction retombait sur `"rubrique"` quel que soit
+  //   l'état du filtre, donc elle envoyait le caissier choisir « Tout » sur un
+  //   écran où « Tout » était déjà sélectionné.
+  if (d.rubrique) return "rubrique";
+  return "indetermine";
 }
 
 /**
@@ -127,6 +160,39 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
         leveParSynchronisation: false,
       };
 
+    case "perimetre":
+      /*
+       * ┌──────────────────────────────────────────────────────────────────────┐
+       * │ « SYNCHRONISER N'Y CHANGERA RIEN » ÉTAIT FAUX, ET RETIRAIT LE SEUL  │
+       * │ GESTE QUI APPLIQUE LE CORRECTIF.                                     │
+       * │                                                                      │
+       * │ Le périmètre est lu de l'INSTANTANÉ de session                       │
+       * │ (`snapshot.membership.assigned_warehouses`), que seule une           │
+       * │ synchronisation réécrit (`refreshSnapshot`, en fin de cycle) : une   │
+       * │ fois l'affectation faite au back-office, synchroniser est EXACTEMENT │
+       * │ le geste qui la fait descendre.                                      │
+       * │                                                                      │
+       * │ Et `visibles` passe par `conditionCatalogue`, qui teste l'existence  │
+       * │ d'une ligne de `stocks` : une affectation déjà juste dont les lignes │
+       * │ de stock ne sont pas encore descendues tombe ici elle aussi.         │
+       * │                                                                      │
+       * │ Le message nomme donc les DEUX moitiés - où cela se règle, et ce qui │
+       * │ l'applique - et le bouton revient.                                   │
+       * └──────────────────────────────────────────────────────────────────────┘
+       */
+      // Le NOMBRE compte ici aussi : il prouve que le catalogue est bien
+      // arrivé, donc que ce n'est pas un réglage d'article.
+      return {
+        cause,
+        icone: "PackageX",
+        titre: "Aucun article dans votre périmètre",
+        message:
+          `${d.vendables} ${d.vendables === 1 ? "article est" : "articles sont"} en vente, ` +
+          "mais aucun n'est stocké dans un entrepôt qui vous est confié. L'affectation se " +
+          "règle au back-office, et elle descend à la synchronisation.",
+        leveParSynchronisation: true,
+      };
+
     case "recherche":
       return {
         cause,
@@ -143,6 +209,20 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
         titre: "Aucun article dans cette rubrique",
         message: "Choisissez « Tout » pour revoir le catalogue entier.",
         leveParSynchronisation: false,
+      };
+
+    case "indetermine":
+      // On ne propose AUCUN geste précis, et c'est délibéré : inventer une
+      // cause ferait envoyer le caissier corriger ce qui n'est pas en cause.
+      // Une synchronisation est le seul geste qui ne peut pas nuire.
+      return {
+        cause,
+        icone: "Package",
+        titre: "Aucun article à afficher",
+        message:
+          "Aucun filtre n'est actif. Synchronisez, et si la grille reste vide, " +
+          "signalez-le : le catalogue est arrivé mais rien ne s'affiche.",
+        leveParSynchronisation: true,
       };
   }
 }

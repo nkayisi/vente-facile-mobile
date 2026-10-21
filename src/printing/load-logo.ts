@@ -90,9 +90,16 @@ export async function chargerLogo(
     if (!fichier.exists || (fichier.size ?? 0) === 0) return null;
     if ((fichier.size ?? 0) > TAILLE_MAX) return null;
 
+    // ⚠ ON MESURE LE FICHIER LOCAL, PAS L'URL DISTANTE. `Image.getSize` fait
+    //   sa PROPRE requête réseau : lui passer `url` retéléchargeait les mêmes
+    //   octets que `downloadFileAsync` venait d'écrire, donc un logo de deux
+    //   mégaoctets - le plafond `TAILLE_MAX` - coûtait quatre mégaoctets par
+    //   démarrage à froid, sur les liens 2G que ce produit vise, avant le
+    //   premier ticket. `fichier.uri` est un `file://`, que le moteur d'images
+    //   lit sans réseau.
     const [base64, proportion] = await Promise.all([
       fichier.base64(),
-      proportionDe(url),
+      proportionDe(fichier.uri),
     ]);
     if (!base64 || !proportion) return null;
 
@@ -107,6 +114,14 @@ export async function chargerLogo(
     // Le fichier a servi : son contenu vit maintenant dans la dataURL. Le
     // garder doublerait l'occupation pour rien, et un logo change rarement
     // assez souvent pour qu'un cache disque soit utile.
+    //
+    // ⚠ ON NE GARDE DÉLIBÉRÉMENT PAS DE CACHE DISQUE, et le motif compte : un
+    //   logo changé au back-office ressortirait sur le papier d'un client sous
+    //   son ancienne forme, et une invalidation fiable demanderait une clé que
+    //   le serveur ne fournit pas (le chemin ne porte ni empreinte ni version).
+    //   Un téléchargement par démarrage à froid est le minimum honnête pour
+    //   une image distante - et `use-logo-etablissement` mémorise déjà par
+    //   session, donc il n'y en a qu'UN par lancement.
     try {
       fichier?.delete();
     } catch {
@@ -121,11 +136,14 @@ export async function chargerLogo(
  * ⚠ IL EST INDISPENSABLE, et pas seulement esthétique : `render-html` borne la
  * hauteur du logo à `logoMaxHeight` ET à `contentWidth / aspectRatio`. Un
  * rapport faux ferait sortir un logo écrasé ou débordant de la bande imprimée.
+ *
+ * ⚠ ON LUI PASSE UN `file://`, JAMAIS L'URL DISTANTE : `Image.getSize` fait sa
+ * propre requête, et la mesure doublait donc le transfert de chaque logo.
  */
-function proportionDe(url: string): Promise<number | null> {
+function proportionDe(uri: string): Promise<number | null> {
   return new Promise((resolve) => {
     Image.getSize(
-      url,
+      uri,
       (largeur, hauteur) =>
         resolve(largeur > 0 && hauteur > 0 ? largeur / hauteur : null),
       () => resolve(null)

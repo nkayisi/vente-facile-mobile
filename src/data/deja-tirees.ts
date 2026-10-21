@@ -18,22 +18,44 @@
  *
  * On n'interroge que les références EN FILE, peu nombreuses par construction -
  * c'est ce qui n'a pas encore été poussé.
+ *
+ * ⚠ UN SEUL CORPS, DEUX FAÇADES. Ce module annonçait vivre ici « pour qu'un
+ * troisième lecteur n'ait pas à le redécouvrir », et il était pourtant câblé sur
+ * `sales` seul : le lecteur des réquisitions est ce troisième, et il a redécouvert
+ * le défaut. Une troisième copie serait la divergence de plus.
  */
 import { inArray } from "drizzle-orm";
+import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 
 import { db } from "@/db/client";
-import { sales } from "@/db/schema";
+import { requisitions, sales } from "@/db/schema";
 
-export async function referencesDejaTirees(
-  references: (string | null | undefined)[]
+async function croiser(
+  references: (string | null | undefined)[],
+  table: SQLiteTable,
+  colonne: SQLiteColumn
 ): Promise<Set<string>> {
   const utiles = references.filter((r): r is string => Boolean(r));
   if (utiles.length === 0) return new Set();
 
   const connues = await db
-    .select({ reference: sales.reference })
-    .from(sales)
-    .where(inArray(sales.reference, utiles));
+    .select({ reference: colonne })
+    .from(table)
+    .where(inArray(colonne, utiles));
 
-  return new Set(connues.map((l) => l.reference));
+  return new Set(connues.map((l) => l.reference as string));
+}
+
+/** Les ventes que le tirage a déjà ramenées. */
+export async function referencesDejaTirees(
+  references: (string | null | undefined)[]
+): Promise<Set<string>> {
+  return croiser(references, sales, sales.reference);
+}
+
+/** Les réquisitions que le tirage a déjà ramenées. */
+export async function requisitionsDejaTirees(
+  references: (string | null | undefined)[]
+): Promise<Set<string>> {
+  return croiser(references, requisitions, requisitions.reference);
 }

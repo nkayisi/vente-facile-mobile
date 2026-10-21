@@ -24,6 +24,7 @@ import { and, desc, eq, like, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { products, requisitionItems, requisitions, units, warehouses } from "@/db/schema";
+import { requisitionsDejaTirees } from "./deja-tirees";
 import { niveauxDeStock } from "./stock-niveaux";
 import {
   proposerDepuisRayons,
@@ -118,8 +119,25 @@ const UNITE = sql<string | null>`(select ${units.name} from ${units} where ${uni
  * sur les retours, les devis et les ventes.
  */
 export async function listeRequisitions(
-  f: { entrepot?: string | null; statut?: string | null; recherche?: string } = {}
-): Promise<Requisition[]> {
+  f: {
+    entrepot?: string | null;
+    statut?: string | null;
+    recherche?: string;
+    /**
+     * La FENÊTRE, pas une page.
+     *
+     * ┌────────────────────────────────────────────────────────────────────────┐
+     * │ UNE FENÊTRE QUI S'AGRANDIT, JAMAIS UNE PAGINATION PAR RANG.           │
+     * │                                                                        │
+     * │ Cet écran se relit à chaque changement de table (`useLecture`) : un     │
+     * │ rang de départ figerait une position dans un classement qui bouge, et   │
+     * │ une réquisition insérée par le tirage ferait répéter ou sauter une      │
+     * │ ligne. C'est le raisonnement déjà écrit pour l'historique des ventes.   │
+     * └────────────────────────────────────────────────────────────────────────┘
+     */
+    limite?: number;
+  } = {}
+): Promise<{ elements: Requisition[]; total: number }> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const conditions = [
     or(eq(requisitions.isDeleted, false), sql`${requisitions.isDeleted} is null`),
@@ -150,7 +168,7 @@ export async function listeRequisitions(
     .leftJoin(warehouses, eq(warehouses.id, requisitions.warehouseId))
     .where(and(...conditions))
     .orderBy(desc(requisitions.requestedAt))
-    .limit(200);
+    .limit(f.limite ?? 50);
 
   const tirees: Requisition[] = lignes.map((l) => ({
     id: l.id,
@@ -166,9 +184,6 @@ export async function listeRequisitions(
     nbLignes: Number(l.nbLignes ?? 0),
   }));
 
-  // Celles du journal, par leur RÉFÉRENCE : le serveur la reprend, donc une
-  // pièce poussée puis redescendue ne se compterait pas deux fois.
-  const vues = new Set(tirees.map((r) => r.reference));
   // ⚠ `avecBloquees` : une opération bloquée est CONSERVÉE et repartira dès
   // qu'un droit sera accordé. La masquer ferait recréer la même réquisition,
   // et le déblocage en enverrait deux.
@@ -176,6 +191,26 @@ export async function listeRequisitions(
     "requisition.create",
     { avecBloquees: true }
   );
+
+  // ┌──────────────────────────────────────────────────────────────────────────┐
+  // │ LE DÉDOUBLONNAGE SE FAIT CONTRE LA TABLE, JAMAIS CONTRE LA FENÊTRE.     │
+  // │                                                                          │
+  // │ Il se faisait sur `tirees`, qui est la fenêtre : une réquisition poussée │
+  // │ dont la ligne tirée tombe au-delà était rendue DEUX FOIS - même `id`,    │
+  // │ donc deux clés identiques dans la liste virtualisée - et comptée deux    │
+  // │ fois dans `total`, qui porte le périmètre. Le pied annonçait « 50 sur    │
+  // │ 51 » et tirait une fenêtre de plus pour rien, sur la liste dont le       │
+  // │ métier est précisément de compter ce qui manque.                         │
+  // │                                                                          │
+  // │ Le serveur reprend l'identifiant ET la référence du terminal, et la      │
+  // │ poussée remet l'opération en `pending` quand la réponse se perd APRÈS    │
+  // │ application : un tirage ramène alors la pièce pendant qu'elle est encore │
+  // │ dans le journal. Voir `data/deja-tirees.ts`.                             │
+  // └──────────────────────────────────────────────────────────────────────────┘
+  const vues = await requisitionsDejaTirees(
+    enFile.map((op) => String(op.payload.reference ?? ""))
+  );
+
   const enAttente: Requisition[] = [];
   for (const op of enFile) {
     const corps = op.payload;
@@ -200,24 +235,87 @@ export async function listeRequisitions(
     });
   }
 
-  return [...enAttente, ...tirees];
+  // ⚠ LE TOTAL PORTE LE PÉRIMÈTRE, JAMAIS LA FENÊTRE. La liste s'arrêtait à
+  //   deux cents lignes SANS RIEN DIRE : au-delà, les réquisitions n'étaient
+  //   atteignables par aucun geste, et le magasinier concluait qu'elles avaient
+  //   disparu. C'est le défaut déjà payé sur « Mouvements (30) ».
+  const [compte] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(requisitions)
+    .where(and(...conditions));
+
+  return {
+    elements: [...enAttente, ...tirees],
+    total: Number(compte?.n ?? 0) + enAttente.length,
+  };
 }
 
-/** Le détail d'une réquisition, avec ses lignes. */
+/**
+ * Le détail d'une réquisition, avec ses lignes.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────────┐
+ * │ UNE LECTURE CIBLÉE, PAS UN FILTRE SUR LA LISTE.                             │
+ * │                                                                              │
+ * │ Cette fonction chargeait `listeRequisitions()` SANS AUCUN FILTRE - donc deux │
+ * │ cents lignes, un `count(*)` corrélé par ligne et la fusion de tout le        │
+ * │ journal - puis filtrait en JavaScript par identifiant. Au-delà de la         │
+ * │ fenêtre, `entete` sortait `undefined` et l'écran déclarait la pièce          │
+ * │ INTROUVABLE pendant que le magasinier tenait son bordereau imprimé.          │
+ * │                                                                              │
+ * │ Les trois chemins qui y menaient : un `action_url` de notification, un lien  │
+ * │ profond, et toute organisation qui dépasse la fenêtre. C'est le défaut       │
+ * │ « introuvable par sa propre liste » que la docstring de ce fichier cite      │
+ * │ elle-même, et le motif du correctif est celui de `detailDepense`.            │
+ * └──────────────────────────────────────────────────────────────────────────────┘
+ */
 export async function detailRequisition(
   id: string
 ): Promise<{ requisition: Requisition; lignes: LigneRequisition[] } | null> {
-  const [entete] = await listeRequisitions().then((rs) =>
-    rs.filter((r) => r.id === id)
-  );
-  if (!entete) return null;
+  const [ligne] = await db
+    .select({
+      id: requisitions.id,
+      reference: requisitions.reference,
+      statut: requisitions.status,
+      entrepotId: requisitions.warehouseId,
+      entrepot: warehouses.name,
+      notes: requisitions.notes,
+      demandeLe: requisitions.requestedAt,
+      decideLe: requisitions.decidedAt,
+      notesDecision: requisitions.decisionNotes,
+      nbLignes: sql<number>`(select count(*) from ${requisitionItems} where ${requisitionItems.requisitionId} = ${requisitions.id})`,
+    })
+    .from(requisitions)
+    .leftJoin(warehouses, eq(warehouses.id, requisitions.warehouseId))
+    // ⚠ LE MÊME FILTRE QUE LA LISTE, et il manquait. La lecture ciblée qui a
+    //   remplacé l'ancien filtrage de liste a perdu la suppression douce : une
+    //   réquisition dont le tirage a ramené la pierre tombale restait pleinement
+    //   ouvrable par un `action_url` de notification ou un lien profond, avec
+    //   ses boutons de transition. Filtrée, la pièce tombe sur `ficheEnFile`,
+    //   qui rend `null` - l'ordre est déjà le bon.
+    .where(
+      and(
+        eq(requisitions.id, id),
+        or(eq(requisitions.isDeleted, false), sql`${requisitions.isDeleted} is null`)
+      )
+    )
+    .limit(1);
 
-  if (entete.envoi) {
-    // Une pièce encore en file n'a pas de lignes EN TABLE : on rend ce dont on
-    // est sûr, et l'écran le dit plutôt que d'afficher une section vide - qui
-    // se lirait comme une réquisition sans article.
-    return { requisition: entete, lignes: [] };
-  }
+  // Rien en table : la pièce vit peut-être encore dans le journal.
+  if (!ligne) return ficheEnFile(id);
+
+  const entete: Requisition = {
+    id: ligne.id,
+    reference: ligne.reference ?? "",
+    statut: ligne.statut ?? "draft",
+    statutLabel: STATUT_REQUISITION[ligne.statut ?? "draft"] ?? (ligne.statut ?? ""),
+    entrepotId: ligne.entrepotId,
+    entrepot: ligne.entrepot,
+    notes: ligne.notes,
+    demandeLe: ligne.demandeLe,
+    decideLe: ligne.decideLe,
+    notesDecision: ligne.notesDecision,
+    nbLignes: Number(ligne.nbLignes ?? 0),
+  };
 
   const lignes = await db
     .select({
@@ -249,6 +347,50 @@ export async function detailRequisition(
       seuilAlors: Number(l.seuilAlors ?? 0),
       note: l.note,
     })),
+  };
+}
+
+/**
+ * La fiche d'une réquisition qui vit encore dans le JOURNAL.
+ *
+ * ⚠ ELLE NE REND AUCUNE LIGNE, ET L'ÉCRAN LE DIT. Les lignes vivent dans le
+ * corps de l'opération, pas dans une table lisible : afficher une section vide
+ * se lirait comme une réquisition sans article. C'est la règle déjà posée sur
+ * la fiche d'une vente en attente.
+ */
+async function ficheEnFile(
+  id: string
+): Promise<{ requisition: Requisition; lignes: LigneRequisition[] } | null> {
+  // ⚠ `avecBloquees` : une opération bloquée est CONSERVÉE et repartira dès
+  //   qu'un droit sera accordé. La masquer ferait déclarer introuvable une
+  //   pièce que le magasinier vient de créer.
+  const enFile = await enAttenteParType<Record<string, unknown>>(
+    "requisition.create",
+    { avecBloquees: true }
+  );
+  const op = enFile.find((o) => (o.payload.id as string) === id || o.id === id);
+  if (!op) return null;
+
+  const corps = op.payload;
+  const items = Array.isArray(corps.items) ? corps.items : [];
+  return {
+    requisition: {
+      id: (corps.id as string) ?? op.id,
+      // Le numéro d'appareil, DÉFINITIF dès l'impression : c'est lui qui
+      // permet de réimprimer le bordereau sans attendre le réseau.
+      reference: String(corps.reference ?? "") || "—",
+      statut: "draft",
+      statutLabel: STATUT_REQUISITION.draft,
+      entrepotId: (corps.warehouse as string) ?? null,
+      entrepot: null,
+      notes: (corps.notes as string) ?? null,
+      demandeLe: op.occurredAt ?? null,
+      envoi: op.envoi,
+      decideLe: null,
+      notesDecision: null,
+      nbLignes: items.length,
+    },
+    lignes: [],
   };
 }
 

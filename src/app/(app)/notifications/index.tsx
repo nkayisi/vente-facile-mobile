@@ -29,6 +29,7 @@ import {
   type NotificationRecue,
 } from "@/data/notifications";
 import { useEnLigne } from "@/data/reseau";
+import { BandeauPush } from "@/notifications/bandeau-push";
 import {
   AppBar, Badge, Banner, Button, DataList, DataRow, Screen, Spinner,
   useToast,
@@ -159,6 +160,15 @@ export default function Notifications() {
           ) : undefined
         }
       />
+
+      {/*
+        ⚠ AU-DESSUS DES DEUX AUTRES, et l'ordre dit quelque chose : celui-ci
+        parle de la LIVRAISON (être prévenu sans ouvrir), les deux suivants de
+        la LECTURE (pouvoir consulter la liste). Un marchand hors ligne doit
+        pouvoir accorder la permission : elle est locale, et c'est précisément
+        pour ne plus dépendre de l'ouverture de l'écran qu'elle sert.
+      */}
+      <BandeauPush />
 
       {!enLigne ? (
         <View className="px-4 pb-3 pt-2">

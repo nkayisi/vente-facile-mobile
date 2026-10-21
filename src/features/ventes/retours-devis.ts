@@ -61,7 +61,7 @@ export async function transitionRetour(
   transition: "approve" | "reject"
 ): Promise<string> {
   const id = Crypto.randomUUID();
-  await enqueue(id, `sale_return.${transition}` as never, {
+  await enqueue(id, `sale_return.${transition}`, {
     id,
     sale_return: retourId,
   });

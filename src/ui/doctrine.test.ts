@@ -2151,6 +2151,82 @@ describe("la notification poussée ne s'invite pas, et ne se tait pas", () => {
     expect(jetonPush()).toContain('"alertes"');
   });
 
+  it("le canal et l'invite sont ATTEIGNABLES depuis une route", () => {
+    //: ┌──────────────────────────────────────────────────────────────────────┐
+    //: │ LE DÉFAUT QUE LE GARDE-FOU D'À CÔTÉ LAISSAIT PASSER.                │
+    //: │                                                                      │
+    //: │ « La permission ne se demande QUE depuis un geste » ne vérifie que   │
+    //: │ l'INVERSE : que rien hors du module n'appelle                        │
+    //: │ `requestPermissionsAsync`. Il était donc VERT alors que              │
+    //: │ `demanderPush` et `preparerCanal` n'avaient AUCUN appelant : la      │
+    //: │ permission restait `undetermined`, `Device.push_token` n'était jamais │
+    //: │ écrit, et tout le canal poussé livré par T13 était inerte.           │
+    //: └──────────────────────────────────────────────────────────────────────┘
+    //:
+    //: ⚠ « A UN APPELANT » NE SUFFIT PAS, ET C'EST MESURÉ. La première
+    //:   écriture de ce test cherchait un appel hors du module ; elle restait
+    //:   VERTE quand on débranchait le hook, parce que l'appel survivait dans
+    //:   le hook lui-même - devenu mort à son tour. Un module mort qui appelle
+    //:   un module mort satisfait toute vérification à un seul niveau.
+    //:
+    //: On remonte donc la chaîne jusqu'à une ROUTE : `src/app/**` est le seul
+    //: point d'entrée qu'expo-router monte, et tout le reste n'existe que si
+    //: quelque chose l'y tire.
+    const sources = fichiers(RACINE).map((f) => ({
+      chemin: f,
+      code: sansCommentaires(readFileSync(f, "utf8")),
+    }));
+
+    //: Ce que chaque fichier EXPORTE, et qui sert de nom d'arête.
+    const exporte = new Map<string, string[]>();
+    for (const { chemin, code } of sources) {
+      const noms = [
+        ...code.matchAll(
+          /export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z_$][\w$]*)/g
+        ),
+      ].map((m) => m[1]);
+      exporte.set(chemin, noms);
+    }
+
+    //: Atteignable = tiré, directement ou non, par un fichier de `src/app/`.
+    //: Un appel (`nom(`) ou une balise JSX (`<Nom`) compte ; un simple import
+    //: ne compte PAS - il survit au retrait du corps qui s'en servait.
+    const estRoute = (f: string) => relative(RACINE, f).startsWith("app/");
+    const atteints = new Set(sources.filter((s) => estRoute(s.chemin)).map((s) => s.chemin));
+    let encore = true;
+    while (encore) {
+      encore = false;
+      for (const { chemin, code } of sources) {
+        if (!atteints.has(chemin)) continue;
+        for (const { chemin: cible } of sources) {
+          if (atteints.has(cible)) continue;
+          const tire = (exporte.get(cible) ?? []).some((nom) =>
+            new RegExp(`(?:\\b${nom}\\s*\\(|<${nom}[\\s/>])`).test(code)
+          );
+          if (tire) {
+            atteints.add(cible);
+            encore = true;
+          }
+        }
+      }
+    }
+
+    //: Le balayage voit-il bien quelque chose ? Un graphe vide passerait.
+    expect(atteints.size).toBeGreaterThan(50);
+
+    //: Et la fonction est-elle APPELÉE par un fichier atteint ?
+    const atteinte = (nom: string) =>
+      sources.some(
+        ({ chemin, code }) =>
+          atteints.has(chemin) &&
+          !chemin.endsWith("notifications/jeton-push.ts") &&
+          new RegExp(`\\b${nom}\\s*\\(`).test(code)
+      );
+
+    expect(atteinte("demanderPush")).toBe(true);
+    expect(atteinte("preparerCanal")).toBe(true);
+  });
+
   it("aucun identifiant de projet Expo écrit en dur", () => {
     //: Il vit dans `app.config.ts` ; recopié ici, il dériverait le jour où le
     //: projet est relié à un autre compte, et les envois partiraient vers un
@@ -2161,6 +2237,61 @@ describe("la notification poussée ne s'invite pas, et ne se tait pas", () => {
       //: Un UUID nu à côté de `projectId` : c'est la forme qu'Expo délivre.
       if (/projectId[^\n]*["'][0-9a-f]{8}-[0-9a-f]{4}/.test(code)) {
         fautifs.push(relative(RACINE, f));
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
+
+describe("aucun `as never` n'efface le contrôle d'un acte de journal", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ C'EST LE SEUL LIEN ENTRE UN ACTE DU CLIENT ET SON `@handler` SERVEUR.   │
+   * │                                                                          │
+   * │ `as never` est assignable à TOUT paramètre : le compilateur cesse de     │
+   * │ vérifier que le `kind` composé est un `OperationKind` déclaré. Renommer  │
+   * │ une entrée de `src/sync/outbox.ts` compile alors toujours, et met en     │
+   * │ file un acte dont le serveur n'a aucun gestionnaire - que `_classify`    │
+   * │ transforme en quarantaine découverte des jours plus tard.                │
+   * │                                                                          │
+   * │ ⚠ CE QUE LE CAST CACHAIT, ET CE QU'IL NE CACHAIT PAS. Il a d'abord été  │
+   * │   écrit ici que le cast d'`expense.${decision}` dissimulait un          │
+   * │   `ActeDepense` à QUATRE membres là où `transitionsPossibles` en rend    │
+   * │   cinq. C'ÉTAIT FAUX : `git show HEAD:` montre l'union déjà complète,    │
+   * │   `expense.cancel` compris. Le cast n'effaçait donc aucun écart réel -   │
+   * │   il effaçait la GARANTIE qu'il n'y en aurait pas, et c'est précisément  │
+   * │   ce que ce balayage rétablit. Le retrait du cast, lui, était juste.     │
+   * │                                                                          │
+   * │ Le cast est d'ailleurs INUTILE : un template literal sur une union de    │
+   * │ littéraux distribue, donc `` `requisition.${t}` `` a déjà exactement le  │
+   * │ type des membres valides.                                                │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+
+  //: ⚠ LE BALAYAGE EST ÉTROIT, ET IL DOIT L'ÊTRE. `router.push(x as never)`
+  //:   est l'idiome légitime des routes dynamiques d'expo-router, employé à
+  //:   six endroits : un garde-fou qui crierait dessus finirait désactivé. On
+  //:   ne vise donc que le premier argument composé d'un acte - la forme
+  //:   `` `prefixe.${…}` as never ``.
+  const MOTIF = /`[a-z_]+\.\$\{[^}]+\}`\s+as\s+never/g;
+
+  it("le balayage voit bien des actes composés", () => {
+    //: Un balayage qui ne balaie rien passe au vert. Ce dépôt l'a payé six
+    //: fois, dont une dans ce même lot.
+    let composes = 0;
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      composes += [...code.matchAll(/`[a-z_]+\.\$\{[^}]+\}`/g)].length;
+    }
+    expect(composes).toBeGreaterThanOrEqual(4);
+  });
+
+  it("aucun acte composé n'est casté en `never`", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      for (const m of code.matchAll(MOTIF)) {
+        fautifs.push(`${relative(RACINE, f)} : ${m[0]}`);
       }
     }
     expect(fautifs).toEqual([]);

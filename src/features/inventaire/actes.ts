@@ -69,7 +69,7 @@ export async function transitionSession(
   transition: TransitionSession
 ): Promise<string> {
   const id = Crypto.randomUUID();
-  await enqueue(id, `inventory_session.${transition}` as never, {
+  await enqueue(id, `inventory_session.${transition}`, {
     id,
     session: sessionId,
   });

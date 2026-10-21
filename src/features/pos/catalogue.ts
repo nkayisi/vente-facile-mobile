@@ -500,14 +500,36 @@ export async function articlesParIds(
  * Appelée SEULEMENT quand la grille est vide : sur une grille pleine il n'y a
  * rien à expliquer, et ce comptage balaie toute la table.
  */
-export async function diagnostiquerCatalogue(): Promise<{
+export async function diagnostiquerCatalogue(
+  entrepotsCatalogue?: string[] | null
+): Promise<{
   recus: number;
   vendables: number;
+  visibles: number;
 }> {
+  // ┌──────────────────────────────────────────────────────────────────────────┐
+  // │ LE PÉRIMÈTRE DOIT ENTRER DANS LE COMPTAGE, SINON SA CAUSE EST           │
+  // │ INDIAGNOSTICABLE.                                                        │
+  // │                                                                          │
+  // │ Ce comptage ignorait le périmètre de catalogue posé par T5 : sur un      │
+  // │ caissier dont le dépôt ne porte aucun article, il rendait `recus > 0` et │
+  // │ `vendables > 0`, donc l'écran retombait sur « Aucun article dans cette   │
+  // │ rubrique · Choisissez Tout » - alors que « Tout » était déjà             │
+  // │ sélectionné. Un cul-de-sac, et c'est le défaut même que ce diagnostic    │
+  // │ existe pour retirer.                                                     │
+  // └──────────────────────────────────────────────────────────────────────────┘
+  //
+  // ⚠ UN SEUL ALLER-RETOUR, par agrégat conditionnel. Deux requêtes pourraient
+  //   tomber de part et d'autre d'un tirage et rendre `visibles > vendables`,
+  //   un état impossible dont aucune cause ne se déduirait.
+  const perimetre = conditionCatalogue(entrepotsCatalogue ?? null);
   const [ligne] = await db
     .select({
       recus: sql<number>`count(*)`,
       vendables: sql<number>`sum(case when ${products.isActive} = 1 and ${products.isSellable} = 1 then 1 else 0 end)`,
+      visibles: perimetre
+        ? sql<number>`sum(case when ${products.isActive} = 1 and ${products.isSellable} = 1 and (${perimetre}) then 1 else 0 end)`
+        : sql<number>`sum(case when ${products.isActive} = 1 and ${products.isSellable} = 1 then 1 else 0 end)`,
     })
     .from(products)
     .where(or(eq(products.isDeleted, false), isNull(products.isDeleted)));
@@ -517,6 +539,7 @@ export async function diagnostiquerCatalogue(): Promise<{
   return {
     recus: Number(ligne?.recus ?? 0),
     vendables: Number(ligne?.vendables ?? 0),
+    visibles: Number(ligne?.visibles ?? 0),
   };
 }
 
