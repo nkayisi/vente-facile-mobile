@@ -20,6 +20,8 @@ import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { formatDateTimeFr, formatPrice, pluralizeUnit } from "@vente-facile/core";
 
+import { lireNombre } from "@/data/nombres";
+
 import { useLecture } from "@/data/live";
 import { ETAT_STOCK, detailNiveau } from "@/data/stock-niveaux";
 import { deconditionner, enAttenteSurStock } from "@/features/stock/actes";
@@ -103,14 +105,39 @@ export default function DetailRayon() {
     r.facteur != null && r.contenants > 0 && can("stock_movements.create");
   const envoiEnFile = attente?.deconditionnements.get(r.id);
 
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ DEUX LECTURES DIVERGEAIENT, ET LE BOUTON MENTAIT.                      │
+   * │                                                                        │
+   * │ La validation faisait `replace(",", ".")`, le bouton non : taper       │
+   * │ « 1,5 » laissait le bouton FERMÉ (`Number("1,5")` rend `NaN`) alors     │
+   * │ que la validation l'aurait accepté. Une seule lecture désormais, et    │
+   * │ c'est `lireNombre`, comme les onze autres écrans de quantité.          │
+   * │                                                                        │
+   * │ ⚠ `Math.floor` RESTE LÉGITIME ici, et c'est le seul endroit du lot où  │
+   * │ une quantité reste entière : on ouvre des contenants ENTIERS, un demi- │
+   * │ carton ne s'ouvre pas. Mais le refus se DIT au lieu d'arrondir en      │
+   * │ silence - arrondir « 2,7 » à 2 sans un mot ferait ouvrir moins que     │
+   * │ demandé, et le magasinier ne le verrait qu'au comptage suivant.        │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  const lecture = lireNombre(contenants);
+  const nContenants = lecture.ok ? (lecture.valeur ?? 0) : 0;
+  const refusSaisie = !lecture.ok
+    ? lecture.motif === "negatif"
+      ? "On n'ouvre pas un nombre négatif de contenants."
+      : "Nombre illisible. Écrivez par exemple 2."
+    : nContenants > 0 && nContenants % 1 !== 0
+      ? "On ouvre des contenants entiers : un contenant entamé est déjà du vrac."
+      : null;
+
   const valider = async () => {
-    const n = Number(contenants.replace(",", ".")) || 0;
-    if (envoi || n < 1) return;
+    if (envoi || refusSaisie || nContenants < 1) return;
     setEnvoi(true);
     try {
-      await deconditionner(r.id, Math.floor(n));
+      await deconditionner(r.id, nContenants);
       toast.succes(
-        `Ouverture de ${Math.floor(n)} ${pluralizeUnit(r.uniteContenant ?? "contenant", n)} mise en file.`
+        `Ouverture de ${nContenants} ${pluralizeUnit(r.uniteContenant ?? "contenant", nContenants)} mise en file.`
       );
       setFeuille(false);
     } catch (err) {
@@ -223,6 +250,7 @@ export default function DetailRayon() {
         <FormField
           label="Combien en ouvrir ?"
           required
+          error={refusSaisie ?? undefined}
           hint={
             r.facteur
               ? `Chacun libère ${r.facteur} ${pluralizeUnit(r.uniteDetail ?? "unité", r.facteur)}.`
@@ -233,13 +261,14 @@ export default function DetailRayon() {
             value={contenants}
             onChangeText={setContenants}
             keyboardType="number-pad"
+            invalid={!!refusSaisie}
             autoFocus
           />
         </FormField>
         <Button
           fullWidth
           size="lg"
-          disabled={envoi || (Number(contenants) || 0) < 1}
+          disabled={envoi || !!refusSaisie || nContenants < 1}
           onPress={() => void valider()}
         >
           {envoi ? "Enregistrement…" : "Ouvrir"}

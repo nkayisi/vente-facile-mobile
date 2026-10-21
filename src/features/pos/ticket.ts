@@ -17,8 +17,14 @@ import {
   looseQuantityOf,
   packagingFactorOf,
   type SaleCurrencyTotals,
+  type TotalParDevise,
 } from "@vente-facile/core/pos";
-import { formatDateTimeFr, getPackaging, pluralizeUnit } from "@vente-facile/core";
+import {
+  formatDateTimeFr,
+  getPackaging,
+  pluralizeUnit,
+  type CurrencyTable,
+} from "@vente-facile/core";
 import type {
   ReceiptChrome,
   SaleReceiptData,
@@ -94,6 +100,15 @@ export interface ContexteTicket {
    * │ devise-là.                                                             │
    * └────────────────────────────────────────────────────────────────────────┘
    */
+  /**
+   * Les sous-totaux ANNONCÉS, par devise, et de quoi convertir une ligne.
+   *
+   * ⚠ ON NE RECALCULE RIEN ICI : la ventilation vient du panier, qui la tient
+   * du noyau. Un ticket est le pire endroit pour refaire une arithmétique de
+   * vente - c'est le document qui sert de preuve au client.
+   */
+  parDevise?: TotalParDevise[];
+  devises?: CurrencyTable;
   totaux: {
     /** Ventilation dans la devise de FACTURE : c'est ce que le client lit. */
     facture: SaleCurrencyTotals;
@@ -153,6 +168,45 @@ function nomDuMoyen(
  * un solde sort en « VENTE À CRÉDIT », avec son pied propre, et le client voit
  * du premier coup d'œil qu'il doit encore quelque chose.
  */
+/**
+ * Le prix de la ligne DANS SA DEVISE D'ANNONCE, quand elle sort de la facture.
+ *
+ * `facture.lines[i]` porte les prix convertis vers la devise de FACTURE - c'est
+ * ce qu'il faut pour le total. Mais une ligne annoncée en dollars sur une
+ * facture en francs doit s'imprimer en dollars : c'est le chiffre que le
+ * caissier a dit, et celui que le client vérifie.
+ *
+ * Rend un objet VIDE sur une ligne qui suit la facture : le ticket n'accole
+ * alors aucun code, et un ticket mono-devise sort exactement comme avant.
+ */
+function prixAnnonce(
+  ligne: LignePanier,
+  converti: { unitPrice: number; packageUnitPrice: number; gross: number },
+  contexte: ContexteTicket
+): Partial<SaleReceiptItem> {
+  const cible = ligne.priceCurrency?.trim();
+  const devises = contexte.devises;
+  if (!cible || !devises || cible === contexte.totaux.facture.currency) return {};
+
+  const primary = devises.primary;
+  const enGros = packagingFactorOf(ligne.product) && ligne.packageQuantity > 0;
+  const unite = enGros
+    ? devises.convertMoney(Number(ligne.product.wholesale_price) || 0, primary, cible)
+    : devises.convertMoney(ligne.unit_price, primary, cible);
+
+  return {
+    currency: cible,
+    unitPrice: unite,
+    // Le brut de la ligne, converti depuis la PRINCIPALE : `converti.gross`
+    // est déjà en devise de facture, le reconvertir ferait deux conversions.
+    total: devises.convertMoney(
+      devises.convert(converti.gross, contexte.totaux.facture.currency, primary),
+      primary,
+      cible
+    ),
+  };
+}
+
 export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
   const { etat, totaux } = contexte;
   const { facture } = totaux;
@@ -181,6 +235,7 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
           : l.unitPrice,
       discountPercentage: ligne.discount_percentage || undefined,
       total: l.gross,
+      ...prixAnnonce(ligne, l, contexte),
     };
   });
 
@@ -221,6 +276,10 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
     loyaltyRedemptionAmount: facture.loyaltyDiscount || undefined,
     total: facture.total,
     currency: facture.currency,
+    currencyTotals: contexte.parDevise?.map((d) => ({
+      currency: d.currency,
+      total: d.total,
+    })),
     payments: etat.reglements.map((r) => ({
       method: nomDuMoyen(contexte.moyens, r.method),
       amount: Number(r.amount) || 0,

@@ -22,24 +22,45 @@
 import { useEffect, useMemo, useState } from "react";
 import { Modal, View } from "react-native";
 
-import { getPackaging, pluralizeUnit } from "@vente-facile/core";
+import {
+  getPackaging,
+  pluralizeUnit,
+  formatQuantity,
+  toBaseQuantity,
+  MIN_QUANTITY,
+} from "@vente-facile/core";
 import type { Saisie } from "@vente-facile/core/pos";
 
+import { lireNombre } from "@/data/nombres";
 import { Button, Divider, Icon, Pressable, Text, useMargesSysteme } from "@/ui";
 import type { ArticlePos } from "./catalogue";
+import { frapper as frapperTouche, SEPARATEUR } from "./saisie-quantite";
 
 type Canal = "package" | "retail";
 
 /** Raccourcis : couvrent l'écrasante majorité des ventes au comptoir. */
 const RACCOURCIS = [1, 2, 3, 5, 10];
 
+
+
 export interface SelecteurQuantiteProps {
   article: ArticlePos | null;
   visible: boolean;
   onFermer: () => void;
-  onValider: (saisie: Saisie) => void;
+  onValider: (saisie: Saisie, devise?: string) => void;
   /** Saisie déjà présente, pour rouvrir une ligne du panier en édition. */
   initiale?: Saisie;
+  /**
+   * Les devises dans lesquelles ce prix peut être ANNONCÉ au client.
+   *
+   * À un seul élément : aucun choix à faire, et la rangée disparaît - un
+   * sélecteur à une seule entrée n'est pas un choix, c'est du bruit.
+   */
+  devises?: string[];
+  /** Celle de la facture : le défaut, et la première de la rangée. */
+  deviseFacture?: string;
+  /** Devise déjà choisie, pour rouvrir une ligne en édition. */
+  deviseInitiale?: string;
   /** Contenants encore scellés. `null` : pas de borne connue. */
   scellesDisponibles?: number | null;
   /** Unités hors emballage. `null` : partage inconnu, jamais à lire comme 0. */
@@ -82,6 +103,9 @@ export function SelecteurQuantite({
   onFermer,
   onValider,
   initiale,
+  devises = [],
+  deviseFacture,
+  deviseInitiale,
   scellesDisponibles,
   vracDisponible,
   verifier,
@@ -93,6 +117,9 @@ export function SelecteurQuantite({
   const [canal, setCanal] = useState<Canal>("retail");
   const [contenants, setContenants] = useState("");
   const [detail, setDetail] = useState("");
+  /** Ce que la borne de saisie refuse, et pourquoi. Effacé à la frappe suivante. */
+  const [borne, setBorne] = useState<string | null>(null);
+  const [devise, setDevise] = useState<string | undefined>(undefined);
 
   // Réinitialisation à chaque ouverture : un reliquat de la saisie précédente
   // se fait valider sans être relu.
@@ -103,18 +130,27 @@ export function SelecteurQuantite({
     // Un article vendu uniquement en gros ouvre sur son canal, sinon le premier
     // chiffre frappé partirait au détail, qui lui est interdit.
     setCanal(conditionnement?.packageOnly ? "package" : "retail");
+    setBorne(null);
+    setDevise(deviseInitiale);
     // `conditionnement` se reconstruit à chaque rendu : c'est l'article qui
     // détermine la remise à zéro, pas l'objet dérivé.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, article?.id]);
 
-  const saisie: Saisie = useMemo(
-    () => ({
-      packages: conditionnement ? Number(contenants) || 0 : 0,
-      loose: Number(detail) || 0,
-    }),
-    [conditionnement, contenants, detail]
-  );
+  // `lireNombre` et non `Number()` : c'est le lecteur des onze autres écrans de
+  // quantité, il accepte la virgule et les espaces de milliers, et il DIT
+  // pourquoi il refuse. `Number("0,5")` rend `NaN`, que le `|| 0` d'avant
+  // transformait en zéro - donc en « aucune quantité », en silence.
+  const saisie: Saisie = useMemo(() => {
+    const lu = (v: string) => {
+      const r = lireNombre(v);
+      return r.ok ? (r.valeur ?? 0) : 0;
+    };
+    return {
+      packages: conditionnement ? lu(contenants) : 0,
+      loose: lu(detail),
+    };
+  }, [conditionnement, contenants, detail]);
 
   // ⚠ AVANT le retour anticipé : un hook appelé conditionnellement change
   // l'ordre des hooks d'un rendu à l'autre.
@@ -123,25 +159,34 @@ export function SelecteurQuantite({
   if (!article) return null;
 
   const valeurCourante = canal === "package" ? contenants : detail;
-  const poser = (v: string) => (canal === "package" ? setContenants(v) : setDetail(v));
+  const poser = (v: string) => {
+    setBorne(null);
+    return canal === "package" ? setContenants(v) : setDetail(v);
+  };
 
   /** Accumulateur : chaque touche ajoute un chiffre, comme une caisse. */
-  const frapper = (chiffre: string) => {
-    const suivant = (valeurCourante + chiffre).replace(/^0+(?=\d)/, "");
-    if (suivant.length > 5) return;
-    poser(suivant);
+  const frapper = (touche: string) => {
+    const r = frapperTouche(valeurCourante, touche);
+    if (r.ok) return poser(r.valeur);
+    if (r.motif) setBorne(r.motif);
   };
   const effacer = () => poser(valeurCourante.slice(0, -1));
   const raccourci = (n: number) => poser(String(n));
 
-  const totalDetail = conditionnement
-    ? saisie.packages * conditionnement.factor + saisie.loose
-    : saisie.loose;
-  const rien = totalDetail < 1;
+  // `toBaseQuantity` du noyau, qui quantise : l'arithmétique écrite à la main
+  // ici sortait `2 * 24 + 0,3` à `48.300000000000004`, et ce nombre s'affichait.
+  const totalDetail = toBaseQuantity(conditionnement, saisie.packages, saisie.loose);
+  // ⚠ `< 1` ÉTAIT LE BLOCAGE LE PLUS SOURNOIS : même avec un pavé décimal,
+  // « 0,5 » serait resté refusé comme « rien ». Le seuil est celui du serveur,
+  // `MinValueValidator(Decimal('0.001'))`.
+  const rien = totalDetail < MIN_QUANTITY;
 
   // Une saisie vide n'est pas un refus : afficher « indiquez une quantité » en
   // rouge dès l'ouverture ferait crier l'écran avant la moindre frappe.
-  const refus = rien ? null : (verifier?.(saisie) ?? null);
+  // La borne de SAISIE prime : elle désigne la touche que le caissier vient
+  // d'appuyer, là où `verifier` parle du stock. Afficher le stock pendant qu'on
+  // refuse une frappe ferait chercher le défaut au mauvais endroit.
+  const refus = borne ?? (rien ? null : (verifier?.(saisie) ?? null));
   // L'avertissement ne paraît que s'il n'y a pas déjà un refus : deux encadrés
   // rouges pour un seul article feraient croire à deux problèmes.
   const alerte = rien || refus ? null : (avertir?.(saisie) ?? null);
@@ -215,6 +260,46 @@ export function SelecteurQuantite({
             </View>
           ) : null}
 
+          {/* ┌────────────────────────────────────────────────────────────┐
+              │ LA DEVISE D'ANNONCE DE CETTE LIGNE.                        │
+              │                                                            │
+              │ Un marchand dont le catalogue est tenu en dollars annonce  │
+              │ certains articles en francs. Le prix converti s'affiche    │
+              │ sous la rangée : c'est le chiffre qu'il dira au client, et │
+              │ celui qui sortira sur le ticket.                           │
+              │                                                            │
+              │ La rangée ne paraît QUE s'il y a un choix à faire. Un      │
+              │ sélecteur à une seule entrée n'est pas un choix.           │
+              └────────────────────────────────────────────────────────────┘ */}
+          {devises.length > 1 ? (
+            <View className="mt-4 flex-row flex-wrap items-center gap-2 px-5">
+              <Text variant="bodySmall" className="text-muted-foreground">
+                Annoncer en
+              </Text>
+              {devises.map((code) => {
+                const actif = (devise ?? deviseFacture) === code;
+                return (
+                  <Pressable
+                    key={code}
+                    onPress={() => setDevise(code === deviseFacture ? undefined : code)}
+                    className={`rounded-full border px-3 py-1.5 ${
+                      actif ? "border-primary bg-primary/10" : "border-border"
+                    }`}
+                    accessibilityLabel={`Annoncer ce prix en ${code}`}
+                    accessibilityState={{ selected: actif }}
+                  >
+                    <Text
+                      variant="bodySmall"
+                      className={actif ? "text-primary" : "text-muted-foreground"}
+                    >
+                      {code}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
           <View className="mx-5 mt-4 rounded-xl bg-muted px-4 py-3">
             <Text variant="bodySmall" className="text-muted-foreground">
               Cette ligne
@@ -224,7 +309,8 @@ export function SelecteurQuantite({
             </Text>
             {conditionnement && totalDetail > 0 ? (
               <Text variant="bodySmall" className="mt-0.5 text-muted-foreground">
-                soit {totalDetail} {pluralizeUnit(motDetail, totalDetail)} au total
+                soit {formatQuantity(totalDetail)}{" "}
+                {pluralizeUnit(motDetail, totalDetail)} au total
               </Text>
             ) : null}
           </View>
@@ -288,7 +374,7 @@ export function SelecteurQuantite({
             ) : null}
             <View className="flex-1">
               <Button
-                onPress={() => onValider(saisie)}
+                onPress={() => onValider(saisie, devise)}
                 disabled={rien || !!refus}
                 fullWidth
               >
@@ -353,10 +439,12 @@ function Disponibilite({
   if (conditionnement && scelles !== null && scelles !== undefined) {
     // « en scellé » est INVARIABLE : « 11 BOITES scellés » n'accordait pas, et
     // le genre d'un nom de contenant saisi par le marchand ne se devine pas.
-    morceaux.push(`${scelles} ${pluralizeUnit(motContenant, scelles)} en scellé`);
+    morceaux.push(
+      `${formatQuantity(scelles)} ${pluralizeUnit(motContenant, scelles)} en scellé`
+    );
   }
   if (vrac !== null && vrac !== undefined) {
-    morceaux.push(`${vrac} ${pluralizeUnit(motDetail, vrac)}`);
+    morceaux.push(`${formatQuantity(vrac)} ${pluralizeUnit(motDetail, vrac)}`);
   }
   if (morceaux.length === 0) return null;
 
@@ -383,20 +471,41 @@ function Clavier({
       {TOUCHES.map((t) => (
         <Touche key={t} onPress={() => onChiffre(t)} label={t} />
       ))}
-      <Touche onPress={onVider} label="C" secondaire />
+      {/* ┌──────────────────────────────────────────────────────────────────┐
+          │ LA VIRGULE PREND LA PLACE DU « C », ET LE PAVÉ GARDE 3 COLONNES. │
+          │                                                                  │
+          │ Douze cases, et il en fallait une treizième. Passer à quatre      │
+          │ colonnes est écarté : la largeur d'un tiers est posée en dur       │
+          │ juste en dessous, précisément pour que le pavé se lise comme un   │
+          │ pavé, et quatre touches par ligne les rendrait trop étroites pour │
+          │ la cible tactile de 56 points du comptoir.                       │
+          │                                                                  │
+          │ Vider reste atteignable par un APPUI LONG sur le retour arrière,  │
+          │ et la touche le DIT dans son étiquette d'accessibilité - un geste │
+          │ qu'on ne peut pas découvrir est un geste perdu.                   │
+          └──────────────────────────────────────────────────────────────────┘ */}
+      <Touche onPress={() => onChiffre(SEPARATEUR)} label={SEPARATEUR} />
       <Touche onPress={() => onChiffre("0")} label="0" />
-      <Touche onPress={onEffacer} icone="ion:backspace-outline" label="Effacer" secondaire />
+      <Touche
+        onPress={onEffacer}
+        onLongPress={onVider}
+        icone="ion:backspace-outline"
+        label="Effacer. Appui long pour tout effacer"
+        secondaire
+      />
     </View>
   );
 }
 
 function Touche({
   onPress,
+  onLongPress,
   label,
   icone,
   secondaire,
 }: {
   onPress: () => void;
+  onLongPress?: () => void;
   label: string;
   icone?: "ion:backspace-outline";
   secondaire?: boolean;
@@ -408,6 +517,7 @@ function Touche({
     <View className="w-1/3 p-1">
       <Pressable
         onPress={onPress}
+        onLongPress={onLongPress}
         haptic="selection"
         className={`h-14 items-center justify-center rounded-xl ${
           secondaire ? "bg-muted" : "bg-secondary"
@@ -433,10 +543,12 @@ function resume(
 ): string {
   const parts: string[] = [];
   if (conditionnement && saisie.packages > 0) {
-    parts.push(`${saisie.packages} ${pluralizeUnit(motContenant, saisie.packages)}`);
+    parts.push(
+      `${formatQuantity(saisie.packages)} ${pluralizeUnit(motContenant, saisie.packages)}`
+    );
   }
   if (saisie.loose > 0) {
-    parts.push(`${saisie.loose} ${pluralizeUnit(motDetail, saisie.loose)}`);
+    parts.push(`${formatQuantity(saisie.loose)} ${pluralizeUnit(motDetail, saisie.loose)}`);
   }
   return parts.length ? parts.join(" + ") : "Aucune quantité";
 }

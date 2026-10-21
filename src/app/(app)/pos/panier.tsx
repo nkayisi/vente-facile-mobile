@@ -10,6 +10,9 @@ import { FlatList, View } from "react-native";
 import { router } from "expo-router";
 
 import { getPackaging, pluralizeUnit } from "@vente-facile/core";
+
+import { devisesAffichables } from "@/features/pos/affichage-devise";
+import { useMonnaie } from "@/data/devises";
 import { lineGross, looseQuantityOf, type Saisie } from "@vente-facile/core/pos";
 
 import { etiquetteParDefaut, mettreEnAttente } from "@/features/pos/attente";
@@ -95,6 +98,17 @@ export default function Panier() {
   // │                                                                      │
   // │ Le champ parle donc désormais la même langue que sa propre borne.     │
   // └──────────────────────────────────────────────────────────────────────┘
+  // Les devises de l'établissement : la même liste que l'affichage converti
+  // du comptoir. Annoncer dans une monnaie qu'il ne tient pas n'aurait aucun
+  // taux à appliquer.
+  // La principale en TÊTE : c'est la devise de facturation, donc le défaut,
+  // et l'ordre dit lequel des deux chiffres est le prix.
+  // La même liste que l'affichage converti du comptoir : les devises de
+  // l'établissement, principale en tête. Annoncer dans une monnaie qu'il ne
+  // tient pas n'aurait aucun taux à appliquer.
+  const monnaie = useMonnaie();
+  const devisesDeLEtablissement = devisesAffichables(monnaie);
+
   const versFacture = (montant: number) =>
     panier.devises.convertMoney(montant, panier.devises.primary, panier.deviseFacture);
   const versPrincipale = (montant: number) =>
@@ -360,6 +374,9 @@ export default function Panier() {
         }
         scellesDisponibles={ligne?.product.stock_packages}
         vracDisponible={ligne?.product.stock_loose}
+        devises={devisesDeLEtablissement}
+        deviseFacture={panier.deviseFacture}
+        deviseInitiale={ligne?.priceCurrency}
         // Un article verrouillé par un inventaire depuis sa mise au panier se
         // dit ICI, pas à l'encaissement. `verifierModification` retire la ligne
         // éditée de son propre contrôle de stock : `verifier` la compterait
@@ -373,9 +390,9 @@ export default function Panier() {
           panier.envoyer({ type: "retirer", index: enEdition });
           setEnEdition(null);
         }}
-        onValider={(saisie: Saisie) => {
+        onValider={(saisie: Saisie, devise?: string) => {
           if (enEdition === null) return;
-          panier.envoyer({ type: "modifier", index: enEdition, saisie });
+          panier.envoyer({ type: "modifier", index: enEdition, saisie, devise });
           setEnEdition(null);
         }}
       />
@@ -489,12 +506,38 @@ function LigneArticle({
 }
 
 function Recapitulatif() {
-  const { totaux, argent, devises, deviseFacture } = usePanier();
+  const { totaux, parDevise, argent, devises, deviseFacture } = usePanier();
   const enFacture = (montant: number) =>
     argent(devises.convertMoney(montant, devises.primary, deviseFacture));
 
   return (
     <View className="gap-1 pb-2">
+      {/* ┌──────────────────────────────────────────────────────────────────┐
+          │ CE QUI A ÉTÉ ANNONCÉ, DEVISE PAR DEVISE.                        │
+          │                                                                  │
+          │ Un marchand annonce la farine en francs et le savon importé en   │
+          │ dollars : ces deux chiffres sont ceux qu'il a dits au client, et │
+          │ ceux qui sortiront sur le ticket. Leur SOMME n'existe dans       │
+          │ aucune monnaie - c'est « Total » juste en dessous qui donne la    │
+          │ facture, en convertissant chaque ligne au taux de sa devise.     │
+          │                                                                  │
+          │ Le bloc ne paraît QUE sur une vente réellement mixte : sur une   │
+          │ vente d'une seule devise il répéterait le sous-total.            │
+          └──────────────────────────────────────────────────────────────────┘ */}
+      {parDevise.length > 1 ? (
+        <View className="mb-1 rounded-lg bg-muted px-3 py-2">
+          <Text variant="caption" className="mb-1 text-muted-foreground">
+            Annoncé au client
+          </Text>
+          {parDevise.map((d) => (
+            <Rang
+              key={d.currency}
+              libelle={d.currency}
+              valeur={devises.money(d.total, d.currency)}
+            />
+          ))}
+        </View>
+      ) : null}
       <Rang libelle="Sous-total" valeur={enFacture(totaux.sousTotal)} />
       {totaux.remiseLignes > 0 ? (
         <Rang libelle="Remises de ligne" valeur={`- ${enFacture(totaux.remiseLignes)}`} />

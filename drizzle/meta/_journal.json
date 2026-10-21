@@ -78,6 +78,13 @@
       "when": 1791580759346,
       "tag": "0010_requisitions",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792516942238,
+      "tag": "0011_devise_par_ligne",
+      "breakpoints": true
     }
   ]
 }

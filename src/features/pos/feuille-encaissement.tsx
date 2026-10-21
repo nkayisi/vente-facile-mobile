@@ -114,7 +114,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
   const panier = usePanier();
   const { snapshot } = useSession();
   const toast = useToast();
-  const { etat, totaux, devises, deviseFacture, deviseMonnaie, argent } =
+  const { etat, totaux, devises, parDevise, deviseFacture, deviseMonnaie, argent } =
     panier;
   const { envoyer, rafraichirClient } = panier;
 
@@ -420,6 +420,11 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
           etat,
           totaux,
           deviseFacture,
+          // La ventilation ANNONCÉE, et de quoi convertir une ligne qui sort
+          // de la facture. Le ticket ne recalcule rien : il reçoit ce que le
+          // panier tient déjà du noyau.
+          parDevise,
+          devises,
           snapshot,
           registerName: session.registerName,
           warehouseName: session.warehouseName ?? undefined,

@@ -623,6 +623,8 @@ export const saleItems = sqliteTable("sale_items", {
   batchId: text("batch_id"),
   description: text("description").notNull(),
   quantity: text("quantity").notNull(),
+  priceCurrency: text("price_currency").notNull(),
+  priceExchangeRate: text("price_exchange_rate").notNull(),
   unitPrice: text("unit_price").notNull(),
   packageQuantity: text("package_quantity").notNull(),
   packageUnitPrice: text("package_unit_price"),

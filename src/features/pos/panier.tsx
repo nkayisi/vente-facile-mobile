@@ -25,6 +25,8 @@ import {
   minPointsToRedeem,
   tendersIn,
   saleCurrencyTotals,
+  totauxParDevise,
+  type TotalParDevise,
   verifierAjout,
   MONEY_EPS,
   type BasketLine,
@@ -112,6 +114,15 @@ interface ValeurPanier {
   deviseFacture: string;
   deviseMonnaie: string;
   totaux: Totaux;
+  /**
+   * Les sous-totaux par devise d'ANNONCE : ce que le client lit sur son papier.
+   *
+   * ⚠ ILS NE S'ADDITIONNENT PAS. `totaux.totalFacture` donne le total de la
+   * facture, en convertissant chaque ligne au taux de sa devise ; ces
+   * sous-totaux-là sont les chiffres ANNONCÉS, et leur somme n'existe dans
+   * aucune monnaie. Une seule entrée quand tout partage la devise de facture.
+   */
+  parDevise: TotalParDevise[];
   /** Formate un montant dans une devise, décimales comprises. */
   argent: (montant: number, code?: string) => string;
   /**
@@ -234,6 +245,16 @@ export function PanierProvider({ children }: { children: ReactNode }) {
     // d'une AUTRE vente, donc au retour sur le comptoir.
   }, [clientId, etat.lignes.length, relecture]);
 
+  // Les sous-totaux ANNONCÉS, par devise. Mémoïsé à part : il ne dépend ni des
+  // règlements ni des points, et le recalculer à chaque frappe d'encaissement
+  // ferait relire toutes les lignes pour un chiffre qui n'a pas bougé.
+  const parDevise = useMemo(
+    () => totauxParDevise({
+      lines: etat.lignes, currencies: devises, invoiceCurrency: deviseFacture,
+    }),
+    [etat.lignes, devises, deviseFacture]
+  );
+
   const totaux = useMemo<Totaux>(() => {
     const brut = basketTotals({
       lines: etat.lignes,
@@ -319,6 +340,7 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       deviseFacture,
       deviseMonnaie,
       totaux,
+      parDevise,
       argent: (montant, code) => devises.money(montant, code ?? deviseFacture),
       rafraichirClient,
       // LE VERROU D'INVENTAIRE PASSE AVANT LE STOCK, et c'est l'ordre du
@@ -337,7 +359,7 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       },
       envoyer,
     }),
-    [etat, devises, deviseFacture, deviseMonnaie, totaux, rafraichirClient]
+    [etat, devises, deviseFacture, deviseMonnaie, totaux, parDevise, rafraichirClient]
   );
 
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>;

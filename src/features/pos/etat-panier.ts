@@ -16,6 +16,7 @@ import {
   type BasketLine,
   type Saisie,
 } from "@vente-facile/core/pos";
+import { MIN_QUANTITY } from "@vente-facile/core";
 
 import type { ArticlePos } from "./catalogue";
 import { motifDuVerrou, motifStockInconnu } from "./motifs";
@@ -64,8 +65,21 @@ export interface EtatPanier {
 }
 
 export type ActionPanier =
-  | { type: "ajouter"; article: ArticlePos; saisie: Saisie; prix: number }
-  | { type: "modifier"; index: number; saisie: Saisie }
+  | {
+      type: "ajouter";
+      article: ArticlePos;
+      saisie: Saisie;
+      prix: number;
+      /** Devise d'annonce de la ligne. Absente : celle de la facture. */
+      devise?: string;
+    }
+  | {
+      type: "modifier";
+      index: number;
+      saisie: Saisie;
+      /** Devise d'annonce. `undefined` : la ligne suit la facture. */
+      devise?: string;
+    }
   | { type: "retirer"; index: number }
   | { type: "remiseGlobale"; montant: number }
   | { type: "client"; client: ClientPos | null }
@@ -141,7 +155,13 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
       // l'ajout : il fermera l'ENCAISSEMENT, et la proforma restera ouverte.
       // Seule une saisie vide est encore écartée - ce n'est pas un manque de
       // stock, c'est une absence de saisie.
-      if (verdict.quantity < 1) return etat;
+      //
+      // ⚠ LE SEUIL EST CELUI DU SERVEUR, PAS 1. À 1, « 0,5 » - une saisie
+      // parfaitement valide pour un produit vendu au poids - était refusé, et
+      // le refus était MUET : le sélecteur ouvrait son bouton « Ajouter » et
+      // rien n'entrait au panier. Les quatre sites de ce fichier partagent ce
+      // seuil, et c'est `MinValueValidator(Decimal('0.001'))` côté serveur.
+      if (verdict.quantity < MIN_QUANTITY) return etat;
 
       const index = etat.lignes.findIndex((l) => l.product.id === action.article.id);
       if (index < 0) {
@@ -155,6 +175,9 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
               packageQuantity: verdict.packageQuantity,
               unit_price: action.prix,
               discount_percentage: 0,
+              // La devise d'ANNONCE de la ligne. Absente : elle suit la
+              // facture, ce que toute vente a fait jusqu'ici.
+              ...(action.devise ? { priceCurrency: action.devise } : {}),
             },
           ],
         };
@@ -181,12 +204,13 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
       const autres = etat.lignes.filter((_, i) => i !== action.index);
       const verdict = verifierAjout(courante.product, autres, action.saisie);
       // Même règle qu'à l'ajout : le manque de stock ne referme pas la saisie.
-      if (verdict.quantity < 1) return etat;
+      if (verdict.quantity < MIN_QUANTITY) return etat;
 
       const lignes = [...etat.lignes];
       lignes[action.index] = {
         ...courante,
         quantity: verdict.quantity,
+              priceCurrency: action.devise,
         packageQuantity: verdict.packageQuantity,
       };
       return { ...etat, lignes };
@@ -265,7 +289,7 @@ export function motifDeRefus(
   // `motifsEncaissement`. Ce qui manque se DIT quand même, sans fermer le
   // bouton : c'est `avertissementDeStock`.
   const verdict = verifierAjout(article, lignes, saisie);
-  if (verdict.quantity < 1) return verdict.raison;
+  if (verdict.quantity < MIN_QUANTITY) return verdict.raison;
   return null;
 }
 
@@ -285,7 +309,7 @@ export function avertissementDeStock(
 ): string | null {
   if (article.verrou_inventaire !== null) return null; // déjà un refus
   const verdict = verifierAjout(article, lignes, saisie);
-  if (verdict.ok || verdict.quantity < 1) return null;
+  if (verdict.ok || verdict.quantity < MIN_QUANTITY) return null;
 
   // Seul le cas « aucune ligne de stock » est réétiqueté. Un zéro RÉELLEMENT
   // enregistré doit continuer de se lire « 0 en stock » : c'est une

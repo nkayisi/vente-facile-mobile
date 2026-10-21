@@ -30,8 +30,8 @@ importers:
         specifier: 2.0.2
         version: 2.0.2(@babel/runtime@7.29.7)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.3(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@vente-facile/core':
-        specifier: github:nkayisi/vente-facile-core#v0.7.6
-        version: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/48a25084c6f54f27b2cfe720e80becda8e7e8b74
+        specifier: github:nkayisi/vente-facile-core#v0.7.9
+        version: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/bce3f146385f1641ec8bfa34abbf8949893bacd6
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(expo-sqlite@57.0.2(expo@57.0.18)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.3(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))
@@ -2375,9 +2375,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/48a25084c6f54f27b2cfe720e80becda8e7e8b74':
-    resolution: {tarball: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/48a25084c6f54f27b2cfe720e80becda8e7e8b74}
-    version: 0.7.6
+  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/bce3f146385f1641ec8bfa34abbf8949893bacd6':
+    resolution: {tarball: https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/bce3f146385f1641ec8bfa34abbf8949893bacd6}
+    version: 0.7.9
 
   '@xmldom/xmldom@0.8.15':
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
@@ -8674,7 +8674,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
 
-  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/48a25084c6f54f27b2cfe720e80becda8e7e8b74': {}
+  '@vente-facile/core@https://codeload.github.com/nkayisi/vente-facile-core/tar.gz/bce3f146385f1641ec8bfa34abbf8949893bacd6': {}
 
   '@xmldom/xmldom@0.8.15': {}
 

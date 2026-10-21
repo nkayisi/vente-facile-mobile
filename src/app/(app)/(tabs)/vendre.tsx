@@ -121,9 +121,28 @@ export default function Comptoir() {
     if (session === undefined) return;
     setChargement(true);
     if (minuteur.current) clearTimeout(minuteur.current);
+
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ UNE RÉPONSE PÉRIMÉE NE DOIT PAS VIDER UNE GRILLE JUSTE.             │
+    // │                                                                      │
+    // │ Le nettoyage n'annulait QUE le minuteur : une requête déjà partie    │
+    // │ n'était gardée par rien. Taper « co » sur un catalogue où « co » ne  │
+    // │ trouve rien lance le diagnostic, qui BALAIE toute la table ;         │
+    // │ pendant ce temps « coca » résout vite et peuple la grille ; le       │
+    // │ rappel périmé finit EN DERNIER et appelle `setArticles([])` plus     │
+    // │ `setDiagnostic(...)`. Il vide donc une grille qui venait d'afficher  │
+    // │ les bons articles, et y attache une cause mesurée pour une autre     │
+    // │ requête.                                                             │
+    // │                                                                      │
+    // │ ⚠ LA GARDE EST LUE APRÈS L'`await`, pas seulement avant : c'est     │
+    // │   l'attente du diagnostic qui ouvre la fenêtre.                      │
+    // └──────────────────────────────────────────────────────────────────────┘
+    let annule = false;
+
     minuteur.current = setTimeout(() => {
       chercherArticles({ warehouseId: entrepot, terme, categoryId: rubrique, entrepotsCatalogue })
         .then(async (trouves) => {
+          if (annule) return;
           setArticles(trouves);
           // ┌──────────────────────────────────────────────────────────────┐
           // │ LE DIAGNOSTIC NE SE PAIE QUE SUR UNE GRILLE VIDE.           │
@@ -133,19 +152,28 @@ export default function Comptoir() {
           // │ aller-retour - c'est-à-dire qu'il affirme une cause qu'il    │
           // │ n'a pas encore mesurée, le défaut même qu'on referme.        │
           // └──────────────────────────────────────────────────────────────┘
-          setDiagnostic(
-            trouves.length === 0
-              ? {
-                  ...(await diagnostiquerCatalogue()),
-                  recherche: terme.trim().length > 0,
-                  rubrique: rubrique !== null,
-                }
-              : null
-          );
+          if (trouves.length !== 0) {
+            setDiagnostic(null);
+            return;
+          }
+          // ⚠ LE PÉRIMÈTRE ENTRE DANS LE COMPTAGE. Sans lui, un catalogue
+          //   fermé par une affectation d'entrepôt rendait `vendables > 0`,
+          //   et la cause « périmètre » était indiagnosticable.
+          const compte = await diagnostiquerCatalogue(entrepotsCatalogue);
+          if (annule) return;
+          setDiagnostic({
+            ...compte,
+            recherche: terme.trim().length > 0,
+            rubrique: rubrique !== null,
+          });
         })
-        .finally(() => setChargement(false));
+        .finally(() => {
+          if (!annule) setChargement(false);
+        });
     }, 250);
+
     return () => {
+      annule = true;
       if (minuteur.current) clearTimeout(minuteur.current);
     };
   }, [terme, rubrique, entrepot, session, entrepotsCatalogue]);
@@ -397,11 +425,16 @@ export default function Comptoir() {
         onFermer={() => setChoisi(null)}
         scellesDisponibles={choisi?.stock_packages}
         vracDisponible={choisi?.stock_loose}
+        // La même liste que l'affichage converti : ce sont les devises de
+        // l'établissement, et annoncer dans une monnaie qu'il ne tient pas
+        // n'aurait aucun taux à appliquer.
+        devises={devisesPossibles}
+        deviseFacture={money.primaryCode}
         // Le motif du refus s'AFFICHE, et le bouton se ferme. Il était calculé
         // puis jeté : l'appui restait sans effet et sans explication.
         verifier={(saisie: Saisie) => (choisi ? panier.verifier(choisi, saisie) : null)}
         avertir={(saisie: Saisie) => (choisi ? panier.avertir(choisi, saisie) : null)}
-        onValider={(saisie: Saisie) => {
+        onValider={(saisie: Saisie, devise?: string) => {
           if (!choisi) return;
           const refus = panier.verifier(choisi, saisie);
           if (refus) return;
@@ -410,6 +443,7 @@ export default function Comptoir() {
             article: choisi,
             saisie,
             prix: Number(choisi.selling_price) || 0,
+            devise,
           });
           setChoisi(null);
         }}

@@ -377,3 +377,53 @@ describe("Le ticket porte le cumul de points du client", () => {
     expect(avecClient({}).loyalty?.balance).toBeUndefined();
   });
 });
+
+/**
+ * Une ligne annoncée dans une AUTRE monnaie que la facture.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE PRIX IMPRIMÉ EST CELUI QUE LE CAISSIER A DIT.                         │
+ * │                                                                          │
+ * │ `facture.lines[i]` porte les prix convertis vers la devise de FACTURE -  │
+ * │ c'est ce qu'il faut pour le total, et c'est faux pour la ligne. Une      │
+ * │ ligne annoncée en dollars sur une facture en francs doit s'imprimer en   │
+ * │ dollars : c'est le chiffre que le client vérifie sur son papier.         │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("Le ticket d'une vente annoncée en deux monnaies", () => {
+  function mixte() {
+    const etat = ajouter(PANIER_VIDE, savon, 0, 2);
+    // Le savon est annoncé en USD, la facture reste en CDF.
+    const lignes = etat.lignes.map((l) => ({ ...l, priceCurrency: "USD" }));
+    const avecDevise = { ...etat, lignes };
+    const ctx = contexte(avecDevise, "CDF");
+    return donneesTicketVente({
+      ...ctx,
+      devises,
+      parDevise: [{ currency: "USD", subtotal: 20, itemDiscount: 0, tax: 0, total: 20 }],
+    });
+  }
+
+  it("porte la devise sur la ligne", () => {
+    expect(mixte().items[0].currency).toBe("USD");
+  });
+
+  it("imprime le prix DANS cette devise, pas converti vers la facture", () => {
+    // 28 000 FC l'unité, soit 10 $ au taux de 2 800.
+    expect(mixte().items[0].unitPrice).toBe(10);
+  });
+
+  it("transmet la ventilation au document", () => {
+    expect(mixte().currencyTotals).toEqual([{ currency: "USD", total: 20 }]);
+  });
+
+  /**
+   * Le CONTRÔLE : sans devise de ligne, le ticket sort exactement comme avant.
+   * C'est ce qui garantit que l'écrasante majorité des ventes ne bouge pas.
+   */
+  it("ne touche à rien quand la ligne suit la facture", () => {
+    const t = donneesTicketVente(contexte(ajouter(PANIER_VIDE, savon, 0, 2), "CDF"));
+    expect(t.items[0].currency).toBeUndefined();
+    expect(t.currencyTotals).toBeUndefined();
+  });
+});

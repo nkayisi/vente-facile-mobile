@@ -370,3 +370,66 @@ describe("plafond de la remise globale", () => {
     expect(etat.remiseGlobale).toBe(1000);
   });
 });
+
+/**
+ * Le seuil d'ajout, et la devise d'annonce.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE RÉDUCTEUR REFUSAIT « 0,5 », EN SILENCE.                               │
+ * │                                                                          │
+ * │ Quatre sites de ce fichier bornaient à `< 1`. Le sélecteur de quantité   │
+ * │ ouvrait pourtant son bouton « Ajouter » - il avait, lui, été porté au    │
+ * │ seuil du serveur - et le caissier appuyait sans que rien n'entre au      │
+ * │ panier. Un refus muet sur le geste le plus fréquent du comptoir.         │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("Seuil d'ajout et devise de ligne", () => {
+  const auPoids = {
+    ...detail,
+    id: "p-poids",
+    name: "Farine",
+    stock_quantity: 25,
+  } satisfies ArticlePos;
+
+  it("accepte un demi, que le serveur accepte aussi", () => {
+    const etat = reducteurPanier(PANIER_VIDE, {
+      type: "ajouter",
+      article: auPoids,
+      saisie: { packages: 0, loose: 0.5 },
+      prix: 1500,
+    });
+    expect(etat.lignes).toHaveLength(1);
+    expect(etat.lignes[0].quantity).toBe(0.5);
+  });
+
+  it("refuse toujours une saisie vide", () => {
+    const etat = reducteurPanier(PANIER_VIDE, {
+      type: "ajouter",
+      article: auPoids,
+      saisie: { packages: 0, loose: 0 },
+      prix: 1500,
+    });
+    expect(etat.lignes).toHaveLength(0);
+  });
+
+  it("porte la devise d'annonce quand elle est donnée", () => {
+    const etat = reducteurPanier(PANIER_VIDE, {
+      type: "ajouter",
+      article: auPoids,
+      saisie: { packages: 0, loose: 2 },
+      prix: 1500,
+      devise: "USD",
+    });
+    expect(etat.lignes[0].priceCurrency).toBe("USD");
+  });
+
+  it("laisse la ligne suivre la facture quand aucune devise n'est donnée", () => {
+    const etat = reducteurPanier(PANIER_VIDE, {
+      type: "ajouter",
+      article: auPoids,
+      saisie: { packages: 0, loose: 2 },
+      prix: 1500,
+    });
+    expect(etat.lignes[0].priceCurrency).toBeUndefined();
+  });
+});

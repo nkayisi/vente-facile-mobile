@@ -95,7 +95,7 @@ export function FeuilleReception({
                   <View className="flex-1">
                     <FormField label="Contenants reçus">
                       <Input
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         value={s?.contenants ?? ""}
                         onChangeText={(v) => maj(ligne.id, { contenants: v })}
                       />
@@ -105,7 +105,7 @@ export function FeuilleReception({
                 <View className="flex-1">
                   <FormField label={p.canaux ? "Unités reçues" : "Quantité reçue"}>
                     <Input
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       value={s?.vrac ?? ""}
                       onChangeText={(v) => maj(ligne.id, { vrac: v })}
                     />
