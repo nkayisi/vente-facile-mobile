@@ -19,7 +19,11 @@
  * `splitDiscount` du reçu.
  */
 import { asc, eq } from "drizzle-orm";
-import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
+import {
+  formatPackagedSplit,
+  formatUnitQuantity,
+  getPackaging,
+} from "@vente-facile/core";
 
 import { db } from "@/db/client";
 import {
@@ -221,7 +225,7 @@ export async function detailVente(id: string): Promise<DetailVente | null> {
         quantiteAffichee:
           conditionnement && (paquets > 0 || vrac > 0)
             ? formatPackagedSplit(conditionnement, paquets, Math.max(0, vrac))
-            : `${totalUnites} ${pluralizeUnit(l.unite ?? "unité", totalUnites)}`,
+            : `${formatUnitQuantity(totalUnites, l.unite ?? "unité")}`,
         quantiteTotale: totalUnites,
         contenants: paquets,
         facteur: conditionnement ? facteur : null,

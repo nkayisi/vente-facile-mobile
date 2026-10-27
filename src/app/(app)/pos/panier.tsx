@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { FlatList, View } from "react-native";
 import { router } from "expo-router";
 
-import { getPackaging, pluralizeUnit } from "@vente-facile/core";
+import { formatUnitQuantity, getPackaging } from "@vente-facile/core";
 
 import { devisesAffichables } from "@/features/pos/affichage-devise";
 import { useMonnaie } from "@/data/devises";
@@ -480,12 +480,12 @@ function LigneArticle({
   const parts: string[] = [];
   if (conditionnement && ligne.packageQuantity > 0) {
     parts.push(
-      `${ligne.packageQuantity} ${pluralizeUnit(conditionnement.packageWord, ligne.packageQuantity)}`
+      `${formatUnitQuantity(ligne.packageQuantity, conditionnement.packageWord)}`
     );
   }
   if (detail > 0) {
     const mot = conditionnement?.retailWord ?? ligne.product.unit_name ?? "unité";
-    parts.push(`${detail} ${pluralizeUnit(mot, detail)}`);
+    parts.push(`${formatUnitQuantity(detail, mot)}`);
   }
 
   return (

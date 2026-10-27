@@ -22,6 +22,7 @@ import {
   formatDateTimeFr,
   formatPackagedSplit,
   formatPrice,
+  formatUnitQuantity,
   getPackaging,
   pluralizeUnit,
   toBaseQuantity,
@@ -695,7 +696,7 @@ export default function FeuilleComptage() {
             {ligneOuverte.facteur ? (
               <FormField
                 label={`Contenants (${pluralizeUnit(ligneOuverte.uniteContenant ?? "contenant", 2)})`}
-                hint={`Chacun vaut ${ligneOuverte.facteur} ${pluralizeUnit(ligneOuverte.uniteDetail ?? "unité", ligneOuverte.facteur)}.`}
+                hint={`Chacun vaut ${formatUnitQuantity(ligneOuverte.facteur, ligneOuverte.uniteDetail ?? "unité")}.`}
                 error={erreursSaisie.contenants}
               >
                 <Input

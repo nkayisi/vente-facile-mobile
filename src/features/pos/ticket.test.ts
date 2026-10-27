@@ -24,7 +24,9 @@ import { buildSaleReceipt } from "@vente-facile/core/receipt";
 
 import { rendreTexte } from "@/printing/render-text";
 
-import { donneesTicketVente, type ContexteTicket } from "./ticket";
+import { formatUnitQuantity } from "@vente-facile/core";
+
+import { donneesTicketVente, libelleQuantite, type ContexteTicket } from "./ticket";
 import { PANIER_VIDE, reducteurPanier, type EtatPanier } from "./etat-panier";
 import type { ArticlePos } from "./catalogue";
 
@@ -425,5 +427,71 @@ describe("Le ticket d'une vente annoncée en deux monnaies", () => {
     const t = donneesTicketVente(contexte(ajouter(PANIER_VIDE, savon, 0, 2), "CDF"));
     expect(t.items[0].currency).toBeUndefined();
     expect(t.currencyTotals).toBeUndefined();
+  });
+});
+
+/**
+ * La quantité SUR LE PAPIER.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE LIBELLÉ INTERPOLAIT SES DEUX COMPTEURS BRUTS.                        │
+ * │                                                                          │
+ * │ Une part vrac se DÉRIVE par soustraction d'un total quantisé : une ligne │
+ * │ de 2 casiers plus 0,3 bouteille porte `quantity = 24,3`, et `24,3 - 24`  │
+ * │ rend `0.3000000000000007` en flottant. Seize décimales sur le papier que │
+ * │ le client emporte, et le même nombre partait dans le corps de la vente.  │
+ * │                                                                          │
+ * │ ⚠ LE FORMATEUR EST CELUI DU PAPIER, pas celui de l'écran : le noyau     │
+ * │ groupe les milliers avec une espace fine insécable (U+202F) que la       │
+ * │ police helvetica de jsPDF rend en « / ». Le point décimal, lui, est      │
+ * │ volontaire sur un ticket.                                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("Quantité imprimée", () => {
+  const NNBSP = "\u202f";
+
+  it("imprime un demi-kilo, et jamais « 0 » ni « 1 »", () => {
+    const etat = ajouter(PANIER_VIDE, casier, 0, 0.5);
+    expect(libelleQuantite(etat.lignes[0])).toBe("0.5 bouteille");
+  });
+
+  it("absorbe le résidu d'une part vrac dérivée", () => {
+    // 2 casiers de douze plus 0,3 bouteille : le total vaut 24,3, et la part
+    // vrac se dérive par soustraction.
+    //
+    // ⚠ CE TEST EST UNE DÉFENSE EN PROFONDEUR, et il faut le dire : il passe
+    // aussi avec une interpolation brute, parce que `looseQuantityOf` du noyau
+    // quantise désormais le résultat. C'est `core/test/pos-stock.test.ts` qui
+    // tient cette quantisation ; ici on garde le papier contre une régression
+    // en amont, et c'est le test suivant qui garde le choix du formateur.
+    const etat = ajouter(PANIER_VIDE, casier, 2, 0.3);
+    expect(etat.lignes[0].quantity).toBe(24.3);
+    expect(libelleQuantite(etat.lignes[0])).toBe("2 casiers + 0.3 bouteille");
+  });
+
+  it("n'imprime pas de décimales pour rien", () => {
+    const etat = ajouter(PANIER_VIDE, casier, 2, 3);
+    expect(libelleQuantite(etat.lignes[0])).toBe("2 casiers + 3 bouteilles");
+  });
+
+  it("prend le formateur du PAPIER, et non celui de l'écran", () => {
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ LES DEUX MOITIÉS DU GARDE-FOU, CÔTE À CÔTE.                        │
+    // │                                                                    │
+    // │ Le premier `expect` établit que la différence EXISTE : le helper de │
+    // │ l'écran groupe les milliers avec une espace fine insécable, que la  │
+    // │ police helvetica de jsPDF rend en « / ». Les deux suivants          │
+    // │ établissent que le document ne la porte pas. Sans le premier, on ne │
+    // │ saurait pas si le test prouve quelque chose ou s'il constate que le │
+    // │ caractère n'arrive jamais nulle part.                              │
+    // └────────────────────────────────────────────────────────────────────┘
+    const etat = ajouter(PANIER_VIDE, casier, 2000, 0.3);
+    expect(formatUnitQuantity(2000, "casier")).toContain(NNBSP);
+
+    const libelle = libelleQuantite(etat.lignes[0]);
+    expect(libelle).toBe("2000 casiers + 0.3 bouteille");
+    expect(JSON.stringify(buildSaleReceipt(donneesTicketVente(contexte(etat, "CDF"))))).not.toContain(
+      NNBSP
+    );
   });
 });

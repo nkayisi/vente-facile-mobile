@@ -18,7 +18,12 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatDateTimeFr, formatPrice, pluralizeUnit } from "@vente-facile/core";
+import {
+  formatDateTimeFr,
+  formatPrice,
+  formatUnitQuantity,
+  pluralizeUnit,
+} from "@vente-facile/core";
 
 import { lireNombre } from "@/data/nombres";
 
@@ -137,7 +142,7 @@ export default function DetailRayon() {
     try {
       await deconditionner(r.id, nContenants);
       toast.succes(
-        `Ouverture de ${nContenants} ${pluralizeUnit(r.uniteContenant ?? "contenant", nContenants)} mise en file.`
+        `Ouverture de ${formatUnitQuantity(nContenants, r.uniteContenant ?? "contenant")} mise en file.`
       );
       setFeuille(false);
     } catch (err) {
@@ -193,7 +198,7 @@ export default function DetailRayon() {
         <Card>
           <CardHeader title="Détail" />
           <View>
-            <Paire label="Total en unités" valeur={`${r.total} ${pluralizeUnit(r.uniteDetail ?? "unité", r.total)}`} />
+            <Paire label="Total en unités" valeur={`${formatUnitQuantity(r.total, r.uniteDetail ?? "unité")}`} />
             {/* Le réservé n'est PAS ventilé : une réservation ne porte pas sur
                 des contenants précis. Le libellé nomme l'unité pour que
                 personne n'y lise des casiers. */}
@@ -201,14 +206,14 @@ export default function DetailRayon() {
               label="Réservé (unités)"
               valeur={
                 r.reserve > 0
-                  ? `${r.reserve} ${pluralizeUnit(r.uniteDetail ?? "unité", r.reserve)}`
+                  ? `${formatUnitQuantity(r.reserve, r.uniteDetail ?? "unité")}`
                   : "Rien"
               }
             />
             {r.facteur ? (
               <Paire
                 label="Conditionnement"
-                valeur={`${r.facteur} ${pluralizeUnit(r.uniteDetail ?? "unité", r.facteur)} par ${r.uniteContenant ?? "contenant"}`}
+                valeur={`${formatUnitQuantity(r.facteur, r.uniteDetail ?? "unité")} par ${r.uniteContenant ?? "contenant"}`}
               />
             ) : null}
             <Paire
@@ -245,7 +250,7 @@ export default function DetailRayon() {
         titre={`Ouvrir des ${pluralizeUnit(r.uniteContenant ?? "contenant", 2)}`}
       >
         <Text variant="caption">
-          {`${r.contenants} ${pluralizeUnit(r.uniteContenant ?? "contenant", r.contenants)} scellés, ${r.vrac} ${pluralizeUnit(r.uniteDetail ?? "unité", r.vrac)} au détail.`}
+          {`${formatUnitQuantity(r.contenants, r.uniteContenant ?? "contenant")} scellés, ${formatUnitQuantity(r.vrac, r.uniteDetail ?? "unité")} au détail.`}
         </Text>
         <FormField
           label="Combien en ouvrir ?"
@@ -253,7 +258,7 @@ export default function DetailRayon() {
           error={refusSaisie ?? undefined}
           hint={
             r.facteur
-              ? `Chacun libère ${r.facteur} ${pluralizeUnit(r.uniteDetail ?? "unité", r.facteur)}.`
+              ? `Chacun libère ${formatUnitQuantity(r.facteur, r.uniteDetail ?? "unité")}.`
               : undefined
           }
         >

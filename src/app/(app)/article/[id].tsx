@@ -16,7 +16,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatFixedFr, formatPrice, pluralizeUnit } from "@vente-facile/core";
+import {
+  formatFixedFr,
+  formatPrice,
+  formatUnitQuantity,
+} from "@vente-facile/core";
 
 import { detailArticle } from "@/data/articles";
 import { useMonnaie } from "@/data/devises";
@@ -191,7 +195,7 @@ export default function FicheArticle() {
             {a.unitesParContenant && a.unitesParContenant > 1 ? (
               <Paire
                 label="Contenant"
-                valeur={`${a.unitesParContenant} ${pluralizeUnit(a.uniteDetail ?? "unité", a.unitesParContenant)} par ${a.uniteContenant ?? "contenant"}`}
+                valeur={`${formatUnitQuantity(a.unitesParContenant, a.uniteDetail ?? "unité")} par ${a.uniteContenant ?? "contenant"}`}
               />
             ) : (
               <Paire label="Contenant" valeur="Vendu à l'unité seule" />

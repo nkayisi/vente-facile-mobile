@@ -22,13 +22,13 @@ import {
 import {
   formatDateTimeFr,
   getPackaging,
-  pluralizeUnit,
   type CurrencyTable,
 } from "@vente-facile/core";
-import type {
-  ReceiptChrome,
-  SaleReceiptData,
-  SaleReceiptItem,
+import {
+  formatQuantityWithUnit,
+  type ReceiptChrome,
+  type SaleReceiptData,
+  type SaleReceiptItem,
 } from "@vente-facile/core/receipt";
 
 import type { SessionSnapshot } from "@/session/types";
@@ -43,6 +43,22 @@ import { logoCourant } from "@/printing/logo-courant";
  * Redécouper le total au facteur du jour donnerait « 4 casiers + 3 bouteilles »
  * pour une ligne qui en porte 2 et 27, une contrevérité d'autant plus trompeuse
  * qu'elle a l'air exacte.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE LIBELLÉ PART SUR LE PAPIER : IL PREND LE FORMATEUR DU PAPIER.         │
+ * │                                                                          │
+ * │ Il interpolait les deux compteurs BRUTS. Un demi-kilo sortait donc       │
+ * │ « 0.5 kg » au point anglais - ce qui est le bon rendu pour un ticket,    │
+ * │ par chance - mais une part vrac DÉRIVÉE d'un total quantisé sortait      │
+ * │ « 0.3000000000000007 bouteilles », seize décimales sur le papier que le  │
+ * │ client emporte.                                                          │
+ * │                                                                          │
+ * │ ⚠ ET SURTOUT PAS `formatUnitQuantity` DU NOYAU, qui est le formateur de │
+ * │ l'ÉCRAN : il groupe les milliers avec une espace fine insécable que la   │
+ * │ police helvetica de jsPDF rend en « / ». `formatQuantityWithUnit` est    │
+ * │ son pendant pour les documents, et un test balaie un ticket entier à la  │
+ * │ recherche de ce caractère.                                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 export function libelleQuantite(ligne: LignePanier): string | undefined {
   const conditionnement = getPackaging(ligne.product);
@@ -51,12 +67,10 @@ export function libelleQuantite(ligne: LignePanier): string | undefined {
   const detail = looseQuantityOf(ligne);
   const parts: string[] = [];
   if (ligne.packageQuantity > 0) {
-    parts.push(
-      `${ligne.packageQuantity} ${pluralizeUnit(conditionnement.packageWord, ligne.packageQuantity)}`
-    );
+    parts.push(formatQuantityWithUnit(ligne.packageQuantity, conditionnement.packageWord));
   }
   if (detail > 0) {
-    parts.push(`${detail} ${pluralizeUnit(conditionnement.retailWord, detail)}`);
+    parts.push(formatQuantityWithUnit(detail, conditionnement.retailWord));
   }
   return parts.length > 0 ? parts.join(" + ") : undefined;
 }

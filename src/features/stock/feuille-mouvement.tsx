@@ -42,7 +42,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
-import { formatNumberFr, pluralizeUnit } from "@vente-facile/core";
+import { formatNumberFr, formatUnitQuantity, pluralizeUnit } from "@vente-facile/core";
 
 import {
   chercherArticlesPourMouvement,
@@ -454,7 +454,7 @@ export function FeuilleNouveauMouvement({
               {cond ? (
                 <BlocCanal
                   titre={`En gros · ${motPaquet}`}
-                  rappel={`1 ${motPaquet} = ${cond.factor} ${pluralizeUnit(cond.retailWord, cond.factor)}`}
+                  rappel={`1 ${motPaquet} = ${formatUnitQuantity(cond.factor, cond.retailWord)}`}
                   libelleQuantite={`Quantité en ${pluralizeUnit(cond.packageWord, 2)}`}
                   libelleCout={`Prix d'achat par ${motPaquet}`}
                   libelleVente={`Prix de vente par ${motPaquet}`}

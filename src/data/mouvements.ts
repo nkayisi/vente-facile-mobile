@@ -11,7 +11,11 @@
  */
 import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
+import {
+  formatPackagedSplit,
+  formatUnitQuantity,
+  getPackaging,
+} from "@vente-facile/core";
 
 import { db } from "@/db/client";
 import { identifiantsSousArbre } from "@/data/categories";
@@ -313,7 +317,7 @@ async function _liste(perimetre: PerimetreMouvements): Promise<MouvementStock[]>
     const quantiteAffichee =
       conditionnement && (paquets > 0 || vrac > 0)
         ? formatPackagedSplit(conditionnement, paquets, vrac)
-        : `${total} ${pluralizeUnit(m.unite ?? "unité", total)}`;
+        : `${formatUnitQuantity(total, m.unite ?? "unité")}`;
 
     return {
       id: m.id,

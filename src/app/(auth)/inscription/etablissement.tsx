@@ -4,9 +4,18 @@
  * Miroir de la seconde étape de `app/auth/register/page.tsx` : les six types
  * d'établissement en tuiles, la devise, les conditions.
  *
- * La devise n'a que DEUX valeurs, parce que le serveur n'en accepte que deux
- * (`RegisterWithOrganizationSerializer`, choix `CDF|USD`). Deux tuiles valent
- * mieux qu'une liste déroulante pour deux options.
+ * **La devise offre les VINGT ET UNE du noyau**, et elle n'en offrait que deux.
+ * Le serveur ne connaissait alors que `CDF|USD` tandis que le sélecteur web en
+ * affichait vingt et une : un marchand de Douala qui choisissait le franc CFA
+ * lisait « « XAF » n'est pas un choix valide » et ne pouvait pas s'inscrire.
+ * La liste vient donc de `SUPPORTED_CURRENCIES`, la même source que le web, et
+ * le serveur la valide désormais contre sa table `Currency`.
+ *
+ * ⚠ Vingt et une entrées ne tiennent pas en tuiles : c'est un `ChampSelect`,
+ * comme les quatre de `app/(app)/article/nouveau.tsx`. Sa doctrine réserve
+ * `DeclencheurSelect` + `ListeChoix` aux formulaires DÉJÀ en feuille, or cet
+ * écran est un `Screen` plein, et son apparence `champ` aligne la hauteur et la
+ * bordure sur les deux `Input` au-dessus - ce que deux tuiles ne faisaient pas.
  *
  * **Verrou anti-double-envoi en `useRef`, posé AVANT tout `setState`.** Un
  * `useState` ne se lit pas dans le même tour de boucle ; deux appuis rapprochés
@@ -16,12 +25,15 @@ import { useRef, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
+import { SUPPORTED_CURRENCIES } from "@vente-facile/core";
+
 import { readableMessage } from "@/api/errors";
 import { useSession } from "@/session/provider";
 import { EchecInscription, type TypeEtablissement } from "@/session/session";
 import {
   Banner,
   Button,
+  ChampSelect,
   FormField,
   Input,
   Pressable,
@@ -30,6 +42,7 @@ import {
   Text,
   TuileChoix,
   type IconName,
+  type OptionSelect,
 } from "@/ui";
 import { useInscription } from "./_layout";
 
@@ -43,10 +56,21 @@ const TYPES: { valeur: TypeEtablissement; titre: string; description: string; ic
   { valeur: "other", titre: "Autre", description: "Autre type d'établissement", icon: "MoreHorizontal" },
 ];
 
-const DEVISES = [
-  { code: "CDF", titre: "CDF", description: "Franc congolais" },
-  { code: "USD", titre: "USD", description: "Dollar américain" },
-];
+/**
+ * Les vingt et une devises du noyau, la même source que le sélecteur web.
+ *
+ * ⚠ LE CODE EST EN TÊTE DU LIBELLÉ, et le nom ne descend pas en `detail` : c'est
+ * par le code qu'un marchand cherche sa monnaie, et c'est aussi ce que le
+ * déclencheur replié doit annoncer. Mis en ligne secondaire, le nom laisserait un
+ * déclencheur qui ne dit que « XAF ».
+ *
+ * Construite au niveau module : elle ne dépend d'aucun état, donc la recalculer à
+ * chaque rendu serait du travail pour rien.
+ */
+const DEVISES: OptionSelect[] = SUPPORTED_CURRENCIES.map((d) => ({
+  valeur: d.code,
+  label: `${d.code} - ${d.name}`,
+}));
 
 export default function Etablissement() {
   const { saisie, poser } = useInscription();
@@ -209,28 +233,29 @@ export default function Etablissement() {
           </View>
         </View>
 
-        <View>
-          <Text variant="label" className="mb-2">
-            Devise par défaut <Text className="text-destructive">*</Text>
-          </Text>
-          <View className="flex-row flex-wrap gap-3">
-            {DEVISES.map((d) => (
-              <TuileChoix
-                key={d.code}
-                titre={d.titre}
-                description={d.description}
-                choisie={saisie.currency === d.code}
-                onPress={() => poser({ currency: d.code })}
-              />
-            ))}
-          </View>
-          {/* L'avertissement est SOUS le champ, comme sur le web : c'est une
-              décision irréversible, elle ne se cache pas dans une info-bulle. */}
-          <Text variant="caption" className="mt-2">
-            Cette devise sera utilisée par défaut dans votre établissement et ne
-            pourra plus être modifiée après la création.
-          </Text>
-        </View>
+        {/* L'avertissement est SOUS le champ, comme sur le web : c'est une
+            décision irréversible, elle ne se cache pas dans une info-bulle.
+            `FormField` le porte en `hint`, comme les champs voisins, plutôt
+            qu'un `Text variant="caption"` posé à la main. */}
+        <FormField
+          label="Devise par défaut"
+          required
+          hint="Cette devise sera utilisée par défaut dans votre établissement et ne pourra plus être modifiée après la création."
+        >
+          <ChampSelect
+            valeur={saisie.currency}
+            onChange={(v) => {
+              // ⚠ Pas de `libelleVide` : le champ est obligatoire et toujours
+              // renseigné (`_layout.tsx` l'initialise à CDF), donc la liste
+              // n'offre aucune entrée « aucun choix » et `v` ne peut pas être
+              // nul. On garde la valeur courante plutôt que d'en inventer une.
+              if (v) poser({ currency: v });
+            }}
+            options={DEVISES}
+            titre="Devise par défaut"
+            accessibilityLabel="Devise par défaut"
+          />
+        </FormField>
 
         <Pressable
           onPress={() => setCgu((v) => !v)}

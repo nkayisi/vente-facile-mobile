@@ -17,7 +17,7 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { api } from "@/api/client";
-import { formatFixedFr, formatNumberFr } from "@vente-facile/core";
+import { formatFixedFr, formatNumberFr, formatQuantity } from "@vente-facile/core";
 
 import { deviseOuRepli } from "./devise-principale";
 import type { TonStatut } from "./statuts-vente";
@@ -462,9 +462,9 @@ export function etiquetteJour(iso: unknown): string {
  */
 function cellulePackagee(l: any, affichage: unknown, brut: unknown): CelluleTableau {
   return {
-    texte: String(affichage ?? "").trim() || formatNumberFr(nb(brut), 0),
+    texte: String(affichage ?? "").trim() || formatQuantity(nb(brut)),
     sous:
-      l.packaging_factor != null ? `${formatNumberFr(nb(brut), 0)} au total` : null,
+      l.packaging_factor != null ? `${formatQuantity(nb(brut))} au total` : null,
   };
 }
 
@@ -746,7 +746,7 @@ export async function chargerRapport(
                 cle: String(l.category_id ?? i),
                 cellules: [
                   { texte: String(l.category_name ?? "Sans catégorie") },
-                  { texte: `${formatNumberFr(nb(l.quantity_sold), 0)} unités` },
+                  { texte: `${formatQuantity(nb(l.quantity_sold))} unités` },
                   { texte: m(l.total_revenue) },
                   { texte: `${formatFixedFr(nb(l.percentage), 2)}%` },
                 ],
@@ -854,12 +854,12 @@ export async function chargerRapport(
                       texte: String(l.product_name ?? "Produit"),
                       sous: String(l.product_sku ?? "") || null,
                     },
-                    { texte: formatNumberFr(depart, 0) },
+                    { texte: formatQuantity(depart) },
                     {
                       texte:
                         a && nb(a.quantity) > 0
                           ? String(a.display ?? "").trim() ||
-                            formatNumberFr(nb(a.quantity), 0)
+                            formatQuantity(nb(a.quantity))
                           : "-",
                     },
                     cellulePackagee(l, l.quantity_display, l.quantity_sold),
@@ -867,10 +867,10 @@ export async function chargerRapport(
                     {
                       texte:
                         String(s?.stock_display ?? "").trim() ||
-                        formatNumberFr(restant, 0),
+                        formatQuantity(restant),
                       sous:
                         s?.packaging_factor != null
-                          ? `${formatNumberFr(restant, 0)} au total`
+                          ? `${formatQuantity(restant)} au total`
                           : null,
                     },
                     { texte: m(s?.stock_value) },
@@ -947,10 +947,10 @@ export async function chargerRapport(
             // Les QUATRE du web, et pas les huit du serveur : ce sont celles
             // qu'il montre, et en montrer plus est aussi une divergence.
             tuiles: [
-              { cle: "in", label: "Entrées totales", valeur: formatNumberFr(nb(resume.total_in), 0), ton: "success" },
-              { cle: "out", label: "Sorties totales", valeur: formatNumberFr(nb(resume.total_out), 0), ton: "destructive" },
-              { cle: "ventes", label: "Ventes", valeur: formatNumberFr(nb(resume.sales_out), 0), ton: "primary" },
-              { cle: "retours", label: "Retours", valeur: formatNumberFr(nb(resume.returns_in), 0), ton: "neutral" },
+              { cle: "in", label: "Entrées totales", valeur: formatQuantity(nb(resume.total_in)), ton: "success" },
+              { cle: "out", label: "Sorties totales", valeur: formatQuantity(nb(resume.total_out)), ton: "destructive" },
+              { cle: "ventes", label: "Ventes", valeur: formatQuantity(nb(resume.sales_out)), ton: "primary" },
+              { cle: "retours", label: "Retours", valeur: formatQuantity(nb(resume.returns_in)), ton: "neutral" },
             ],
             vide: "Aucun mouvement sur cette période.",
           },
@@ -981,16 +981,16 @@ export async function chargerRapport(
                   {
                     texte:
                       String(s.stock_display ?? "").trim() ||
-                      formatNumberFr(nb(s.current_stock), 0),
+                      formatQuantity(nb(s.current_stock)),
                     sous:
                       s.packaging_factor != null
-                        ? `${formatNumberFr(nb(s.current_stock), 0)} au total`
+                        ? `${formatQuantity(nb(s.current_stock))} au total`
                         : null,
                   },
                   {
                     texte:
                       String(s.available_display ?? "").trim() ||
-                      formatNumberFr(nb(s.available_stock), 0),
+                      formatQuantity(nb(s.available_stock)),
                   },
                   { texte: m(s.stock_value) },
                   { texte: "", badge: badgeStatutStock(String(s.status ?? "")) },

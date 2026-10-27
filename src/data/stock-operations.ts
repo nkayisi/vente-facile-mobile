@@ -17,6 +17,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import {
   formatPackagedDifference,
   formatPackagedSplit,
+  formatUnitQuantity,
   getPackaging,
   pluralizeUnit,
 } from "@vente-facile/core";
@@ -265,7 +266,7 @@ export async function detailTransfert(id: string): Promise<DetailTransfert | nul
         demandeAffiche:
           cond && (paquets > 0 || vrac > 0)
             ? formatPackagedSplit(cond, paquets, vrac)
-            : `${demande} ${pluralizeUnit(l.unite ?? "unité", demande)}`,
+            : `${formatUnitQuantity(demande, l.unite ?? "unité")}`,
         demande,
         // `null` ne se lit JAMAIS comme zéro : « pas encore expédié » et
         // « expédié : rien » ne se disent pas de la même façon.

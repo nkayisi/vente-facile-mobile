@@ -259,10 +259,10 @@ export const products = sqliteTable("products", {
   trackInventory: integer("track_inventory", { mode: "boolean" }).notNull(),
   allowNegativeStock: integer("allow_negative_stock", { mode: "boolean" }).notNull(),
   hasExpiryDate: integer("has_expiry_date", { mode: "boolean" }).notNull(),
-  minStockLevel: integer("min_stock_level").notNull(),
-  maxStockLevel: integer("max_stock_level"),
-  reorderPoint: integer("reorder_point").notNull(),
-  reorderQuantity: integer("reorder_quantity").notNull(),
+  minStockLevel: text("min_stock_level").notNull(),
+  maxStockLevel: text("max_stock_level"),
+  reorderPoint: text("reorder_point").notNull(),
+  reorderQuantity: text("reorder_quantity").notNull(),
   weight: text("weight"),
   dimensions: text("dimensions").notNull(),
   image: text("image"),
@@ -336,7 +336,7 @@ export const productPrices = sqliteTable("product_prices", {
   variantId: text("variant_id"),
   priceListId: text("price_list_id").notNull(),
   price: text("price").notNull(),
-  minQuantity: integer("min_quantity").notNull(),
+  minQuantity: text("min_quantity").notNull(),
 });
 
 export type ProductPricesRow =

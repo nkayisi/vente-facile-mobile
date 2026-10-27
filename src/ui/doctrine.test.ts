@@ -208,6 +208,144 @@ describe("aucun formatage par `Intl`", () => {
   });
 });
 
+describe("aucune quantité sous l'unité perdue en route", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ « 0,5 » SE LISAIT « 1 », ET « 0,3 » SE LISAIT « 0 ».                     │
+   * │                                                                          │
+   * │ Les quantités se vendent au POIDS : tout champ de quantité du serveur    │
+   * │ est un `DecimalField(max_digits=15, decimal_places=3)`, et le plus petit │
+   * │ pas enregistrable est 0,001. Deux formes d'écriture trahissaient cette   │
+   * │ règle sans qu'aucun outil ne le voie :                                   │
+   * │                                                                          │
+   * │  1. `formatNumber(q)` et `formatNumberFr(q, 0)`. Ce sont des formateurs  │
+   * │     d'ENTIERS, et leur contrat est juste : `(0.5).toFixed(0)` rend « 1 » │
+   * │     et 0,3 rend « 0 ». Quatorze sites leur passaient une quantité, dont  │
+   * │     la fiche d'une réquisition, qui affichait « 1 kg » pour une demande  │
+   * │     d'un demi. Le magasinier relisait un bordereau qui ne disait plus ce │
+   * │     qu'il avait demandé.                                                 │
+   * │  2. un nombre interpolé BRUT à côté de son unité. « 0.5 » au point       │
+   * │     anglais, et « 0.3000000000000007 » sur une part vrac dérivée d'un    │
+   * │     total quantisé - sur le TICKET IMPRIMÉ, entre autres.                │
+   * │                                                                          │
+   * │ Le remède est un helper unique du noyau, `formatUnitQuantity`, plus      │
+   * │ `receipt.formatQuantityWithUnit` pour le papier, qui n'a pas le même     │
+   * │ séparateur de milliers.                                                  │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   *
+   * ⚠ LE REMÈDE DE LA PREMIÈRE RÈGLE EST GRATUIT, et c'est ce qui la rend
+   * tenable. `formatQuantity(12)` et `formatNumber(12)` rendent tous deux
+   * « 12 » : les deux ne diffèrent QUE sur une valeur fractionnaire. Un faux
+   * positif se corrige donc en changeant un nom de fonction, sans changer un
+   * pixel. Un garde-fou qui crie sur du code sain finit désactivé.
+   *
+   * ⚠ LA SECONDE RAISONNE PAR ADJACENCE, jamais sur le nom de la valeur : elle
+   * constate qu'un nombre est collé à une unité accordée, ce qu'aucun comptage
+   * d'objets ne fait. Un `pluralizeUnit(mot, 2)` posé SEUL dans un libellé de
+   * champ est légitime, et n'est pas signalé.
+   *
+   * Portée, et elle est assumée : l'adjacence ne voit pas les enveloppes du
+   * type `const mot = (n: number) => pluralizeUnit(l.unite ?? "unité", n)`, où
+   * rien ne relie textuellement le mot au nombre. C'est le même aveu que la
+   * règle de la devise typée formule juste en dessous.
+   *
+   * Le back-office a SON balayage, `pnpm check:quantites` : le mobile tourne
+   * sur jest, le web sur des scripts, et aucun des deux ne lance l'autre.
+   */
+  const NOM_QUANTITE =
+    "quantit|qty|loose|vrac|scelle|contenant|compte|demande|restant|stock|unites|total";
+
+  /**
+   * Les COMPTES D'OBJETS, nommés un par un.
+   *
+   * ⚠ LA DISTINCTION NE SE LIT PAS DANS LE NOM, et le motif reste donc large :
+   * `stockAlors` est le stock figé d'une réquisition, donc décimal, quand
+   * `stockBas` est un NOMBRE DE PRODUITS sous leur seuil. Les deux portent le
+   * mot « stock ». Resserrer le motif pour écarter le second faisait
+   * disparaître le premier, qui est un vrai défaut.
+   *
+   * On exempte donc par liste, et cette liste est courte parce qu'un compte
+   * d'objets ne peut pas être fractionnaire : si elle s'allonge, c'est que
+   * quelqu'un y range une quantité.
+   */
+  const COMPTE_D_OBJETS = /\b(?:stockBas|nbProduits|nombre[A-Z]|count)\b/;
+
+  const FORMATEUR_ENTIER = new RegExp(
+    `\\bformatNumber\\s*\\(\\s*[^;]{0,80}?(?:${NOM_QUANTITE})` +
+      `|\\bformatNumberFr\\s*\\(\\s*[^,;]{0,60}?(?:${NOM_QUANTITE})[^,;]{0,20},\\s*0\\s*\\)`,
+    "i"
+  );
+
+  it("aucun formateur d'ENTIERS ne reçoit une quantité", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      code.split("\n").forEach((ligne, i) => {
+        if (FORMATEUR_ENTIER.test(ligne) && !COMPTE_D_OBJETS.test(ligne)) {
+          fautifs.push(`${relative(RACINE, f)}:${i + 1} ${ligne.trim().slice(0, 90)}`);
+        }
+      });
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  /**
+   * Les sites où un nombre est collé à une unité accordée, sans formateur.
+   *
+   * ⚠ LE BALAYAGE ET SON TEST DE MORSURE PARTAGENT CETTE FONCTION, et ce n'est
+   * pas de l'élégance : un test de morsure qui ne reproduit pas la forme de
+   * production valide une forme qui n'existe nulle part. Ma première écriture
+   * ne reprenait que l'adjacence, sans l'exemption, et déclarait fautif un
+   * `${formatQuantity(x)} ${pluralizeUnit(...)}` parfaitement sain.
+   */
+  function brutColleAUneUnite(code: string): { index: number; extrait: string }[] {
+    // Les deux écritures : interpolation de gabarit, et JSX.
+    const ADJACENT = /(?:\$\{([^{}]+)\}\s*\$\{\s*pluralizeUnit|\{([^{}]+)\}\s*\{\s*pluralizeUnit)/g;
+    const DEJA_FORMATE = /format(?:Quantity|UnitQuantity|Decimal|NumberFr|Packaged|Number)/;
+    const sortie: { index: number; extrait: string }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = ADJACENT.exec(code)) !== null) {
+      const capture = m[1] ?? m[2] ?? "";
+      if (DEJA_FORMATE.test(capture)) continue;
+      sortie.push({ index: m.index, extrait: m[0].trim().slice(0, 80) });
+    }
+    return sortie;
+  }
+
+  it("aucun nombre brut collé à une unité accordée", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      for (const { index, extrait } of brutColleAUneUnite(code)) {
+        const ligne = code.slice(0, index).split("\n").length;
+        fautifs.push(`${relative(RACINE, f)}:${ligne} ${extrait}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("les deux garde-fous VOIENT, et laissent passer le légitime", () => {
+    const mord = (s: string) => brutColleAUneUnite(s).length > 0;
+
+    // Ce qu'ils doivent attraper.
+    expect(FORMATEUR_ENTIER.test("formatNumber(r?.unitesVendues ?? 0)")).toBe(true);
+    expect(FORMATEUR_ENTIER.test("formatNumberFr(l.demande, 0)")).toBe(true);
+    expect(mord("`${detail} ${pluralizeUnit(mot, detail)}`")).toBe(true);
+    expect(mord("{total} {pluralizeUnit(mot, total)}")).toBe(true);
+
+    // Ce qu'ils doivent laisser passer.
+    expect(FORMATEUR_ENTIER.test("formatNumber(nbClients)")).toBe(false);
+    expect(COMPTE_D_OBJETS.test("formatNumber(inventaire?.stockBas ?? 0)")).toBe(true);
+    expect(COMPTE_D_OBJETS.test("formatNumberFr(l.stockAlors, 0)")).toBe(false);
+    expect(FORMATEUR_ENTIER.test("formatNumberFr(l.demande, 3)")).toBe(false);
+    expect(mord("`${formatQuantity(detail)} ${pluralizeUnit(mot, detail)}`")).toBe(false);
+    expect(mord("`${formatUnitQuantity(q, mot)}`")).toBe(false);
+    expect(mord('`Quantité en ${pluralizeUnit(retailWord, 2)}`')).toBe(false);
+    // Et le commentaire qui cite la règle n'est pas une infraction.
+    expect(FORMATEUR_ENTIER.test(commentairesBlanchis("// voir formatNumber(quantite)"))).toBe(false);
+  });
+});
+
 describe("aucun montant sans devise", () => {
   /**
    * ┌──────────────────────────────────────────────────────────────────────────┐
@@ -2569,5 +2707,69 @@ describe("la porte de mise à jour", () => {
     const trouve = /\bversion:\s*"([^"]+)"/.exec(config);
     expect(trouve).not.toBeNull();
     expect(trouve?.[1]).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
+
+describe("la liste des devises n'a qu'une seule source", () => {
+  /**
+   * ⚠ L'ÉCRAN D'INSCRIPTION PORTAIT SA PROPRE LISTE, ET ELLE ÉTAIT FAUSSE.
+   *
+   * `DEVISES = [CDF, USD]` y était écrite en dur, justifiée en commentaire par
+   * la limite du serveur, pendant que le sélecteur web en offrait vingt et une
+   * depuis `@vente-facile/core`. Résultat : un marchand de Douala ne trouvait pas
+   * le franc CFA sur son terminal, et celui qui le choisissait sur le web lisait
+   * « « XAF » n'est pas un choix valide ».
+   *
+   * Une liste de devises recopiée ne lève rien quand elle dérive : elle offre
+   * simplement moins - ou pire, plus - que ce que le serveur accepte, et c'est
+   * un marchand qui s'en aperçoit au moment de créer sa boutique.
+   */
+  const ECRAN = "app/(auth)/inscription/etablissement.tsx";
+  const sources = fichiers(RACINE);
+
+  it("le balayage MORD : il voit l'écran d'inscription", () => {
+    expect(sources.length).toBeGreaterThan(300);
+    expect(sources.some((f) => f.endsWith(ECRAN))).toBe(true);
+  });
+
+  it("l'écran d'inscription tire ses devises du paquet partagé", () => {
+    // ⚠ HORS COMMENTAIRES, et c'est la mesure qui l'impose : l'en-tête du
+    // fichier NOMME `SUPPORTED_CURRENCIES` pour expliquer d'où vient la liste.
+    // Lu brut, ce test restait vert alors qu'on venait de remettre une liste
+    // écrite à la main juste en dessous.
+    const code = sansCommentaires(readFileSync(join(RACINE, ECRAN), "utf8"));
+    expect(code).toContain("SUPPORTED_CURRENCIES");
+  });
+
+  it("aucun écran ne fabrique une liste de codes de devise", () => {
+    /**
+     * DEUX codes ISO distincts ou plus, en littéraux de chaîne dans un même
+     * fichier, sont une liste recopiée.
+     *
+     * ⚠ LE SEUIL EST MESURÉ, PAS DEVINÉ : relevé sur tout `src/`, AUCUN fichier
+     * de production n'en cite deux. Un repli (`?? "CDF"`) n'en cite qu'un, et une
+     * table de taux (`{ CDF: 1, USD: 2800 }`) emploie des CLÉS, pas des chaînes.
+     * Le motif ne crie donc sur rien de légitime.
+     *
+     * ⚠ Sa première écriture cherchait deux codes VOISINS dans une même
+     * structure : elle ne reconnaissait pas `{ valeur: "CDF", label: "CDF - …" }`
+     * et restait VERTE sur la mutation qu'elle devait attraper. Compter les codes
+     * distincts n'a pas de forme à reconnaître.
+     *
+     * Les fixtures de test sont écartées : elles ont le droit de nommer deux
+     * monnaies, ce qui est interdit est de DÉCIDER lesquelles existent.
+     */
+    const CODES =
+      "CDF|USD|EUR|XAF|XOF|ZAR|NGN|KES|GHS|TZS|UGX|RWF|MAD|EGP|GBP|CHF|CAD|AUD|JPY|CNY|INR";
+    const litteral = new RegExp(`["'](${CODES})["']`, "g");
+    const fautifs: string[] = [];
+    for (const fichier of sources) {
+      const chemin = relative(RACINE, fichier);
+      if (chemin.includes(".test.")) continue;
+      const code = sansCommentaires(readFileSync(fichier, "utf8"));
+      const vus = new Set([...code.matchAll(litteral)].map((m) => m[1]));
+      if (vus.size >= 2) fautifs.push(`${chemin} : ${[...vus].sort().join(", ")}`);
+    }
+    expect(fautifs).toEqual([]);
   });
 });

@@ -22,6 +22,7 @@
  */
 import {
   blendedUnitCost,
+  formatUnitQuantity,
   pluralizeUnit,
   toBaseQuantity,
   type Packaging,
@@ -229,13 +230,13 @@ export function resumeDeConversion(s: SaisieFormulaireMouvement): string | null 
 
   const morceaux: string[] = [];
   if (contenants > 0) {
-    morceaux.push(`${contenants} ${pluralizeUnit(cond.packageWord, contenants)}`);
+    morceaux.push(`${formatUnitQuantity(contenants, cond.packageWord)}`);
   }
-  if (vrac > 0) morceaux.push(`${vrac} ${pluralizeUnit(cond.retailWord, vrac)}`);
+  if (vrac > 0) morceaux.push(`${formatUnitQuantity(vrac, cond.retailWord)}`);
 
   const total = toBaseQuantity(cond, contenants, vrac);
   const verbe = estEntreeValorisee(s.type) ? "ajoutez" : "retirez";
-  return `Vous ${verbe} ${morceaux.join(" + ")} = ${total} ${pluralizeUnit(cond.retailWord, total)}.`;
+  return `Vous ${verbe} ${morceaux.join(" + ")} = ${formatUnitQuantity(total, cond.retailWord)}.`;
 }
 
 /**

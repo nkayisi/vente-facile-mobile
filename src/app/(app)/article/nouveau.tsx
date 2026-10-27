@@ -445,11 +445,19 @@ export default function NouvelArticle() {
           </View>
           {suitLeStock ? (
             <View className="mt-3">
-              <FormField label="Seuil d'alerte" hint="Déclenche l'alerte de stock bas.">
+              {/* ⚠ PAVÉ DÉCIMAL, et ce n'en était pas un. `reorder_point` était
+                  un `PositiveIntegerField` : le pavé entier était alors juste.
+                  La colonne porte désormais trois décimales, parce qu'un
+                  commerce qui pèse sa farine veut alerter à 2,5 kg - et un
+                  pavé sans virgule rendait ce seuil INSAISISSABLE au doigt. */}
+              <FormField
+                label="Seuil d'alerte"
+                hint="Déclenche l'alerte de stock bas. Écrivez par exemple 12 ou 2,5."
+              >
                 <Input
                   value={seuil}
                   onChangeText={setSeuil}
-                  keyboardType="number-pad"
+                  keyboardType="decimal-pad"
                   placeholder="0"
                 />
               </FormField>

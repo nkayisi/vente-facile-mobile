@@ -11,7 +11,11 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
-import { formatPackagedSplit, getPackaging, pluralizeUnit } from "@vente-facile/core";
+import {
+  formatPackagedSplit,
+  formatUnitQuantity,
+  getPackaging,
+} from "@vente-facile/core";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import { db } from "@/db/client";
@@ -94,7 +98,7 @@ export async function alertes(limite = 12): Promise<Alerte[]> {
     const rendu =
       cond && nb(l.reserved) === 0
         ? formatPackagedSplit(cond, nb(l.packageQuantity), nb(l.looseQuantity))
-        : `${total} ${pluralizeUnit(l.unite ?? "unité", total)}`;
+        : `${formatUnitQuantity(total, l.unite ?? "unité")}`;
 
     sorties.push({
       id: `stock-${l.id}`,

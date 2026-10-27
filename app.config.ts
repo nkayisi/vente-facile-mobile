@@ -115,6 +115,29 @@ const config: ExpoConfig = {
     // automatique restaurée sur un autre appareil les dupliquerait.
     allowBackup: false,
     // ┌────────────────────────────────────────────────────────────────────┐
+    // │ `SYSTEM_ALERT_WINDOW` VENAIT DU GABARIT D'EXPO, ET N'A AUCUN      │
+    // │ USAGE ICI.                                                        │
+    // │                                                                    │
+    // │ Elle n'était écrite nulle part : le gabarit de manifeste           │
+    // │ d'`expo-template-bare-minimum` la pose d'office, sous un           │
+    // │ commentaire qui dit lui-même « OPTIONAL PERMISSIONS, REMOVE        │
+    // │ WHATEVER YOU DO NOT NEED » (`@expo/config-plugins`,                │
+    // │ `withAndroidBaseMods.js`). On ne l'avait jamais fait.              │
+    // │                                                                    │
+    // │ C'est « Afficher par-dessus d'autres applications », une           │
+    // │ permission SPÉCIALE : elle exige un réglage système, Google Play   │
+    // │ la scrute, et elle s'affiche sur la fiche du magasin. Mesuré :     │
+    // │ aucun `TYPE_APPLICATION_OVERLAY` ni `canDrawOverlays` dans `src/`  │
+    // │ ni dans `modules/`. Une caisse n'a rien à dessiner par-dessus les  │
+    // │ autres applications.                                              │
+    // │                                                                    │
+    // │ ⚠ `blockedPermissions` pose `tools:node="remove"`, qui retire      │
+    // │ TOUTES les contributions, y compris celles d'une bibliothèque      │
+    // │ future. C'est puissant, donc à n'employer que sur une permission   │
+    // │ dont on a vérifié qu'elle ne sert à personne.                      │
+    // └────────────────────────────────────────────────────────────────────┘
+    blockedPermissions: ["android.permission.SYSTEM_ALERT_WINDOW"],
+    // ┌────────────────────────────────────────────────────────────────────┐
     // │ AUCUNE PERMISSION BLUETOOTH ÉCRITE À LA MAIN, ET C'EST VOULU.     │
     // │                                                                    │
     // │ Il y en avait cinq ici. Elles étaient REDONDANTES : les deux       │
@@ -141,6 +164,29 @@ const config: ExpoConfig = {
   },
 
   plugins: [
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ EN TÊTE DE LISTE, DONC EXÉCUTÉ EN DERNIER. L'ORDRE EST LA MOITIÉ     │
+    // │ DU CORRECTIF, ET IL EST À L'ENVERS DE L'INTUITION.                   │
+    // │                                                                      │
+    // │ Google Play refusait le bundle : `ACCESS_FINE_LOCATION` figurait      │
+    // │ DEUX fois dans le manifeste fusionné, plafonnée à l'API 30 en         │
+    // │ `<uses-permission-sdk-23>` par le greffon BLE, et sans plafond en     │
+    // │ `<uses-permission>` par `react-native-bluetooth-classic`. Pour le     │
+    // │ fusionneur ce sont deux éléments DISTINCTS, donc aucun conflit à      │
+    // │ trancher ; pour Play, deux plafonds qui se contredisent.              │
+    // │                                                                      │
+    // │ ⚠ LES MODS EXPO SONT UNE CHAÎNE INVERSÉE : chaque `withAndroid-      │
+    // │ Manifest` enveloppe le précédent, donc le DERNIER enregistré est     │
+    // │ invoqué le PREMIER (`@expo/config-plugins`, `withMod.js` : « log the │
+    // │ plugin stack in the order which they were invoked »). Ce greffon      │
+    // │ vérifie que la déclaration plafonnée est là avant de retirer la nue,  │
+    // │ et il doit donc voir le manifeste APRÈS `react-native-ble-plx`.       │
+    // │                                                                      │
+    // │ MESURÉ : placé en fin de liste, il s'exécutait AVANT le greffon BLE,  │
+    // │ sa garde ne trouvait rien, et `expo prebuild` échouait. C'est la      │
+    // │ garde qui l'a nommé plutôt qu'un manifeste livré sans la permission.  │
+    // └──────────────────────────────────────────────────────────────────────┘
+    "./plugins/with-localisation-unique",
     "expo-router",
     [
       // ┌──────────────────────────────────────────────────────────────────┐
@@ -232,6 +278,32 @@ const config: ExpoConfig = {
       {
         cameraPermission:
           "L'appareil photo sert à scanner les codes-barres des articles.",
+        // ┌──────────────────────────────────────────────────────────────┐
+        // │ AUCUN MICROPHONE : ON NE SCANNE PAS UN CODE-BARRES AVEC DU  │
+        // │ SON.                                                         │
+        // │                                                              │
+        // │ Le greffon vaut `recordAudioAndroid: true` par DÉFAUT et     │
+        // │ pose donc `RECORD_AUDIO`, plus la clé                        │
+        // │ `NSMicrophoneUsageDescription` côté iOS. Mesuré : aucun      │
+        // │ usage audio ou vidéo dans tout `src/`, et le seul            │
+        // │ `CameraView` du dépôt ne porte que                           │
+        // │ `barcodeScannerSettings` et `onBarcodeScanned`.              │
+        // │                                                              │
+        // │ Ce n'était pas qu'une permission de trop : elle apparaissait  │
+        // │ sur la fiche du magasin, et un micro sur une application de  │
+        // │ caisse est précisément ce qui fait hésiter un marchand à     │
+        // │ installer. Google Play et Apple demandent en outre une       │
+        // │ justification pour le microphone.                             │
+        // │                                                              │
+        // │ ⚠ IL FAUT LES DEUX CLÉS, ET AUSSI CELLE D'`expo-image-      │
+        // │ picker` : les deux greffons posent la même permission, et    │
+        // │ `microphonePermission: false` ne retire que celle de         │
+        // │ CELUI-CI (`createPermissionsPlugin` fait un `delete` sur la  │
+        // │ clé iOS, et `recordAudioAndroid` conditionne l'ajout         │
+        // │ Android).                                                     │
+        // └──────────────────────────────────────────────────────────────┘
+        recordAudioAndroid: false,
+        microphonePermission: false,
       },
     ],
     [
@@ -245,6 +317,12 @@ const config: ExpoConfig = {
       "expo-image-picker",
       {
         photosPermission: "Choisissez une image pour illustrer un article.",
+        // Même motif que pour `expo-camera` : on choisit une image, on
+        // n'enregistre aucun son. ⚠ Ici le `false` ne se contente pas de ne
+        // pas ajouter la permission, il pose un `blockedPermissions` sur
+        // `RECORD_AUDIO` : c'est donc LUI qui garantit qu'aucune
+        // bibliothèque ne la fera remonter.
+        microphonePermission: false,
       },
     ],
   ],

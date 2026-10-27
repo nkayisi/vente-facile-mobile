@@ -12,8 +12,8 @@ import { alias } from "drizzle-orm/sqlite-core";
 import {
   availableSplit,
   formatPackagedSplit,
+  formatUnitQuantity,
   getPackaging,
-  pluralizeUnit,
   type Packaging,
 } from "@vente-facile/core";
 
@@ -169,7 +169,7 @@ export async function listeArticles(
     } else if (conditionnement) {
       stockAffiche = formatPackagedSplit(conditionnement, c.paquets, c.vrac);
     } else {
-      stockAffiche = `${c.total} ${pluralizeUnit(l.unite ?? "unité", c.total)}`;
+      stockAffiche = `${formatUnitQuantity(c.total, l.unite ?? "unité")}`;
     }
 
     return {
@@ -402,7 +402,7 @@ export async function detailArticle(id: string): Promise<DetailArticle | null> {
         entrepot: s.entrepot ?? "Entrepôt",
         affiche: cond
           ? formatPackagedSplit(cond, nb(s.packageQuantity), nb(s.looseQuantity))
-          : `${total} ${pluralizeUnit(l.unite ?? "unité", total)}`,
+          : `${formatUnitQuantity(total, l.unite ?? "unité")}`,
         total,
       };
     }),

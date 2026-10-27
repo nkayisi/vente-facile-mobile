@@ -19,7 +19,7 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatDateFr, formatNumberFr } from "@vente-facile/core";
+import { formatDateFr, formatQuantity, formatUnitQuantity } from "@vente-facile/core";
 
 import { libelleEnvoi } from "@/data/envoi";
 import { useLecture } from "@/data/live";
@@ -249,8 +249,12 @@ export default function FicheRequisition() {
                 {i > 0 ? <Divider inset /> : null}
                 <ListItem
                   title={l.produit}
-                  subtitle={`En rayon ${formatNumberFr(l.stockAlors, 0)} · seuil ${formatNumberFr(l.seuilAlors, 0)}${l.note ? ` · ${l.note}` : ""}`}
-                  value={`${formatNumberFr(l.demande, 0)}${l.unite ? ` ${l.unite}` : ""}`}
+                  subtitle={`En rayon ${formatQuantity(l.stockAlors)} · seuil ${formatQuantity(l.seuilAlors)}${l.note ? ` · ${l.note}` : ""}`}
+                  value={
+                    l.unite
+                      ? formatUnitQuantity(l.demande, l.unite)
+                      : formatQuantity(l.demande)
+                  }
                 />
               </View>
             ))

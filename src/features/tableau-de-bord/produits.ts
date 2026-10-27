@@ -20,10 +20,9 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import {
-  formatNumberFr,
   formatPackaged,
   formatPackagedSplit,
-  pluralizeUnit,
+  formatUnitQuantity,
   type Packaging,
 } from "@vente-facile/core";
 
@@ -134,8 +133,7 @@ export function libelleQuantite(
   c: Pick<CumulProduit, "quantite" | "contenants" | "unitesEnContenants">
 ): string {
   if (cond === null) {
-    const q = formatNumberFr(c.quantite, 3);
-    return `${q} ${pluralizeUnit(uniteDetail ?? "unité", c.quantite)}`.trim();
+    return formatUnitQuantity(c.quantite, uniteDetail ?? "unité");
   }
   return seVentile(c, true)
     ? formatPackagedSplit(cond, c.contenants, vracDe(c))

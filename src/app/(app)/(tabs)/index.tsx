@@ -44,6 +44,7 @@ import {
   formatNumber,
   formatNumberFr,
   formatPrice,
+  formatQuantity,
 } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
@@ -545,7 +546,7 @@ export default function TableauDeBord() {
           jeton="chart5"
           pied={<Variation valeur={r?.variationUnites ?? null} />}
         >
-          <StatValue value={formatNumber(r?.unitesVendues ?? 0)} />
+          <StatValue value={formatQuantity(r?.unitesVendues ?? 0)} />
         </CarteKpi>
 
         <CarteKpi

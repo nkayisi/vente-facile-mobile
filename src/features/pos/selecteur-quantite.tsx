@@ -23,11 +23,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal, View } from "react-native";
 
 import {
+  MIN_QUANTITY,
+  formatQuantity,
+  formatUnitQuantity,
   getPackaging,
   pluralizeUnit,
-  formatQuantity,
   toBaseQuantity,
-  MIN_QUANTITY,
 } from "@vente-facile/core";
 import type { Saisie } from "@vente-facile/core/pos";
 
@@ -233,10 +234,7 @@ export function SelecteurQuantite({
             </Text>
             <Text variant="muted" className="mt-1">
               {conditionnement
-                ? `${motContenant} de ${conditionnement.factor} ${pluralizeUnit(
-                    motDetail,
-                    conditionnement.factor
-                  )}`
+                ? `${motContenant} de ${formatUnitQuantity(conditionnement.factor, motDetail)}`
                 : motDetail}
             </Text>
           </View>
@@ -309,8 +307,7 @@ export function SelecteurQuantite({
             </Text>
             {conditionnement && totalDetail > 0 ? (
               <Text variant="bodySmall" className="mt-0.5 text-muted-foreground">
-                soit {formatQuantity(totalDetail)}{" "}
-                {pluralizeUnit(motDetail, totalDetail)} au total
+                soit {formatUnitQuantity(totalDetail, motDetail)} au total
               </Text>
             ) : null}
           </View>

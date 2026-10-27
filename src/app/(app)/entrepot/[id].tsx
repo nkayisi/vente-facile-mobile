@@ -9,7 +9,7 @@
 import { useCallback } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatNumber, formatPrice } from "@vente-facile/core";
+import { formatPrice, formatQuantity } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
 import { detailEntrepot } from "@/data/stock";
@@ -76,7 +76,7 @@ export default function FicheEntrepot() {
           <StatStripItem label="Produits" value={String(e.produits)} icon="Package" />
           <StatStripItem
             label="Unités au total"
-            value={formatNumber(e.unitesAuTotal)}
+            value={formatQuantity(e.unitesAuTotal)}
             icon="Boxes"
           />
           <StatStripItem

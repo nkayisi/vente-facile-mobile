@@ -25,8 +25,8 @@ import { alias } from "drizzle-orm/sqlite-core";
 import {
   availableSplit,
   formatPackagedSplit,
+  formatUnitQuantity,
   getPackaging,
-  pluralizeUnit,
   type Packaging,
 } from "@vente-facile/core";
 
@@ -144,7 +144,22 @@ function conditionsEtat(etat: EtatStock | undefined) {
   if (!etat || etat === "tous") return [];
 
   const quantite = sql`cast(${stocks.quantity} as real)`;
-  const seuil = sql`coalesce(${products.reorderPoint}, 0)`;
+  // ┌──────────────────────────────────────────────────────────────────────────┐
+  // │ LE `cast` DU SEUIL EST OBLIGATOIRE, ET SON ABSENCE EST SILENCIEUSE.      │
+  // │                                                                          │
+  // │ `reorder_point` est passé de `PositiveIntegerField` à `DecimalField` le  │
+  // │ jour où « alerter sous 2,5 kg » est devenu possible. Une décimale         │
+  // │ descend au tirage sous forme de TEXTE, et en SQLite une valeur REAL      │
+  // │ comparée à une valeur TEXT est TOUJOURS inférieure : le texte trie après │
+  // │ tous les nombres.                                                        │
+  // │                                                                          │
+  // │ Sans ce `cast`, `seuil > 0` serait donc toujours vrai et                  │
+  // │ `quantite <= seuil` toujours vrai : TOUT produit suivi s'afficherait     │
+  // │ « Stock bas », sur l'écran dont le métier est de dire ce qu'il faut       │
+  // │ réapprovisionner. Aucune erreur, aucun journal, et le magasinier         │
+  // │ cesserait de lire une liste qui signale tout.                            │
+  // └──────────────────────────────────────────────────────────────────────────┘
+  const seuil = sql`coalesce(cast(${products.reorderPoint} as real), 0)`;
   const suivi = sql`coalesce(${products.trackInventory}, 0) = 1`;
   const sousLeSeuil = sql`${seuil} > 0 and ${quantite} <= ${seuil} and ${suivi}`;
 
@@ -286,10 +301,10 @@ export async function niveauxDeStock(
       entrepotId: l.warehouseId ?? null,
       quantiteAffichee: cond
         ? formatPackagedSplit(cond, paquets, vrac)
-        : `${total} ${pluralizeUnit(l.unite ?? "unité", total)}`,
+        : `${formatUnitQuantity(total, l.unite ?? "unité")}`,
       disponibleAffiche: cond
         ? formatPackagedSplit(cond, dispo.packages, dispo.loose)
-        : `${Math.max(0, total - reserve)} ${pluralizeUnit(l.unite ?? "unité", total - reserve)}`,
+        : formatUnitQuantity(Math.max(0, total - reserve), l.unite ?? "unité"),
       total,
       reserve,
       facteur: cond?.factor ?? null,
@@ -387,10 +402,10 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
     uniteContenant: cond?.packageWord ?? null,
     quantiteAffichee: cond
       ? formatPackagedSplit(cond, paquets, vrac)
-      : `${total} ${pluralizeUnit(l.unite ?? "unité", total)}`,
+      : `${formatUnitQuantity(total, l.unite ?? "unité")}`,
     disponibleAffiche: cond
       ? formatPackagedSplit(cond, dispo.packages, dispo.loose)
-      : `${Math.max(0, total - reserve)} ${pluralizeUnit(l.unite ?? "unité", total - reserve)}`,
+      : formatUnitQuantity(Math.max(0, total - reserve), l.unite ?? "unité"),
     total,
     reserve,
     contenants: paquets,

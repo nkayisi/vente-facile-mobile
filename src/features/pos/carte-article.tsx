@@ -8,7 +8,7 @@
  */
 import { View } from "react-native";
 
-import { getPackaging, pluralizeUnit } from "@vente-facile/core";
+import { formatUnitQuantity, getPackaging } from "@vente-facile/core";
 
 import { Icon, Pressable, Text, VignetteArticle } from "@/ui";
 import type { ArticlePos } from "./catalogue";
@@ -148,13 +148,13 @@ function libelleStock(
 
   if (conditionnement && scelles !== null && detail !== null) {
     const parts: string[] = [];
-    if (scelles > 0) parts.push(`${scelles} ${pluralizeUnit(conditionnement.packageWord, scelles)}`);
-    if (detail > 0) parts.push(`${detail} ${pluralizeUnit(conditionnement.retailWord, detail)}`);
+    if (scelles > 0) parts.push(`${formatUnitQuantity(scelles, conditionnement.packageWord)}`);
+    if (detail > 0) parts.push(`${formatUnitQuantity(detail, conditionnement.retailWord)}`);
     return parts.length ? parts.join(" + ") : "Épuisé";
   }
 
   const total = article.stock_quantity;
   if (total <= 0) return "Épuisé";
   const mot = article.unit_name || "unité";
-  return `${total} ${pluralizeUnit(mot, total)}`;
+  return `${formatUnitQuantity(total, mot)}`;
 }

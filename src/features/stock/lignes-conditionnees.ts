@@ -25,7 +25,10 @@
 import {
   formatPackagedDifference,
   formatPackagedSplit,
+  formatQuantity,
+  formatUnitQuantity,
   pluralizeUnit,
+  roundQuantity,
   splitPackaged,
   toBaseQuantity,
   type Packaging,
@@ -73,9 +76,9 @@ export function libelleCanal(mot: string): string {
 
 /** « 1 CASIER = 12 BOUTEILLES ». Le rappel qui évite la multiplication de tête. */
 export function rappelConditionnement(cond: Packaging): string {
-  return `1 ${pluralizeUnit(cond.packageWord, 1)} = ${cond.factor} ${pluralizeUnit(
-    cond.retailWord,
-    cond.factor
+  return `1 ${pluralizeUnit(cond.packageWord, 1)} = ${formatUnitQuantity(
+    cond.factor,
+    cond.retailWord
   )}`;
 }
 
@@ -165,14 +168,14 @@ export function resumeConversion(s: SaisieQuantite, verbe: string): string | nul
 
   const morceaux: string[] = [];
   if (contenants > 0) {
-    morceaux.push(`${contenants} ${pluralizeUnit(cond.packageWord, contenants)}`);
+    morceaux.push(formatUnitQuantity(contenants, cond.packageWord));
   }
-  if (vrac > 0) morceaux.push(`${vrac} ${pluralizeUnit(cond.retailWord, vrac)}`);
+  if (vrac > 0) morceaux.push(formatUnitQuantity(vrac, cond.retailWord));
 
   const total = toBaseQuantity(cond, contenants, vrac);
-  return `Vous ${verbe} ${morceaux.join(" + ")} = ${total} ${pluralizeUnit(
-    cond.retailWord,
-    total
+  return `Vous ${verbe} ${morceaux.join(" + ")} = ${formatUnitQuantity(
+    total,
+    cond.retailWord
   )}.`;
 }
 
@@ -183,7 +186,9 @@ export function resumeConversion(s: SaisieQuantite, verbe: string): string | nul
  * réécrirait « 3 casiers + 27 bouteilles » en « 4 casiers + 3 bouteilles ».
  */
 export function afficherPartage(cond: Packaging | null, p: PartageStock): string {
-  if (!cond) return `${p.total}`;
+  // L'interpolation brute rendait « 0.5 » au point anglais, et
+  // « 0.3000000000000007 » sur un total dérivé. Le formateur du noyau écrit « 0,5 ».
+  if (!cond) return formatQuantity(p.total);
   return formatPackagedSplit(cond, p.contenants, p.vrac);
 }
 
@@ -226,16 +231,14 @@ export function alerteDisponible(
 
   if (!cond) {
     if (vrac > dispo.total) {
-      return `Il n'y a que ${dispo.total} en rayon. L'expédition sera refusée si le stock n'a pas bougé d'ici là.`;
+      return `Il n'y a que ${formatQuantity(dispo.total)} en rayon. L'expédition sera refusée si le stock n'a pas bougé d'ici là.`;
     }
     return null;
   }
 
   const manques: string[] = [];
   if (contenants > dispo.contenants) {
-    manques.push(
-      `${dispo.contenants} ${pluralizeUnit(cond.packageWord, dispo.contenants)} en scellé`
-    );
+    manques.push(`${formatUnitQuantity(dispo.contenants, cond.packageWord)} en scellé`);
   }
   // Servir le détail peut exiger d'ouvrir un contenant : le serveur le fait
   // (`ensure_loose_available`), donc le vrac isolé ne borne rien à lui seul.
@@ -244,7 +247,7 @@ export function alerteDisponible(
   const resteApresScelles = dispo.total - contenants * cond.factor;
   if (vrac > resteApresScelles) {
     const reste = Math.max(0, resteApresScelles);
-    manques.push(`${reste} ${pluralizeUnit(cond.retailWord, reste)} au détail`);
+    manques.push(`${formatUnitQuantity(reste, cond.retailWord)} au détail`);
   }
   if (manques.length === 0) return null;
 
@@ -264,11 +267,14 @@ export function ecartDuComptage(
   attendu: PartageStock,
   compte: SaisieQuantite
 ): { texte: string; signe: -1 | 0 | 1; total: number } {
-  const total = totalSaisi(compte) - attendu.total;
+  // ⚠ LA SOUSTRACTION SE QUANTISE. `totalSaisi` passe par `toBaseQuantity`,
+  // qui quantise ; la différence, non : un écart de 0,5 contre 0,3 attendu
+  // s'affichait « +0.19999999999999998 » dans le récapitulatif d'ajustement.
+  const total = roundQuantity(totalSaisi(compte) - attendu.total);
   const signe: -1 | 0 | 1 = total < 0 ? -1 : total > 0 ? 1 : 0;
 
   if (!cond) {
-    return { texte: `${total > 0 ? "+" : ""}${total}`, signe, total };
+    return { texte: `${total > 0 ? "+" : ""}${formatQuantity(total)}`, signe, total };
   }
 
   const attenduSplit = splitPackaged(attendu.total, attendu.vrac, cond.factor);

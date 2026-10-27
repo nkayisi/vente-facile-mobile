@@ -16,7 +16,7 @@
  */
 import { View } from "react-native";
 import { router } from "expo-router";
-import { formatNumber, formatPrice } from "@vente-facile/core";
+import { formatPrice, formatQuantity } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
 import { entrepots, relevesStock } from "@/data/stock";
@@ -84,7 +84,7 @@ export default function Stock() {
           />
           <StatStripItem
             label="Unités au total"
-            value={formatNumber(r?.unitesAuTotal ?? 0)}
+            value={formatQuantity(r?.unitesAuTotal ?? 0)}
             icon="Boxes"
           />
           <StatStripItem
