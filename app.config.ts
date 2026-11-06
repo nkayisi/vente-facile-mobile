@@ -20,8 +20,8 @@ type Profile = "development" | "preview" | "production";
  * │ par le CLI sur la machine du développeur, pour résoudre l'identité de      │
  * │ l'application et donc ses IDENTIFIANTS DE SIGNATURE, puis par le serveur.  │
  * │ Avec la seule variable d'EAS, `eas build --profile production` demandait   │
- * │ une clé pour `com.cdir.ventefacile.dev` et livrait un binaire déclarant    │
- * │ `com.cdir.ventefacile` : un paquet signé de la mauvaise clé, que Google    │
+ * │ une clé pour `com.smizone.app.dev` et livrait un binaire déclarant         │
+ * │ `com.smizone.app` : un paquet signé de la mauvaise clé, que Google         │
  * │ Play refuse - et rien à l'écran ne l'annonce, la ligne fautive étant un    │
  * │ nom d'application juste.                                                   │
  * │                                                                            │
@@ -52,26 +52,32 @@ const NAME: Record<Profile, string> = {
 
 /**
  * ┌────────────────────────────────────────────────────────────────────────────┐
- * │ L'ESPACE DE NOMS EST `com.cdir`, ET IL NE COLLISIONNE PLUS.                │
+ * │ L'IDENTIFIANT NATIF EST `com.smizone.app`, ET IL NE COLLISIONNE AVEC RIEN. │
  * │                                                                            │
- * │ L'ancienne application déclarait `com.ventefacile.app`, et le profil de    │
- * │ PRODUCTION de celle-ci n'ajoutait aucun suffixe : c'était le MÊME          │
- * │ identifiant, donc une installation par-dessus était une mise à jour en     │
- * │ place, qui héritait du bac à sable - base WatermelonDB comprise, et        │
- * │ invisible.                                                                 │
+ * │ Il ne partage son espace de noms ni avec l'ancienne application            │
+ * │ (`com.ventefacile.app`), ni avec l'identifiant que celle-ci portait        │
+ * │ jusqu'au 30 octobre 2026 (`com.cdir.ventefacile`). Aucune installation     │
+ * │ ne peut donc être une mise à jour en place de l'un ou de l'autre : rien    │
+ * │ n'hérite d'un bac à sable, et rien n'est hérité en silence.                │
  * │                                                                            │
- * │ Avec `com.cdir.ventefacile`, les deux applications cohabitent : l'ancienne │
- * │ garde ses données et reste ouvrable, ce qui vaut mieux qu'un héritage      │
- * │ muet. CONTREPARTIE À CONNAÎTRE : `session/bascule.ts` ne peut plus lire ce │
- * │ fichier, le bac à sable d'une autre application étant hors de portée. Il   │
- * │ rend désormais toujours « rien à reprendre ».                              │
+ * │ CONSÉQUENCE : `session/bascule.ts` reste inerte. Le bac à sable d'une      │
+ * │ autre application est hors de portée, donc il rend toujours « rien à       │
+ * │ reprendre ».                                                               │
  * │                                                                            │
- * │ ⚠ Sur un terminal DÉJÀ enrôlé sous l'ancien identifiant, la nouvelle       │
- * │ compilation s'installe À CÔTÉ : son journal, sa session et ses ventes non  │
- * │ poussées restent dans l'ancienne. Synchroniser AVANT d'installer.          │
+ * │ ⚠ UN TERMINAL DÉJÀ EN SERVICE NE SUIT PAS. La compilation s'installe À     │
+ * │ CÔTÉ de la précédente : sa session d'appareil - donc son `device_code`,    │
+ * │ donc ses séries de numéros de documents -, son journal d'opérations, ses   │
+ * │ ventes non poussées, ses paniers en attente et ses documents à             │
+ * │ réimprimer restent dans l'ancienne. SYNCHRONISER AVANT D'INSTALLER, puis   │
+ * │ ré-enrôler et révoquer l'ancien appareil au back-office.                   │
+ * │                                                                            │
+ * │ ⚠ EAS DEMANDERA UNE NOUVELLE CLÉ DE SIGNATURE : les identifiants de        │
+ * │ signature sont indexés par paquet. Et la fiche du magasin portera          │
+ * │ `com.smizone.app`, donc `android_store_url` de `/admin/application` doit   │
+ * │ suivre - la porte de mise à jour en dérive `market://details?id=…`.        │
  * └────────────────────────────────────────────────────────────────────────────┘
  */
-const BUNDLE = `com.cdir.ventefacile${SUFFIX[profile]}`;
+const BUNDLE = `com.smizone.app${SUFFIX[profile]}`;
 
 const config: ExpoConfig = {
   name: NAME[profile],

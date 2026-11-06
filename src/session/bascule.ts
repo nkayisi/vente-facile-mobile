@@ -2,7 +2,7 @@
  * Bascule depuis l'ancienne application.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ ⚠ CE MODULE EST INERTE DEPUIS LE PASSAGE À `com.cdir.ventefacile`.       │
+ * │ ⚠ CE MODULE EST INERTE DEPUIS QUE L'IDENTIFIANT NATIF A CHANGÉ.          │
  * │                                                                          │
  * │ Il a été écrit parce que les deux applications portaient le MÊME         │
  * │ identifiant natif : l'ancienne `app.json` déclarait                      │
@@ -13,7 +13,7 @@
  * │ ventes que l'ancienne n'avait pas poussées restaient dans un fichier que │
  * │ la nouvelle ne lisait jamais.                                            │
  * │                                                                          │
- * │ L'identifiant est désormais `com.cdir.ventefacile` (voir                 │
+ * │ L'identifiant est désormais `com.smizone.app` (voir                      │
  * │ `app.config.ts`). Les deux applications COHABITENT : le bac à sable de   │
  * │ l'ancienne est hors de portée - Android et iOS l'interdisent - donc      │
  * │ `dossiersCandidats()`, qui part de la racine de CETTE application, ne    │

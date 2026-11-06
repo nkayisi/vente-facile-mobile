@@ -73,7 +73,7 @@ Bluetooth, SVG) qu'Expo Go ne porte pas. Comptez plusieurs minutes la première
 fois, quelques secondes ensuite.
 
 L'application s'installe sous le nom **VF (dev)**, identifiant
-`com.cdir.ventefacile.dev`. Le suffixe existe pour que la préproduction et la
+`com.smizone.app.dev`. Le suffixe existe pour que la préproduction et la
 production cohabitent sur le même terminal (voir « Profils de compilation »).
 
 ### Ensuite : Metro seul suffit
@@ -214,21 +214,27 @@ trois variantes cohabitent sur un même terminal :
 
 | Profil | Nom affiché | Identifiant |
 | --- | --- | --- |
-| `development` | VF (dev) | `com.cdir.ventefacile.dev` |
-| `preview` | VF (préprod) | `com.cdir.ventefacile.preview` |
-| `production` | Vente Facile | `com.cdir.ventefacile` |
+| `development` | VF (dev) | `com.smizone.app.dev` |
+| `preview` | VF (préprod) | `com.smizone.app.preview` |
+| `production` | Vente Facile | `com.smizone.app` |
 
 Le profil `preview` produit un **APK** et non un AAB : on l'installe à la main
 sur un POS, sans passer par le Play Store.
 
-⚠ **L'espace de noms est `com.cdir`, et ce n'est plus celui de l'ancienne
-application** (`com.ventefacile.app`). Les deux cohabitent donc au lieu de se
-remplacer : une installation n'est plus une mise à jour en place, et le bac à
-sable de l'ancienne - sa base WatermelonDB comprise - reste le sien. Deux
-conséquences à connaître : `src/session/bascule.ts` ne peut plus le lire et rend
-toujours « rien à reprendre » ; et **un terminal déjà enrôlé sous l'ancien
-identifiant garde sa session, son journal et ses ventes non poussées dans
-l'ancienne application - il faut synchroniser AVANT d'installer la nouvelle.**
+⚠ **L'identifiant natif est `com.smizone.app` depuis le 30 octobre 2026**, et
+il ne collisionne ni avec l'ancienne application (`com.ventefacile.app`) ni avec
+l'identifiant précédent (`com.cdir.ventefacile`). Aucune installation n'est donc
+une mise à jour en place : le bac à sable de chaque application reste le sien.
+Deux conséquences à connaître : `src/session/bascule.ts` ne peut plus lire celui
+de l'ancienne et rend toujours « rien à reprendre » ; et **un terminal déjà
+enrôlé sous un identifiant précédent garde sa session, son journal et ses ventes
+non poussées dans l'application d'alors - il faut synchroniser AVANT d'installer
+la nouvelle, puis ré-enrôler et révoquer l'ancien appareil au back-office.**
+
+⚠ **EAS demandera une nouvelle clé de signature** : les identifiants de
+signature sont indexés par paquet. La fiche du magasin portera
+`com.smizone.app`, qu'il faudra reporter dans `android_store_url` de
+`/admin/application` - la porte de mise à jour en dérive `market://details?id=…`.
 
 ## Conventions
 
