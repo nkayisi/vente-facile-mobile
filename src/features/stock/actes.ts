@@ -29,11 +29,13 @@ import {
 // ce fichier importe `@/sync`, qui ouvre la base SQLite au chargement, et rien
 // de ce qu'il porte ne serait alors éprouvable sans appareil.
 import {
+  corpsJsonDeLaLivraison,
   corpsJsonDuMouvement,
+  type SaisieLivraison,
   type SaisieMouvement,
 } from "@/features/stock/payload-mouvement";
 
-export type { SaisieMouvement };
+export type { SaisieLivraison, SaisieMouvement };
 
 /** Une ligne de transfert, telle que le magasinier la saisit. */
 export interface LigneSaisie {
@@ -249,6 +251,27 @@ export async function creerMouvement(saisie: SaisieMouvement): Promise<string> {
 }
 
 /**
+ * Une LIVRAISON entière, mise en file d'un seul acte.
+ *
+ * ⚠ UN SEUL ACTE POUR N LIGNES, et c'est ce qui rend la livraison atomique :
+ *   le serveur écrit tout dans un `transaction.atomic` unique. N actes séparés
+ *   donneraient N verdicts, donc la moitié d'un bon de livraison enregistrée -
+ *   et le magasinier ne saurait plus ce qui est entré.
+ *
+ * ⚠ LA CONTREPARTIE EST QU'UN REFUS CONDAMNE TOUT, et le message du serveur
+ *   NOMME la ligne fautive (ses erreurs sont indexées). Sans cela la
+ *   quarantaine serait illisible et il ressaisirait tout.
+ */
+export async function creerLivraison(saisie: SaisieLivraison): Promise<string> {
+  const id = Crypto.randomUUID();
+  await enqueue(id, "stock_movement.bulk_create", {
+    id,
+    ...corpsJsonDeLaLivraison(saisie),
+  });
+  return id;
+}
+
+/**
  * Les saisies de mouvement qui attendent leur envoi : combien, et dans quel état.
  *
  * Un LOT et non une carte par pièce : le journal des mouvements n'a aucun
@@ -258,9 +281,18 @@ export async function creerMouvement(saisie: SaisieMouvement): Promise<string> {
  * proposer de synchroniser un lot bloqué enverrait chercher un réseau déjà là.
  */
 export async function mouvementsEnAttente(): Promise<LotEnAttente> {
-  return lotEnAttente(
-    await enAttenteParType<{ id: string }>("stock_movement.create", {
+  // ⚠ LES DEUX ACTES, ET IL FAUT LES DEUX. Une LIVRAISON entière est un seul
+  //   acte `bulk_create` : ne compter que `create` ferait annoncer « rien en
+  //   attente » au journal des mouvements pendant qu'une livraison de quarante
+  //   lignes y dort. Le cadran et le document se présenteraient alors comme
+  //   arrêtés, ce que ce lot existe précisément pour empêcher.
+  const [simples, livraisons] = await Promise.all([
+    enAttenteParType<{ id: string }>("stock_movement.create", {
       avecBloquees: true,
-    })
-  );
+    }),
+    enAttenteParType<{ id: string }>("stock_movement.bulk_create", {
+      avecBloquees: true,
+    }),
+  ]);
+  return lotEnAttente([...simples, ...livraisons]);
 }

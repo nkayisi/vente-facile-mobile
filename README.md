@@ -231,10 +231,80 @@ enrôlé sous un identifiant précédent garde sa session, son journal et ses ve
 non poussées dans l'application d'alors - il faut synchroniser AVANT d'installer
 la nouvelle, puis ré-enrôler et révoquer l'ancien appareil au back-office.**
 
-⚠ **EAS demandera une nouvelle clé de signature** : les identifiants de
-signature sont indexés par paquet. La fiche du magasin portera
-`com.smizone.app`, qu'il faudra reporter dans `android_store_url` de
-`/admin/application` - la porte de mise à jour en dérive `market://details?id=…`.
+⚠ **La fiche du magasin portera `com.smizone.app`**, qu'il faudra reporter dans
+`android_store_url` de `/admin/application` : la porte de mise à jour en dérive
+`market://details?id=…` **côté serveur**, jamais côté client - un terminal de
+préproduction fabriquerait sinon un lien vers une fiche qui n'existe pas.
+
+## Signature de release
+
+Les binaires de `preview` et de `production` sont signés par **un keystore que
+nous détenons**, jamais par une clé qu'EAS engendrerait. Deux fichiers portent
+cette décision, et **aucun des deux n'est versionné** :
+
+| | |
+| --- | --- |
+| `../smizone.keystore` | le magasin de clés, alias `smizonekey`, hors de tout dépôt |
+| `credentials.json` | le chemin, l'alias et le mot de passe - en clair |
+
+`eas.json` déclare `"credentialsSource": "local"` sur **les trois** profils :
+c'est ce qui fait lire ce keystore par le CLI plutôt que d'en laisser engendrer
+un par le serveur. La valeur par défaut est `remote`, et un profil qui l'oublie
+sort signé d'une clé que personne ne détient ici.
+
+⚠ **ANDROID REFUSE TOUT CHANGEMENT DE SIGNATURE.** Un binaire publié sous une
+clé condamne toutes ses mises à jour à porter la même : le keystore perdu, ou le
+mot de passe oublié, c'est l'impossibilité de mettre l'application à jour - il
+faudrait republier sous un autre identifiant de paquet, donc perdre toutes les
+installations. **Ce fichier de 2,8 Ko n'est sauvegardé nulle part : le mettre à
+l'abri est la seule chose de ce dépôt qu'aucun correctif ne pourra rattraper.**
+
+### Le Gradle local signe de la même clé
+
+`plugins/with-signature-release.js` branche le keystore dans la
+`signingConfig release` d'`android/app/build.gradle`. Sans lui, le gabarit de
+React Native laisse `signingConfig signingConfigs.debug` dans le bloc `release`
+- avec son propre commentaire « Caution! In production, you need to generate
+your own keystore file » - et un `assembleRelease` local sort signé de
+`debug.keystore`, dont le mot de passe est « android » et que tout le monde
+possède. L'APK s'installe, il a l'air bon, et aucune vraie release ne pourra
+jamais le mettre à jour.
+
+⚠ Le greffon est **inerte quand `credentials.json` est absent**, c'est-à-dire
+sur les serveurs d'EAS, où le fichier n'entre pas dans l'archive : c'est le CLI
+qui lit le keystore ici et l'envoie dans les identifiants du job, et le serveur
+écrit sa propre configuration de signature. Cette garde est ce qui permet au
+même arbre de servir les deux chemins.
+
+⚠ Le mot de passe va dans `android/gradle.properties`, pas dans `build.gradle`.
+Les deux fichiers sont engendrés et ignorés par git, mais un `build.gradle` se
+colle dans un rapport de bug : on n'y met pas un secret.
+
+### Le contrôle, avant la file d'attente
+
+```bash
+pnpm verifier:signature
+```
+
+Câblé dans `eas:preview` et `eas:production`. Il éprouve le **secret** et pas sa
+présence : le mot de passe ouvre-t-il le magasin, l'alias existe-t-il, le
+certificat vit-il encore, les trois profils lisent-ils la clé locale, le greffon
+est-il déclaré, et rien de tout cela n'est-il suivi par git. Un mot de passe faux
+ne se voit sinon qu'après vingt minutes de compilation sur EAS. Il n'imprime
+jamais le mot de passe, pas même dans un message d'échec.
+
+### Récupérer les identifiants sur une autre machine
+
+Le keystore et `credentials.json` n'étant pas versionnés, une machine neuve ne
+les a pas. Deux chemins :
+
+```bash
+# depuis EAS, si le keystore y a déjà été envoyé
+eas credentials -p android     # > credentials.json > Download credentials from EAS
+
+# à la main : copier smizone.keystore à côté du dossier vf-marchand,
+# puis réécrire credentials.json (voir pnpm verifier:signature pour le format)
+```
 
 ## Conventions
 

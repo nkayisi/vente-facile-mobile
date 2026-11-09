@@ -78,6 +78,7 @@ import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { FeuilleApprovisionnement, type PresentationAppro, type SourceEntrees }
   from "@/features/stock/feuille-approvisionnement";
 import { FeuilleFiltresMouvements } from "@/features/stock/feuille-filtres-mouvements";
+import { FeuilleApproMasse } from "@/features/stock/feuille-appro-masse";
 import { FeuilleNouveauMouvement } from "@/features/stock/feuille-mouvement";
 import {
   FILTRES_VIDES,
@@ -117,7 +118,7 @@ export default function Mouvements() {
    * d'en ouvrir deux. Un seul état rend l'exclusion structurelle.
    */
   const [feuille, setFeuille] = useState<
-    null | "saisie" | "filtres" | "format" | "approvisionnement"
+    null | "saisie" | "masse" | "filtres" | "format" | "approvisionnement"
   >(null);
   const [envoiExport, setEnvoiExport] = useState(false);
   const [source, setSource] = useState<SourceEntrees>("all");
@@ -343,6 +344,20 @@ export default function Mouvements() {
         right={
           peutVoir ? (
             <View className="flex-row items-center">
+              {peutSaisir ? (
+                <IconButton
+                  // ⚠ `Boxes` ET NON `PackagePlus`, qui est celui du
+                  //   back-office : le générateur du registre le REFUSE, son
+                  //   tracé divergeant entre les paquets lucide web et mobile.
+                  //   Déclarer la divergence sans avoir comparé les deux
+                  //   glyphes est précisément ce que son message interdit, et
+                  //   « plusieurs cartons » dit bien une livraison de masse.
+                  name="Boxes"
+                  label="Approvisionner en masse"
+                  variant="ghost"
+                  onPress={() => setFeuille("masse")}
+                />
+              ) : null}
               <IconButton
                 name="Truck"
                 label="Rapport d'approvisionnement"
@@ -574,6 +589,19 @@ export default function Mouvements() {
 
       {/* Rendue CONDITIONNELLEMENT, jamais avec un booléen : chaque ouverture
           est un montage, donc un formulaire vierge. Voir sa docstring. */}
+      {/* ⚠ LES DEUX GESTES COEXISTENT, ET C'EST VOULU : une livraison
+          entière se saisit en masse, une correction isolée se saisit article
+          par article. Le second n'est pas remplacé par le premier. */}
+      {feuille === "masse" ? (
+        <FeuilleApproMasse
+          onFermer={() => setFeuille(null)}
+          // Rien à ouvrir : la livraison entre au JOURNAL, et la table tirée ne
+          // bougera qu'au prochain tirage. Le décompte « en attente » du cadran
+          // s'en charge - il compte désormais les DEUX actes.
+          onCree={() => setFeuille(null)}
+        />
+      ) : null}
+
       {feuille === "saisie" ? (
         <FeuilleNouveauMouvement
           onFermer={() => setFeuille(null)}

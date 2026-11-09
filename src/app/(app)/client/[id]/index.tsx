@@ -23,9 +23,9 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatDateFr, formatPoints } from "@vente-facile/core";
+import { formatDateFr } from "@vente-facile/core";
 
-import { detailClient, type MouvementCompte } from "@/data/contact-detail";
+import { detailClient } from "@/data/contact-detail";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { STATUT_VENTE } from "@/data/ventes";
@@ -42,7 +42,6 @@ import {
   CardHeader,
   Divider,
   EmptyState,
-  Icon,
   ListItem,
   MultiCurrencyTotal,
   Screen,
@@ -63,49 +62,6 @@ const TABLES = [
   "sales",
 ];
 const JOURNAL = ["outbox_operations"];
-
-function LigneMouvement({ m }: { m: MouvementCompte }) {
-  const money = useMonnaie();
-  return (
-    <View className="flex-row items-center gap-3 py-3">
-      <View
-        className={`h-9 w-9 items-center justify-center rounded-lg ${
-          m.augmente ? "bg-destructive/10" : "bg-success/10"
-        }`}
-      >
-        <Icon
-          name={m.augmente ? "ArrowUpRight" : "ArrowDownRight"}
-          size={16}
-          color={m.augmente ? "destructive" : "success"}
-        />
-      </View>
-      <View className="min-w-0 flex-1">
-        <Text variant="bodySmall" className="font-sans-medium">
-          {m.typeLabel}
-        </Text>
-        <Text variant="caption" numberOfLines={1}>
-          {[m.numeroRecu, m.date ? formatDateFr(m.date) : null, m.notes || null]
-            .filter(Boolean)
-            .join(" · ")}
-        </Text>
-      </View>
-      <View className="shrink-0 items-end">
-        <Text
-          variant="bodySmall"
-          numeric
-          className={`font-sans-medium ${
-            m.augmente ? "text-destructive" : "text-success"
-          }`}
-        >
-          {`${m.augmente ? "+" : "-"}${money.money(Math.abs(m.montant), m.devise)}`}
-        </Text>
-        <Text numeric variant="caption">
-          {`solde ${money.money(m.soldeApres, m.devise)}`}
-        </Text>
-      </View>
-    </View>
-  );
-}
 
 export default function FicheClient() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -281,20 +237,52 @@ export default function FicheClient() {
           </View>
         ) : null}
 
-        {c.programmeActif && c.points != null ? (
+        {/* ⚠ LA CAGNOTTE EST DE L'ARGENT, en devise PRINCIPALE. Elle s'affichait
+        en points, et personne ne savait ce qu'un point valait. */}
+        {c.programmeActif && c.cagnotte != null ? (
           <Card>
             <View className="flex-row items-center justify-between gap-3">
               <View className="min-w-0 flex-1">
-                <Text variant="caption">Points de fidélité</Text>
-                <StatValue value={`${formatPoints(c.points)} pts`} tone="primary" />
+                <Text variant="caption">Cagnotte de fidélité</Text>
+                <StatValue
+                  value={money.money(c.cagnotte, devisePrincipale)}
+                  tone="primary"
+                />
               </View>
               <View className="shrink-0 items-end">
-                <Text variant="caption">{`Gagnés ${formatPoints(c.pointsGagnes)}`}</Text>
-                <Text variant="caption">{`Utilisés ${formatPoints(c.pointsUtilises)}`}</Text>
+                <Text variant="caption">
+                  {`Gagnée ${money.money(c.cagnotteGagnee, devisePrincipale)}`}
+                </Text>
+                <Text variant="caption">
+                  {`Utilisée ${money.money(c.cagnotteUtilisee, devisePrincipale)}`}
+                </Text>
               </View>
             </View>
           </Card>
         ) : null}
+
+        {/* ┌──────────────────────────────────────────────────────────────┐
+            │ LES TROIS LECTURES DU PASSÉ VIVENT DANS UNE SOUS-PAGE.       │
+            │                                                              │
+            │ Le grand livre, le registre de cagnotte et le rapport par    │
+            │ période occupaient trois sections de plus sous une fiche qui │
+            │ en portait déjà sept. Ce qu'on vient y chercher devant un    │
+            │ client - ce qu'il doit, et peut-il repartir à crédit - s'y   │
+            │ perdait. On les consulte rarement, et longuement.            │
+            └──────────────────────────────────────────────────────────────┘ */}
+        <Card className="p-0">
+          <ListItem
+            title="Historique"
+            subtitle="Mouvements du compte, cagnotte et rapport"
+            // ⚠ `Clock` ET NON `History`, le glyphe du back-office : le
+            //   générateur du registre le REFUSE, « history » étant absent du
+            //   paquet lucide mobile. Déclarer la divergence sans avoir
+            //   comparé les deux tracés est ce que son message interdit.
+            icon="Clock"
+            chevron
+            onPress={() => router.push(`/client/${id}/historique`)}
+          />
+        </Card>
 
         {c.facturesOuvertes.length > 0 ? (
           <Card className="p-0">
@@ -374,19 +362,6 @@ export default function FicheClient() {
           </Card>
         ) : null}
 
-        {c.mouvements.length > 0 ? (
-          <Card>
-            <CardHeader title="Historique des mouvements" />
-            <View>
-              {c.mouvements.map((m, i) => (
-                <View key={m.id}>
-                  {i > 0 ? <Divider /> : null}
-                  <LigneMouvement m={m} />
-                </View>
-              ))}
-            </View>
-          </Card>
-        ) : null}
       </View>
 
       <FeuilleEncaissement

@@ -70,9 +70,9 @@ describe("Mise en attente", () => {
     expect(contenu.lignes[0]).not.toHaveProperty("quantity");
   });
 
-  it("n'emporte ni règlements, ni points, ni décision de crédit", () => {
+  it("n'emporte ni règlements, ni cagnotte, ni décision de crédit", () => {
     let etat = ajouter(PANIER_VIDE, casier, 1, 0);
-    etat = reducteurPanier(etat, { type: "points", points: 40 });
+    etat = reducteurPanier(etat, { type: "cagnotte", montant: 40 });
     etat = reducteurPanier(etat, { type: "credit", actif: true, echeance: "2026-09-30" });
     etat = reducteurPanier(etat, {
       type: "reglements",
@@ -80,7 +80,7 @@ describe("Mise en attente", () => {
     });
 
     const contenu = serialiser(etat) as ContenuEnAttente & Record<string, unknown>;
-    expect(contenu.points).toBeUndefined();
+    expect(contenu.cagnotte).toBeUndefined();
     expect(contenu.reglements).toBeUndefined();
     expect(contenu.aCredit).toBeUndefined();
     expect(contenu.echeance).toBeUndefined();

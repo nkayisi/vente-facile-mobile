@@ -149,7 +149,7 @@ export function CarteRemiseAZero() {
         ouvert={ouvert}
         onFermer={() => !envoi && setOuvert(false)}
         titre="Cette action ne se défait pas"
-        description={`${apercu?.total ?? 0} enregistrements seront effacés définitivement : ventes, règlements, mouvements de stock et de caisse, dettes et points de fidélité. Votre catalogue et vos réglages restent.`}
+        description={`${apercu?.total ?? 0} enregistrements seront effacés définitivement : ventes, règlements, mouvements de stock et de caisse, dettes et cagnottes de fidélité. Votre catalogue et vos réglages restent.`}
         actions={
           <>
             <Button

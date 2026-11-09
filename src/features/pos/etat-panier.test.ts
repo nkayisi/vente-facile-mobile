@@ -145,14 +145,14 @@ describe("Panier", () => {
       type: "client",
       client: { id: "c1", name: "Kalume", phone: null, allow_credit: true, credit_limit: "0", current_balance: "0" },
     });
-    etat = reducteurPanier(etat, { type: "points", points: 500 });
+    etat = reducteurPanier(etat, { type: "cagnotte", montant: 500 });
     etat = reducteurPanier(etat, { type: "credit", actif: true, echeance: "2026-09-30" });
-    expect(etat.points).toBe(500);
+    expect(etat.cagnotte).toBe(500);
 
-    // Retirer le client doit retirer les points et le crédit : les laisser
-    // enverrait au serveur des points qui n'appartiennent à personne.
+    // Retirer le client doit retirer la cagnotte et le crédit : les laisser
+    // enverrait au serveur une cagnotte qui n'appartient à personne.
     etat = reducteurPanier(etat, { type: "client", client: null });
-    expect(etat.points).toBe(0);
+    expect(etat.cagnotte).toBe(0);
     expect(etat.aCredit).toBe(false);
     expect(etat.echeance).toBeNull();
   });

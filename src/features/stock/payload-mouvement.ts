@@ -261,3 +261,53 @@ export function apercuDuCoutMelange(s: SaisieFormulaireMouvement): number | null
     factor: cond.factor,
   });
 }
+
+// ---------------------------------------------------------------------------
+// APPROVISIONNEMENT DE MASSE
+// ---------------------------------------------------------------------------
+
+export interface SaisieLivraison {
+  entrepot: string;
+  type: string;
+  notes?: string;
+  /** Les lignes RETENUES : celles dont une quantité a été saisie. */
+  lignes: SaisieMouvement[];
+}
+
+/**
+ * Le corps d'une LIVRAISON entière.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CHAQUE LIGNE EMPRUNTE `corpsJsonDuMouvement`, SANS UNE EXCEPTION.       │
+ * │                                                                          │
+ * │ C'est ce qui garantit qu'une ligne de livraison et un mouvement saisi    │
+ * │ seul envoient le MÊME corps - mêmes décimales en chaînes, mêmes clés     │
+ * │ omises plutôt que nulles. Le serveur les passe d'ailleurs au même        │
+ * │ `StockMovementCreateSerializer` : un second format ici rendrait la       │
+ * │ parité surveillée au lieu d'être structurelle.                           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ `warehouse` ET `movement_type` SONT RETIRÉS DES LIGNES : ils sont portés
+ * par l'ENVELOPPE, et le serveur les y lit (`create_bulk_supply` les repose sur
+ * chaque ligne). Les laisser serait inoffensif aujourd'hui et deviendrait un
+ * piège le jour où l'un d'eux divergerait entre l'enveloppe et une ligne.
+ */
+export function corpsJsonDeLaLivraison(
+  saisie: SaisieLivraison
+): Record<string, unknown> {
+  return {
+    warehouse: saisie.entrepot,
+    movement_type: saisie.type,
+    notes: saisie.notes ?? "",
+    lines: saisie.lignes.map((l) => {
+      const corps = corpsJsonDuMouvement({
+        ...l,
+        entrepot: saisie.entrepot,
+        type: saisie.type,
+      });
+      delete corps.warehouse;
+      delete corps.movement_type;
+      return corps;
+    }),
+  };
+}

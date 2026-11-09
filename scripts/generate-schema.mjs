@@ -123,6 +123,9 @@ const INDEXES = {
   customer_balances: [["customer_id"]],
   customer_transactions: [["customer_id"]],
   customer_loyalty: [["customer_id"]],
+  // La fiche d'un client lit SON registre : sans index, chaque ouverture
+  // balaie tout l'historique de cagnotte de l'établissement.
+  loyalty_transactions: [["customer_loyalty_id"]],
   cash_movements: [["movement_date"]],
   expenses: [["expense_date"], ["status"]],
   register_sessions: [["register_id"], ["status"]],

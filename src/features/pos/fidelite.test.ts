@@ -1,105 +1,101 @@
 /**
- * Les points qu'une vente rapporte, et le cumul imprime sur le ticket.
+ * La cagnotte qu'une vente rapporte, et le cumul imprime sur le ticket.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ CE MIROIR A DEJA ETE FAUX UNE FOIS, SUR L'AUTRE SURFACE.                 │
  * │                                                                          │
  * │ Le point de vente du back-office « rejouait le bareme avec la seule      │
  * │ formule POURCENTAGE en dur : sur un programme `fixed_per_amount`, qui    │
- * │ est le DEFAUT, le recu annoncait dix fois les points reellement          │
- * │ credites ». Les deux modes sont donc eprouves ici, et separement.        │
+ * │ etait le DEFAUT, le recu annoncait dix fois les points reellement        │
+ * │ credites ».                                                              │
+ * │                                                                          │
+ * │ ⚠ IL N'Y A PLUS QU'UN SEUL BAREME, et la classe d'erreur entiere         │
+ * │   disparait avec le mode par tranches. Ce qui reste a eprouver est le    │
+ * │   POURCENTAGE, la conversion en devise principale, et les trois cas ou   │
+ * │   la vente ne rapporte rien.                                             │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import type { SessionLoyaltyProgram } from "@/session/types";
 
-import { pointsGagnes, soldeApresVente } from "./fidelite";
+import { gainFidelite, cagnotteApresVente } from "./fidelite";
 
 function programme(patch: Partial<SessionLoyaltyProgram> = {}): SessionLoyaltyProgram {
   return {
     id: "p1",
     name: "Fidélité",
     is_active: true,
-    points_calculation_type: "fixed_per_amount",
-    points_per_unit: 1,
-    amount_per_unit: "1000",
-    points_percentage: "1",
-    point_value: "1",
+    earn_percent: "2",
+    max_redemption_percent: "50",
     ...patch,
   };
 }
 
-describe("un barème par tranches", () => {
-  it("ne compte PAS une tranche entamée", () => {
-    // « X points pour CHAQUE Y dépensé » est ce que le libellé promet au
-    // marchand : arrondir au plus proche relèverait tous les barèmes existants
-    // sans qu'il l'ait demandé.
+describe("le gain de cagnotte", () => {
+  it("rend un POURCENTAGE de la facture, en argent", () => {
+    // C'est l'aperçu que le back-office affiche au marchand : « sur une facture
+    // de 10 000, le client gagne 200 ».
     expect(
-      pointsGagnes({ programme: programme(), totalFacture: 2500, taux: 1, venteSoldee: true })
-    ).toBe(2);
-    expect(
-      pointsGagnes({ programme: programme(), totalFacture: 999, taux: 1, venteSoldee: true })
-    ).toBe(0);
+      gainFidelite({ programme: programme(), totalFacture: 10000, taux: 1, venteSoldee: true })
+    ).toBe(200);
   });
-
-  it("RAMÈNE LA FACTURE EN DEVISE PRINCIPALE avant de compter", () => {
-    // ⚠ `amount_per_unit` est libellé en devise principale. Comparer
-    // directement un total en devise de facture faisait qu'une facture de
-    // 50 USD (~140 000 CDF) rapportait ZÉRO point avec un barème de 1 point
-    // par 1 000 CDF - le défaut que le serveur documente.
-    expect(
-      pointsGagnes({ programme: programme(), totalFacture: 50, taux: 2800, venteSoldee: true })
-    ).toBe(140);
-    // Sans la conversion, la même facture ne rapporterait rien.
-    expect(
-      pointsGagnes({ programme: programme(), totalFacture: 50, taux: 1, venteSoldee: true })
-    ).toBe(0);
-  });
-
-  it("refuse de diviser par une tranche nulle", () => {
-    expect(
-      pointsGagnes({
-        programme: programme({ amount_per_unit: "0" }),
-        totalFacture: 5000,
-        taux: 1,
-        venteSoldee: true,
-      })
-    ).toBe(0);
-  });
-});
-
-describe("un barème en pourcentage", () => {
-  const pct = programme({ points_calculation_type: "percentage", points_percentage: "1" });
 
   it("est CONTINU : il ne tronque pas à l'entier", () => {
     // Le serveur a corrigé ce défaut précis : « 1 % d'un panier de 58 USD
     // valait 0,58 point, ramené à ZÉRO sans le moindre signal. La fidélité y
     // devenait inerte. »
-    expect(pointsGagnes({ programme: pct, totalFacture: 58, taux: 1, venteSoldee: true })).toBe(0.58);
-    expect(pointsGagnes({ programme: pct, totalFacture: 396, taux: 1, venteSoldee: true })).toBe(3.96);
+    const pct = programme({ earn_percent: "1" });
+    expect(gainFidelite({ programme: pct, totalFacture: 58, taux: 1, venteSoldee: true })).toBe(0.58);
+    expect(gainFidelite({ programme: pct, totalFacture: 396, taux: 1, venteSoldee: true })).toBe(3.96);
   });
 
-  it("ne se confond PAS avec le barème par tranches", () => {
-    // Le même panier, les deux modes : c'est l'écart que le back-office avait
-    // imprimé sur ses reçus.
-    const panier = { totalFacture: 2500, taux: 1, venteSoldee: true } as const;
-    expect(pointsGagnes({ programme: programme(), ...panier })).toBe(2);
-    expect(pointsGagnes({ programme: pct, ...panier })).toBe(25);
+  it("quantise au centième, comme le serveur", () => {
+    // Miroir de `quantize(Decimal('0.01'))` : une cagnotte est de l'argent, et
+    // un montant à douze décimales ne s'imprime pas sur un ticket.
+    expect(
+      gainFidelite({
+        programme: programme({ earn_percent: "3" }),
+        totalFacture: 333.33,
+        taux: 1,
+        venteSoldee: true,
+      })
+    ).toBe(10);
+  });
+
+  it("RAMÈNE LA FACTURE EN DEVISE PRINCIPALE avant de créditer", () => {
+    // ⚠ La cagnotte est tenue en devise PRINCIPALE. Sans cette conversion, une
+    // facture de 50 USD créditerait 1 $ là où le serveur crédite 2 800 FC, et
+    // le ticket annoncerait une cagnotte deux mille huit cents fois trop
+    // petite.
+    expect(
+      gainFidelite({ programme: programme(), totalFacture: 50, taux: 2800, venteSoldee: true })
+    ).toBe(2800);
+    expect(
+      gainFidelite({ programme: programme(), totalFacture: 50, taux: 1, venteSoldee: true })
+    ).toBe(1);
+  });
+
+  it("se replie sur 1 quand le taux est absurde", () => {
+    // Un taux nul ne peut pas sortir de la table des devises ; s'il en arrive
+    // un, multiplier donnerait zéro en silence.
+    expect(
+      gainFidelite({ programme: programme(), totalFacture: 10000, taux: 0, venteSoldee: true })
+    ).toBe(200);
   });
 });
 
 describe("quand la vente ne rapporte rien", () => {
-  it("UNE VENTE À CRÉDIT NE RAPPORTE AUCUN POINT À L'ÉMISSION", () => {
-    // Le serveur n'attribue que sur une vente `completed` : les points d'une
-    // vente à crédit viennent au règlement du solde. Les annoncer sur le
-    // ticket serait une promesse qu'il ne tient pas ce jour-là.
+  it("UNE VENTE À CRÉDIT NE RAPPORTE AUCUNE CAGNOTTE À L'ÉMISSION", () => {
+    // Le serveur ne crédite que sur une vente `completed` : la cagnotte d'une
+    // vente à crédit vient au règlement du solde. L'annoncer sur le ticket
+    // serait une promesse qu'il ne tient pas ce jour-là.
     expect(
-      pointsGagnes({ programme: programme(), totalFacture: 5000, taux: 1, venteSoldee: false })
+      gainFidelite({ programme: programme(), totalFacture: 5000, taux: 1, venteSoldee: false })
     ).toBe(0);
   });
 
   it("respecte un programme éteint", () => {
     expect(
-      pointsGagnes({
+      gainFidelite({
         programme: programme({ is_active: false }),
         totalFacture: 5000,
         taux: 1,
@@ -109,24 +105,35 @@ describe("quand la vente ne rapporte rien", () => {
   });
 
   it("ne compte rien sur une facture nulle, ni sans programme", () => {
-    expect(pointsGagnes({ programme: programme(), totalFacture: 0, taux: 1, venteSoldee: true })).toBe(0);
-    expect(pointsGagnes({ programme: null, totalFacture: 5000, taux: 1, venteSoldee: true })).toBe(0);
+    expect(gainFidelite({ programme: programme(), totalFacture: 0, taux: 1, venteSoldee: true })).toBe(0);
+    expect(gainFidelite({ programme: null, totalFacture: 5000, taux: 1, venteSoldee: true })).toBe(0);
+  });
+
+  it("ne compte rien sur un pourcentage nul", () => {
+    expect(
+      gainFidelite({
+        programme: programme({ earn_percent: "0" }),
+        totalFacture: 10000,
+        taux: 1,
+        venteSoldee: true,
+      })
+    ).toBe(0);
   });
 });
 
 describe("le cumul imprimé sur le ticket", () => {
   it("retranche ce qui vient d'être dépensé et ajoute ce qui vient d'être gagné", () => {
-    expect(soldeApresVente(1776.12, 1122.4, 2)).toBe(655.72);
+    expect(cagnotteApresVente(1776.12, 1122.4, 2)).toBe(655.72);
   });
 
-  it("rend le solde tel quel quand rien n'est dépensé ni gagné", () => {
+  it("rend la cagnotte telle quelle quand rien n'est dépensé ni gagné", () => {
     // C'est le cas que l'utilisateur signale : un client rattaché qui ne
-    // dépense pas ses points doit quand même lire son cumul.
-    expect(soldeApresVente(1798.57, 0, 0)).toBe(1798.57);
+    // dépense pas sa cagnotte doit quand même lire son cumul.
+    expect(cagnotteApresVente(1798.57, 0, 0)).toBe(1798.57);
   });
 
   it("ne descend JAMAIS sous zéro", () => {
-    // Un solde négatif ne veut rien dire sur un papier remis au client.
-    expect(soldeApresVente(50, 200, 0)).toBe(0);
+    // Une cagnotte négative ne veut rien dire sur un papier remis au client.
+    expect(cagnotteApresVente(50, 200, 0)).toBe(0);
   });
 });

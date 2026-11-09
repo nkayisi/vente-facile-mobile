@@ -58,7 +58,8 @@ export interface ParametresRecu {
   enTete: string | null;
   pied: string | null;
   largeurPapier: number;
-  pointsSurRecu: boolean;
+  /** Le bloc cagnotte s'imprime-t-il sur le ticket. */
+  fideliteSurRecu: boolean;
   seuilStockBas: number | null;
 }
 
@@ -74,7 +75,7 @@ export async function parametresRecu(): Promise<ParametresRecu | null> {
     enTete: s.receiptHeader ?? null,
     pied: s.receiptFooter ?? null,
     largeurPapier: s.receiptPaperWidth ?? 58,
-    pointsSurRecu: Boolean(s.showLoyaltyPointsOnReceipt),
+    fideliteSurRecu: Boolean(s.showLoyaltyOnReceipt),
     seuilStockBas: s.lowStockThreshold ?? null,
   };
 }

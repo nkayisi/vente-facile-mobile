@@ -13,10 +13,25 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+
+# Signature de release : le keystore et son mot de passe.
+#
+# `credentials.json` porte le mot de passe EN CLAIR, et `*.keystore` ci-dessus
+# couvre le magasin de clés. AUCUN des deux n'entre dans un dépôt : le keystore
+# perdu ou divulgué, c'est l'impossibilité de publier une mise à jour de
+# l'application - Google Play n'accepte aucune autre signature - et la
+# possibilité, pour qui le détient, d'en signer une à notre place.
+#
+# ⚠ EAS n'en a pas besoin dans l'archive : `credentialsSource: "local"` fait
+# LIRE le fichier par le CLI sur cette machine, qui l'envoie séparément dans les
+# identifiants du job (`readAndroidCredentialsAsync`). L'avertissement
+# « untracked files » d'`eas credentials` est un rappel, pas une exigence.
+credentials.json
 
 # Metro
 .metro-health-check*

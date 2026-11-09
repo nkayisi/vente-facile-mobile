@@ -1,17 +1,17 @@
 /**
- * Encaisser : le moyen de paiement, le montant, le credit, les points.
+ * Encaisser : le moyen de paiement, le montant, le credit, la cagnotte.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ MEME ORDRE, MEMES REGLES QUE LA MODALE DU BACK-OFFICE.                   │
  * │                                                                          │
- * │ Un marchand qui revient du web doit retrouver ses gestes : les points    │
+ * │ Un marchand qui revient du web doit retrouver ses gestes : la cagnotte   │
  * │ d'abord, le credit ensuite, le recapitulatif, le moyen de paiement, le   │
  * │ montant, et ce qu'il reste a faire. L'ordre n'est pas cosmetique - c'est │
  * │ celui dans lequel les decisions se prennent au comptoir.                 │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
  * ⚠ UNE FEUILLE DANS UNE FEUILLE N'EST PAS UNE OPTION. `Sheet` est un `Modal` :
- * le choix du client, celui du moyen de paiement et la saisie des points
+ * le choix du client, celui du moyen de paiement et la saisie de la cagnotte
  * echangent le CONTENU de cette feuille, avec la fleche `retour` qui recule
  * d'un panneau. D'ou `DeclencheurSelect` et non `ChampSelect`, qui ouvrirait
  * SA propre feuille - un garde-fou de doctrine le refuse.
@@ -83,12 +83,12 @@ import {
   suffixeOptionCredit,
   type ModeReglement,
 } from "./encaissement";
-import { pointsGagnes, soldeApresVente } from "./fidelite";
+import { gainFidelite, cagnotteApresVente } from "./fidelite";
 import { prochaineReference } from "./numerotation";
 import { usePanier, type ClientPos } from "./panier";
 import { donneesTicketVente } from "./ticket";
 
-type Panneau = "formulaire" | "client" | "moyen" | "points";
+type Panneau = "formulaire" | "client" | "moyen" | "cagnotte";
 
 /**
  * Glyphe d'un moyen de paiement, par son genre.
@@ -126,7 +126,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [recherche, setRecherche] = useState("");
   const [clients, setClients] = useState<ClientPos[]>([]);
-  const [saisiePoints, setSaisiePoints] = useState("");
+  const [saisieCagnotte, setSaisieCagnotte] = useState("");
   const verrou = useRef(false);
 
   const mode: ModeReglement = etat.aCredit ? "credit" : "comptant";
@@ -198,7 +198,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
   );
 
   // Une synchronisation a pu passer pendant que le panier etait ouvert : le
-  // solde de points et la dette en file viennent de la base locale, que seul le
+  // la cagnotte et la dette en file viennent de la base locale, que seul le
   // tirage ecrit. On les relit en OUVRANT la feuille, la seule surface ou ils
   // decident de quelque chose.
   useEffect(() => {
@@ -221,11 +221,11 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
       setMoyens(liste);
       setSession(s);
       setChargement(false);
-      // Le mode, les points et l'echeance sont remis a plat a CHAQUE ouverture :
+      // Le mode, la cagnotte et l'echeance sont remis a plat a CHAQUE ouverture :
       // une deduction abandonnee par un premier passage s'appliquerait sinon en
       // silence a la vente suivante. Le back-office le fait au meme endroit.
       envoyer({ type: "credit", actif: false });
-      envoyer({ type: "points", points: 0 });
+      envoyer({ type: "cagnotte", montant: 0 });
       if (liste.length > 0) {
         envoyer({
           type: "reglements",
@@ -311,8 +311,8 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
     setPanneau("formulaire");
   };
 
-  const retirerPoints = () => {
-    envoyer({ type: "points", points: 0 });
+  const retirerCagnotte = () => {
+    envoyer({ type: "cagnotte", montant: 0 });
     recaler(
       totaux.factureBrute.total,
       mode,
@@ -320,18 +320,18 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
     );
   };
 
-  const validerPoints = () => {
-    const lecture = lireNombre(saisiePoints);
-    const points = lecture.ok
-      ? Math.min(lecture.valeur ?? 0, totaux.pointsMax)
+  const validerCagnotte = () => {
+    const lecture = lireNombre(saisieCagnotte);
+    const montant = lecture.ok
+      ? Math.min(lecture.valeur ?? 0, totaux.cagnotteMax)
       : 0;
-    envoyer({ type: "points", points });
+    envoyer({ type: "cagnotte", montant });
     // Le total NET d'apres cette saisie, pour que le champ montant suive. Le
     // panier ne l'a pas encore recalcule : on demande au NOYAU la remise qu'il
     // accordera - la meme fonction que le panier appelle, jamais une regle de
     // trois ecrite ici.
     const remise = devises.convertMoney(
-      loyaltyDiscount(totaux.total, points, programme),
+      loyaltyDiscount(totaux.total, montant, programme),
       devises.primary,
       deviseFacture,
     );
@@ -373,7 +373,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
         isCredit: mode === "credit",
         dueDate: etat.echeance,
         loyaltyProgram: programme,
-        pointsToUse: etat.points,
+        loyaltyToUse: etat.cagnotte,
         isPos: true,
       });
 
@@ -392,12 +392,12 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
       // ┌──────────────────────────────────────────────────────────────────┐
       // │ LE CLIENT VIENT LIRE SON CUMUL, ET LE TICKET NE LE DISAIT PAS.  │
       // │                                                                  │
-      // │ Le bloc fidelite ne sortait QUE lorsque des points etaient       │
-      // │ depenses : `pointsGagnes` et `pointsRestants` etaient declares   │
+      // │ Le bloc fidelite ne sortait QUE lorsque de la cagnotte etait     │
+      // │ depensee : `gainFidelite` et `cagnotteRestante` etaient declares │
       // │ dans le contexte du ticket et personne ne les passait. Le        │
       // │ back-office, lui, les imprime depuis la reponse du serveur.      │
       // └──────────────────────────────────────────────────────────────────┘
-      const gagnes = pointsGagnes({
+      const gagne = gainFidelite({
         programme,
         totalFacture: totaux.totalFacture,
         taux: devises.rateOf(deviseFacture),
@@ -431,12 +431,12 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
           // La liste sert a NOMMER le reglement : sans elle, le libelle de la
           // ligne serait l'identifiant du moyen de paiement.
           moyens,
-          pointsGagnes: gagnes,
+          gainFidelite: gagne,
           // Sans programme actif il n'y a pas de solde a annoncer, et
-          // « Solde de points : 0 pts » serait une ligne de bruit sur le
+          // « Cagnotte disponible : 0 FC » serait une ligne de bruit sur le
           // papier d'un etablissement qui ne fait pas de fidelite.
-          pointsRestants: programme?.is_active
-            ? soldeApresVente(totaux.soldePoints, etat.points, gagnes)
+          cagnotteRestante: programme?.is_active
+            ? cagnotteApresVente(totaux.cagnotte, etat.cagnotte, gagne)
             : undefined,
           restantDu: mode === "credit" ? totaux.restantFacture : 0,
           aCredit: mode === "credit",
@@ -479,7 +479,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
    * l'annonce.
    */
   const annuler = () => {
-    envoyer({ type: "points", points: 0 });
+    envoyer({ type: "cagnotte", montant: 0 });
     envoyer({ type: "credit", actif: false });
     onFermer();
   };
@@ -494,8 +494,8 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
       ? "Choisir un client"
       : panneau === "moyen"
         ? "Moyen de paiement"
-        : panneau === "points"
-          ? "Points à utiliser"
+        : panneau === "cagnotte"
+          ? "Cagnotte à utiliser"
           : "Encaissement";
 
   // --- Les panneaux -------------------------------------------------------
@@ -545,13 +545,13 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
             messageVide="Aucun moyen de paiement. Synchronisez pour les recevoir."
           />
         ) : (
-          <PanneauPoints
-            saisie={saisiePoints}
-            onSaisie={setSaisiePoints}
-            solde={totaux.soldePoints}
-            maximum={totaux.pointsMax}
-            minimum={totaux.pointsMinimum}
-            onValider={validerPoints}
+          <PanneauCagnotte
+            saisie={saisieCagnotte}
+            onSaisie={setSaisieCagnotte}
+            solde={totaux.cagnotte}
+            maximum={totaux.cagnotteMax}
+            argent={argent}
+            onValider={validerCagnotte}
           />
         )}
       </>
@@ -630,7 +630,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
           Le back-office choisit le sien sur la PAGE du point de vente ; sur ce
           terminal il n'existe aucun selecteur de client ailleurs - ni au
           panier, ni sur l'onglet de vente. Le retirer d'ici rendrait impossible
-          d'attacher un client, donc d'accorder des points. */}
+          d'attacher un client, donc d'accorder de la cagnotte. */}
           <RangeeClient
             client={etat.client}
             alerte={mode === "credit"}
@@ -645,52 +645,46 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
             }}
           />
 
-          {/* Points de fidelite : visible des qu'un client est rattache et qu'un
-          programme tourne. Le bloc restait invisible tant que le solde
-          n'atteignait pas le minimum : le vendeur ne savait ni que le client
-          avait des points, ni combien il lui en manquait. */}
+          {/* Cagnotte de fidelite : visible des qu'un client est rattache et
+          qu'un programme tourne, meme a zero - c'est justement ce que le client
+          vient lire. ⚠ LE MINIMUM D'UTILISATION A DISPARU avec la bascule en
+          argent : il n'y a plus de seuil sous lequel la cagnotte serait inerte,
+          donc plus de case grisee a expliquer. */}
           {etat.client && programme?.is_active ? (
-            <Rubrique
-              titre={`Points de fidélité (${formatNumberFr(totaux.soldePoints, 2)} pts)`}
-            >
+            <Rubrique titre={`Cagnotte de fidélité (${argent(totaux.cagnotte)})`}>
               <View className="rounded-xl border border-warning/30 bg-warning/10 p-3">
                 <Checkbox
-                  coche={etat.points > 0}
-                  disabled={totaux.soldePoints < totaux.pointsMinimum}
-                  label="Déduire mes points sur la facture"
-                  accessibilityHint="Ouvre la saisie du nombre de points"
+                  coche={etat.cagnotte > 0}
+                  disabled={totaux.cagnotteMax <= 0}
+                  label="Régler une part de la facture avec la cagnotte"
+                  accessibilityHint="Ouvre la saisie du montant à déduire"
                   onBasculer={() => {
                     // Decocher est une ANNULATION : immediate, sans rien demander.
-                    if (etat.points > 0) return retirerPoints();
-                    setSaisiePoints(String(totaux.pointsMax));
-                    setPanneau("points");
+                    if (etat.cagnotte > 0) return retirerCagnotte();
+                    setSaisieCagnotte(String(totaux.cagnotteMax));
+                    setPanneau("cagnotte");
                   }}
                 />
-                {totaux.soldePoints < totaux.pointsMinimum ? (
+                {totaux.cagnotteMax <= 0 ? (
                   <View className="mt-2 border-t border-warning/30 pt-2">
                     <Text variant="caption">
-                      Encore{" "}
-                      {formatNumberFr(
-                        totaux.pointsMinimum - totaux.soldePoints,
-                        2,
-                      )}{" "}
-                      pts avant de pouvoir les utiliser (minimum{" "}
-                      {formatNumberFr(totaux.pointsMinimum, 2)} pts).
+                      {totaux.cagnotte > 0
+                        ? "Rien à déduire sur cette vente."
+                        : "La cagnotte de ce client est vide."}
                     </Text>
                   </View>
                 ) : null}
                 {totaux.remiseFidelite > 0 ? (
                   <View className="mt-2 flex-row items-center justify-between border-t border-warning/30 pt-2">
                     <Text variant="caption" className="min-w-0 flex-1">
-                      {formatNumberFr(etat.points, 2)} pts appliqués ·{" "}
-                      {argent(f.loyaltyDiscount)}
+                      {argent(f.loyaltyDiscount)} déduits de la facture
                     </Text>
                     <Button
                       variant="ghost"
                       size="sm"
                       onPress={() => {
-                        setSaisiePoints(String(etat.points));
-                        setPanneau("points");
+                        setSaisieCagnotte(String(etat.cagnotte));
+                        setPanneau("cagnotte");
                       }}
                     >
                       Modifier
@@ -781,7 +775,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
               baisse sans que le caissier puisse dire d'ou vient l'ecart. */}
               {f.loyaltyDiscount > 0 ? (
                 <Ligne
-                  libelle={`Remise fidélité (${formatNumberFr(etat.points, 2)} pts)`}
+                  libelle="Cagnotte de fidélité"
                   valeur={`-${argent(f.loyaltyDiscount)}`}
                   ton="warning"
                 />
@@ -1174,40 +1168,43 @@ function PanneauClient({
   );
 }
 
-function PanneauPoints({
+function PanneauCagnotte({
   saisie,
   onSaisie,
   solde,
   maximum,
-  minimum,
+  argent,
   onValider,
 }: {
   saisie: string;
   onSaisie: (v: string) => void;
   solde: number;
   maximum: number;
-  minimum: number;
+  argent: (montant: number) => string;
   onValider: () => void;
 }) {
   const lecture = lireNombre(saisie);
-  const points = lecture.ok ? (lecture.valeur ?? 0) : 0;
-  const tropHaut = points > maximum;
+  const montant = lecture.ok ? (lecture.valeur ?? 0) : 0;
+  const tropHaut = montant > maximum;
 
   return (
     <>
       <Text variant="bodySmall" className="text-muted-foreground">
-        {formatNumberFr(solde, 2)} point{solde > 1 ? "s" : ""} disponible
-        {solde > 1 ? "s" : ""}. Au plus {formatNumberFr(maximum, 2)} utilisable
-        {maximum > 1 ? "s" : ""} sur cette vente.
+        {argent(solde)} de cagnotte. Au plus {argent(maximum)} sur cette vente.
       </Text>
       <FormField
-        label="Points à utiliser"
-        hint={`Minimum ${formatNumberFr(minimum, 2)}. En dessous, aucune remise n'est accordée.`}
+        label="Montant à déduire"
+        // ⚠ ON DIT POURQUOI LE PLAFOND MORD, parce que c'est le seul reglage de
+        // fidelite qui se voit au comptoir : la cagnotte ne solde jamais toute
+        // une facture, il reste toujours quelque chose a encaisser en monnaie.
+        hint={
+          maximum < solde
+            ? "Le marchand limite la part d'une facture réglable par la cagnotte."
+            : undefined
+        }
         error={
-          motifDeSaisie(lecture, "Le nombre de points") ??
-          (tropHaut
-            ? `Au plus ${formatNumberFr(maximum, 2)} sur cette vente.`
-            : undefined)
+          motifDeSaisie(lecture, "Le montant") ??
+          (tropHaut ? `Au plus ${argent(maximum)} sur cette vente.` : undefined)
         }
       >
         <Input

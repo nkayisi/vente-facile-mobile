@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 39 tables, 581 colonnes.
+ * 40 tables, 587 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -48,7 +48,7 @@ export const organizationSettings = sqliteTable("organization_settings", {
   receiptHeader: text("receipt_header").notNull(),
   receiptFooter: text("receipt_footer").notNull(),
   receiptPaperWidth: integer("receipt_paper_width").notNull(),
-  showLoyaltyPointsOnReceipt: integer("show_loyalty_points_on_receipt", { mode: "boolean" }).notNull(),
+  showLoyaltyOnReceipt: integer("show_loyalty_on_receipt", { mode: "boolean" }).notNull(),
   lowStockThreshold: integer("low_stock_threshold").notNull(),
 });
 
@@ -491,15 +491,10 @@ export const loyaltyPrograms = sqliteTable("loyalty_programs", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   isActive: integer("is_active", { mode: "boolean" }).notNull(),
-  pointsCalculationType: text("points_calculation_type").notNull(),
-  pointsPerUnit: integer("points_per_unit").notNull(),
-  amountPerUnit: text("amount_per_unit").notNull(),
-  pointsPercentage: text("points_percentage").notNull(),
-  pointValue: text("point_value").notNull(),
-  minPointsToRedeem: integer("min_points_to_redeem").notNull(),
+  earnPercent: text("earn_percent").notNull(),
   maxRedemptionPercent: text("max_redemption_percent").notNull(),
-  pointsExpiryDays: integer("points_expiry_days").notNull(),
   onlyRegisteredCustomers: integer("only_registered_customers", { mode: "boolean" }).notNull(),
+  legacyPointValue: text("legacy_point_value"),
 });
 
 export type LoyaltyProgramsRow =
@@ -510,18 +505,37 @@ export const customerLoyalty = sqliteTable("customer_loyalty", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   id: text("id").primaryKey(),
   customerId: text("customer_id").notNull(),
-  totalPointsEarned: text("total_points_earned").notNull(),
-  totalPointsRedeemed: text("total_points_redeemed").notNull(),
-  currentPoints: text("current_points").notNull(),
+  totalEarned: text("total_earned").notNull(),
+  totalUsed: text("total_used").notNull(),
+  balance: text("balance").notNull(),
   tier: text("tier").notNull(),
-  lastPointsEarnedAt: integer("last_points_earned_at", { mode: "timestamp_ms" }),
-  lastPointsRedeemedAt: integer("last_points_redeemed_at", { mode: "timestamp_ms" }),
+  lastEarnedAt: integer("last_earned_at", { mode: "timestamp_ms" }),
+  lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
 }, (t) => [
     index("customer_loyalty_customer_id_idx").on(t.customerId),
 ]);
 
 export type CustomerLoyaltyRow =
   typeof customerLoyalty.$inferSelect;
+
+export const loyaltyTransactions = sqliteTable("loyalty_transactions", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  customerLoyaltyId: text("customer_loyalty_id").notNull(),
+  transactionType: text("transaction_type").notNull(),
+  amount: text("amount").notNull(),
+  balanceAfter: text("balance_after").notNull(),
+  saleId: text("sale_id"),
+  paymentId: text("payment_id"),
+  description: text("description").notNull(),
+  createdById: text("created_by_id"),
+}, (t) => [
+    index("loyalty_transactions_customer_loyalty_id_idx").on(t.customerLoyaltyId),
+]);
+
+export type LoyaltyTransactionsRow =
+  typeof loyaltyTransactions.$inferSelect;
 
 export const registers = sqliteTable("registers", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

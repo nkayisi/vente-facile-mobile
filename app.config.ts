@@ -71,10 +71,15 @@ const NAME: Record<Profile, string> = {
  * │ réimprimer restent dans l'ancienne. SYNCHRONISER AVANT D'INSTALLER, puis   │
  * │ ré-enrôler et révoquer l'ancien appareil au back-office.                   │
  * │                                                                            │
- * │ ⚠ EAS DEMANDERA UNE NOUVELLE CLÉ DE SIGNATURE : les identifiants de        │
- * │ signature sont indexés par paquet. Et la fiche du magasin portera          │
- * │ `com.smizone.app`, donc `android_store_url` de `/admin/application` doit   │
- * │ suivre - la porte de mise à jour en dérive `market://details?id=…`.        │
+ * │ ⚠ AUCUNE CLÉ N'EST ENGENDRÉE PAR EAS, et c'est délibéré. Les trois         │
+ * │ profils portent `"credentialsSource": "local"`, donc c'est                 │
+ * │ `smizone.keystore` qui signe - voir « Signature de release » du README     │
+ * │ et `plugins/with-signature-release.js`. Un profil laissé en `remote`       │
+ * │ ferait sortir un binaire signé d'une clé que personne ne détient ici.      │
+ * │                                                                            │
+ * │ ⚠ La fiche du magasin portera `com.smizone.app`, donc                      │
+ * │ `android_store_url` de `/admin/application` doit suivre - la porte de      │
+ * │ mise à jour en dérive `market://details?id=…` côté serveur.                │
  * └────────────────────────────────────────────────────────────────────────────┘
  */
 const BUNDLE = `com.smizone.app${SUFFIX[profile]}`;
@@ -193,6 +198,22 @@ const config: ExpoConfig = {
     // │ garde qui l'a nommé plutôt qu'un manifeste livré sans la permission.  │
     // └──────────────────────────────────────────────────────────────────────┘
     "./plugins/with-localisation-unique",
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ SANS LUI, UN `assembleRelease` LOCAL SIGNE DE LA CLÉ DE DEBUG.       │
+    // │                                                                      │
+    // │ Le gabarit de React Native pose `signingConfig signingConfigs.debug` │
+    // │ dans le bloc `release` - avec son propre commentaire « Caution! In   │
+    // │ production, you need to generate your own keystore file ». Ce        │
+    // │ greffon y branche le keystore de `credentials.json`, celui-là même   │
+    // │ qu'EAS emploie, pour qu'une release locale et une release du serveur │
+    // │ ne puissent pas sortir signées de deux clés différentes.             │
+    // │                                                                      │
+    // │ ⚠ Il est INERTE quand `credentials.json` est absent, c'est-à-dire    │
+    // │ sur les serveurs d'EAS, qui écrivent leur propre signature. L'ordre  │
+    // │ dans cette liste n'a pas d'importance : il touche `app/build.gradle` │
+    // │ et `gradle.properties`, qu'aucun autre greffon ne réécrit.           │
+    // └──────────────────────────────────────────────────────────────────────┘
+    "./plugins/with-signature-release",
     "expo-router",
     [
       // ┌──────────────────────────────────────────────────────────────────┐

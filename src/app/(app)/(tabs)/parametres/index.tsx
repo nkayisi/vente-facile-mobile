@@ -61,7 +61,7 @@ export default function InfosGenerales() {
     nif: "", rccm: "", idNat: "",
   });
   const [reglages, setReglages] = useState({
-    enTete: "", pied: "", largeurPapier: 58, seuil: "", points: false,
+    enTete: "", pied: "", largeurPapier: 58, seuil: "", fidelite: false,
   });
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -81,10 +81,10 @@ export default function InfosGenerales() {
     if (!recu) return;
     setReglages({
       enTete: recu.enTete ?? "", pied: recu.pied ?? "",
-      largeurPapier: recu.largeurPapier, points: recu.pointsSurRecu,
+      largeurPapier: recu.largeurPapier, fidelite: recu.fideliteSurRecu,
       seuil: recu.seuilStockBas != null ? String(recu.seuilStockBas) : "",
     });
-  }, [recu?.enTete, recu?.pied, recu?.largeurPapier, recu?.pointsSurRecu, recu?.seuilStockBas]);
+  }, [recu?.enTete, recu?.pied, recu?.largeurPapier, recu?.fideliteSurRecu, recu?.seuilStockBas]);
 
   const droits = isAtLeastRole(
     snapshot?.membership
@@ -121,7 +121,7 @@ export default function InfosGenerales() {
         receipt_header: reglages.enTete,
         receipt_footer: reglages.pied,
         receipt_paper_width: reglages.largeurPapier,
-        show_loyalty_points_on_receipt: reglages.points,
+        show_loyalty_on_receipt: reglages.fidelite,
         low_stock_threshold: reglages.seuil === "" ? null : Number(reglages.seuil),
       });
       // Tirage ciblé : la vue se met à jour depuis le SERVEUR, jamais depuis
@@ -265,10 +265,10 @@ export default function InfosGenerales() {
         <Card className="mt-3">
           <CardHeader title="Affichage sur les reçus" />
           <Switch
-            label="Afficher les points de fidélité sur les reçus"
-            valeur={reglages.points}
+            label="Afficher la cagnotte de fidélité sur les reçus"
+            valeur={reglages.fidelite}
             desactive={!modifiable}
-            onChange={(v) => setReglages((r) => ({ ...r, points: v }))}
+            onChange={(v) => setReglages((r) => ({ ...r, fidelite: v }))}
           />
         </Card>
       </Section>

@@ -54,6 +54,55 @@ describe("message de refus", () => {
     );
   });
 
+  it("NOMME LA LIGNE d'une livraison refusée", () => {
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ UN REFUS DE LIGNE RESSORTAIT EN « rejected », SANS SA PHRASE.      │
+    // │                                                                    │
+    // │ Une livraison de masse est UN acte : son refus condamne les        │
+    // │ quarante lignes, et c'est le message qui doit dire laquelle        │
+    // │ corriger. L'ancienne lecture ne descendait que d'un niveau : le    │
+    // │ premier membre de `{ lines: { … } }` est un OBJET, aucune branche  │
+    // │ ne mordait, et le magasinier lisait un code technique sur l'écran  │
+    // │ même où il doit décider.                                           │
+    // └────────────────────────────────────────────────────────────────────┘
+    expect(
+      messageOf({
+        errors: {
+          code: "rejected",
+          errors: { lines: { "1": { quantity: ["Indiquez une quantité."] } } },
+        },
+      })
+    ).toBe("Ligne 2 : Indiquez une quantité.");
+  });
+
+  it("nomme aussi la ligne d'un serializer imbriqué en TABLEAU", () => {
+    // `sale.create` avec un article fautif rend `{ items: [ {}, { … } ] }` :
+    // c'est la même forme, et elle passait par le même silence.
+    expect(
+      messageOf({
+        errors: {
+          code: "rejected",
+          errors: { items: [{}, { quantity: ["Stock insuffisant."] }] },
+        },
+      })
+    ).toBe("Ligne 2 : Stock insuffisant.");
+  });
+
+  it("ne nomme AUCUNE ligne sur une liste de messages du même champ", () => {
+    // ⚠ LE CONTRÔLE. DRF rend toujours ses messages en tableau : prendre
+    //   l'indice de CE tableau ferait écrire « Ligne 1 : » devant chaque refus
+    //   ordinaire, et le mot « ligne » cesserait de vouloir dire quelque chose.
+    expect(
+      messageOf({ errors: { errors: { quantity: ["Trop grand.", "Entier."] } } })
+    ).toBe("Trop grand.");
+  });
+
+  it("ignore une phrase vide et continue de chercher", () => {
+    expect(
+      messageOf({ errors: { errors: { a: [""], b: ["Le vrai motif."] } } })
+    ).toBe("Le vrai motif.");
+  });
+
   it("se rabat sur le code quand il n'y a rien de lisible", () => {
     expect(messageOf({ errors: { code: "session_already_open" } })).toBe(
       "session_already_open"

@@ -45,6 +45,7 @@ const KIND_LABELS: Record<string, string> = {
   "customer.record_payment": "Règlement client",
   "customer.adjust_balance": "Ajustement de solde client",
   "stock_movement.create": "Mouvement de stock",
+  "stock_movement.bulk_create": "Approvisionnement de masse",
   "stock.unpack": "Déconditionnement",
   "stock_transfer.create": "Transfert de stock",
   "stock_transfer.approve": "Approbation de transfert",

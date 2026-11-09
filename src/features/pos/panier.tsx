@@ -21,8 +21,7 @@ import {
   evaluateCredit,
   loyaltyDiscount,
   maxGlobalDiscount,
-  maxUsablePoints,
-  minPointsToRedeem,
+  maxUsableCredit,
   tendersIn,
   saleCurrencyTotals,
   totauxParDevise,
@@ -37,7 +36,7 @@ import {
 } from "@vente-facile/core/pos";
 
 import { useSession } from "@/session/provider";
-import { pointsDuClient } from "./donnees";
+import { cagnotteDuClient } from "./donnees";
 import { detteEnAttente } from "./reserve-locale";
 import {
   avertissementDeStock,
@@ -61,10 +60,10 @@ export interface Totaux {
   remiseGlobale: number;
   remiseGlobaleMax: number;
   taxe: number;
-  /** Total BRUT, avant points. */
+  /** Total BRUT, avant cagnotte. */
   total: number;
   remiseFidelite: number;
-  /** Ce que le client doit, points déduits, en devise principale. */
+  /** Ce que le client doit, cagnotte déduite, en devise principale. */
   net: number;
 
   /** En devise de facture. */
@@ -79,7 +78,8 @@ export interface Totaux {
    * │ C'EST CE BLOC QUE LE TICKET IMPRIME, JAMAIS CELUI DU DESSUS.          │
    * │                                                                        │
    * │ Les champs en devise principale servent aux CONTRÔLES - solde du       │
-   * │ client, plafond de crédit, valeur des points, tous tenus en principale │
+   * │ client, plafond de crédit, cagnotte de fidélité, tous tenus en        │
+   * │ principale                                                             │
    * │ côté serveur. Ceux-ci servent à tout ce que le client LIT. Le ticket   │
    * │ prenait les premiers en les étiquetant de la devise de facture : sur   │
    * │ un établissement tenu en dollars qui facture en francs, il imprimait   │
@@ -89,14 +89,13 @@ export interface Totaux {
    * └────────────────────────────────────────────────────────────────────────┘
    */
   facture: SaleCurrencyTotals;
-  /** La même, points NON déduits : c'est elle que la PROFORMA imprime. */
+  /** La même, cagnotte NON déduite : c'est elle que la PROFORMA imprime. */
   factureBrute: SaleCurrencyTotals;
 
-  /** Solde de points du client, tel que le dernier tirage l'a déposé. */
-  soldePoints: number;
-  /** Points saisissables : bornés par le solde ET par le programme. */
-  pointsMax: number;
-  pointsMinimum: number;
+  /** Cagnotte du client, telle que le dernier tirage l'a déposée. */
+  cagnotte: number;
+  /** Montant saisissable : borné par la cagnotte ET par le programme. */
+  cagnotteMax: number;
   credit: CreditVerdict | null;
   /**
    * Dette des ventes à crédit de ce client encore en file, en devise
@@ -126,13 +125,13 @@ interface ValeurPanier {
   /** Formate un montant dans une devise, décimales comprises. */
   argent: (montant: number, code?: string) => string;
   /**
-   * Relit ce qui dépend du CLIENT : solde de points, dette en file.
+   * Relit ce qui dépend du CLIENT : cagnotte de fidélité, dette en file.
    *
    * Ces deux valeurs viennent de la base locale, que seul le tirage écrit. Une
    * synchronisation pendant qu'un panier est ouvert les change donc sous les
    * pieds de l'écran, et l'effet ne se rejoue pas : ni le client ni le nombre
    * de lignes n'ont bougé. Relevé à l'écran : le terminal annonçait encore
-   * « 372,65 points » alors que la base venait d'en recevoir 704,13, et le
+   * « 372,65 » de cagnotte alors que la base venait d'en recevoir 704,13, et le
    * caissier synchronise précisément pour avoir le bon chiffre.
    *
    * L'écran déclenche, le panier calcule : c'est le partage déjà en place
@@ -197,17 +196,17 @@ export function PanierProvider({ children }: { children: ReactNode }) {
   // ┌────────────────────────────────────────────────────────────────────────┐
   // │ LA FIDÉLITÉ ÉTAIT INERTE : le solde était passé EN DUR à zéro.        │
   // │                                                                        │
-  // │ `maxUsablePoints` borne par le solde ; avec zéro, il rend toujours     │
-  // │ zéro. Relevé à l'écran : « 372,65 points disponibles. Au plus 0        │
-  // │ utilisable sur cette vente. » Le comptoir affichait donc les points du │
-  // │ client, promettait une remise, et n'en laissait saisir aucune. Le      │
-  // │ back-office, lui, l'accorde.                                           │
+  // │ `maxUsableCredit` borne par le solde ; avec zéro, il rend toujours    │
+  // │ zéro. Relevé à l'écran : « 372,65 disponibles. Au plus 0 utilisable    │
+  // │ sur cette vente. » Le comptoir affichait donc la cagnotte du client,   │
+  // │ promettait une remise, et n'en laissait saisir aucune. Le back-office, │
+  // │ lui, l'accorde.                                                        │
   // │                                                                        │
   // │ Le solde vit ICI et non dans l'écran d'encaissement : c'est le panier  │
   // │ qui totalise, et un plafond calculé dans un écran serait un second     │
   // │ calcul de vente, précisément ce que la doctrine interdit.              │
   // └────────────────────────────────────────────────────────────────────────┘
-  const [soldePoints, setSoldePoints] = useState(0);
+  const [cagnotte, setCagnotte] = useState(0);
   const [relecture, setRelecture] = useState(0);
   // ┌────────────────────────────────────────────────────────────────────────┐
   // │ CETTE FONCTION DOIT ÊTRE STABLE, ET CE N'EST PAS UNE OPTIMISATION.     │
@@ -231,22 +230,22 @@ export function PanierProvider({ children }: { children: ReactNode }) {
     // moment : les séparer ferait deux effets sur la même clé.
     Promise.all([
       detteEnAttente(clientId),
-      clientId ? pointsDuClient(clientId) : Promise.resolve(0),
-    ]).then(([dette, points]) => {
+      clientId ? cagnotteDuClient(clientId) : Promise.resolve(0),
+    ]).then(([dette, solde]) => {
       if (!vivant) return;
       setDetteFile(dette);
-      setSoldePoints(points);
+      setCagnotte(solde);
     });
     return () => {
       vivant = false;
     };
-    // `etat.reglements` n'entre pas ici : ni la dette en file ni le solde de
-    // points ne changent pendant qu'on encaisse. Ils changent à l'encaissement
+    // `etat.reglements` n'entre pas ici : ni la dette en file ni la cagnotte
+    // ne changent pendant qu'on encaisse. Elles changent à l'encaissement
     // d'une AUTRE vente, donc au retour sur le comptoir.
   }, [clientId, etat.lignes.length, relecture]);
 
   // Les sous-totaux ANNONCÉS, par devise. Mémoïsé à part : il ne dépend ni des
-  // règlements ni des points, et le recalculer à chaque frappe d'encaissement
+  // règlements ni de la cagnotte, et le recalculer à chaque frappe d'encaissement
   // ferait relire toutes les lignes pour un chiffre qui n'a pas bougé.
   const parDevise = useMemo(
     () => totauxParDevise({
@@ -260,7 +259,7 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       lines: etat.lignes,
       globalDiscountAmount: etat.remiseGlobale,
     });
-    const remiseFidelite = loyaltyDiscount(brut.total, etat.points, programme);
+    const remiseFidelite = loyaltyDiscount(brut.total, etat.cagnotte, programme);
     const facture = saleCurrencyTotals({
       lines: etat.lignes,
       currencies: devises,
@@ -268,7 +267,7 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       globalDiscountAmount: etat.remiseGlobale,
       loyaltyDiscount: remiseFidelite,
     });
-    // Points NON déduits : la proforma ne les réserve pas.
+    // Cagnotte NON déduite : la proforma ne la réserve pas.
     const factureBrute =
       remiseFidelite > 0
         ? saleCurrencyTotals({
@@ -319,9 +318,8 @@ export function PanierProvider({ children }: { children: ReactNode }) {
         excedent > MONEY_EPS
           ? devises.convertMoney(excedent, deviseFacture, deviseMonnaie)
           : 0,
-      soldePoints,
-      pointsMax: maxUsablePoints(brut.total, soldePoints, programme),
-      pointsMinimum: minPointsToRedeem(programme),
+      cagnotte,
+      cagnotteMax: maxUsableCredit(brut.total, cagnotte, programme),
       detteEnAttente: dettePrimaire,
       credit: evaluateCredit(
         clientAJour,
@@ -331,7 +329,7 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       ),
       solde: excedent >= -MONEY_EPS,
     };
-  }, [etat, devises, deviseFacture, deviseMonnaie, programme, detteFile, soldePoints]);
+  }, [etat, devises, deviseFacture, deviseMonnaie, programme, detteFile, cagnotte]);
 
   const valeur = useMemo<ValeurPanier>(
     () => ({

@@ -92,6 +92,20 @@
       "when": 1792856551976,
       "tag": "0012_seuils_decimaux",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794138229506,
+      "tag": "0013_cagnotte_en_argent",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794169431697,
+      "tag": "0014_registre_cagnotte",
+      "breakpoints": true
     }
   ]
 }

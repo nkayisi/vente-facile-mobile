@@ -5,6 +5,7 @@
   },
   "build": {
     "development": {
+      "credentialsSource": "local",
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
@@ -20,6 +21,7 @@
       }
     },
     "preview": {
+      "credentialsSource": "local",
       "distribution": "internal",
       "channel": "preview",
       "android": {
@@ -34,6 +36,7 @@
       }
     },
     "production": {
+      "credentialsSource": "local",
       "distribution": "store",
       "channel": "production",
       "autoIncrement": true,

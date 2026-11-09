@@ -74,6 +74,7 @@ export type OperationKind =
   | "quotation.create"
   | "quotation.convert"
   | "stock_movement.create"
+  | "stock_movement.bulk_create"
   | "expense.create"
   // Les CINQ transitions d'une dépense, et l'annulation d'un mouvement. Elles
   // vivaient dans les vues du back-office, donc hors d'atteinte du journal :

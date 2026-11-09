@@ -57,7 +57,8 @@ export interface EtatPanier {
   client: ClientPos | null;
   deviseFacture: string | null;
   deviseMonnaie: string | null;
-  points: number;
+  /** Part de cagnotte de fidélité que le caissier veut employer, en principale. */
+  cagnotte: number;
   reglements: Reglement[];
   /** Vente portée au compte du client plutôt qu'encaissée intégralement. */
   aCredit: boolean;
@@ -85,7 +86,7 @@ export type ActionPanier =
   | { type: "client"; client: ClientPos | null }
   | { type: "deviseFacture"; code: string }
   | { type: "deviseMonnaie"; code: string }
-  | { type: "points"; points: number }
+  | { type: "cagnotte"; montant: number }
   | { type: "reglements"; reglements: Reglement[] }
   | { type: "credit"; actif: boolean; echeance?: string | null }
   | { type: "restaurer"; etat: EtatPanier }
@@ -97,7 +98,7 @@ export const PANIER_VIDE: EtatPanier = {
   client: null,
   deviseFacture: null,
   deviseMonnaie: null,
-  points: 0,
+  cagnotte: 0,
   reglements: [],
   aCredit: false,
   echeance: null,
@@ -226,7 +227,7 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
       // Retirer le client retire aussi ce qui n'a de sens qu'avec lui.
       return action.client
         ? { ...etat, client: action.client }
-        : { ...etat, client: null, points: 0, aCredit: false, echeance: null };
+        : { ...etat, client: null, cagnotte: 0, aCredit: false, echeance: null };
 
     case "deviseFacture":
       return { ...etat, deviseFacture: action.code };
@@ -234,8 +235,8 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
     case "deviseMonnaie":
       return { ...etat, deviseMonnaie: action.code };
 
-    case "points":
-      return { ...etat, points: Math.max(0, action.points) };
+    case "cagnotte":
+      return { ...etat, cagnotte: Math.max(0, action.montant) };
 
     case "reglements":
       return { ...etat, reglements: action.reglements };

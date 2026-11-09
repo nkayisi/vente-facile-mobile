@@ -20,7 +20,7 @@
  * **Le filtre `bas` reprend le critère de l'action `low-stock` du serveur.**
  * S'en écarter ferait diverger l'écran de la liste qui le déclenche.
  */
-import { and, asc, eq, like, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import {
   availableSplit,
@@ -37,6 +37,18 @@ import { brands, categories, products, stocks, units, warehouses } from "@/db/sc
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * Un prix de la fiche, ou `null`.
+ *
+ * ⚠ ZÉRO DEVIENT `null`, et ce n'est pas la même chose que `nb` : la colonne
+ * vaut « 0.00 » pour un prix jamais renseigné, et pré-remplir un champ avec
+ * zéro ferait lire « cet article coûte zéro » au lieu de le laisser invitant.
+ */
+const prixOuNull = (v: string | number | null | undefined): number | null => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) && n > 0 ? n : null;
 };
 
 // Réexportés pour ne casser aucun appelant : leur domicile est le module pur.
@@ -93,13 +105,56 @@ export interface LigneNiveau {
   suitLeStock: boolean;
   coutUnitaire: number;
   valeur: number;
+  /**
+   * Les QUATRE prix de la fiche, et la péremption.
+   *
+   * ⚠ `coutUnitaire` NE SUFFIT PAS, et il ne les remplace pas : c'est la
+   * VALORISATION du rayon (`avg_cost`, à défaut `cost_price`), celle qui sert à
+   * chiffrer un stock. Ces quatre-là sont les prix de la FICHE, ceux que le
+   * formulaire d'un seul mouvement pré-remplit (`chercherArticlesPourMouvement`)
+   * et sur lesquels se calcule une marge. Les confondre afficherait une marge
+   * assise sur le coût moyen pondéré du rayon plutôt que sur ce qu'on paie.
+   */
+  prixAchatDetail: number | null;
+  prixAchatContenant: number | null;
+  prixVenteDetail: number | null;
+  prixVenteGros: number | null;
+  /** `Product.has_expiry_date` : la péremption devient alors obligatoire. */
+  perissable: boolean;
+  /**
+   * Le nom de l'unité de DÉTAIL : bouteille, plaquette, pièce…
+   *
+   * ⚠ RENDU pour que la saisie nomme son canal. « Quantité en unité » est le
+   * mot de personne ; « Quantité en PLAQUETTES » est celui du marchand, et
+   * c'est déjà ce que `quantiteAffichee` emploie - il le lisait sans l'exposer.
+   */
+  uniteDetail: string | null;
 }
 
 export interface FiltresNiveaux {
   recherche?: string;
   entrepot?: string | null;
   categorie?: string | null;
+  /**
+   * Plusieurs catégories, SOUS-ARBRES déjà résolus par l'appelant.
+   *
+   * ⚠ ELLE EST EN SQL, ET ELLE DOIT L'ÊTRE. Filtrer après la fenêtre
+   * (`limite`) ferait lire trois cents rayons puis n'en garder aucun de la
+   * catégorie demandée : c'est le défaut que `/rayon` a déjà payé, « une liste
+   * filtrée était silencieusement tronquée, et `total` comptait la fenêtre ».
+   */
+  categories?: string[];
   etat?: EtatStock;
+  /**
+   * Ce qu'il faut RÉAPPROVISIONNER : sous un seuil réel, ruptures comprises.
+   *
+   * ⚠ CE N'EST PAS `etat: "bas"`, et la différence compte. `bas` exige
+   * `quantite > 0` - c'est un état d'affichage, exclusif de « rupture » - alors
+   * que `lignes_proposees` du serveur ne le teste pas : un rayon VIDE est
+   * précisément celui qu'il faut racheter en premier. Les deux listes
+   * diverger­aient sur tout article épuisé.
+   */
+  reassort?: boolean;
   limite?: number;
 }
 
@@ -170,6 +225,28 @@ function conditionsEtat(etat: EtatStock | undefined) {
   return [sql`${quantite} > 0 and not (${sousLeSeuil})`];
 }
 
+/**
+ * Ce qu'il faut RÉAPPROVISIONNER, en SQL : miroir de `lignes_proposees`.
+ *
+ * ⚠ CE N'EST PAS `conditionsEtat("bas")`, et c'est la seule différence :
+ * celui-là exige `quantite > 0`, parce que « bas » et « rupture » sont deux
+ * ÉTATS exclusifs à l'écran. Le critère de RÉASSORT, lui, inclut les ruptures -
+ * un rayon vide est celui qu'on rachète en premier. Les deux listes
+ * divergeraient sur tout article épuisé.
+ *
+ * Les trois conditions sont celles du serveur, et les trois comptent : le suivi
+ * (un service n'a pas de seuil), un seuil RÉEL (un `reorder_point` à zéro ne
+ * déclenche rien, sinon tout article épuisé serait réapprovisionné en
+ * permanence), et la quantité sous ce seuil. Le `cast` n'est pas optionnel,
+ * pour la raison écrite juste au-dessus.
+ */
+function conditionReassort() {
+  const quantite = sql`cast(${stocks.quantity} as real)`;
+  const seuil = sql`coalesce(cast(${products.reorderPoint} as real), 0)`;
+  const suivi = sql`coalesce(${products.trackInventory}, 0) = 1`;
+  return sql`${seuil} > 0 and ${quantite} <= ${seuil} and ${suivi}`;
+}
+
 export async function niveauxDeStock(
   f: FiltresNiveaux = {}
 ): Promise<{ elements: LigneNiveau[]; total: number }> {
@@ -181,6 +258,10 @@ export async function niveauxDeStock(
   const conditions = [
     f.entrepot ? eq(stocks.warehouseId, f.entrepot) : undefined,
     f.categorie ? eq(products.categoryId, f.categorie) : undefined,
+    // Plusieurs catégories : le SOUS-ARBRE que l'appelant a résolu. En SQL, et
+    // non après la fenêtre - voir la docstring de `FiltresNiveaux.categories`.
+    f.categories?.length ? inArray(products.categoryId, f.categories) : undefined,
+    f.reassort ? conditionReassort() : undefined,
     // ┌──────────────────────────────────────────────────────────────────────┐
     // │ LA RECHERCHE ÉTAIT ACCEPTÉE PUIS JETÉE, EN SILENCE.                 │
     // │                                                                      │
@@ -238,6 +319,10 @@ export async function niveauxDeStock(
       produit: products.name,
       sku: products.sku,
       costPrice: products.costPrice,
+      packageCostPrice: products.packageCostPrice,
+      sellingPrice: products.sellingPrice,
+      wholesalePrice: products.wholesalePrice,
+      perissable: products.hasExpiryDate,
       sellingMode: products.sellingMode,
       unitsPerPackage: products.unitsPerPackage,
       unite: uniteDetail.name,
@@ -316,6 +401,12 @@ export async function niveauxDeStock(
       suitLeStock: Boolean(l.trackInventory),
       coutUnitaire: cout,
       valeur: total * cout,
+      prixAchatDetail: prixOuNull(l.costPrice),
+      prixAchatContenant: prixOuNull(l.packageCostPrice),
+      prixVenteDetail: prixOuNull(l.sellingPrice),
+      prixVenteGros: prixOuNull(l.wholesalePrice),
+      perissable: Boolean(l.perissable),
+      uniteDetail: cond?.retailWord ?? l.unite ?? null,
     };
   });
 
@@ -346,6 +437,10 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
       sku: products.sku,
       barcode: products.barcode,
       costPrice: products.costPrice,
+      packageCostPrice: products.packageCostPrice,
+      sellingPrice: products.sellingPrice,
+      wholesalePrice: products.wholesalePrice,
+      perissable: products.hasExpiryDate,
       sellingMode: products.sellingMode,
       unitsPerPackage: products.unitsPerPackage,
       unite: uniteDetail.name,
@@ -421,6 +516,11 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
     suitLeStock: Boolean(l.trackInventory),
     coutUnitaire: cout,
     valeur: total * cout,
+    prixAchatDetail: prixOuNull(l.costPrice),
+    prixAchatContenant: prixOuNull(l.packageCostPrice),
+    prixVenteDetail: prixOuNull(l.sellingPrice),
+    prixVenteGros: prixOuNull(l.wholesalePrice),
+    perissable: Boolean(l.perissable),
     emplacement: null,
     dernierMouvement: s.lastMovementAt ?? null,
     dernierComptage: s.lastCountedAt ?? null,

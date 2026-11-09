@@ -153,9 +153,9 @@ export interface ContexteTicket {
    * └────────────────────────────────────────────────────────────────────────┘
    */
   moyens?: { id: string; name: string }[];
-  /** Points gagnés sur cette vente, tels que le serveur les accordera. */
-  pointsGagnes?: number;
-  pointsRestants?: number;
+  /** Cagnotte gagnée sur cette vente, telle que le serveur la créditera. */
+  gainFidelite?: number;
+  cagnotteRestante?: number;
   aCredit: boolean;
   /** Restant dû, en devise de facture. Zéro pour une vente réglée. */
   restantDu: number;
@@ -307,10 +307,15 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
     // rattaché, même sans gain : c'est justement le cumul qu'il vient lire.
     loyalty: etat.client
       ? {
-          show: contexte.snapshot?.settings?.show_loyalty_points_on_receipt ?? true,
-          earned: contexte.pointsGagnes ?? 0,
-          used: etat.points || undefined,
-          balance: contexte.pointsRestants,
+          show: contexte.snapshot?.settings?.show_loyalty_on_receipt ?? true,
+          earned: contexte.gainFidelite ?? 0,
+          used: etat.cagnotte || undefined,
+          balance: contexte.cagnotteRestante,
+          // ⚠ LA CAGNOTTE EST EN DEVISE PRINCIPALE, pas en devise de facture :
+          // une cagnotte de 12 500 FC rendue sous le symbole d'une facture en
+          // dollars se lirait « 12 500 $ ». C'est le défaut que le ticket a
+          // déjà payé sur les prix de ligne.
+          currency: contexte.devises?.primary,
         }
       : undefined,
   };

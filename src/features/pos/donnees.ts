@@ -115,18 +115,18 @@ export async function clientParId(id: string): Promise<ClientPos | null> {
 }
 
 /**
- * Points disponibles d'un client.
+ * Cagnotte de fidélité d'un client, en devise PRINCIPALE.
  *
  * Zéro quand la ligne n'existe pas : contrairement au stock, l'absence est ici
- * une information certaine. Un client sans ligne de fidélité n'a pas de points,
- * et proposer d'en dépenser produirait un refus serveur.
+ * une information certaine. Un client sans ligne de fidélité n'a aucune
+ * cagnotte, et proposer d'en dépenser produirait un refus serveur.
  */
-export async function pointsDuClient(customerId: string): Promise<number> {
+export async function cagnotteDuClient(customerId: string): Promise<number> {
   const [ligne] = await db
-    .select({ points: customerLoyalty.currentPoints })
+    .select({ cagnotte: customerLoyalty.balance })
     .from(customerLoyalty)
     .where(eq(customerLoyalty.customerId, customerId))
     .limit(1);
-  const n = Number(ligne?.points ?? 0);
+  const n = Number(ligne?.cagnotte ?? 0);
   return Number.isFinite(n) ? n : 0;
 }

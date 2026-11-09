@@ -89,7 +89,7 @@ export interface SessionSettings {
   receipt_header?: string;
   receipt_footer?: string;
   receipt_paper_width?: number;
-  show_loyalty_points_on_receipt?: boolean;
+  show_loyalty_on_receipt?: boolean;
   low_stock_threshold?: number;
 }
 
@@ -97,12 +97,15 @@ export interface SessionLoyaltyProgram {
   id: string;
   name: string;
   is_active: boolean;
-  points_calculation_type: "fixed_per_amount" | "percentage";
-  points_per_unit: number;
-  amount_per_unit: string;
-  points_percentage: string;
-  point_value: string;
-  min_points_to_redeem?: number;
+  /**
+   * Part de la facture rendue au client, en pourcentage.
+   *
+   * ⚠ C'EST LE SEUL BAREME. Le programme en portait deux - un mode « X points
+   * par tranche de Y » et un mode pourcentage - plus une valeur du point, un
+   * minimum d'utilisation et une expiration. Tout cela est retire : la cagnotte
+   * est de l'argent, et le marchand ne regle plus qu'un pourcentage.
+   */
+  earn_percent: string;
   max_redemption_percent?: string;
   /**
    * Borne DURE du plafond de rédemption, décidée par le modèle serveur.
@@ -121,6 +124,17 @@ export interface SessionLoyaltyProgram {
    * ne compile pas, alors que la donnée est là.
    */
   max_redemption_percent_ceiling?: string | number;
+  /**
+   * Valeur qu'avait UN point avant la bascule en argent. Transitoire.
+   *
+   * ⚠ ELLE NE SERT QU'AU SERVEUR, et elle est declaree ici parce que
+   * `toSnapshot` recopie le programme entier : sans la ligne de type, tout code
+   * qui la lirait ne compilerait pas. Le terminal ne doit RIEN en faire - il
+   * envoie desormais des montants, et c'est le serializer serveur qui emploie
+   * cette valeur pour relire une operation `points_used` mise en file AVANT la
+   * mise a jour.
+   */
+  legacy_point_value?: string | null;
 }
 
 export interface SessionDevice {

@@ -14,6 +14,8 @@ import m0009 from './0009_jeton_de_perimetre.sql';
 import m0010 from './0010_requisitions.sql';
 import m0011 from './0011_devise_par_ligne.sql';
 import m0012 from './0012_seuils_decimaux.sql';
+import m0013 from './0013_cagnotte_en_argent.sql';
+import m0014 from './0014_registre_cagnotte.sql';
 
   export default {
     journal,
@@ -30,7 +32,9 @@ m0008,
 m0009,
 m0010,
 m0011,
-m0012
+m0012,
+m0013,
+m0014
     }
   }
   

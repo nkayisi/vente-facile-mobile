@@ -13,13 +13,14 @@
  * solde n'a rien à devoir ; la fiche le dit, plutôt que d'afficher un zéro qui
  * pourrait passer pour une absence de données.
  */
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { deviseOuPrincipale } from "./devise-principale";
 import {
   customerBalances,
   customerLoyalty,
+  loyaltyTransactions,
   customerTransactions,
   customers,
   loyaltyPrograms,
@@ -105,9 +106,10 @@ export interface DetailClient {
   /** Ce qu'il a versé d'avance, par devise (part négative, en valeur absolue). */
   avances: SoldeDevise[];
 
-  points: number | null;
-  pointsGagnes: number;
-  pointsUtilises: number;
+  /** Cagnotte disponible, en devise PRINCIPALE. `null` : aucun registre. */
+  cagnotte: number | null;
+  cagnotteGagnee: number;
+  cagnotteUtilisee: number;
   programmeActif: boolean;
 
   facturesOuvertes: FactureOuverte[];
@@ -204,11 +206,11 @@ export async function detailClient(id: string): Promise<DetailClient | null> {
       .filter((s) => s.montant < 0)
       .map((s) => ({ devise: s.devise, montant: -s.montant })),
 
-    // `null` quand aucun registre n'existe pour ce client : « pas de points »
-    // et « points inconnus » ne se disent pas de la même façon.
-    points: loy ? nb(loy.currentPoints) : null,
-    pointsGagnes: nb(loy?.totalPointsEarned),
-    pointsUtilises: nb(loy?.totalPointsRedeemed),
+    // `null` quand aucun registre n'existe pour ce client : « aucune cagnotte »
+    // et « cagnotte inconnue » ne se disent pas de la même façon.
+    cagnotte: loy ? nb(loy.balance) : null,
+    cagnotteGagnee: nb(loy?.totalEarned),
+    cagnotteUtilisee: nb(loy?.totalUsed),
     programmeActif: Boolean(prog?.isActive),
 
     facturesOuvertes: ventes
@@ -364,4 +366,82 @@ export async function detailFournisseur(id: string): Promise<DetailFournisseur |
     compteBancaire: s.bankAccount?.trim() || null,
     actif: Boolean(s.isActive),
   };
+}
+
+/* ------------------------------------------------------------------------ */
+/* Le registre de la cagnotte                                               */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Libellés des mouvements de cagnotte, repris de `LoyaltyTransaction` du
+ * serveur.
+ *
+ * ⚠ `expire` N'A PLUS AUCUN PRODUCTEUR et il reste ici : l'expiration a été
+ * retirée avec les points, mais des lignes historiques le portent, et une
+ * écriture passée est une trace. La retirer ferait sortir ces lignes sans
+ * libellé. Même raison pour les deux annulations.
+ */
+export const TYPE_CAGNOTTE: Record<string, string> = {
+  earn: "Cagnotte gagnée",
+  redeem: "Cagnotte utilisée",
+  expire: "Cagnotte expirée",
+  adjust: "Ajustement manuel",
+  bonus: "Bonus",
+  earn_reversal: "Annulation gain",
+  redeem_reversal: "Annulation utilisation",
+};
+
+export interface MouvementCagnotte {
+  id: string;
+  type: string;
+  typeLabel: string;
+  /** Positif pour un gain, négatif pour un emploi. */
+  montant: number;
+  soldeApres: number;
+  description: string;
+  venteId: string | null;
+  date: Date | null;
+}
+
+/**
+ * Le registre de cagnotte d'un client, LU EN LOCAL.
+ *
+ * ⚠ IL SE LIT HORS LIGNE, et c'est la raison d'être de `loyalty_transactions`
+ * au manifeste de tirage. La fiche d'un client ne peut pas exiger la 2G pour
+ * dire ce qu'il a gagné - c'est au comptoir qu'on lui répond.
+ *
+ * ⚠ LA CAGNOTTE EST EN DEVISE PRINCIPALE, toujours : c'est en elle que le
+ * programme la calcule et que le comptoir l'emploie. Il n'y a donc rien à
+ * ventiler, et aucune devise à porter par ligne.
+ */
+export async function mouvementsCagnotte(
+  clientId: string,
+  limite = 100
+): Promise<MouvementCagnotte[]> {
+  // Le registre pend à la FICHE de fidélité, pas au client. Un client sans
+  // fiche n'a jamais rien gagné : la liste est vide, et c'est juste.
+  const [fiche] = await db
+    .select({ id: customerLoyalty.id })
+    .from(customerLoyalty)
+    .where(eq(customerLoyalty.customerId, clientId))
+    .limit(1);
+  if (!fiche) return [];
+
+  const lignes = await db
+    .select()
+    .from(loyaltyTransactions)
+    .where(eq(loyaltyTransactions.customerLoyaltyId, fiche.id))
+    .orderBy(desc(loyaltyTransactions.createdAt))
+    .limit(limite);
+
+  return lignes.map((l) => ({
+    id: l.id,
+    type: l.transactionType,
+    typeLabel: TYPE_CAGNOTTE[l.transactionType] ?? l.transactionType,
+    montant: nb(l.amount),
+    soldeApres: nb(l.balanceAfter),
+    description: l.description ?? "",
+    venteId: l.saleId ?? null,
+    date: l.createdAt ?? null,
+  }));
 }

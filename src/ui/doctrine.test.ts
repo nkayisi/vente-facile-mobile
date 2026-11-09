@@ -1541,10 +1541,10 @@ describe("la synchronisation automatique ne s'impose pas", () => {
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ UN CHAMP FACULTATIF QUE PERSONNE NE PASSE NE LÈVE RIEN.                  │
  * │                                                                          │
- * │ `ContexteTicket` déclarait `pointsGagnes` et `pointsRestants` depuis     │
+ * │ `ContexteTicket` déclarait `gainFidelite` et `cagnotteRestante` depuis   │
  * │ l'origine, et aucun appelant ne les fournissait : le bloc fidélité du    │
- * │ ticket ne sortait QUE lorsque des points étaient dépensés, et le client  │
- * │ rattaché qui venait lire son cumul ne le trouvait nulle part.            │
+ * │ ticket ne sortait QUE lorsque de la cagnotte était dépensée, et le       │
+ * │ client rattaché qui venait lire son cumul ne le trouvait nulle part.     │
  * │                                                                          │
  * │ Le type-check ne peut pas le voir - les deux champs sont facultatifs -   │
  * │ et la relecture du ticket non plus : il les lit correctement. Le défaut  │
@@ -1557,12 +1557,12 @@ describe("le ticket de vente annonce le cumul du client", () => {
     return /donneesTicketVente\(/.test(code);
   }
 
-  /** Y passe-t-il le solde de points ? */
+  /** Y passe-t-il la cagnotte du client ? */
   function passeLeSolde(code: string): boolean {
-    return /pointsRestants\s*:/.test(code);
+    return /cagnotteRestante\s*:/.test(code);
   }
 
-  it("tout appelant de `donneesTicketVente` passe `pointsRestants`", () => {
+  it("tout appelant de `donneesTicketVente` passe `cagnotteRestante`", () => {
     const fautifs: string[] = [];
     let balayes = 0;
     for (const f of fichiers(RACINE)) {
@@ -1584,7 +1584,7 @@ describe("le ticket de vente annonce le cumul du client", () => {
   it("le garde-fou MORD sur un appelant muet, et laisse passer le bavard", () => {
     expect(decritUnTicket("donnees: donneesTicketVente({ reference, etat })")).toBe(true);
     expect(passeLeSolde("donnees: donneesTicketVente({ reference, etat })")).toBe(false);
-    expect(passeLeSolde("pointsRestants: soldeApresVente(a, b, c),")).toBe(true);
+    expect(passeLeSolde("cagnotteRestante: cagnotteApresVente(a, b, c),")).toBe(true);
   });
 });
 
@@ -2771,5 +2771,137 @@ describe("la liste des devises n'a qu'une seule source", () => {
       if (vus.size >= 2) fautifs.push(`${chemin} : ${[...vus].sort().join(", ")}`);
     }
     expect(fautifs).toEqual([]);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA FIDÉLITÉ NE SE COMPTE PLUS EN POINTS, ET UN ÉCRAN OUBLIÉ LE DIRAIT   │
+ * │ ENCORE AU MARCHAND.                                                      │
+ * │                                                                          │
+ * │ La cagnotte est de l'ARGENT : le serveur ne porte plus ni valeur du      │
+ * │ point, ni mode de calcul par tranches, ni minimum d'utilisation. Le      │
+ * │ vocabulaire est ce qui restait, et c'est lui que le client lit - sur     │
+ * │ l'écran d'encaissement, sur sa fiche et sur son ticket.                  │
+ * │                                                                          │
+ * │ Un libellé en points ne lève RIEN : l'écran s'affiche, correctement,     │
+ * │ et annonce « 1 798,57 pts » sur une somme en francs. Personne ne saurait │
+ * │ ce que ce nombre vaut, et c'est précisément le concept qu'on retire.     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("la fidélité ne parle plus en points", () => {
+  /**
+   * La LIGNE mentionne-t-elle la fidélité ?
+   *
+   * ⚠ ON JUGE À LA LIGNE, PAS AU FICHIER. `feuille-encaissement.tsx` parle de
+   * fidélité ET de « point de vente » dans le même fichier : un contrôle par
+   * fichier crierait sur la seconde mention, et un garde-fou qui crie sur du
+   * code légitime finit désactivé.
+   */
+  function parleDeFidelite(ligne: string): boolean {
+    return /fidélit|fidelit|cagnotte|loyalty/i.test(ligne);
+  }
+
+  /**
+   * Y a-t-il « point » ou « pts » dans un libellé de cette ligne ?
+   *
+   * ⚠ ON NE REGARDE QUE L'INTÉRIEUR DES CHAÎNES. Hors chaîne, « point » est
+   * partout légitime - les classes `pt-2` de NativeWind, les points de chauffe
+   * d'une tête d'impression, `@point-of-sale/receipt-printer-encoder`. Et
+   * « point de vente » reste le nom du comptoir : il est exempté nommément.
+   */
+  function libelleEnPoints(ligne: string): boolean {
+    const chaines = ligne.match(/"[^"]*"|'[^']*'|`[^`]*`/g) ?? [];
+    return chaines.some((s) =>
+      /\bpoints?\b|\bpts\b/i.test(s.replace(/point\s+(de vente|d'entrée)/gi, "")),
+    );
+  }
+
+  it("aucun libellé de fidélité ne compte en points", () => {
+    const fautifs: string[] = [];
+    let balayes = 0;
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      if (chemin.includes(".test.")) continue;
+      // Ce garde-fou s'écrit lui-même en citant le mot qu'il interdit.
+      if (chemin.endsWith("ui/doctrine.test.ts")) continue;
+      // ⚠ `commentairesBlanchis` ET NON `sansCommentaires` : retirer les
+      // commentaires décale tous les index, et le garde-fou NOMMERAIT une ligne
+      // qui ne correspond à rien dans le fichier réel.
+      const lignes = commentairesBlanchis(readFileSync(f, "utf8")).split("\n");
+      for (const [i, ligne] of lignes.entries()) {
+        if (!parleDeFidelite(ligne)) continue;
+        balayes += 1;
+        if (libelleEnPoints(ligne)) fautifs.push(`${chemin}:${i + 1}`);
+      }
+    }
+    // ⚠ Un balayage qui ne balaie RIEN passe au vert et ne prouve rien : ce
+    // dépôt l'a déjà payé cinq fois.
+    expect(balayes).toBeGreaterThan(5);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le garde-fou MORD, et laisse passer ce qui est légitime", () => {
+    expect(libelleEnPoints('titre="Points de fidélité"')).toBe(true);
+    expect(libelleEnPoints("`${n} pts appliqués`")).toBe(true);
+    expect(libelleEnPoints('label="Déduire mes points"')).toBe(true);
+    // Le comptoir garde son nom, et une classe de mise en page n'est pas un
+    // libellé.
+    expect(libelleEnPoints('titre="Cagnotte de fidélité"')).toBe(false);
+    expect(libelleEnPoints('<View className="px-4 pt-2">')).toBe(false);
+    expect(libelleEnPoints('"la PAGE du point de vente"')).toBe(false);
+    // Et la ligne doit parler de fidélité pour être jugée.
+    expect(parleDeFidelite('titre="Cagnotte de fidélité"')).toBe(true);
+    expect(parleDeFidelite('<View className="px-4 pt-2">')).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Un canal de saisie montre toujours ses prix, ou le DIT par une condition    */
+/* -------------------------------------------------------------------------- */
+
+describe("aucun bloc de canal muet", () => {
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ `prixVisibles={false}` EN DUR EST TOUJOURS UN DÉFAUT.                  │
+   * │                                                                        │
+   * │ `BlocCanal` ne rend alors QUE sa quantité : les champs `cout` et       │
+   * │ `prix` qu'on lui passe deviennent inatteignables, en silence. La       │
+   * │ feuille d'approvisionnement de masse l'a payé - `coutContenant` et     │
+   * │ `coutDetail` vivaient dans son état et dans le corps envoyé, et aucun  │
+   * │ écran ne les rendait. Le magasinier ne pouvait pas dire ce qu'il avait │
+   * │ payé, le serveur valorisait l'entrée à l'ancien prix, et le coût moyen │
+   * │ pondéré du rayon partait faux.                                         │
+   * │                                                                        │
+   * │ Le cas légitime - « faux sur une SORTIE, elle n'a aucun prix d'achat à │
+   * │ déclarer » - s'écrit par une CONDITION (`prixVisibles={entree}`), qui  │
+   * │ nomme la raison. Un littéral ne nomme rien.                            │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  const EN_DUR = /prixVisibles=\{false\}/;
+
+  it("aucun appelant ne fige `prixVisibles` à faux", () => {
+    const fautifs: string[] = [];
+    let appelants = 0;
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      if (chemin.includes(".test.")) continue;
+      if (chemin.endsWith("ui/doctrine.test.ts")) continue;
+      const source = commentairesBlanchis(readFileSync(f, "utf8"));
+      if (!source.includes("prixVisibles=")) continue;
+      appelants += 1;
+      for (const [i, ligne] of source.split("\n").entries()) {
+        if (EN_DUR.test(ligne)) fautifs.push(`${chemin}:${i + 1}`);
+      }
+    }
+    // ⚠ Un balayage qui ne balaie RIEN passe au vert et ne prouve rien.
+    expect(appelants).toBeGreaterThan(0);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le garde-fou MORD, et laisse passer la condition", () => {
+    expect(EN_DUR.test("prixVisibles={false}")).toBe(true);
+    expect(EN_DUR.test("prixVisibles={entree}")).toBe(false);
+    expect(EN_DUR.test("prixVisibles={total > 0}")).toBe(false);
   });
 });

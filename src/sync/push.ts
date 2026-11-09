@@ -73,6 +73,10 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   // terminal ne relit jamais la fiche : le prochain préremplissage ressortirait
   // l'ANCIEN prix, et le comptoir vendrait au tarif d'avant.
   "stock_movement.create": ["stocks", "stock_movements", "products"],
+  // Une LIVRAISON entière : les mêmes tables, pour N articles d'un coup.
+  // `products` y est parce que le report des prix réécrit la fiche dans la
+  // même transaction : sans elle, le comptoir vendrait au tarif d'avant.
+  "stock_movement.bulk_create": ["stocks", "stock_movements", "products"],
   "stock.unpack": ["stocks", "stock_movements"],
   "stock_transfer.create": ["stock_transfers"],
   "stock_transfer.approve": ["stock_transfers"],
