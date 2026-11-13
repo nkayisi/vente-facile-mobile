@@ -11,10 +11,11 @@ import { Stack } from "expo-router";
  * │ TOUS NE SONT PAS DANS CE BLOC, ET C'EST VOULU.                          │
  * │                                                                          │
  * │ Le bloc ne porte que les TROIS écrans qu'on vient chercher au comptoir : │
- * │ synchronisation, opérations à corriger, imprimante. Les deux autres      │
- * │ routes vivent encore, atteintes depuis l'endroit où la question se pose  │
- * │ vraiment - `documents` depuis la fiche d'une caisse, `bascule` depuis le │
- * │ bandeau du tableau de bord, qui ne paraît que s'il reste quelque chose.  │
+ * │ synchronisation, opérations à corriger, imprimante. `documents` vit      │
+ * │ encore, atteint depuis l'endroit où la question se pose vraiment : la    │
+ * │ fiche d'une caisse. (`bascule`, qui lisait le fichier de l'ancienne      │
+ * │ application, est retiré : l'identifiant natif ayant changé deux fois, il │
+ * │ ne pouvait plus atteindre ce fichier.)                                   │
  * │                                                                          │
  * │ « Apparence » a disparu : un écran entier pour UN réglage qu'on change   │
  * │ quand la lumière change. C'est `ui/bascule-theme.tsx`, dans le pied du   │

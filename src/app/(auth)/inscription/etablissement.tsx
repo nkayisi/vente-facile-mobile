@@ -2,7 +2,11 @@
  * Inscription, étape 2 : « Votre établissement ».
  *
  * Miroir de la seconde étape de `app/auth/register/page.tsx` : les six types
- * d'établissement en tuiles, la devise, les conditions.
+ * d'établissement en tuiles, la devise, le pays, les conditions.
+ *
+ * **Le pays n'est plus figé à « RDC ».** La devise en suggère un tant que le
+ * marchand ne l'a pas choisi : un marchand de Douala qui prend le franc CFA est
+ * proposé au Cameroun, et son choix survit à un changement de devise.
  *
  * **La devise offre les VINGT ET UNE du noyau**, et elle n'en offrait que deux.
  * Le serveur ne connaissait alors que `CDF|USD` tandis que le sélecteur web en
@@ -25,7 +29,11 @@ import { useRef, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
-import { SUPPORTED_CURRENCIES } from "@vente-facile/core";
+import {
+  SUPPORTED_COUNTRIES,
+  SUPPORTED_CURRENCIES,
+  defaultCountryForCurrency,
+} from "@vente-facile/core";
 
 import { readableMessage } from "@/api/errors";
 import { useSession } from "@/session/provider";
@@ -72,6 +80,15 @@ const DEVISES: OptionSelect[] = SUPPORTED_CURRENCIES.map((d) => ({
   label: `${d.code} - ${d.name}`,
 }));
 
+/**
+ * Les pays du noyau, la même liste que le sélecteur web. La devise en suggère
+ * un (`defaultCountryForCurrency`) tant que le marchand n'en a pas choisi.
+ */
+const PAYS: OptionSelect[] = SUPPORTED_COUNTRIES.map((p) => ({
+  valeur: p.value,
+  label: p.label,
+}));
+
 export default function Etablissement() {
   const { saisie, poser } = useInscription();
   const { chooseOrganization, inscrire } = useSession();
@@ -115,7 +132,7 @@ export default function Etablissement() {
           organization_phone: saisie.organization_phone.trim(),
           business_type: saisie.business_type,
           currency: saisie.currency,
-          country: "RDC",
+          country: saisie.country,
         }
       );
       // La garde de session reprend la main : elle mène au code PIN.
@@ -249,11 +266,34 @@ export default function Etablissement() {
               // renseigné (`_layout.tsx` l'initialise à CDF), donc la liste
               // n'offre aucune entrée « aucun choix » et `v` ne peut pas être
               // nul. On garde la valeur courante plutôt que d'en inventer une.
-              if (v) poser({ currency: v });
+              if (!v) return;
+              // Le pays suit la devise tant qu'il n'a pas été choisi à la main.
+              poser(
+                saisie.paysChoisi
+                  ? { currency: v }
+                  : { currency: v, country: defaultCountryForCurrency(v) }
+              );
             }}
             options={DEVISES}
             titre="Devise par défaut"
             accessibilityLabel="Devise par défaut"
+          />
+        </FormField>
+
+        <FormField
+          label="Pays"
+          required
+          hint="Proposé d'après la devise. Il s'imprime en tête de vos tickets et se modifie ensuite dans les paramètres."
+        >
+          <ChampSelect
+            valeur={saisie.country}
+            onChange={(v) => {
+              // Obligatoire et toujours renseigné : pas d'entrée « aucun choix ».
+              if (v) poser({ country: v, paysChoisi: true });
+            }}
+            options={PAYS}
+            titre="Pays"
+            accessibilityLabel="Pays"
           />
         </FormField>
 

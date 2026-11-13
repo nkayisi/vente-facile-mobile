@@ -73,7 +73,10 @@ export function eligibiliteDuPlan(
   // 3. UN ESSAI N'EST PAS UNE PÉRIODE PAYÉE : on le convertit quand on veut.
   //    Sans cette branche, le plan d'essai et le premier plan payant partageant
   //    le palier 1, aucun plan n'était « strictement supérieur » et le marchand
-  //    ne pouvait rien régler avant d'être bloqué.
+  //    ne pouvait rien régler avant d'être bloqué. Depuis le 13 novembre 2026
+  //    l'essai est au palier 0 ; la branche reste, parce qu'elle porte deux
+  //    règles que le palier ne dit pas : un essai ne se prolonge pas, et on ne
+  //    relance pas un plan gratuit par-dessus.
   if (etat.essaiEnCours) {
     if (!payant) {
       return {

@@ -69,12 +69,10 @@ import {
   type Periode,
   type ProduitVendu,
 } from "@/data/tableau-de-bord";
-import { resteDeLAncienneApp } from "@/session/bascule";
 import { useSession } from "@/session/provider";
 import {
   AreaChart,
   Badge,
-  Banner,
   BoutonFiltres,
   Card,
   CardHeader,
@@ -385,10 +383,6 @@ export default function TableauDeBord() {
   });
   const listeAlertes = lesAlertes ?? [];
 
-  // La bascule depuis l'ancienne application. Aucune table ne la change : le
-  // fichier hérité est figé, on le lit une fois.
-  const { donnees: reste } = useLecture(resteDeLAncienneApp, { tables: [] });
-
   // L'anneau ventile par DEVISE, et la part se calcule sur le montant converti :
   // 7 728 FC et 132 775 $ ne sont pas comparables tels quels, et un anneau bâti
   // sur les montants natifs donnerait au franc la part du lion.
@@ -412,39 +406,6 @@ export default function TableauDeBord() {
         title="Tableau de bord"
         subtitle={`${snapshot?.organization.name ?? ""} • ${LABELS_PERIODE[periode].phrase}`}
       />
-
-      {/* ┌──────────────────────────────────────────────────────────────────┐
-          │ EN TÊTE DU TABLEAU DE BORD, ET NON DERRIÈRE UN MENU.            │
-          │                                                                  │
-          │ Les deux applications portent le même identifiant natif : la     │
-          │ nouvelle s'installe PAR-DESSUS l'ancienne et hérite de son bac à │
-          │ sable. Les ventes que l'ancienne n'avait pas poussées restent    │
-          │ dans un fichier que personne ne lit plus. Un marchand ne va pas  │
-          │ chercher cela dans un écran de réglages : ou bien on le lui dit  │
-          │ au premier regard, ou bien il ne le saura jamais.                │
-          │                                                                  │
-          │ On ne BLOQUE pas pour autant : il peut vendre, et l'empêcher     │
-          │ coûterait plus cher que le problème.                             │
-          └──────────────────────────────────────────────────────────────────┘ */}
-      {reste ? (
-        <View className="mt-4">
-          <Banner
-            tone="destructive"
-            title="Des ventes de l'ancienne application n'ont jamais été envoyées"
-            message={
-              reste.total < 0
-                ? "Un fichier hérité est présent sur ce terminal mais illisible. Ne désinstallez rien avant de l'avoir fait examiner."
-                : reste.total > 1
-                  ? `${reste.total} enregistrements attendent encore sur ce terminal, et cette application ne les reprend pas.`
-                  : "Un enregistrement attend encore sur ce terminal, et cette application ne le reprend pas."
-            }
-            action={{
-              label: "Voir quoi faire",
-              onPress: () => router.push("/appareil/bascule"),
-            }}
-          />
-        </View>
-      ) : null}
 
       {/* Sélecteur de période : les quatre boutons du web, « Mois » par défaut.
           Hauteur 44 points, la cible tactile du produit - le comptoir se tient

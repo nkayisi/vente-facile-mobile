@@ -2774,6 +2774,45 @@ describe("la liste des devises n'a qu'une seule source", () => {
   });
 });
 
+describe("le pays d'un établissement n'est jamais écrit en dur", () => {
+  /**
+   * ⚠ L'INSCRIPTION ENVOYAIT `country: "RDC"` EN DUR, sur les deux surfaces.
+   *
+   * Un marchand de Douala qui choisissait le franc CFA restait domicilié en RDC
+   * - sur ses tickets, dans l'administration - et aucun écran ne lui permettait
+   * de le corriger avant d'être entré dans l'application. Le pays vient
+   * désormais de `SUPPORTED_COUNTRIES` / `defaultCountryForCurrency` du noyau.
+   *
+   * Un pays écrit en dur ne lève rien : la boutique se crée, correctement, et
+   * c'est son adresse imprimée qui est fausse.
+   */
+  const sources = fichiers(RACINE);
+  const ECRAN = "app/(auth)/inscription/etablissement.tsx";
+
+  it("le balayage MORD : il voit l'écran d'inscription", () => {
+    expect(sources.some((f) => f.endsWith(ECRAN))).toBe(true);
+  });
+
+  it("aucun fichier n'envoie un pays littéral", () => {
+    const fautifs: string[] = [];
+    for (const fichier of sources) {
+      const code = commentairesBlanchis(readFileSync(fichier, "utf8"));
+      code.split("\n").forEach((ligne, i) => {
+        if (/\bcountry\s*:\s*["'`]/.test(ligne)) {
+          fautifs.push(`${relative(RACINE, fichier)}:${i + 1}`);
+        }
+      });
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("l'écran d'inscription tire ses pays du paquet partagé", () => {
+    const code = sansCommentaires(readFileSync(join(RACINE, ECRAN), "utf8"));
+    expect(code).toContain("SUPPORTED_COUNTRIES");
+    expect(code).toContain("defaultCountryForCurrency");
+  });
+});
+
 /**
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ LA FIDÉLITÉ NE SE COMPTE PLUS EN POINTS, ET UN ÉCRAN OUBLIÉ LE DIRAIT   │

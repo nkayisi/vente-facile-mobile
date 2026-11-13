@@ -14,6 +14,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { Stack, router } from "expo-router";
 import NetInfo from "@react-native-community/netinfo";
 
+import { DEFAULT_COUNTRY } from "@vente-facile/core";
+
 import type { SaisieCompte, TypeEtablissement } from "@/session/session";
 import { HorsLigneBloquant, Screen } from "@/ui";
 
@@ -22,6 +24,13 @@ export interface SaisieInscription extends SaisieCompte {
   organization_phone: string;
   business_type: TypeEtablissement;
   currency: string;
+  country: string;
+  /**
+   * Le pays a-t-il été choisi À LA MAIN ? Tant que non, il suit la devise ;
+   * ensuite il est au marchand. Il vit ici et non dans l'écran : revenir à
+   * l'étape précédente démonte l'écran, et le choix serait oublié.
+   */
+  paysChoisi: boolean;
 }
 
 const VIDE: SaisieInscription = {
@@ -35,6 +44,8 @@ const VIDE: SaisieInscription = {
   organization_phone: "",
   business_type: "boutique",
   currency: "CDF",
+  country: DEFAULT_COUNTRY,
+  paysChoisi: false,
 };
 
 interface Contexte {
