@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 40 tables, 587 colonnes.
+ * 40 tables, 589 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -137,6 +137,8 @@ export const units = sqliteTable("units", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   id: text("id").primaryKey(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   name: text("name").notNull(),
   symbol: text("symbol").notNull(),
   baseUnitId: text("base_unit_id"),

@@ -45,6 +45,10 @@ export const TRAITEMENT_LOCAL: Record<string, Traitement> = {
  * │ On choisit toujours l'oubli qui ne ment pas.                             │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
+ * L'identifiant d'installation aussi, et c'est lui qui en a le plus besoin :
+ * purgé à la déconnexion, il changerait juste avant l'enrôlement qui doit
+ * reconnaître le même téléphone (voir `data/reglages.ts`).
+ *
  * Le thème et l'imprimante décrivent le MATÉRIEL posé sur le comptoir : le
  * transport, l'adresse Bluetooth, la largeur du rouleau, la densité de chauffe.
  * Deux caissiers qui se partagent un terminal se partagent aussi l'imprimante ;
@@ -55,7 +59,11 @@ export const TRAITEMENT_LOCAL: Record<string, Traitement> = {
  * `printing/preferences.ts` : les importer ici tirerait `@/db/client` et ferait
  * de ce module autre chose qu'un module pur.
  */
-export const CLES_CONSERVEES = ["theme.preference", "imprimante"] as const;
+export const CLES_CONSERVEES = [
+  "theme.preference",
+  "imprimante",
+  "appareil.installation",
+] as const;
 
 /**
  * L'estampille : à qui cette base appartient-elle ?

@@ -9,12 +9,14 @@ import { Platform } from "react-native";
 
 import { api, request, setOrganizationId } from "@/api/client";
 import { ApiError } from "@/api/errors";
+import { identifiantInstallation } from "@/data/reglages";
 import { versionInstallee } from "@/features/mise-a-jour/version-installee";
 import {
   clearSession,
   clearTokens,
   readDeviceToken,
   readSnapshot,
+  readTokens,
   writeDeviceToken,
   writeSnapshot,
   writeTokens,
@@ -112,10 +114,11 @@ export async function enrollDevice(
 ): Promise<SessionSnapshot> {
   setOrganizationId(organizationId);
 
-  const data = await api.post<SessionResponse>(
-    "/auth/devices/enroll/",
-    describeDevice()
-  );
+  const data = await api.post<SessionResponse>("/auth/devices/enroll/", {
+    ...describeDevice(),
+    // Le même téléphone : le serveur révoque l'appareil qu'il y connaissait.
+    installation_id: await identifiantInstallation(),
+  });
 
   await writeTokens({ access: data.access, refresh: data.refresh });
   if (data.device_token) {
@@ -302,7 +305,20 @@ export async function refreshSnapshot(): Promise<RelectureSession> {
  */
 export async function logout(): Promise<void> {
   try {
-    await api.post("/auth/logout/", {});
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ LE CORPS ÉTAIT VIDE, DONC LE SERVEUR NE RÉVOQUAIT RIEN.            │
+    // │                                                                    │
+    // │ `LogoutView` ne met le jeton de rafraîchissement sur liste noire   │
+    // │ que s'il le reçoit : il restait valable sept jours, et le jeton    │
+    // │ d'appareil - trente jours glissants - restait ACTIF, sur un        │
+    // │ appareil dont le terminal venait d'effacer la clé. Les deux sont   │
+    // │ lus AVANT `clearSession`, qui les emporte.                         │
+    // └────────────────────────────────────────────────────────────────────┘
+    const [jetons, jetonAppareil] = await Promise.all([readTokens(), readDeviceToken()]);
+    await api.post("/auth/logout/", {
+      ...(jetons?.refresh ? { refresh: jetons.refresh } : {}),
+      ...(jetonAppareil ? { device_token: jetonAppareil } : {}),
+    });
   } catch {
     // Une déconnexion doit aboutir même hors ligne.
   }

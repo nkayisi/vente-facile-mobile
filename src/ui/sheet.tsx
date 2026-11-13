@@ -36,7 +36,6 @@ import {
   Animated,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable as PressableNatif,
   ScrollView,
   useWindowDimensions,
@@ -161,8 +160,25 @@ export function Sheet({
           accessibilityLabel="Fermer"
           onPress={onFermer}
         />
+        {/*
+          ┌──────────────────────────────────────────────────────────────────┐
+          │ `padding` SUR LES DEUX PLATEFORMES, ET SURTOUT PAS `undefined`. │
+          │                                                                  │
+          │ Sur Android, `undefined` s'en remettait au REDIMENSIONNEMENT de  │
+          │ la fenêtre - que le bord-à-bord n'assure plus : la feuille       │
+          │ restait sous le clavier, et le champ qu'on tapait avec elle. Le  │
+          │ rembourrage, lui, se calcule depuis la position du clavier par   │
+          │ rapport à la vue : si la fenêtre se redimensionne malgré tout,   │
+          │ la vue est déjà au-dessus du clavier, l'écart vaut zéro, et rien │
+          │ ne se compte deux fois.                                          │
+          │                                                                  │
+          │ ⚠ PAS `height` non plus : sa hauteur de départ est relevée au    │
+          │ premier rendu, et une feuille dont le panneau change (`retour`)  │
+          │ la rendrait fausse au premier échange.                           │
+          └──────────────────────────────────────────────────────────────────┘
+        */}
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
           // La feuille ne monte jamais au-delà de 90 % : au-dessus, elle se lit
           // comme un écran plein et le retour en arrière devient ambigu.
           style={{ maxHeight: height * 0.9 }}

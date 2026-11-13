@@ -75,8 +75,12 @@ describe("le classement des tables locales", () => {
 });
 
 describe("l'allowlist de `local_settings`", () => {
-  it("conserve le thème et l'imprimante", () => {
-    expect([...CLES_CONSERVEES]).toEqual(["theme.preference", "imprimante"]);
+  it("conserve le thème, l'imprimante et l'identifiant d'installation", () => {
+    expect([...CLES_CONSERVEES]).toEqual([
+      "theme.preference",
+      "imprimante",
+      "appareil.installation",
+    ]);
   });
 
   /**
@@ -120,11 +124,15 @@ describe("l'allowlist de `local_settings`", () => {
     const imprimante = readFileSync(join(RACINE, "printing/preferences.ts"), "utf8");
 
     const theme = /CLE_THEME\s*=\s*"([^"]+)"/.exec(reglages);
+    const installation = /CLE_INSTALLATION\s*=\s*"([^"]+)"/.exec(reglages);
     const impr = /^const CLE = "([^"]+)"/m.exec(imprimante);
 
     expect(theme).not.toBeNull();
+    expect(installation).not.toBeNull();
     expect(impr).not.toBeNull();
-    expect([...CLES_CONSERVEES].sort()).toEqual([theme![1], impr![1]].sort());
+    expect([...CLES_CONSERVEES].sort()).toEqual(
+      [theme![1], installation![1], impr![1]].sort()
+    );
   });
 });
 

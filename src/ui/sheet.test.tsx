@@ -24,7 +24,14 @@
  * est posee, et sur la bonne piece. Le reste se juge a l'oeil, sur un
  * terminal. C'est la meme reserve que `screen.test.tsx`.
  */
-import { Dimensions, ScrollView, Text as TexteNatif, View } from "react-native";
+import {
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text as TexteNatif,
+  View,
+} from "react-native";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 
 import { PLANCHER_BARRE_SYSTEME } from "@/features/diagnostic/marge-basse";
@@ -71,6 +78,28 @@ function styles(n: ReactTestInstance): Record<string, unknown> {
   const liste = Array.isArray(s) ? s : [s];
   return Object.assign({}, ...liste.filter(Boolean));
 }
+
+describe("le clavier, sur les deux plateformes", () => {
+  const plateformeOrigine = Platform.OS;
+  afterEach(() => {
+    Platform.OS = plateformeOrigine;
+  });
+
+  it.each(["ios", "android"] as const)(
+    "rembourre au-dessus du clavier sur %s, sans s'en remettre a la fenetre",
+    (os) => {
+      // `undefined` sur Android laissait la feuille SOUS le clavier depuis le
+      // bord-a-bord : la fenetre ne se redimensionne plus.
+      Platform.OS = os;
+      const rendu = rendre(
+        <Sheet ouvert onFermer={() => {}}>
+          <View />
+        </Sheet>
+      );
+      expect(rendu.root.findByType(KeyboardAvoidingView).props.behavior).toBe("padding");
+    }
+  );
+});
 
 describe("le pied d'une feuille", () => {
   it("laisse le DEFILEMENT ceder la place, et lui seul", () => {

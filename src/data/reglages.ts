@@ -12,6 +12,7 @@
  * de confort.
  */
 import { eq } from "drizzle-orm";
+import * as Crypto from "expo-crypto";
 
 import { db } from "@/db/client";
 import { localSettings } from "@/db/schema";
@@ -46,6 +47,39 @@ export async function ecrireReglage(cle: string, valeur: unknown): Promise<void>
 }
 
 export const CLE_THEME = "theme.preference";
+
+/**
+ * L'identifiant de CETTE installation de l'application.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CHAQUE RECONNEXION CRÉAIT UN APPAREIL DE PLUS CÔTÉ SERVEUR.             │
+ * │                                                                          │
+ * │ `enroll_device` fait un `create()` sec : un terminal qui se reconnecte - │
+ * │ jetons refusés, changement de compte, changement d'établissement -       │
+ * │ laissait derrière lui un appareil ACTIF dont plus personne ne détient le │
+ * │ jeton, et le gérant voyait sa liste d'appareils s'allonger de fantômes   │
+ * │ qu'il n'osait pas révoquer. Cet identifiant dit au serveur « c'est le    │
+ * │ même téléphone » : l'enrôlement suivant révoque l'ancien.               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ IL EST DANS `CLES_CONSERVEES`, ET C'EST TOUT SON OBJET : c'est un fait sur
+ *   le MATÉRIEL, comme l'imprimante. Purgé à la déconnexion, il changerait
+ *   précisément au moment où il doit rester le même.
+ *
+ * ⚠ CE N'EST NI UN SECRET NI UN `device_code` : il ne donne accès à rien, et le
+ *   code d'appareil, qui numérote les documents, reste attribué par le serveur
+ *   et n'est JAMAIS réemployé - une série repartirait de zéro.
+ */
+export const CLE_INSTALLATION = "appareil.installation";
+
+/** L'identifiant de l'installation, créé au premier appel puis conservé. */
+export async function identifiantInstallation(): Promise<string> {
+  const connu = await lireReglage<string | null>(CLE_INSTALLATION, null);
+  if (connu) return connu;
+  const neuf = Crypto.randomUUID();
+  await ecrireReglage(CLE_INSTALLATION, neuf);
+  return neuf;
+}
 
 /**
  * « Ce terminal a déjà vu la présentation. »
