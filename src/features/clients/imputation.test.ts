@@ -1,4 +1,4 @@
-import { imputer, montantAjustement } from "./imputation";
+import { detteNonVisible, imputer, montantAjustement } from "./imputation";
 
 const f = (reference: string, resteAPayer: number) => ({ reference, resteAPayer });
 
@@ -66,5 +66,29 @@ describe("signe d'un ajustement", () => {
     // aurait réduit la dette, et le reçu serait sorti juste.
     expect(montantAjustement("augmenter", -500)).toBe(500);
     expect(montantAjustement("reduire", -500)).toBe(-500);
+  });
+});
+
+describe("la dette que les factures visibles n'expliquent pas", () => {
+  const f = (reference: string, resteAPayer: number) => ({ reference, resteAPayer });
+
+  it("vaut zéro quand toutes les factures sont visibles", () => {
+    expect(detteNonVisible(300, [f("A", 100), f("B", 200)])).toBe(0);
+  });
+
+  it("vaut la différence quand des factures d'un collègue manquent", () => {
+    expect(detteNonVisible(500, [f("A", 100), f("B", 200)])).toBe(200);
+  });
+
+  it("vaut toute la dette quand aucune facture n'est visible", () => {
+    expect(detteNonVisible(80, [])).toBe(80);
+  });
+
+  it("ignore un reste d'arrondi", () => {
+    expect(detteNonVisible(300.004, [f("A", 300)])).toBe(0);
+  });
+
+  it("ne compte pas un reste négatif comme une facture", () => {
+    expect(detteNonVisible(100, [f("A", 100), f("B", -5)])).toBe(0);
   });
 });

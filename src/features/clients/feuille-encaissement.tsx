@@ -34,7 +34,7 @@ import { facturesOuvertes, type DetailClient } from "@/data/contact-detail";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { encaisserClient } from "@/features/clients/actes";
-import { imputer } from "@/features/clients/imputation";
+import { detteNonVisible, imputer } from "@/features/clients/imputation";
 import { moyensDePaiement } from "@/features/pos/donnees";
 import { chromeDeLaSession } from "@/features/pos/ticket";
 import { enregistrerEtImprimer } from "@/printing/jobs";
@@ -109,7 +109,20 @@ export function FeuilleEncaissement({
   const moyenChoisi = moyens?.find((m) => m.id === methode) ?? null;
   const saisi = Number(montant.replace(",", ".")) || 0;
   const ouvertes = factures ?? [];
-  const aDesFactures = ouvertes.length > 0;
+  /**
+   * La dette de cette devise que les factures visibles n'expliquent pas : celles
+   * d'un collègue, que ce terminal ne tire plus (lot L9) et que le serveur
+   * imputera quand même.
+   */
+  const nonVisible = detteNonVisible(
+    client.dettes.find((d) => d.devise === deviseImputation)?.montant ?? 0,
+    ouvertes
+  );
+  // ⚠ « Des factures » compte AUSSI celles qu'on ne voit pas : sans elles, un
+  //   caissier qui n'en voit aucune annoncerait une AVANCE, et son reçu sortirait
+  //   sous le préfixe `AVC` pour un versement que le serveur impute à des
+  //   factures. Le numéro voyage tel quel jusqu'au serveur.
+  const aDesFactures = ouvertes.length > 0 || nonVisible > 0;
 
   /**
    * L'imputation ANNONCÉE, calculée comme le serveur la fera. Aperçu, pas
@@ -197,9 +210,11 @@ export function FeuilleEncaissement({
   return (
     <Sheet ouvert={ouvert} onFermer={onFermer} titre="Encaisser du client">
       <Text variant="caption">
-        {aDesFactures
+        {ouvertes.length > 0
           ? `${ouvertes.length} ${ouvertes.length > 1 ? "factures ouvertes" : "facture ouverte"} en ${deviseImputation}. Les plus anciennes sont soldées d'abord.`
-          : "Aucune facture ouverte dans cette devise : ce versement sera une avance."}
+          : aDesFactures
+            ? `Les factures ouvertes de ce client en ${deviseImputation} ne sont pas les vôtres : le serveur les soldera, les plus anciennes d'abord.`
+            : "Aucune facture ouverte dans cette devise : ce versement sera une avance."}
       </Text>
 
       <FormField label="Moyen de paiement" required>
@@ -279,6 +294,11 @@ export function FeuilleEncaissement({
           {soldees.length === 0 && !partielle && avance <= 0 ? (
             <Text variant="caption">Rien à imputer.</Text>
           ) : null}
+          {nonVisible > 0 ? (
+            <Text variant="caption">
+              {"Aperçu sur vos factures seulement : le serveur peut solder d'abord celles d'un collègue, si elles sont plus anciennes."}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -307,6 +327,17 @@ export function FeuilleEncaissement({
               </View>
             ))}
           </View>
+        </View>
+      ) : null}
+
+      {nonVisible > 0 ? (
+        <View className="flex-row justify-between gap-3">
+          <Text variant="caption" className="min-w-0 flex-1">
+            Autres factures (non visibles)
+          </Text>
+          <Text numeric variant="caption" className="shrink-0">
+            {money.money(nonVisible, deviseImputation)}
+          </Text>
         </View>
       ) : null}
 

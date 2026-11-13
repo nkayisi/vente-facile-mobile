@@ -30,6 +30,7 @@ import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { STATUT_VENTE } from "@/data/ventes";
 import { enAttenteSurClient } from "@/features/clients/actes";
+import { detteNonVisible } from "@/features/clients/imputation";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
@@ -111,6 +112,16 @@ export default function FicheClient() {
 
   const aUneDette = c.dettes.length > 0;
   const aUneAvance = c.avances.length > 0;
+  /** Par devise, la dette que les factures listées n'expliquent pas. */
+  const nonVisibles = c.dettes
+    .map((d) => ({
+      devise: d.devise,
+      montant: detteNonVisible(
+        d.montant,
+        c.facturesOuvertes.filter((f) => f.devise === d.devise)
+      ),
+    }))
+    .filter((n) => n.montant > 0);
   const peutEcrire = can("customers.edit");
 
   return (
@@ -284,7 +295,7 @@ export default function FicheClient() {
           />
         </Card>
 
-        {c.facturesOuvertes.length > 0 ? (
+        {c.facturesOuvertes.length > 0 || nonVisibles.length > 0 ? (
           <Card className="p-0">
             <View className="p-4 pb-0">
               <CardHeader title={`Factures ouvertes (${c.facturesOuvertes.length})`} />
@@ -305,6 +316,20 @@ export default function FicheClient() {
                   icon="Receipt"
                   chevron
                   onPress={() => router.push(`/vente/${f.id}`)}
+                />
+              </View>
+            ))}
+            {/* Les factures d'un collègue, que ce terminal ne tire pas (lot L9) :
+                la dette les compte, la liste ne peut pas les montrer. Une ligne
+                par devise, jamais une somme entre devises. */}
+            {nonVisibles.map((n, i) => (
+              <View key={n.devise}>
+                {c.facturesOuvertes.length > 0 || i > 0 ? <Divider /> : null}
+                <ListItem
+                  title="Autres factures (non visibles)"
+                  subtitle="Faites par un collègue"
+                  value={money.money(n.montant, n.devise)}
+                  icon="Receipt"
                 />
               </View>
             ))}

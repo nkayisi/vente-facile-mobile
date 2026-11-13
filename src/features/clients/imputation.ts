@@ -78,3 +78,26 @@ export function imputer(montant: number, factures: FactureAImputer[]): Imputatio
 export function montantAjustement(sens: "augmenter" | "reduire", saisi: number): number {
   return (sens === "augmenter" ? 1 : -1) * Math.abs(saisi);
 }
+
+/**
+ * La part de la dette, dans une devise, que les factures VISIBLES n'expliquent pas.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN CAISSIER NE VOIT QUE SES PROPRES VENTES, ET LA DETTE EST CELLE DE     │
+ * │ TOUT L'ÉTABLISSEMENT.                                                    │
+ * │                                                                          │
+ * │ Depuis le lot L9, le tirage borne les ventes d'un caissier sans          │
+ * │ `sales.view_all` à celles qu'il a faites, comme le back-office. Le solde │
+ * │ du client (`customer_balances`), lui, reste entier. La différence, ce    │
+ * │ sont les factures d'un collègue - et le SERVEUR les impute aussi, les    │
+ * │ plus anciennes d'abord : l'imputation annoncée ne porte alors que sur    │
+ * │ les factures du caissier, et il faut le dire.                            │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Zéro quand tout s'explique. Même tolérance d'un demi-centième que `imputer`.
+ */
+export function detteNonVisible(dette: number, factures: FactureAImputer[]): number {
+  const visible = factures.reduce((s, f) => s + Math.max(0, f.resteAPayer), 0);
+  const reste = dette - visible;
+  return reste > 0.005 ? reste : 0;
+}
