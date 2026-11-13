@@ -178,7 +178,22 @@ const VIDE: PushOutcome = {
  * réseau laisse toutes les opérations en attente, sans perte et sans doublon,
  * puisque leur identifiant porte l'idempotence côté serveur.
  */
-export async function pushOnce(deviceId?: string): Promise<PushOutcome> {
+/**
+ * Options d'un envoi.
+ *
+ * `relire: false` - l'envoi d'ARRIÈRE-PLAN (lot L14) ne relit aucune table : il
+ * tourne sans écran, dans le temps que le système lui accorde, et un tirage
+ * interrompu à mi-page laisserait un état que le premier plan devrait de toute
+ * façon refaire. Le cycle suivant au premier plan relit tout.
+ */
+export interface OptionsEnvoi {
+  relire?: boolean;
+}
+
+export async function pushOnce(
+  deviceId?: string,
+  { relire = true }: OptionsEnvoi = {}
+): Promise<PushOutcome> {
   const lot = await readyToSend(BATCH_SIZE);
   if (lot.length === 0) return VIDE;
 
@@ -279,7 +294,7 @@ export async function pushOnce(deviceId?: string): Promise<PushOutcome> {
     }
   }
 
-  if (tables.size) await refreshTables(tables);
+  if (relire && tables.size) await refreshTables(tables);
 
   resultat.more = (await readyToSend(1)).length > 0;
   return resultat;
@@ -314,12 +329,15 @@ async function refreshTables(noms: Set<string>): Promise<void> {
  * application tuée pendant un envoi laisserait sinon ses opérations bloquées
  * pour toujours.
  */
-export async function pushAll(deviceId?: string): Promise<PushOutcome> {
+export async function pushAll(
+  deviceId?: string,
+  options: OptionsEnvoi = {}
+): Promise<PushOutcome> {
   await recoverInflight();
 
   const cumul = { ...VIDE };
   for (let tour = 0; tour < 50; tour++) {
-    const r = await pushOnce(deviceId);
+    const r = await pushOnce(deviceId, options);
     cumul.sent += r.sent;
     cumul.applied += r.applied;
     cumul.quarantined += r.quarantined;

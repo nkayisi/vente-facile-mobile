@@ -3010,3 +3010,34 @@ describe("aucun accord par raccourci entre parenthèses", () => {
   });
 });
 
+/* -------------------------------------------------------------------------- */
+/* La tâche d'arrière-plan est définie AVANT l'application                     */
+/* -------------------------------------------------------------------------- */
+
+describe("la poussée d'arrière-plan est chargée au démarrage du paquet", () => {
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ UNE TÂCHE DÉFINIE TROP TARD N'EXISTE PAS AU RÉVEIL.                   │
+   * │                                                                        │
+   * │ `TaskManager.defineTask` doit courir dans la portée globale : quand le │
+   * │ système réveille l'application pour la tâche, il n'y a ni écran ni     │
+   * │ routeur. Remettre `"main": "expo-router/entry"`, ou inverser les deux  │
+   * │ imports d'`index.js`, ne lèverait RIEN : la tâche resterait inscrite,  │
+   * │ le système la réveillerait, et elle ne ferait rien, indéfiniment.      │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  const PROJET = resolve(RACINE, "..");
+
+  it("`package.json` désigne `index.js`", () => {
+    const pkg = JSON.parse(readFileSync(join(PROJET, "package.json"), "utf8"));
+    expect(pkg.main).toBe("index.js");
+  });
+
+  it("`index.js` charge la tâche AVANT le routeur", () => {
+    const entree = sansCommentaires(readFileSync(join(PROJET, "index.js"), "utf8"));
+    const tache = entree.indexOf('import "./src/sync/arriere-plan"');
+    const routeur = entree.indexOf('import "expo-router/entry"');
+    expect(tache).toBeGreaterThanOrEqual(0);
+    expect(routeur).toBeGreaterThan(tache);
+  });
+});

@@ -32,6 +32,13 @@ let mockChangement: ((ev: { tableName: string }) => void) | null = null;
  * base, aucun rendu), donc le vrai tourne ici sans rien ouvrir. `requireActual`
  * est la seule référence hors portée qu'une fabrique de `jest.mock` accepte.
  */
+// La tâche d'arrière-plan n'existe que sur un appareil : ici, ses deux
+// fonctions d'inscription ne font rien.
+jest.mock("@/sync/arriere-plan", () => ({
+  inscrireTachePoussee: jest.fn(async () => undefined),
+  retirerTachePoussee: jest.fn(async () => undefined),
+}));
+
 jest.mock("@/sync", () => ({
   ...jest.requireActual("@/sync/verrou"),
   pushAll: (...a: unknown[]) => mockPushAll(...a),

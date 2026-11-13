@@ -47,6 +47,13 @@ const mockLogout = jest.fn(async () => {
  */
 let mockAttente: Promise<void> | null = null;
 
+// La tâche d'arrière-plan n'existe que sur un appareil : ici, ses deux
+// fonctions d'inscription ne font rien.
+jest.mock("@/sync/arriere-plan", () => ({
+  inscrireTachePoussee: jest.fn(async () => undefined),
+  retirerTachePoussee: jest.fn(async () => undefined),
+}));
+
 jest.mock("@/sync", () => {
   const verrou = jest.requireActual("@/sync/verrou") as typeof import("@/sync/verrou");
   return {

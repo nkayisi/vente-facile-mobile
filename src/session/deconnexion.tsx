@@ -32,6 +32,7 @@ import { useEnLigne } from "@/data/reseau";
 import { purgerBaseLocale } from "@/db/purge";
 import { envoyerPhotosEnAttente } from "@/features/inventaire/photos";
 import { attendreLibre, prendre, pushAll, rendre } from "@/sync";
+import { retirerTachePoussee } from "@/sync/arriere-plan";
 import { Button, Dialog, Spinner, Text } from "@/ui";
 
 import {
@@ -134,6 +135,10 @@ export function DeconnexionProvider({ children }: { children: ReactNode }) {
   const nettoyer = useCallback(async () => {
     setEtape("nettoyage");
     await logout();
+    // Un terminal sans session n'a plus rien à envoyer : la tâche d'arrière-
+    // plan s'abstiendrait de toute façon (jetons effacés), mais elle
+    // réveillerait l'appareil pour rien toutes les quinze minutes.
+    await retirerTachePoussee();
     // ┌──────────────────────────────────────────────────────────────────────┐
     // │ ON LAISSE LA GARDE DÉMONTER `(app)` AVANT DE TOUCHER À LA BASE.     │
     // │                                                                      │
@@ -169,6 +174,10 @@ export function DeconnexionProvider({ children }: { children: ReactNode }) {
   const partirSansEffacer = useCallback(async () => {
     setEtape("nettoyage");
     await logout();
+    // Un terminal sans session n'a plus rien à envoyer : la tâche d'arrière-
+    // plan s'abstiendrait de toute façon (jetons effacés), mais elle
+    // réveillerait l'appareil pour rien toutes les quinze minutes.
+    await retirerTachePoussee();
     setEtape("repos");
   }, [logout]);
 

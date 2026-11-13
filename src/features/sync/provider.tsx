@@ -66,6 +66,7 @@ import {
   unblockAll,
   type PullProgress,
 } from "@/sync";
+import { inscrireTachePoussee } from "@/sync/arriere-plan";
 import { useToast } from "@/ui";
 
 import { BarreProgressionSync } from "./barre-progression";
@@ -150,6 +151,11 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
+  // La poussée d'ARRIÈRE-PLAN (lot L14) s'inscrit quand une session prête est
+  // montée - ce fournisseur ne l'est qu'alors. L'inscription est idempotente.
+  useEffect(() => {
+    void inscrireTachePoussee();
+  }, []);
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
