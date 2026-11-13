@@ -8,6 +8,7 @@
  * ce qu'on la voie sur les deux plateformes.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import ts from "typescript";
 import { join, relative, resolve } from "node:path";
 
 import { tablesTirees } from "@/db/tables";
@@ -2962,24 +2963,40 @@ describe("aucun accord par raccourci entre parenthèses", () => {
    */
   const RACCOURCI = /[a-zàâçéèêëîïôûùü]\((?:s|es|e|x)\)/i;
 
-  /** Les morceaux de LIBELLÉ d'une ligne : ses chaînes, et son texte JSX. */
-  function libelles(ligne: string): string[] {
-    // Les interpolations `${…}` d'un gabarit sont du CODE : `${compte.get(s)}`
-    // n'est pas un libellé.
-    const chaines = (ligne.match(/"[^"]*"|'[^']*'|`[^`]*`/g) ?? []).map((c) =>
-      c.replace(/\$\{[^}]*\}/g, ""),
-    );
-    // Texte JSX : entre `>` et `<` sur la même ligne, accolades retirées - un
-    // appel `{ligne(s)}` est du CODE, pas un libellé. Les flèches `=>` sont
-    // neutralisées d'abord, sinon `(s) => f(s) < 2` passerait pour du texte.
-    const sansFleches = ligne.replace(/=>/g, "  ");
-    const jsx = (sansFleches.match(/>[^<>]*</g) ?? []).map((t) => t.replace(/\{[^}]*\}/g, ""));
-    return [...chaines, ...jsx];
+  /**
+   * Les morceaux de LIBELLÉ d'un fichier, avec leur ligne : ses chaînes, ses
+   * gabarits (interpolations exclues) et son texte JSX.
+   *
+   * ⚠ L'AST, et non des lignes. La première version cherchait le texte JSX
+   *   entre `>` et `<` d'une MÊME ligne : `restant(s)` posé seul sur sa ligne
+   *   lui échappait. Le balayage du back-office, écrit par AST, en a trouvé
+   *   une douzaine que le motif ligne à ligne ne voyait pas.
+   */
+  function libellesDe(code: string): { texte: string; ligne: number }[] {
+    const source = ts.createSourceFile("x.tsx", code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const sortie: { texte: string; ligne: number }[] = [];
+    const visiter = (n: ts.Node) => {
+      if (
+        ts.isStringLiteral(n) ||
+        ts.isNoSubstitutionTemplateLiteral(n) ||
+        ts.isTemplateHead(n) ||
+        ts.isTemplateMiddle(n) ||
+        ts.isTemplateTail(n) ||
+        ts.isJsxText(n)
+      ) {
+        sortie.push({
+          texte: n.text,
+          ligne: source.getLineAndCharacterOfPosition(n.getStart(source)).line + 1,
+        });
+      }
+      ts.forEachChild(n, visiter);
+    };
+    visiter(source);
+    return sortie;
   }
 
-  function porteUnRaccourci(ligne: string): boolean {
-    return libelles(ligne).some((l) => RACCOURCI.test(l));
-  }
+  const fautes = (code: string) =>
+    libellesDe(code).filter((l) => RACCOURCI.test(l.texte)).map((l) => l.ligne);
 
   it("aucun libellé ne s'accorde par « (s) »", () => {
     const fautifs: string[] = [];
@@ -2988,25 +3005,24 @@ describe("aucun accord par raccourci entre parenthèses", () => {
       const chemin = relative(RACINE, f);
       if (chemin.endsWith("ui/doctrine.test.ts")) continue;
       balayes += 1;
-      const lignes = commentairesBlanchis(readFileSync(f, "utf8")).split("\n");
-      for (const [i, ligne] of lignes.entries()) {
-        if (porteUnRaccourci(ligne)) fautifs.push(`${chemin}:${i + 1}`);
-      }
+      for (const ligne of fautes(readFileSync(f, "utf8"))) fautifs.push(`${chemin}:${ligne}`);
     }
     expect(balayes).toBeGreaterThan(100);
     expect(fautifs).toEqual([]);
   });
 
   it("le garde-fou MORD, et laisse passer le code", () => {
-    expect(porteUnRaccourci("title={`${n} opération(s) refusée(s)`}")).toBe(true);
-    expect(porteUnRaccourci('<Text variant="caption">{n} unité(s)</Text>')).toBe(true);
-    expect(porteUnRaccourci('libelle="Article(s) choisi(s)"')).toBe(true);
+    expect(fautes("const t = `${n} opération(s) refusée(s)`;")).toEqual([1]);
+    expect(fautes('<Text variant="caption">{n} unité(s)</Text>;')).toEqual([1]);
+    expect(fautes('const l = "Article(s) choisi(s)";')).toEqual([1]);
+    // Le trou de la première version : une ligne de texte JSX NUE.
+    expect(fautes("<Text>\n  {n}{\" \"}\n  restant(s)\n</Text>;")).toEqual([3]);
     // Un appel de fonction n'est pas un libellé.
-    expect(porteUnRaccourci("{ligne(s)}")).toBe(false);
-    expect(porteUnRaccourci("const t = totalSaisi(s);")).toBe(false);
-    expect(porteUnRaccourci(".filter((s) => montant(s) < seuil)")).toBe(false);
+    expect(fautes("const x = <View>{ligne(s)}</View>;")).toEqual([]);
+    expect(fautes("const t = totalSaisi(s);")).toEqual([]);
+    expect(fautes("lignes.filter((s) => montant(s) < seuil);")).toEqual([]);
     // Une parenthèse de COMPTE dans un libellé n'est pas un raccourci d'accord.
-    expect(porteUnRaccourci('label={`${STATUT[s].label} (${parStatut.get(s) ?? 0})`}')).toBe(false);
+    expect(fautes("const l = `${STATUT[s].label} (${parStatut.get(s) ?? 0})`;")).toEqual([]);
   });
 });
 
