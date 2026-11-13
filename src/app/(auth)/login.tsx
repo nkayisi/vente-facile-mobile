@@ -10,7 +10,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
-import { ApiError } from "@/api/errors";
+import { messageEchecConnexion } from "@/session/echec-connexion";
 import { MOTIF_DEMARRAGE, useSession } from "@/session/provider";
 import { Banner, Button, FormField, Input, Logo, Pressable, Screen, Text } from "@/ui";
 
@@ -54,15 +54,7 @@ export default function Login() {
         params: { organizations: JSON.stringify(organizations) },
       });
     } catch (e) {
-      setError(
-        e instanceof ApiError && e.kind === "network"
-          ? "Impossible de joindre le serveur. Vérifiez votre connexion."
-          : e instanceof ApiError && e.kind === "auth"
-            ? "Adresse ou mot de passe incorrect."
-            : e instanceof Error
-              ? e.message
-              : "La connexion a échoué."
-      );
+      setError(messageEchecConnexion(e));
     } finally {
       setBusy(false);
     }
