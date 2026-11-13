@@ -30,6 +30,17 @@ describe("messageEchecConnexion", () => {
     expect(messageEchecConnexion(new ApiError("throttled", "Erreur 429", { status: 429 }))).toBe(PHRASE_ATTENTE);
   });
 
+  it("dit la suspension de l'établissement, jamais « mot de passe incorrect »", () => {
+    const suspendu = new ApiError(
+      "auth",
+      "Cet établissement est suspendu par Vente Facile. Contactez le support.",
+      { status: 403, code: "organization_suspended" }
+    );
+    expect(messageEchecConnexion(suspendu)).toBe(
+      "Cet établissement est suspendu par Vente Facile. Contactez le support."
+    );
+  });
+
   it("distingue le réseau d'un refus d'identité", () => {
     expect(messageEchecConnexion(new ApiError("network", "Le serveur est injoignable."))).toBe(PHRASE_RESEAU);
     expect(messageEchecConnexion(new ApiError("auth", "Email ou mot de passe incorrect", { status: 401 }))).toBe(

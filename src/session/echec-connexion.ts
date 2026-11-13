@@ -28,7 +28,11 @@ export function messageEchecConnexion(erreur: unknown): string {
     case "network":
       return PHRASE_RESEAU;
     case "auth":
-      return PHRASE_IDENTIFIANTS;
+      // ⚠ Un 403 n'est pas toujours un mot de passe : un compte dont tous les
+      // établissements sont suspendus est refusé à la porte, avec la phrase du
+      // serveur. Lui dire « mot de passe incorrect » le ferait retaper un mot
+      // de passe juste.
+      return erreur.code === "organization_suspended" && erreur.message ? erreur.message : PHRASE_IDENTIFIANTS;
     case "throttled":
       // `ApiError.message` porte déjà la phrase du serveur, minutes comprises ;
       // le repli ne sert que si le corps n'en avait pas.

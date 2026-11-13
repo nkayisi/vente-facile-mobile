@@ -15,6 +15,7 @@
 import {
   carteAbonnement,
   carteMiseAJour,
+  carteSuspension,
   partsDe,
 } from "./carte-en-souffrance";
 import { FILE_VIDE, type EtatFile } from "./deconnexion-regles";
@@ -177,5 +178,33 @@ describe("la carte d'abonnement", () => {
     expect(c.phrase).toContain("a été refusée");
     expect(c.phrase).toContain("ne repartira pas d'un règlement");
     expect(c.ton).toBe("alerte");
+  });
+});
+
+describe("la carte de suspension", () => {
+  it("n'affirme rien tant que la base n'a pas répondu", () => {
+    const c = carteSuspension({ file: FILE_VIDE, inconnu: true });
+    expect(c.phrase).not.toContain(AFFIRMATION);
+    expect(c.envoi).toBeNull();
+  });
+
+  it("OFFRE l'envoi : le serveur tolère la poussée d'un établissement suspendu", () => {
+    const c = carteSuspension({ file: file({ pending: 2 }), inconnu: false });
+    expect(c.envoi).toBe("Envoyer mes 2 opérations");
+    expect(c.phrase).toContain("la suspension n'empêche pas cet envoi");
+  });
+
+  it("ne promet JAMAIS l'envoi d'une photo, que la suspension refuse", () => {
+    // Une photo voyage par un `PATCH` ordinaire : le bouton qui la compterait
+    // partirait vers un refus.
+    const seule = carteSuspension({ file: file({ photos: 3 }), inconnu: false });
+    expect(seule.envoi).toBeNull();
+    expect(seule.phrase).toContain("à la réactivation");
+    const melee = carteSuspension({ file: file({ pending: 1, photos: 2 }), inconnu: false });
+    expect(melee.envoi).toBe("Envoyer mon opération");
+  });
+
+  it("dit que tout est parti quand rien n'attend", () => {
+    expect(carteSuspension({ file: FILE_VIDE, inconnu: false }).phrase).toContain(AFFIRMATION);
   });
 });

@@ -20,6 +20,7 @@ const mockToast = { succes: jest.fn(), erreur: jest.fn(), info: jest.fn() };
 
 let mockEnLigne = true;
 let mockStatus = "ready";
+let mockSnapshot: unknown = null;
 let mockRetourReseau: (() => void) | null = null;
 let mockChangement: ((ev: { tableName: string }) => void) | null = null;
 
@@ -55,7 +56,7 @@ jest.mock("@/data/reglages", () => ({
 }));
 
 jest.mock("@/session/provider", () => ({
-  useSession: () => ({ snapshot: null, status: mockStatus, refresh: mockRefresh }),
+  useSession: () => ({ snapshot: mockSnapshot, status: mockStatus, refresh: mockRefresh }),
 }));
 
 jest.mock("@/features/inventaire/photos", () => ({
@@ -120,6 +121,7 @@ describe("le fournisseur de synchronisation", () => {
     jest.clearAllMocks();
     mockEnLigne = true;
     mockStatus = "ready";
+    mockSnapshot = null;
     mockRetourReseau = null;
     mockChangement = null;
     mockPushAll.mockResolvedValue(undefined);
@@ -150,6 +152,19 @@ describe("le fournisseur de synchronisation", () => {
     await avancer(DELAI_ENTREE_MS);
     expect(mockPushAll).toHaveBeenCalledTimes(1);
     expect(mockPullAll).toHaveBeenCalledTimes(1);
+    act(() => arbre.unmount());
+  });
+
+  it("un établissement SUSPENDU ne fait que pousser, puis relire la session", async () => {
+    // Le serveur ne tolère que la poussée : le tirage répondrait 403 à chaque
+    // cycle. Le réveil, lui, rapporte la réactivation.
+    mockSnapshot = { organization: { id: "o", name: "Boutique", is_active: false }, device: { id: "d" } };
+    const arbre = monter();
+    await souffler();
+    await avancer(DELAI_ENTREE_MS);
+    expect(mockPushAll).toHaveBeenCalledTimes(1);
+    expect(mockPullAll).not.toHaveBeenCalled();
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
     act(() => arbre.unmount());
   });
 

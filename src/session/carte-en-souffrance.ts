@@ -286,3 +286,61 @@ export function carteAbonnement(vue: {
     envoi: null,
   };
 }
+
+/**
+ * La carte du voile de SUSPENSION.
+ *
+ * ⚠ **LA POUSSÉE PASSE, LES PHOTOS NON.** Le serveur tolère l'envoi du journal
+ * d'un établissement suspendu, pour ne perdre aucune vente déjà encaissée. Une
+ * photo d'article, elle, voyage par un `PATCH` ordinaire, que la suspension
+ * refuse : elle se range donc avec ce qui est RETENU, jamais dans le bouton
+ * d'envoi, qui promettrait sinon un envoi qui échouera.
+ */
+export function carteSuspension(vue: {
+  file: EtatFile;
+  inconnu: boolean;
+}): CarteEnSouffrance {
+  if (vue.inconnu) {
+    return {
+      titre: "Vos ventes sont conservées",
+      phrase: "On regarde ce qui reste à envoyer depuis ce terminal.",
+      ton: "neutre",
+      envoi: null,
+    };
+  }
+
+  const p = partsDe(vue.file);
+
+  if (rienEnJeu(p)) {
+    return {
+      titre: "Vos ventes sont intactes",
+      phrase: "Tout ce qui a été encaissé sur ce terminal est déjà parti au serveur.",
+      ton: "neutre",
+      envoi: null,
+    };
+  }
+
+  const parts: string[] = [];
+  if (p.aEnvoyer > 0) {
+    parts.push(
+      `${operations(p.aEnvoyer)} n'${p.aEnvoyer > 1 ? "ont" : "a"} pas encore atteint le ` +
+        `serveur. ${p.aEnvoyer > 1 ? "Envoyez-les" : "Envoyez-la"} : la suspension n'empêche ` +
+        "pas cet envoi."
+    );
+  }
+  if (p.photos > 0) {
+    parts.push(
+      `${photos(p.photos)} ${p.photos > 1 ? "attendent" : "attend"} aussi ${p.photos > 1 ? "leur" : "son"} ` +
+        `envoi : ${p.photos > 1 ? "elles partiront" : "elle partira"} à la réactivation de l'établissement.`
+    );
+  }
+  const retenu = phraseRetenu(p);
+  if (retenu) parts.push(retenu);
+
+  return {
+    titre: "Il reste des données sur ce terminal",
+    phrase: parts.join(" "),
+    ton: "alerte",
+    envoi: p.aEnvoyer > 0 ? libelleBoutonEnvoi({ ...p, photos: 0 }) : null,
+  };
+}

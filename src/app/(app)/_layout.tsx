@@ -5,6 +5,7 @@ import { useCanalDeNotification } from "@/notifications/use-canal";
 import { useLogoDeLEtablissement } from "@/printing/use-logo-etablissement";
 import { GardeAbonnement } from "@/features/abonnement/garde";
 import { GardeMiseAJour } from "@/features/mise-a-jour/garde";
+import { GardeSuspension } from "@/features/suspension/garde";
 import { PanierProvider } from "@/features/pos/panier";
 import { SynchronisationProvider } from "@/features/sync/provider";
 import { EcranErreur } from "@/ui/ecran-erreur";
@@ -102,14 +103,18 @@ export default function AppLayout() {
             tranche : une mise à jour peut réparer un verdict d'abonnement
             faux, un paiement ne répare jamais un vieux binaire.
           */}
+          {/* La suspension passe avant l'abonnement : régler l'abonnement d'un
+              établissement suspendu ne le rouvrirait pas. */}
           <GardeMiseAJour>
-            <GardeAbonnement>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
-                <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
-              </Stack>
-            </GardeAbonnement>
+            <GardeSuspension>
+              <GardeAbonnement>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
+                  <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
+                </Stack>
+              </GardeAbonnement>
+            </GardeSuspension>
           </GardeMiseAJour>
         </PanierProvider>
       </SynchronisationProvider>

@@ -54,6 +54,7 @@ import { ecrireReglage, lireReglage } from "@/data/reglages";
 import { surRetourReseau, useEnLigne } from "@/data/reseau";
 import { envoyerPhotosEnAttente } from "@/features/inventaire/photos";
 import { jugerAcces } from "@/features/abonnement/porte";
+import { etablissementSuspendu } from "@/features/suspension/porte";
 import { useSession } from "@/session/provider";
 import {
   estPris,
@@ -256,6 +257,26 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
         // `device_id` (il ne sert qu'à la numérotation des ventes). Refuser de
         // pousser enfermerait dehors un terminal démarré à froid sans réseau.
         await pushAll(snapshotRef.current?.device?.id);
+
+        // ┌──────────────────────────────────────────────────────────────────┐
+        // │ SUSPENDU : LA POUSSÉE, PUIS LE RÉVEIL, ET RIEN D'AUTRE.         │
+        // │                                                                  │
+        // │ Le serveur tolère la seule poussée du journal d'un établissement │
+        // │ suspendu ; les photos et le tirage répondraient 403 à chaque     │
+        // │ cycle, et l'écran Synchronisation se remplirait d'échecs qui ne  │
+        // │ disent rien de plus que le voile. Le réveil, lui, répond : c'est │
+        // │ lui qui rapporte la réactivation et lève le voile.               │
+        // └──────────────────────────────────────────────────────────────────┘
+        if (etablissementSuspendu(snapshotRef.current?.organization)) {
+          try {
+            await rafraichirSession();
+          } catch {
+            // L'instantané reste celui d'avant : le voile ne bouge pas.
+          }
+          setErreur(null);
+          if (doitNotifier(depuis)) toast.info("Établissement suspendu : seules les ventes en attente ont été envoyées.");
+          return;
+        }
 
         // ┌──────────────────────────────────────────────────────────────────┐
         // │ LES PHOTOS PARTENT APRÈS LA POUSSÉE, ET L'ORDRE EST OBLIGÉ.     │

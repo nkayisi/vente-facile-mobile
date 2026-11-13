@@ -43,6 +43,14 @@ export interface SessionOrganization {
    * d'organisation, donc du snapshot de session, et se rafraîchit avec lui.
    */
   max_sale_discount_percent?: string | number;
+  /**
+   * Faux quand Vente Facile a SUSPENDU l'établissement.
+   *
+   * ⚠ FACULTATIF, et l'absence vaut OUVERT : un instantané écrit avant cette
+   * version ne porte pas le champ, et fermer sur son absence mettrait dehors
+   * tous les terminaux en service le jour de la mise à jour.
+   */
+  is_active?: boolean;
 }
 
 export interface SessionMembership {
