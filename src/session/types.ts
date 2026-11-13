@@ -156,13 +156,12 @@ export interface SessionDevice {
  * L'abonnement, tel que le terminal doit le comprendre.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ IL DESCEND PAR LA SESSION D'APPAREIL PARCE QU'IL NE PEUT PAS DESCENDRE   │
- * │ AILLEURS.                                                                │
+ * │ IL DESCEND PAR LA SESSION D'APPAREIL PARCE QU'IL FAUT JUGER HORS LIGNE.  │
  * │                                                                          │
- * │ `/subscriptions/status/` exige `subscription.view`, accordée au SEUL     │
- * │ propriétaire. Or un terminal est tenu par un CAISSIER : une porte        │
- * │ adossée à cet endpoint ne se fermerait jamais pour la population même    │
- * │ qu'il faut retenir. Le chemin de réveil, lui, sert tous les rôles.       │
+ * │ `/subscriptions/status/` rend le verdict à tout membre (depuis le        │
+ * │ 2026-11-13), mais EN LIGNE seulement, et sans `access_until`. Le réveil, │
+ * │ lui, est mis en cache pour un démarrage à froid et porte l'échéance que  │
+ * │ le terminal compare à son horloge quand le réseau manque.                │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 export interface SessionSubscription {
