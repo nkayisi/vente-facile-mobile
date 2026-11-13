@@ -116,6 +116,11 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
   "category.update": ["categories"],
   "brand.update": ["brands"],
   "unit.update": ["units"],
+  // Un prix, une unité ou un conditionnement corrigés : seule la fiche bouge.
+  "product.update": ["products"],
+  // Le PLAFOND et l'autorisation de crédit vivent sur la fiche du client :
+  // c'est `customers` que le contrôle de crédit relit au comptoir.
+  "customer.update": ["customers"],
   // Fermer une session fige ses soldes par devise et son écart : la session
   // suit, et les mouvements de caisse avec elle.
   "register_session.close": ["register_sessions", "cash_movements"],

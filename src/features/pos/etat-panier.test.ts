@@ -183,26 +183,37 @@ describe("Panier", () => {
 });
 
 /*
- * LA REMISE PAR LIGNE A ÉTÉ RETIRÉE, ET AVEC ELLE SON PLAFOND.
+ * LA REMISE PAR LIGNE EST REVENUE (lot L12), ET SON PLAFOND AVEC ELLE.
  *
- * Les actions `remiseLigne` et `prixLigne` n'avaient AUCUN appelant : aucun
- * écran ne les dispatchait, seuls ces tests les maintenaient en vie. Le plafond
- * du marchand (`organization.max_sale_discount_percent`) ne bornait qu'elles,
- * et ne s'appliquait donc plus à rien.
- *
- * Ce qui RESTE, et qui doit rester : `discount_percentage` sur la ligne, qui
- * voyage dans le corps de la vente et se restaure d'un panier mis en attente
- * (voir `attente.test.ts`). Un panier rangé avant ce retrait peut encore en
- * porter un, et la ligne « Remises de ligne » du comptoir l'affiche toujours -
- * la retirer rendrait un total inexplicable.
- *
- * Le jour où un écran de saisie existera, le plafond sera à reposer : il est
- * exposé résolu par le serveur sur `GET /organizations/` comme sur le détail,
- * et le serveur l'oppose dans `validate_discount_percentage`. Le borner à 100
- * au comptoir - ce que faisait le code d'origine - laisse saisir 45 % à un
- * marchand qui a fermé à 20, imprimer le ticket, puis le serveur refuse la
- * vente ENTIÈRE, après le client.
+ * Elle avait été retirée faute d'écran : le plafond du marchand ne bornait plus
+ * rien. Elle revient avec son écran (le sélecteur de quantité, en modification),
+ * et le plafond voyage avec l'action - il est du jour, pas du panier. Le borner
+ * à 100 laisserait saisir 45 % chez un marchand fermé à 20, et le serveur
+ * refuserait la vente ENTIÈRE après l'impression du ticket.
  */
+describe("la remise sur une ligne", () => {
+  const avecUneLigne = () => ajouter(PANIER_VIDE, detail, 0, 2);
+
+  it("se pose en pourcentage, sous le plafond du marchand", () => {
+    const etat = reducteurPanier(avecUneLigne(), { type: "remiseLigne", index: 0, pourcentage: 10, plafond: 20 });
+    expect(etat.lignes[0].discount_percentage).toBe(10);
+  });
+
+  it("est ramenée au plafond, jamais au-delà", () => {
+    const etat = reducteurPanier(avecUneLigne(), { type: "remiseLigne", index: 0, pourcentage: 45, plafond: 20 });
+    expect(etat.lignes[0].discount_percentage).toBe(20);
+  });
+
+  it("un plafond nul ferme la remise", () => {
+    const etat = reducteurPanier(avecUneLigne(), { type: "remiseLigne", index: 0, pourcentage: 10, plafond: 0 });
+    expect(etat.lignes[0].discount_percentage).toBe(0);
+  });
+
+  it("une ligne absente ne change rien", () => {
+    const depart = avecUneLigne();
+    expect(reducteurPanier(depart, { type: "remiseLigne", index: 5, pourcentage: 10, plafond: 20 })).toBe(depart);
+  });
+});
 
 /**
  * Le motif opposé au caissier, dans l'ordre du serveur.

@@ -20,6 +20,7 @@ import { MIN_QUANTITY } from "@vente-facile/core";
 
 import type { ArticlePos } from "./catalogue";
 import { motifDuVerrou, motifStockInconnu } from "./motifs";
+import { bornerRemiseLigne } from "./remise-ligne";
 
 /** Un client, réduit à ce dont le comptoir a besoin. */
 export interface ClientPos {
@@ -82,6 +83,12 @@ export type ActionPanier =
       devise?: string;
     }
   | { type: "retirer"; index: number }
+  /**
+   * Remise en POURCENTAGE sur une ligne. Le plafond voyage avec l'action : il
+   * est du jour (réglé par le marchand), pas du panier, et un panier repris
+   * le lendemain ne doit pas emporter celui d'hier.
+   */
+  | { type: "remiseLigne"; index: number; pourcentage: number; plafond: number }
   | { type: "remiseGlobale"; montant: number }
   | { type: "client"; client: ClientPos | null }
   | { type: "deviseFacture"; code: string }
@@ -219,6 +226,17 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
 
     case "retirer":
       return { ...etat, lignes: etat.lignes.filter((_, i) => i !== action.index) };
+
+    case "remiseLigne": {
+      const courante = etat.lignes[action.index];
+      if (!courante) return etat;
+      const lignes = [...etat.lignes];
+      lignes[action.index] = {
+        ...courante,
+        discount_percentage: bornerRemiseLigne(action.pourcentage, action.plafond),
+      };
+      return { ...etat, lignes };
+    }
 
     case "remiseGlobale":
       return { ...etat, remiseGlobale: Math.max(0, action.montant) };

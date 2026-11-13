@@ -43,6 +43,7 @@ import {
   CardHeader,
   Divider,
   EmptyState,
+  IconButton,
   ListItem,
   MultiCurrencyTotal,
   Screen,
@@ -131,7 +132,19 @@ export default function FicheClient() {
         subtitle={[c.code, c.type === "business" ? "Entreprise" : "Particulier"]
           .filter(Boolean)
           .join(" · ")}
-        right={c.actif ? undefined : <Badge tone="neutral">Inactif</Badge>}
+        right={
+          <View className="flex-row items-center gap-1">
+            {c.actif ? null : <Badge tone="neutral">Inactif</Badge>}
+            {peutEcrire ? (
+              <IconButton
+                name="Pencil"
+                label="Modifier le client"
+                variant="ghost"
+                onPress={() => router.push(`/client/nouveau?id=${id}`)}
+              />
+            ) : null}
+          </View>
+        }
       />
 
       <View className="gap-4 p-4">
@@ -139,6 +152,11 @@ export default function FicheClient() {
           envoi={attente?.creationEnAttente}
           titre="Ce client attend son envoi"
           consequence="Il n'existe encore que sur ce terminal ; vous pouvez déjà lui vendre et l'encaisser."
+        />
+        <BandeauEnvoi
+          envoi={attente?.modificationEnAttente}
+          titre="Une modification attend son envoi"
+          consequence="La fiche et le contrôle de crédit du comptoir suivront après l'envoi."
         />
 
         {attente && attente.encaissements.length > 0 ? (

@@ -22,7 +22,9 @@ import {
   formatUnitQuantity,
 } from "@vente-facile/core";
 
-import { detailArticle } from "@/data/articles";
+import { articleAEditer, detailArticle } from "@/data/articles";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
+import { useSession } from "@/session/provider";
 import { useMonnaie } from "@/data/devises";
 import { lireReglage } from "@/data/reglages";
 import {
@@ -30,11 +32,10 @@ import {
   deviseAffichageValide,
   prixAffiche,
 } from "@/features/pos/affichage-devise";
-import { VignetteArticle } from "@/ui";
 import { useLecture } from "@/data/live";
 import {
-  AppBar, Badge, Card, CardHeader, Divider, EmptyState, Screen, Spinner,
-  StatValue, Text,
+  AppBar, Badge, Card, CardHeader, Divider, EmptyState, IconButton, Screen, Spinner,
+  Text, VignetteArticle,
 } from "@/ui";
 
 const TABLES = ["products", "categories", "brands", "units", "stocks", "warehouses"];
@@ -67,6 +68,14 @@ export default function FicheArticle() {
   const charger = useCallback(() => detailArticle(id), [id]);
   const { donnees: a, chargement, erreur } = useLecture(charger, {
     tables: TABLES,
+    deps: [id],
+  });
+  const { can } = useSession();
+  // Une modification encore en file : la fiche affiche ce que le SERVEUR sait,
+  // et le DIT. Les tables tirées ne sont écrites que par le tirage.
+  const chargerAttente = useCallback(() => articleAEditer(id), [id]);
+  const { donnees: attente } = useLecture(chargerAttente, {
+    tables: ["outbox_operations", "products"],
     deps: [id],
   });
 
@@ -128,10 +137,27 @@ export default function FicheArticle() {
       <AppBar
         title={a.nom}
         subtitle={[a.sku, a.categorie].filter(Boolean).join(" · ")}
-        right={a.actif ? undefined : <Badge tone="neutral">Inactif</Badge>}
+        right={
+          <View className="flex-row items-center gap-1">
+            {a.actif ? null : <Badge tone="neutral">Inactif</Badge>}
+            {can("products.edit") ? (
+              <IconButton
+                name="Pencil"
+                label="Modifier l'article"
+                variant="ghost"
+                onPress={() => router.push(`/article/nouveau?id=${id}`)}
+              />
+            ) : null}
+          </View>
+        }
       />
 
       <View className="gap-4 p-4">
+        <BandeauEnvoi
+          envoi={attente?.envoiModification}
+          titre="Une modification attend son envoi"
+          consequence="La fiche et le comptoir montreront les nouvelles valeurs après l'envoi."
+        />
         {/* La photo en tête, comme la fiche du back-office. Elle n'apparaît
             que si l'article en porte une : une case vide de cent points en
             haut d'une fiche ne dit rien et repousse les prix hors de l'écran,

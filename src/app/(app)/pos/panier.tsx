@@ -23,6 +23,7 @@ import { useSession } from "@/session/provider";
 import { sessionOuverte } from "@/features/pos/caisse";
 import { FeuilleEncaissement } from "@/features/pos/feuille-encaissement";
 import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
+import { plafondRemiseLigne } from "@/features/pos/remise-ligne";
 import { usePanier, type LignePanier } from "@/features/pos/panier";
 import {
   Button, Dialog, Divider, EmptyState, FormField, Icon, Input, Pressable, Screen, Text, useToast,
@@ -171,6 +172,7 @@ export default function Panier() {
   };
 
   const ligne = enEdition !== null ? lignes[enEdition] : null;
+  const plafondRemise = plafondRemiseLigne(snapshot?.organization?.max_sale_discount_percent);
 
   /**
    * La barre du bas vit dans le `pied` de `Screen`, et ce n'est pas cosmétique.
@@ -385,14 +387,19 @@ export default function Panier() {
           enEdition === null ? null : panier.verifierModification(enEdition, saisie)
         }
         libelleValider="Mettre à jour"
+        // La remise par ligne, sous le plafond DU JOUR (instantané de session).
+        remise={ligne ? { initiale: ligne.discount_percentage, plafond: plafondRemise } : undefined}
         onRetirer={() => {
           if (enEdition === null) return;
           panier.envoyer({ type: "retirer", index: enEdition });
           setEnEdition(null);
         }}
-        onValider={(saisie: Saisie, devise?: string) => {
+        onValider={(saisie: Saisie, devise?: string, remise?: number) => {
           if (enEdition === null) return;
           panier.envoyer({ type: "modifier", index: enEdition, saisie, devise });
+          if (remise !== undefined) {
+            panier.envoyer({ type: "remiseLigne", index: enEdition, pourcentage: remise, plafond: plafondRemise });
+          }
           setEnEdition(null);
         }}
       />

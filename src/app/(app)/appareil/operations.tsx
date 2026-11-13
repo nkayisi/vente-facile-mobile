@@ -73,6 +73,8 @@ const KIND_LABELS: Record<string, string> = {
   "category.update": "Modification de catégorie",
   "brand.update": "Modification de marque",
   "unit.update": "Modification d'unité",
+  "product.update": "Modification d'article",
+  "customer.update": "Modification de client",
   "expense.create": "Dépense",
   "expense.submit": "Soumission de dépense",
   "expense.approve": "Approbation de dépense",

@@ -40,6 +40,13 @@ import {
   type SaisieReferentiel,
 } from "./referentiel";
 import { slugifier } from "./slug";
+import {
+  corpsModificationArticle,
+  type ModeVente,
+  type SaisieModification,
+} from "./edition-article";
+
+export type { ModeVente };
 
 export type { SaisieSession };
 // Le type vit dans `apparence.ts`, module PUR : ce fichier ouvre SQLite au
@@ -300,8 +307,8 @@ export async function sessionsEnAttente(): Promise<Map<string, AttenteSession>> 
 
 // ------------------------------------------------------------------ catalogue
 
-/** Les trois modes du serveur, à l'identique : aucun alias, aucune traduction. */
-export type ModeVente = "retail_only" | "wholesale_only" | "wholesale_and_retail";
+// `ModeVente` (les trois modes du serveur, à l'identique) est déclaré dans le
+// module PUR de l'édition, pour n'exister qu'une fois ; réexporté en tête.
 
 export interface SaisieArticle {
   nom: string;
@@ -388,6 +395,26 @@ export async function creerArticle(saisie: SaisieArticle): Promise<string> {
     notes: saisie.notes ?? "",
     is_active: true,
   });
+  return id;
+}
+
+/**
+ * Met en file la modification d'un article. Même règle de clé que
+ * `modifierReferentiel` : la clé de l'ACTE est neuve, `payload.id` désigne la
+ * FICHE. Réemployer la clé de la fiche ferait avaler la seconde correction.
+ */
+export async function modifierArticle(
+  fiche: string,
+  saisie: SaisieModification,
+  options: { dependDe?: string[] } = {}
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  await enqueue(
+    id,
+    "product.update",
+    { id: fiche, ...corpsModificationArticle(saisie) },
+    { dependsOn: options.dependDe }
+  );
   return id;
 }
 

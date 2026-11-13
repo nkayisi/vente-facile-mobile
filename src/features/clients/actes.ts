@@ -34,19 +34,12 @@ import { pireEnvoiOuRien } from "@/features/sync/attente";
 import { PREFIXE, prochainNumero } from "@/features/pos/numerotation";
 import { deviseOuPrincipale } from "@/data/devise-principale";
 
-export interface SaisieClient {
-  nom: string;
-  telephone: string;
-  entreprise: boolean;
-  raisonSociale?: string;
-  email?: string;
-  adresse?: string;
-  numeroImpot?: string;
-  creditAutorise: boolean;
-  /** 0 signifie « sans plafond », jamais « crédit refusé ». */
-  plafondCredit: number;
-  notes?: string;
-}
+// Le corps vit dans le module PUR, partagé par la création et la modification :
+// ce fichier ouvre SQLite au chargement, et la forme du corps ne serait alors
+// éprouvable sur aucune machine sans appareil.
+import { corpsClient, type SaisieClient } from "./edition-client";
+
+export type { SaisieClient };
 
 /**
  * Crée un client.
@@ -62,21 +55,26 @@ export interface SaisieClient {
 export async function creerClient(saisie: SaisieClient): Promise<string> {
   const id = Crypto.randomUUID();
 
-  await enqueue(id, "customer.create", {
-    id,
-    name: saisie.nom.trim(),
-    phone: saisie.telephone.trim(),
-    customer_type: saisie.entreprise ? "business" : "individual",
-    company_name: saisie.entreprise ? (saisie.raisonSociale ?? "").trim() : "",
-    tax_id: saisie.entreprise ? (saisie.numeroImpot ?? "").trim() : "",
-    email: (saisie.email ?? "").trim(),
-    address: (saisie.adresse ?? "").trim(),
-    allow_credit: saisie.creditAutorise,
-    credit_limit: String(saisie.plafondCredit),
-    notes: (saisie.notes ?? "").trim(),
-    is_active: true,
-  });
+  await enqueue(id, "customer.create", { id, ...corpsClient(saisie), is_active: true });
 
+  return id;
+}
+
+/**
+ * Met en file la modification d'un client, conditions de crédit comprises.
+ * Clé d'acte neuve, `payload.id` désigne la fiche (voir `modifierReferentiel`).
+ *
+ * ⚠ Le plafond partira APRÈS : d'ici l'envoi, le comptoir oppose encore
+ *   l'ancien plafond - c'est la fiche tirée qu'il relit, et le serveur seul
+ *   fait autorité sur le crédit accordé.
+ */
+export async function modifierClient(
+  fiche: string,
+  saisie: SaisieClient,
+  options: { dependDe?: string[] } = {}
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  await enqueue(id, "customer.update", { id: fiche, ...corpsClient(saisie) }, { dependsOn: options.dependDe });
   return id;
 }
 
@@ -179,10 +177,12 @@ export interface EnAttenteSurClient {
    * Un booléen ne disait pas si elle partira seule. Voir `data/envoi.ts`.
    */
   creationEnAttente: EtatEnvoi | undefined;
+  /** Une modification de la fiche (nom, téléphone, crédit) encore en file. */
+  modificationEnAttente: EtatEnvoi | undefined;
 }
 
 export async function enAttenteSurClient(clientId: string): Promise<EnAttenteSurClient> {
-  const [encaissements, ajustements, creations] = await Promise.all([
+  const [encaissements, ajustements, creations, modifications] = await Promise.all([
     enAttenteParType<{
       customer: string;
       amount?: string;
@@ -193,6 +193,7 @@ export async function enAttenteSurClient(clientId: string): Promise<EnAttenteSur
       "customer.adjust_balance"
     ),
     enAttenteParType<{ id: string }>("customer.create", { avecBloquees: true }),
+    enAttenteParType<{ id: string }>("customer.update", { avecBloquees: true }),
   ]);
 
   return {
@@ -213,6 +214,9 @@ export async function enAttenteSurClient(clientId: string): Promise<EnAttenteSur
       })),
     creationEnAttente: pireEnvoiOuRien(
       creations.filter((o) => o.payload.id === clientId).map((o) => o.envoi)
+    ),
+    modificationEnAttente: pireEnvoiOuRien(
+      modifications.filter((o) => o.payload.id === clientId).map((o) => o.envoi)
     ),
   };
 }

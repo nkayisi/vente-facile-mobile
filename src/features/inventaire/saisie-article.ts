@@ -15,7 +15,7 @@
  */
 import { lireNombre, type MotifRefus } from "@/data/nombres";
 
-import type { ModeVente } from "./actes";
+import type { ModeVente } from "./edition-article";
 
 /** La saisie d'un champ numérique, réduite à ce dont l'écran a besoin. */
 export interface Nombre {

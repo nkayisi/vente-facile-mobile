@@ -17,6 +17,9 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { deviseOuPrincipale } from "./devise-principale";
+import { pireEnvoi } from "./envoi";
+import { enAttenteParType, type EtatEnvoi } from "@/sync";
+import { corpsDepuisLigneClient, type CorpsClient } from "@/features/clients/edition-client";
 import {
   customerBalances,
   customerLoyalty,
@@ -445,3 +448,40 @@ export async function mouvementsCagnotte(
     date: l.createdAt ?? null,
   }));
 }
+
+// ------------------------------------------------- modification d'un client
+
+/** D'où part le formulaire de modification d'un client. */
+export interface ClientAEditer {
+  corps: Partial<CorpsClient>;
+  creationEnFile: string | null;
+  envoiModification: EtatEnvoi | undefined;
+}
+
+/**
+ * Ce que le formulaire de modification doit montrer d'un client. Même règle que
+ * `articleAEditer` : la dernière modification en file PRIME sur la fiche, et un
+ * client encore en file se modifie à partir de son corps de création.
+ */
+export async function clientAEditer(id: string): Promise<ClientAEditer | null> {
+  const [creations, modifications, [ligne]] = await Promise.all([
+    enAttenteParType<Partial<CorpsClient> & { id: string }>("customer.create", { avecBloquees: true }),
+    enAttenteParType<Partial<CorpsClient> & { id: string }>("customer.update", { avecBloquees: true }),
+    db.select().from(customers).where(eq(customers.id, id)).limit(1),
+  ]);
+  const creation = creations.find((o) => o.payload.id === id) ?? null;
+  const miennes = modifications.filter((o) => o.payload.id === id);
+  const derniere = miennes[miennes.length - 1];
+  const base: Partial<CorpsClient> | null = ligne
+    ? corpsDepuisLigneClient(ligne)
+    : creation
+      ? creation.payload
+      : null;
+  if (!base) return null;
+  return {
+    corps: derniere ? { ...base, ...derniere.payload } : base,
+    creationEnFile: creation?.id ?? null,
+    envoiModification: miennes.length ? pireEnvoi(miennes.map((o) => o.envoi)) : undefined,
+  };
+}
+

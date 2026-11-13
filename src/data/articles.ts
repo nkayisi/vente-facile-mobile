@@ -22,6 +22,9 @@ import { conditionCatalogue } from "@/data/perimetre-catalogue";
 import { db } from "@/db/client";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
 import type { GenreReferentiel } from "@/features/inventaire/referentiel";
+import { pireEnvoi } from "@/data/envoi";
+import { enAttenteParType, type EtatEnvoi } from "@/sync";
+import { corpsDepuisLigne, type CorpsArticle } from "@/features/inventaire/edition-article";
 
 export interface ArticleListe {
   id: string;
@@ -795,3 +798,53 @@ export async function chercherArticlesPourTransfert(
     };
   });
 }
+
+// ------------------------------------------------- modification d'un article
+
+/** D'où part le formulaire de modification d'un article. */
+export interface ArticleAEditer {
+  /** Le corps qui pré-remplit le formulaire. */
+  corps: Partial<CorpsArticle>;
+  /** L'acte de CRÉATION encore en file, dont la modification dépendra. */
+  creationEnFile: string | null;
+  /** L'état d'envoi de la dernière modification en file, s'il y en a une. */
+  envoiModification: EtatEnvoi | undefined;
+}
+
+/**
+ * Ce que le formulaire de modification doit montrer d'un article.
+ *
+ * ⚠ LA DERNIÈRE MODIFICATION EN FILE PRIME SUR LA FICHE : sans elle, corriger
+ *   une seconde fois une faute de frappe repartirait de la valeur d'avant la
+ *   première, et l'écraserait. Un article encore EN FILE (créé ici, pas encore
+ *   descendu) se modifie aussi : on part de son corps de création.
+ *
+ * `null` quand l'article n'existe ni en base ni dans le journal.
+ */
+export async function articleAEditer(id: string): Promise<ArticleAEditer | null> {
+  const [creations, modifications, [ligne]] = await Promise.all([
+    enAttenteParType<Partial<CorpsArticle> & { id: string }>("product.create", { avecBloquees: true }),
+    enAttenteParType<Partial<CorpsArticle> & { id: string }>("product.update", { avecBloquees: true }),
+    db.select().from(products).where(eq(products.id, id)).limit(1),
+  ]);
+  const creation = creations.find((o) => o.payload.id === id) ?? null;
+  // `enAttenteParType` rend par `seq` croissant : la dernière est la plus récente.
+  const miennes = modifications.filter((o) => o.payload.id === id);
+  const derniere = miennes[miennes.length - 1];
+
+  const base: Partial<CorpsArticle> | null = ligne
+    ? corpsDepuisLigne(ligne)
+    : creation
+      ? creation.payload
+      : null;
+  if (!base) return null;
+
+  return {
+    corps: derniere ? { ...base, ...derniere.payload } : base,
+    creationEnFile: creation?.id ?? null,
+    envoiModification: miennes.length
+      ? pireEnvoi(miennes.map((o) => o.envoi))
+      : undefined,
+  };
+}
+

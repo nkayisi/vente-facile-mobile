@@ -29,12 +29,12 @@
  * d'une création hors ligne, et il est assumé : mieux vaut un refus lisible
  * qu'un code inventé par la machine que personne ne reconnaît en rayon.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { computeMargin, formatFixedFr, pluralizeUnit } from "@vente-facile/core";
 
-import { referentiel } from "@/data/articles";
+import { articleAEditer, referentiel } from "@/data/articles";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import {
@@ -46,8 +46,12 @@ import {
   creationsReferentielEnAttente,
   creerArticle,
   modificationsReferentielEnAttente,
+  modifierArticle,
   type ModeVente,
 } from "@/features/inventaire/actes";
+import { valeursDepuisCorps, type ValeursArticle } from "@/features/inventaire/edition-article";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
+import type { EtatEnvoi } from "@/sync";
 import { ChampPhoto, type PhotoChoisie } from "@/features/inventaire/champ-photo";
 import { rangerPhoto } from "@/features/inventaire/photos";
 import {
@@ -56,35 +60,98 @@ import {
 } from "@/features/inventaire/options-referentiel";
 import { TuilesModeVente } from "@/features/inventaire/tuile-mode-vente";
 import {
-  AppBar, Banner, Button, Card, CardHeader, ChampSelect, FormField, Input,
-  Screen, Switch, Text, useToast,
+  AppBar, Banner, Button, Card, CardHeader, ChampSelect, EmptyState, FormField, Input,
+  Screen, Spinner, Switch, Text, useToast,
 } from "@/ui";
 
-export default function NouvelArticle() {
+/**
+ * Créer OU modifier un article (lot L12) : le même formulaire, pour que les
+ * deux gestes ne puissent pas appliquer deux règles. `?id=` ouvre une fiche
+ * existante ; le formulaire n'est monté qu'une fois ses valeurs lues, donc
+ * il les reçoit à l'initialisation, sans effet qui les reposerait par-dessus
+ * une saisie.
+ */
+export default function EcranArticle() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  if (!id) return <FormulaireArticle />;
+  return <ModificationArticle id={id} />;
+}
+
+function ModificationArticle({ id }: { id: string }) {
+  const charger = useCallback(() => articleAEditer(id), [id]);
+  // ⚠ PAS de `outbox_operations` dans les tables surveillées : relire à chaque
+  //   mouvement du journal remonterait le formulaire pendant la saisie.
+  const { donnees, chargement } = useLecture(charger, { tables: ["products"], deps: [id] });
+  if (chargement && !donnees) {
+    return (
+      <Screen>
+        <AppBar title="Modifier l'article" />
+        <View className="flex-1 items-center justify-center">
+          <Spinner />
+        </View>
+      </Screen>
+    );
+  }
+  if (!donnees) {
+    return (
+      <Screen padded={false}>
+        <AppBar title="Modifier l'article" />
+        <EmptyState
+          icon="Package"
+          title="Article introuvable"
+          message="Il n'est ni sur ce terminal, ni dans le journal d'envoi."
+          action={{ label: "Retour", onPress: () => router.back() }}
+        />
+      </Screen>
+    );
+  }
+  return (
+    <FormulaireArticle
+      key={id}
+      fiche={id}
+      initial={valeursDepuisCorps(donnees.corps)}
+      creationEnFile={donnees.creationEnFile}
+      envoiModification={donnees.envoiModification}
+    />
+  );
+}
+
+function FormulaireArticle({
+  fiche,
+  initial,
+  creationEnFile = null,
+  envoiModification,
+}: {
+  fiche?: string;
+  initial?: ValeursArticle;
+  creationEnFile?: string | null;
+  envoiModification?: EtatEnvoi;
+} = {}) {
   const toast = useToast();
   const money = useMonnaie();
+  const enModification = !!fiche;
 
-  const [nom, setNom] = useState("");
-  const [sku, setSku] = useState("");
-  const [codeBarres, setCodeBarres] = useState("");
-  const [categorie, setCategorie] = useState<string | null>(null);
-  const [marque, setMarque] = useState<string | null>(null);
-  const [unite, setUnite] = useState<string | null>(null);
+  const [nom, setNom] = useState(initial?.nom ?? "");
+  const [sku, setSku] = useState(initial?.sku ?? "");
+  const [codeBarres, setCodeBarres] = useState(initial?.codeBarres ?? "");
+  const [categorie, setCategorie] = useState<string | null>(initial?.categorie ?? null);
+  const [marque, setMarque] = useState<string | null>(initial?.marque ?? null);
+  const [unite, setUnite] = useState<string | null>(initial?.unite ?? null);
   const [photo, setPhoto] = useState<PhotoChoisie | null>(null);
 
-  const [mode, setMode] = useState<ModeVente>("retail_only");
-  const [prixAchat, setPrixAchat] = useState("");
-  const [prixVente, setPrixVente] = useState("");
-  const [parContenant, setParContenant] = useState("");
-  const [uniteContenant, setUniteContenant] = useState<string | null>(null);
-  const [prixAchatGros, setPrixAchatGros] = useState("");
-  const [prixVenteGros, setPrixVenteGros] = useState("");
-  const [ouvertureAuto, setOuvertureAuto] = useState(true);
+  const [mode, setMode] = useState<ModeVente>(initial?.mode ?? "retail_only");
+  const [prixAchat, setPrixAchat] = useState(initial?.prixAchat ?? "");
+  const [prixVente, setPrixVente] = useState(initial?.prixVente ?? "");
+  const [parContenant, setParContenant] = useState(initial?.parContenant ?? "");
+  const [uniteContenant, setUniteContenant] = useState<string | null>(initial?.uniteContenant ?? null);
+  const [prixAchatGros, setPrixAchatGros] = useState(initial?.prixAchatGros ?? "");
+  const [prixVenteGros, setPrixVenteGros] = useState(initial?.prixVenteGros ?? "");
+  const [ouvertureAuto, setOuvertureAuto] = useState(initial?.ouvertureAuto ?? true);
 
-  const [taxable, setTaxable] = useState(false);
-  const [tauxTva, setTauxTva] = useState("");
-  const [suitLeStock, setSuitLeStock] = useState(true);
-  const [seuil, setSeuil] = useState("");
+  const [taxable, setTaxable] = useState(initial?.taxable ?? false);
+  const [tauxTva, setTauxTva] = useState(initial?.tauxTva ?? "");
+  const [suitLeStock, setSuitLeStock] = useState(initial?.suitLeStock ?? true);
+  const [seuil, setSeuil] = useState(initial?.seuil ?? "");
   const [envoi, setEnvoi] = useState(false);
 
   const { donnees: cats } = useLecture(() => referentiel("categories"), {
@@ -156,6 +223,39 @@ export default function NouvelArticle() {
     if (bloque) return;
     setEnvoi(true);
     try {
+      if (fiche) {
+        await modifierArticle(
+          fiche,
+          {
+            nom,
+            sku,
+            codeBarres,
+            categorie,
+            marque,
+            unite,
+            mode,
+            prixVente: vente.valeur ?? 0,
+            prixAchat: achat.valeur ?? 0,
+            prixVenteGros: conditionne ? (venteGros.valeur ?? null) : null,
+            prixAchatGros: conditionne ? (achatGros.valeur ?? null) : null,
+            unitesParContenant: conditionne ? (facteur.valeur ?? null) : null,
+            uniteContenant: conditionne ? uniteContenant : null,
+            ouvertureAutomatique: ouvertureAuto,
+            taxable,
+            tauxTva: taxable ? (lireChamp(tauxTva).valeur ?? 0) : null,
+            suitLeStock,
+            seuilReassort: seuil.trim() ? (lireChamp(seuil).valeur ?? null) : null,
+          },
+          // ⚠ Un article encore EN FILE ne peut pas être modifié avant d'exister
+          //   au serveur : la modification attend sa création, sinon elle part
+          //   sur une fiche introuvable et finit en quarantaine.
+          { dependDe: creationEnFile ? [creationEnFile] : undefined }
+        );
+        if (photo) await rangerPhoto(fiche, photo);
+        toast.succes("Modification enregistrée. Elle partira à la prochaine synchronisation.");
+        router.back();
+        return;
+      }
       const id = await creerArticle({
         nom,
         sku,
@@ -202,16 +302,23 @@ export default function NouvelArticle() {
 
   return (
     <Screen scroll padded={false}>
-      <AppBar title="Nouvel article" />
+      <AppBar title={enModification ? "Modifier l'article" : "Nouvel article"} />
 
       <View className="gap-4 p-4">
+        {enModification ? (
+          <BandeauEnvoi
+            envoi={envoiModification}
+            titre="Une modification attend déjà son envoi"
+            consequence="Le formulaire part de ce que vous aviez saisi. Le comptoir vendra aux nouveaux prix une fois l'envoi fait."
+          />
+        ) : null}
         {/* --- Identification, dans l'ordre du back-office --------------- */}
         <ChampPhoto photo={photo} onChange={setPhoto} />
 
         <Card>
           <CardHeader title="Identification" />
           <FormField label="Nom du produit" required>
-            <Input value={nom} onChangeText={setNom} placeholder="Eau 50cl" autoFocus />
+            <Input value={nom} onChangeText={setNom} placeholder="Eau 50cl" autoFocus={!enModification} />
           </FormField>
           <FormField label="Code SKU" required hint="Unique dans l'établissement.">
             <Input
@@ -472,7 +579,7 @@ export default function NouvelArticle() {
         />
 
         <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-          {envoi ? "Enregistrement…" : "Créer l'article"}
+          {envoi ? "Enregistrement…" : enModification ? "Enregistrer les modifications" : "Créer l'article"}
         </Button>
       </View>
     </Screen>

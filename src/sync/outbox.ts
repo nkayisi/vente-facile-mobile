@@ -63,6 +63,13 @@ export type OperationKind =
   | "category.update"
   | "brand.update"
   | "unit.update"
+  // Lot L12 : modifier un ARTICLE ou un CLIENT existant. Même forme que les
+  // référentiels (PATCH rejoué par le serializer du back-office), et l'article
+  // porte en plus le périmètre entrepôt de la vue, opposé par le serveur.
+  // ⚠ Aucun point-virgule dans ces commentaires : `push.test.ts` lit ce type
+  //   jusqu'au premier, et tout acte écrit après disparaîtrait de son contrôle.
+  | "product.update"
+  | "customer.update"
   // La CLÔTURE passe par le journal : le Z se tire au comptoir, souvent avant
   // que le réseau ne revienne.
   | "register_session.close"

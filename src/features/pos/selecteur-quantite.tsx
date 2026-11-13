@@ -35,6 +35,7 @@ import type { Saisie } from "@vente-facile/core/pos";
 import { lireNombre } from "@/data/nombres";
 import { Button, Divider, Icon, Pressable, Text, useMargesSysteme } from "@/ui";
 import type { ArticlePos } from "./catalogue";
+import { paliersRemise } from "./remise-ligne";
 import { frapper as frapperTouche, SEPARATEUR } from "./saisie-quantite";
 
 type Canal = "package" | "retail";
@@ -48,7 +49,7 @@ export interface SelecteurQuantiteProps {
   article: ArticlePos | null;
   visible: boolean;
   onFermer: () => void;
-  onValider: (saisie: Saisie, devise?: string) => void;
+  onValider: (saisie: Saisie, devise?: string, remise?: number) => void;
   /** Saisie déjà présente, pour rouvrir une ligne du panier en édition. */
   initiale?: Saisie;
   /**
@@ -96,6 +97,15 @@ export interface SelecteurQuantiteProps {
   libelleValider?: string;
   /** Retrait de la ligne, proposé en édition. */
   onRetirer?: () => void;
+  /**
+   * Remise sur la ligne, en POURCENTAGE, proposée en édition (lot L12).
+   *
+   * ⚠ Des PALIERS, pas un champ : le pavé numérique du sélecteur tape déjà la
+   *   quantité, et un second champ qui lui disputerait le clavier ferait
+   *   écrire une quantité dans la remise. Le plafond est celui du marchand ;
+   *   nul ou absent, la rangée n'apparaît pas.
+   */
+  remise?: { initiale: number; plafond: number };
 }
 
 export function SelecteurQuantite({
@@ -113,6 +123,7 @@ export function SelecteurQuantite({
   avertir,
   libelleValider = "Ajouter",
   onRetirer,
+  remise,
 }: SelecteurQuantiteProps) {
   const conditionnement = article ? getPackaging(article) : null;
   const [canal, setCanal] = useState<Canal>("retail");
@@ -121,6 +132,7 @@ export function SelecteurQuantite({
   /** Ce que la borne de saisie refuse, et pourquoi. Effacé à la frappe suivante. */
   const [borne, setBorne] = useState<string | null>(null);
   const [devise, setDevise] = useState<string | undefined>(undefined);
+  const [remiseChoisie, setRemiseChoisie] = useState(0);
 
   // Réinitialisation à chaque ouverture : un reliquat de la saisie précédente
   // se fait valider sans être relu.
@@ -133,6 +145,7 @@ export function SelecteurQuantite({
     setCanal(conditionnement?.packageOnly ? "package" : "retail");
     setBorne(null);
     setDevise(deviseInitiale);
+    setRemiseChoisie(remise?.initiale ?? 0);
     // `conditionnement` se reconstruit à chaque rendu : c'est l'article qui
     // détermine la remise à zéro, pas l'objet dérivé.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -359,6 +372,32 @@ export function SelecteurQuantite({
 
           <Clavier onChiffre={frapper} onEffacer={effacer} onVider={() => poser("")} />
 
+          {remise && remise.plafond > 0 ? (
+            <View className="mt-2 px-5">
+              <Text variant="caption" className="mb-1 text-muted-foreground">
+                {`Remise sur la ligne (au plus ${remise.plafond} %)`}
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {[0, ...paliersRemise(remise.plafond)].map((p) => (
+                  <Pressable
+                    key={p}
+                    onPress={() => setRemiseChoisie(p)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: remiseChoisie === p }}
+                    accessibilityLabel={p === 0 ? "Aucune remise" : `Remise de ${p} pour cent`}
+                    className={`min-h-[44px] min-w-[56px] items-center justify-center rounded-lg border px-3 ${
+                      remiseChoisie === p ? "border-primary bg-primary/10" : "border-border"
+                    }`}
+                  >
+                    <Text variant="body" className={remiseChoisie === p ? "text-primary" : undefined}>
+                      {p === 0 ? "Aucune" : `-${p} %`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           <View className="mt-1"><Divider /></View>
 
           <View className="flex-row gap-3 px-5 pt-4">
@@ -371,7 +410,7 @@ export function SelecteurQuantite({
             ) : null}
             <View className="flex-1">
               <Button
-                onPress={() => onValider(saisie, devise)}
+                onPress={() => onValider(saisie, devise, remise ? remiseChoisie : undefined)}
                 disabled={rien || !!refus}
                 fullWidth
               >
