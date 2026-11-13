@@ -2944,3 +2944,69 @@ describe("aucun bloc de canal muet", () => {
     expect(EN_DUR.test("prixVisibles={total > 0}")).toBe(false);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Un libellé s'accorde à son nombre, jamais par « (s) »                       */
+/* -------------------------------------------------------------------------- */
+
+describe("aucun accord par raccourci entre parenthèses", () => {
+  /**
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ « 1 OPÉRATION(S) REFUSÉE(S). ELLES NE REPARTIRONT PAS. »               │
+   * │                                                                        │
+   * │ Le nombre est CONNU au moment d'écrire la phrase : le raccourci n'a    │
+   * │ aucune excuse, et il laisse le reste de la phrase sans accord. Douze   │
+   * │ libellés le portaient, dont le bandeau même qui annonce au marchand    │
+   * │ qu'une vente a été refusée. `data/accord.ts` porte la règle.           │
+   * └────────────────────────────────────────────────────────────────────────┘
+   */
+  const RACCOURCI = /[a-zàâçéèêëîïôûùü]\((?:s|es|e|x)\)/i;
+
+  /** Les morceaux de LIBELLÉ d'une ligne : ses chaînes, et son texte JSX. */
+  function libelles(ligne: string): string[] {
+    // Les interpolations `${…}` d'un gabarit sont du CODE : `${compte.get(s)}`
+    // n'est pas un libellé.
+    const chaines = (ligne.match(/"[^"]*"|'[^']*'|`[^`]*`/g) ?? []).map((c) =>
+      c.replace(/\$\{[^}]*\}/g, ""),
+    );
+    // Texte JSX : entre `>` et `<` sur la même ligne, accolades retirées - un
+    // appel `{ligne(s)}` est du CODE, pas un libellé. Les flèches `=>` sont
+    // neutralisées d'abord, sinon `(s) => f(s) < 2` passerait pour du texte.
+    const sansFleches = ligne.replace(/=>/g, "  ");
+    const jsx = (sansFleches.match(/>[^<>]*</g) ?? []).map((t) => t.replace(/\{[^}]*\}/g, ""));
+    return [...chaines, ...jsx];
+  }
+
+  function porteUnRaccourci(ligne: string): boolean {
+    return libelles(ligne).some((l) => RACCOURCI.test(l));
+  }
+
+  it("aucun libellé ne s'accorde par « (s) »", () => {
+    const fautifs: string[] = [];
+    let balayes = 0;
+    for (const f of fichiers(RACINE)) {
+      const chemin = relative(RACINE, f);
+      if (chemin.endsWith("ui/doctrine.test.ts")) continue;
+      balayes += 1;
+      const lignes = commentairesBlanchis(readFileSync(f, "utf8")).split("\n");
+      for (const [i, ligne] of lignes.entries()) {
+        if (porteUnRaccourci(ligne)) fautifs.push(`${chemin}:${i + 1}`);
+      }
+    }
+    expect(balayes).toBeGreaterThan(100);
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le garde-fou MORD, et laisse passer le code", () => {
+    expect(porteUnRaccourci("title={`${n} opération(s) refusée(s)`}")).toBe(true);
+    expect(porteUnRaccourci('<Text variant="caption">{n} unité(s)</Text>')).toBe(true);
+    expect(porteUnRaccourci('libelle="Article(s) choisi(s)"')).toBe(true);
+    // Un appel de fonction n'est pas un libellé.
+    expect(porteUnRaccourci("{ligne(s)}")).toBe(false);
+    expect(porteUnRaccourci("const t = totalSaisi(s);")).toBe(false);
+    expect(porteUnRaccourci(".filter((s) => montant(s) < seuil)")).toBe(false);
+    // Une parenthèse de COMPTE dans un libellé n'est pas un raccourci d'accord.
+    expect(porteUnRaccourci('label={`${STATUT[s].label} (${parStatut.get(s) ?? 0})`}')).toBe(false);
+  });
+});
+

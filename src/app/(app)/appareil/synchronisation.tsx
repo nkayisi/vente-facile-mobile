@@ -13,6 +13,7 @@ import { router } from "expo-router";
 
 import { useLecture } from "@/data/live";
 import { labelFor } from "@/features/sync/labels";
+import { bandeauxDuJournal } from "@/features/sync/journal-lisible";
 import { useSynchronisation } from "@/features/sync/provider";
 import { countByState, readAllStates, type OutboxState } from "@/sync";
 import type { SyncStateRow } from "@/db/schema";
@@ -111,50 +112,34 @@ export default function Sync() {
           </Card>
         ) : null}
 
-        {outbox && outbox.quarantined > 0 ? (
-          <View className="mb-4">
-            <Banner
-              tone="destructive"
-              title={`${outbox.quarantined} opération(s) refusée(s)`}
-              message="Elles ne repartiront pas d'elles-mêmes."
-              action={{
-                label: "Voir et corriger",
-                onPress: () => router.push("/(app)/appareil/operations"),
-              }}
-            />
-          </View>
-        ) : null}
-
         {/* ┌──────────────────────────────────────────────────────────────┐
-            │ « BLOQUÉ » N'EST PAS « EN ATTENTE », ET CET ÉCRAN LE TAISAIT.│
+            │ « BLOQUÉ » N'EST PAS « EN ATTENTE ».                         │
             │                                                              │
             │ Une opération bloquée n'attend pas le réseau, elle attend une│
-            │ DÉCISION : un abonnement réglé, une permission accordée. Le  │
-            │ seul écran qui rend l'état de la synchronisation n'en disait │
-            │ rien, si bien que le compteur d'attente ne descendait jamais │
-            │ sans qu'on sache pourquoi. Le message ne propose donc ni de  │
-            │ synchroniser ni de réessayer : ni l'un ni l'autre n'y peut   │
-            │ quoi que ce soit.                                            │
+            │ DÉCISION : un abonnement réglé, une permission accordée. Son │
+            │ message ne propose donc ni de synchroniser ni de réessayer.  │
+            │ Les phrases et leur accord vivent dans                       │
+            │ `features/sync/journal-lisible.ts`, avec leurs tests.        │
             └──────────────────────────────────────────────────────────────┘ */}
-        {outbox && outbox.blocked > 0 ? (
-          <View className="mb-4">
-            <Banner
-              tone="warning"
-              title={`${outbox.blocked} opération(s) en attente d'un droit`}
-              message="Elles repartiront seules dès que l'abonnement sera réglé ou la permission accordée."
-            />
-          </View>
-        ) : null}
-
-        {outbox && outbox.pending > 0 ? (
-          <View className="mb-4">
-            <Banner
-              tone="info"
-              title={`${outbox.pending} opération(s) en attente`}
-              message="Elles partent d'elles-mêmes dès que le réseau le permet."
-            />
-          </View>
-        ) : null}
+        {outbox
+          ? bandeauxDuJournal(outbox).map((b) => (
+              <View key={b.cle} className="mb-4">
+                <Banner
+                  tone={b.ton}
+                  title={b.titre}
+                  message={b.message}
+                  action={
+                    b.corriger
+                      ? {
+                          label: "Voir et corriger",
+                          onPress: () => router.push("/(app)/appareil/operations"),
+                        }
+                      : undefined
+                  }
+                />
+              </View>
+            ))
+          : null}
 
         <View className="mb-5">
           <Button

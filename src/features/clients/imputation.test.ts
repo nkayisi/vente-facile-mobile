@@ -1,4 +1,4 @@
-import { detteNonVisible, imputer, montantAjustement } from "./imputation";
+import { detteNonVisible, imputer, lireReliquat, montantAjustement } from "./imputation";
 
 const f = (reference: string, resteAPayer: number) => ({ reference, resteAPayer });
 
@@ -90,5 +90,42 @@ describe("la dette que les factures visibles n'expliquent pas", () => {
 
   it("ne compte pas un reste négatif comme une facture", () => {
     expect(detteNonVisible(100, [f("A", 100), f("B", -5)])).toBe(0);
+  });
+});
+
+describe("ce que devient le reliquat d'un versement", () => {
+  it("le propriétaire : l'écart est une dette hors facture, réduite d'abord", () => {
+    // Dette de 104 $, factures ouvertes de 100 $, versement de 110 $ : 10 $ de
+    // reliquat, dont 4 $ éteignent la dette hors facture.
+    expect(
+      lireReliquat({ reliquat: 10, nonVisible: 4, nbFacturesOuvertes: 2, voitToutesLesVentes: true })
+    ).toEqual({ nature: "hors_facture", horsFacture: 4, avance: 6, surFactures: true });
+  });
+
+  it("le propriétaire sans facture ouverte : un AVC, comme le serveur le numéroterait", () => {
+    // ⚠ Le défaut redouté : la dette hors facture comptée comme des factures
+    //   faisait fabriquer un numéro RGL que le serveur aurait écrit AVC.
+    const l = lireReliquat({ reliquat: 50, nonVisible: 20, nbFacturesOuvertes: 0, voitToutesLesVentes: true });
+    expect(l.surFactures).toBe(false);
+    expect(l.horsFacture).toBe(20);
+    expect(l.avance).toBe(30);
+  });
+
+  it("un tirage borné : l'écart peut être les factures d'un collègue, le reçu reste un règlement", () => {
+    expect(
+      lireReliquat({ reliquat: 10, nonVisible: 4, nbFacturesOuvertes: 0, voitToutesLesVentes: false })
+    ).toEqual({ nature: "factures_d_un_collegue", horsFacture: 0, avance: 10, surFactures: true });
+  });
+
+  it("rien d'inexpliqué : le reliquat est une avance", () => {
+    expect(
+      lireReliquat({ reliquat: 7, nonVisible: 0, nbFacturesOuvertes: 0, voitToutesLesVentes: false })
+    ).toEqual({ nature: "aucune", horsFacture: 0, avance: 7, surFactures: false });
+  });
+
+  it("un versement qui n'atteint pas la dette hors facture ne laisse aucune avance", () => {
+    const l = lireReliquat({ reliquat: 3, nonVisible: 4, nbFacturesOuvertes: 1, voitToutesLesVentes: true });
+    expect(l.horsFacture).toBe(3);
+    expect(l.avance).toBe(0);
   });
 });

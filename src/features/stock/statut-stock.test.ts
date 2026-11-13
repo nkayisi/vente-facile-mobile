@@ -26,6 +26,12 @@ describe("l'état du rayon, traduit pour le serveur", () => {
     expect(statutServeur("ok")).not.toBe("available");
   });
 
+  it("traduit l'ALERTE par `low`, le seul cas où il coïncide", () => {
+    // La tuile « Stock bas » du tableau de bord compte comme `low`, et sa
+    // liste aussi : le document doit couvrir le même ensemble.
+    expect(statutServeur("alerte")).toBe("low");
+  });
+
   it("traduit la rupture par le seul état qui coïncide exactement", () => {
     expect(statutServeur("rupture")).toBe("out");
   });

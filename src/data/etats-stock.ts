@@ -15,6 +15,28 @@
 /** Les trois états du back-office, mot pour mot. */
 export type EtatStock = "tous" | "bas" | "rupture" | "ok";
 
+/**
+ * Un FILTRE de la liste, qui n'est pas un état de rayon : « à
+ * réapprovisionner », c'est-à-dire l'ALERTE du serveur (`low` :
+ * `quantity <= reorder_point`, produit suivi), ruptures comprises.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA TUILE « STOCK BAS » DU TABLEAU DE BORD MENAIT À UNE AUTRE LISTE.     │
+ * │                                                                          │
+ * │ Elle compte comme le serveur, et c'est voulu : le back-office affiche    │
+ * │ le même chiffre au même endroit, vérifié chiffre par chiffre. Mais elle  │
+ * │ ouvrait `/rayon?etat=bas`, où « bas » est un état EXCLUSIF de la         │
+ * │ rupture : on tapait sur « 2 » pour arriver sur une liste vide. Un relevé │
+ * │ doit compter ce que sa destination montre - la destination devient donc │
+ * │ ce filtre, et son document sort sous `low`, le même ensemble.            │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Il n'a pas de puce propre : on y arrive depuis une alerte, et la puce n'est
+ * affichée que tant qu'il est actif - un filtre posé doit se voir, et se
+ * retirer.
+ */
+export type FiltreEtatStock = EtatStock | "alerte";
+
 export const ETAT_STOCK: Record<
   Exclude<EtatStock, "tous">,
   { label: string; ton: "destructive" | "warning" | "success" }

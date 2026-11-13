@@ -23,6 +23,7 @@ import { desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import {
+  registerSessionCurrencyBalances,
   registerSessions,
   registers,
   sales,
@@ -77,6 +78,12 @@ export interface SessionDeCaisse {
 export interface DerniereCloture {
   le: Date | null;
   compte: number | null;
+  /**
+   * Ce que la clôture a compté, PAR DEVISE (lot L13). C'est ce dont le serveur
+   * hérite pour chaque devise ; vide quand la session n'a pas encore été
+   * re-tirée avec ses fonds par devise. `compte` à `null` : non compté.
+   */
+  parDevise: { devise: string; compte: number | null }[];
 }
 
 export interface CaisseParc {
@@ -165,6 +172,7 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
   // └──────────────────────────────────────────────────────────────────────┘
   const fermetures = await db
     .select({
+      id: registerSessions.id,
       registerId: registerSessions.registerId,
       closedAt: registerSessions.closedAt,
       compte: registerSessions.countedBalance,
@@ -175,6 +183,8 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
 
   const nbClotures = new Map<string, number>();
   const derniere = new Map<string, DerniereCloture>();
+  /** Session de la dernière clôture → sa caisse. */
+  const idsDernieres = new Map<string, string>();
   for (const f of fermetures) {
     if (!f.closedAt) continue;
     nbClotures.set(f.registerId, (nbClotures.get(f.registerId) ?? 0) + 1);
@@ -186,7 +196,28 @@ export async function parcDeCaisses(recherche = ""): Promise<ParcDeCaisses> {
         // `null` ne se lit jamais zéro : une session close sans comptage
         // enregistré n'est pas une session à tiroir vide.
         compte: f.compte === null ? null : nb(f.compte),
+        parDevise: [],
       });
+      idsDernieres.set(f.id, f.registerId);
+    }
+  }
+
+  // Le compté PAR DEVISE des seules dernières clôtures, en une lecture : c'est
+  // ce que l'écran d'ouverture annonce sous chaque champ.
+  if (idsDernieres.size > 0) {
+    const lignes = await db
+      .select({
+        sessionId: registerSessionCurrencyBalances.sessionId,
+        devise: registerSessionCurrencyBalances.currency,
+        compte: registerSessionCurrencyBalances.countedBalance,
+      })
+      .from(registerSessionCurrencyBalances)
+      .where(inArray(registerSessionCurrencyBalances.sessionId, [...idsDernieres.keys()]));
+    for (const l of lignes) {
+      const caisse = idsDernieres.get(l.sessionId);
+      const d = caisse ? derniere.get(caisse) : undefined;
+      if (!d) continue;
+      d.parDevise.push({ devise: l.devise, compte: l.compte === null ? null : nb(l.compte) });
     }
   }
 

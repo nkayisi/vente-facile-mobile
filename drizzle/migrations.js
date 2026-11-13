@@ -17,6 +17,7 @@ import m0012 from './0012_seuils_decimaux.sql';
 import m0013 from './0013_cagnotte_en_argent.sql';
 import m0014 from './0014_registre_cagnotte.sql';
 import m0015 from './0015_unite_suppression_douce.sql';
+import m0016 from './0016_fonds_par_devise.sql';
 
   export default {
     journal,
@@ -36,7 +37,8 @@ m0011,
 m0012,
 m0013,
 m0014,
-m0015
+m0015,
+m0016
     }
   }
   

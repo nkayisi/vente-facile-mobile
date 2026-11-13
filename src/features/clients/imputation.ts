@@ -101,3 +101,78 @@ export function detteNonVisible(dette: number, factures: FactureAImputer[]): num
   const reste = dette - visible;
   return reste > 0.005 ? reste : 0;
 }
+
+/** Ce que la part de dette inexpliquée EST, selon ce que ce compte voit. */
+export type NatureNonVisible = "aucune" | "factures_d_un_collegue" | "hors_facture";
+
+export interface LectureDuReliquat {
+  nature: NatureNonVisible;
+  /** Dette hors facture (ajustement, reliquat ancien) que le versement réduit d'abord. */
+  horsFacture: number;
+  /** Ce qui deviendra une avance - ou PEUT le devenir, quand on ne voit pas tout. */
+  avance: number;
+  /**
+   * Le reçu porte-t-il sur des factures (`RGL`) ou est-ce une avance (`AVC`) ?
+   * Le numéro est fabriqué ICI et le serveur le reprend tel quel : il doit
+   * décider comme le serveur, qui ne regarde que les factures OUVERTES.
+   */
+  surFactures: boolean;
+}
+
+/**
+ * Ce que devient le reliquat d'un versement, une fois les factures visibles soldées.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA PART INEXPLIQUÉE N'EST PAS LA MÊME CHOSE POUR TOUT LE MONDE.          │
+ * │                                                                          │
+ * │ Le PROPRIÉTAIRE tire toutes les ventes, de tous les dépôts : si la dette │
+ * │ dépasse ses factures ouvertes, l'écart ne peut venir que d'une dette     │
+ * │ HORS FACTURE - un ajustement, un reliquat ancien. Le serveur la réduit   │
+ * │ d'abord (`settle_debt`) avant de rendre le solde créditeur : annoncer le │
+ * │ reliquat entier comme une avance promettrait au client un crédit qu'il   │
+ * │ n'aura pas. Et le serveur ne voit alors AUCUNE facture ouverte : il      │
+ * │ numéroterait le reçu `AVC`, donc le terminal aussi.                      │
+ * │                                                                          │
+ * │ Tous les autres ont un tirage BORNÉ (par dépôt, et par auteur pour un    │
+ * │ caissier) : l'écart peut être les factures d'un collègue ou d'un autre   │
+ * │ dépôt, que le serveur impute quand même. On ne peut pas le savoir, on le │
+ * │ dit, et le reçu reste un règlement de factures.                          │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ Le critère est « voit TOUTES les ventes », c'est-à-dire le propriétaire,
+ *   pas `sales.view_all` : un gérant qui l'a ne voit que les ventes de SES
+ *   dépôts, et prendrait les factures d'une autre boutique pour une dette hors
+ *   facture.
+ */
+export function lireReliquat(e: {
+  reliquat: number;
+  nonVisible: number;
+  nbFacturesOuvertes: number;
+  voitToutesLesVentes: boolean;
+}): LectureDuReliquat {
+  const reliquat = Math.max(0, e.reliquat);
+  if (e.nonVisible <= 0) {
+    return {
+      nature: "aucune",
+      horsFacture: 0,
+      avance: reliquat,
+      surFactures: e.nbFacturesOuvertes > 0,
+    };
+  }
+  if (e.voitToutesLesVentes) {
+    const horsFacture = Math.min(reliquat, e.nonVisible);
+    const avance = reliquat - horsFacture;
+    return {
+      nature: "hors_facture",
+      horsFacture,
+      avance: avance > 0.005 ? avance : 0,
+      surFactures: e.nbFacturesOuvertes > 0,
+    };
+  }
+  return {
+    nature: "factures_d_un_collegue",
+    horsFacture: 0,
+    avance: reliquat,
+    surFactures: true,
+  };
+}

@@ -113,6 +113,13 @@
       "when": 1794583306078,
       "tag": "0015_unite_suppression_douce",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794605680520,
+      "tag": "0016_fonds_par_devise",
+      "breakpoints": true
     }
   ]
 }

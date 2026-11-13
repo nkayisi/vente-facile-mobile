@@ -581,6 +581,23 @@ export const registerSessions = sqliteTable("register_sessions", {
 export type RegisterSessionsRow =
   typeof registerSessions.$inferSelect;
 
+export const registerSessionCurrencyBalances = sqliteTable("register_session_currency_balances", {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  currency: text("currency").notNull(),
+  openingBalance: text("opening_balance").notNull(),
+  expectedBalance: text("expected_balance"),
+  countedBalance: text("counted_balance"),
+  difference: text("difference"),
+}, (t) => [
+    index("register_session_currency_balances_session_id_idx").on(t.sessionId),
+]);
+
+export type RegisterSessionCurrencyBalancesRow =
+  typeof registerSessionCurrencyBalances.$inferSelect;
+
 export const sales = sqliteTable("sales", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),

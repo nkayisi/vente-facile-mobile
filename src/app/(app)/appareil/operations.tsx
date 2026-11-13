@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useFocusEffect } from "expo-router";
 
+import { pluriel } from "@/data/accord";
 import { dateHeureCourteFr } from "@/data/dates";
 import { bloquees, discard, quarantined } from "@/sync";
 import type { OutboxOperation } from "@/db/schema";
@@ -99,7 +100,7 @@ function resume(op: OutboxOperation): string | null {
   try {
     const p = JSON.parse(op.payload) as Record<string, unknown>;
     if (typeof p.reference === "string") return p.reference;
-    if (Array.isArray(p.items)) return `${p.items.length} article(s)`;
+    if (Array.isArray(p.items)) return pluriel(p.items.length, "article", "articles");
     if (p.amount) return String(p.amount);
     // Dernier recours : le NOM. Sans lui, une création de référentiel refusée
     // s'affichait sans rien qui l'identifie, sur l'écran même où le marchand

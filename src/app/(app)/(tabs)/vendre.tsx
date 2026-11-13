@@ -29,7 +29,8 @@ import {
 } from "@/features/pos/affichage-devise";
 import { ecrireReglage, lireReglage } from "@/data/reglages";
 import { useMonnaie } from "@/data/devises";
-import { analyserFond } from "@/features/caisse/fond";
+import { ChampsFonds } from "@/features/caisse/champs-fonds";
+import { devisesDuFonds, lireFonds } from "@/features/caisse/fond";
 import { compterEnAttente } from "@/features/pos/attente";
 import { libelleEnvoi } from "@/data/envoi";
 import { arreteA } from "@/features/pos/verrou-inventaire";
@@ -41,7 +42,7 @@ import { usePanier } from "@/features/pos/panier";
 import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
 import {
-  Banner, Button, EmptyState, FormField, Icon, Input, Pressable, Screen, Spinner, Text,
+  Banner, Button, EmptyState, Icon, Input, Pressable, Screen, Spinner, Text,
 } from "@/ui";
 
 export default function Comptoir() {
@@ -570,8 +571,10 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
   const money = useMonnaie();
   const [caisses, setCaisses] = useState<CaissePos[] | null>(null);
   const [choisie, setChoisie] = useState<string | null>(null);
-  const [fond, setFond] = useState("");
-  const [erreurFond, setErreurFond] = useState<string | null>(null);
+  const { snapshot } = useSession();
+  // Un champ PAR DEVISE, le même composant que le parc de caisses.
+  const [fonds, setFonds] = useState<Record<string, string>>({});
+  const [erreursFonds, setErreursFonds] = useState<Record<string, string>>({});
   const [enCours, setEnCours] = useState(false);
   const verrou = useRef(false);
 
@@ -595,13 +598,13 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
       // et un champ vide envoyait « 0 », qui écrase le fonds hérité de la
       // dernière clôture. Deux formulaires pour le même acte doivent lire la
       // saisie de la même façon, sinon l'un des deux redevient faux tout seul.
-      const lu = analyserFond(fond);
+      const lu = lireFonds(fonds, money.primaryCode);
       if (!lu.ok) {
-        setErreurFond(lu.message);
+        setErreursFonds(lu.erreurs);
         return;
       }
-      setErreurFond(null);
-      onOuverte(await ouvrirSession(choisie, lu.montant));
+      setErreursFonds({});
+      onOuverte(await ouvrirSession(choisie, lu.principal, lu.autres));
     } finally {
       verrou.current = false;
       setEnCours(false);
@@ -671,32 +674,22 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
       ) : null}
 
       <View className="mt-6">
-        {/* La DEVISE est nommée : le montant part en devise principale, ce que
-            rien n'écrivait. Sur un établissement qui compte en dollars et
-            encaisse aussi des francs, « 50 000 » tapé pour des francs ouvre le
-            tiroir à cinquante mille dollars. */}
-        <FormField
-          label={`Fond de caisse (${money.primaryCode})`}
-          error={erreurFond ?? undefined}
-          hint="Laissez vide pour reprendre la dernière clôture, ou écrivez 0 si le tiroir est vide. Corrigeable à la clôture."
-        >
-          <Input
-            value={fond}
-            onChangeText={(v) => {
-              setFond(v);
-              if (erreurFond) setErreurFond(null);
-            }}
-            invalid={erreurFond !== null}
-            keyboardType="decimal-pad"
-            placeholder="0"
-            leading={
-              <Text variant="caption" className="font-sans-medium">
-                {money.symbolOf(money.primaryCode)}
-              </Text>
-            }
-            accessibilityLabel={`Fond de caisse en ${money.primaryCode}`}
-          />
-        </FormField>
+        {/* Un champ par devise, chacun NOMMANT la sienne. Un champ vide reprend
+            la dernière clôture pour cette devise ; voir `ChampsFonds`. */}
+        <ChampsFonds
+          devises={devisesDuFonds(snapshot?.currencies ?? [], money.primaryCode)}
+          valeurs={fonds}
+          erreurs={erreursFonds}
+          onChange={(devise, v) => {
+            setFonds((f) => ({ ...f, [devise]: v }));
+            setErreursFonds((e) => {
+              if (!e[devise]) return e;
+              const { [devise]: _retire, ...reste } = e;
+              return reste;
+            });
+          }}
+          money={money}
+        />
       </View>
 
       <View className="mt-6">

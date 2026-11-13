@@ -31,6 +31,7 @@ export const TABLE_LABELS: Record<string, string> = {
   loyalty_transactions: "Mouvements de cagnotte",
   registers: "Caisses",
   register_sessions: "Sessions de caisse",
+  register_session_currency_balances: "Fonds de caisse par devise",
   sales: "Ventes",
   stock_movements: "Mouvements de stock",
   income_categories: "Catégories de recettes",

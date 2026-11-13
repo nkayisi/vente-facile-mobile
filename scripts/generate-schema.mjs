@@ -129,6 +129,9 @@ const INDEXES = {
   cash_movements: [["movement_date"]],
   expenses: [["expense_date"], ["status"]],
   register_sessions: [["register_id"], ["status"]],
+  // Le fonds par devise se lit TOUJOURS par session : à l'ouverture (la
+  // dernière clôture d'une caisse) et pour l'attendu de clôture.
+  register_session_currency_balances: [["session_id"]],
   categories: [["parent_id"]],
   // La feuille de comptage se lit et s'agrège TOUJOURS par session : le détail
   // filtre dessus, et la liste y agrège l'avancement de chaque ligne affichée.

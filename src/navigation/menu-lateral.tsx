@@ -22,7 +22,9 @@ import { ROLE_LABELS } from "@vente-facile/core";
 import { useLecture } from "@/data/live";
 import { etablissement } from "@/data/organisation";
 import { useDeconnexion } from "@/session/deconnexion";
+import { pastilleOperations } from "@/features/sync/journal-lisible";
 import { useSession } from "@/session/provider";
+import { countByState } from "@/sync";
 import {
   Avatar,
   Badge,
@@ -54,6 +56,10 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
   const { demander } = useDeconnexion();
   const { donnees: etab } = useLecture(etablissement, { tables: ["organizations"] });
   const toast = useToast();
+  // Le journal se relit dès qu'il change : une opération refusée pendant que le
+  // tiroir est ouvert fait paraître sa pastille sans rouvrir le menu.
+  const { donnees: journal } = useLecture(countByState, { tables: ["outbox_operations"] });
+  const pastille = journal ? pastilleOperations(journal) : null;
 
   const entrees = entreesDuMenu(can);
   const active = cleActive(chemin, entrees);
@@ -205,32 +211,33 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
             Cet appareil
           </Text>
           {[
-            { titre: "Synchronisation", icon: "CloudDownload" as const, href: "/(app)/appareil/synchronisation" },
-            // Le SEUL endroit où un refus du serveur devient lisible. L'écran
-            // Synchronisation porte bien un bandeau pour la quarantaine, mais
-            // AUCUN pour les opérations bloquées : sans cette entrée, une
-            // opération retenue par un abonnement impayé n'a plus aucun chemin.
-            { titre: "Opérations à corriger", icon: "AlertTriangle" as const, href: "/(app)/appareil/operations" },
-            { titre: "Imprimante", icon: "Printer" as const, href: "/(app)/appareil/imprimante" },
+            { titre: "Synchronisation", icon: "CloudDownload" as const, href: "/(app)/appareil/synchronisation", pastille: null },
+            // L'écran où un refus du serveur devient lisible et se corrige. Il
+            // porte sa PASTILLE (refusées + bloquées) : sans elle, le marchand
+            // n'avait aucune raison d'ouvrir cet écran, et une vente refusée
+            // restait en quarantaine des jours. Voir `journal-lisible.ts`.
+            { titre: "Opérations à corriger", icon: "AlertTriangle" as const, href: "/(app)/appareil/operations", pastille },
+            { titre: "Imprimante", icon: "Printer" as const, href: "/(app)/appareil/imprimante", pastille: null },
             // ⚠ SANS CETTE ENTRÉE, L'ÉCRAN DE DIAGNOSTIC N'EXISTE POUR PERSONNE.
             // Il a été écrit pour qu'un marchand chez qui la barre du système
             // recouvre le bas de l'écran puisse nous envoyer un relevé - et il
             // n'était câblé nulle part. Un outil qu'on ne peut pas atteindre ne
             // sert qu'à celui qui l'a écrit.
-            { titre: "Diagnostic d'affichage", icon: "Ruler" as const, href: "/(app)/appareil/affichage" },
+            { titre: "Diagnostic d'affichage", icon: "Ruler" as const, href: "/(app)/appareil/affichage", pastille: null },
           ].map((a) => (
             <Pressable
               key={a.href}
               onPress={aller(a.href)}
               haptic="selection"
               accessibilityRole="link"
-              accessibilityLabel={a.titre}
+              accessibilityLabel={a.pastille ? a.pastille.etiquette : a.titre}
               className="flex-row items-center gap-3 rounded-lg px-4 py-2.5"
             >
               <Icon name={a.icon} size={18} color="mutedForeground" />
               <Text variant="bodySmall" className="flex-1 text-muted-foreground">
                 {a.titre}
               </Text>
+              {a.pastille ? <Badge tone={a.pastille.ton}>{a.pastille.texte}</Badge> : null}
             </Pressable>
           ))}
         </View>

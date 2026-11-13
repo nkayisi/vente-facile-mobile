@@ -57,9 +57,18 @@ import { formatDateFr, formatTimeFr } from "@vente-facile/core";
 
 import { dateDepuisJourISO } from "@/data/dates";
 import { telephonesDesClients } from "@/data/contacts";
+import { creditsEnFile } from "@/data/creances-en-file";
 import { useMonnaie } from "@/data/devises";
+import { useLecture } from "@/data/live";
+import {
+  consequenceCreditsEnFile,
+  envoiDesCredits,
+  titreCreditsEnFile,
+} from "@/features/creances/en-file";
+import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
 import {
+  contexteFileDe,
   nombreDeFiltresPerimetre,
   PERIMETRE_VIDE,
   resumeDuPerimetre,
@@ -172,6 +181,20 @@ export default function EcranCreances() {
   const [feuillePerimetre, setFeuillePerimetre] = useState(false);
   const perimetre = usePerimetre(choixPerimetre, true);
   const applique = perimetre.applique;
+  const moi = snapshot?.user.id ?? null;
+  const file = useMemo(() => contexteFileDe(perimetre, moi), [perimetre, moi]);
+
+  /**
+   * Les ventes à crédit encore dans le JOURNAL : la balance du serveur ne les
+   * connaît pas encore. Elles se disent à part, jamais mêlées à la balance -
+   * voir `features/creances/en-file.ts`. Lecture LOCALE : elle marche hors
+   * ligne, quand la balance, elle, ne peut pas se rafraîchir.
+   */
+  const lireCreditsEnFile = useCallback(() => creditsEnFile(applique, file), [applique, file]);
+  const { donnees: enFile } = useLecture(lireCreditsEnFile, {
+    tables: ["outbox_operations", "print_jobs", "sales"],
+    deps: [applique, file],
+  });
 
   const charger = useCallback(
     async (mode: "initial" | "rafraichir") => {
@@ -307,6 +330,14 @@ export default function EcranCreances() {
           title={creances ? "La mise à jour a échoué" : "Chargement impossible"}
           message={erreur}
           action={{ label: "Réessayer", onPress: () => void charger("rafraichir") }}
+        />
+      ) : null}
+
+      {enFile && enFile.nombre > 0 ? (
+        <BandeauEnvoi
+          envoi={envoiDesCredits(enFile)}
+          titre={titreCreditsEnFile(enFile)}
+          consequence={consequenceCreditsEnFile(enFile, (m, d) => money.money(m, d))}
         />
       ) : null}
 

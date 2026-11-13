@@ -21,7 +21,7 @@ import { useEnLigne } from "@/data/reseau";
 import {
   ETAT_STOCK,
   niveauxDeStock,
-  type EtatStock,
+  type FiltreEtatStock,
   type LigneNiveau,
 } from "@/data/stock-niveaux";
 import { ApiError } from "@/api/errors";
@@ -50,9 +50,9 @@ import {
 const TABLES = ["stocks", "products", "warehouses", "categories", "units"];
 
 /** Filtre d'arrivée admis dans l'URL. Ce qui n'est pas connu ne filtre rien. */
-function etatDemande(v: string | string[] | undefined): EtatStock {
+function etatDemande(v: string | string[] | undefined): FiltreEtatStock {
   const cle = Array.isArray(v) ? v[0] : v;
-  return cle === "bas" || cle === "rupture" || cle === "ok" ? cle : "tous";
+  return cle === "bas" || cle === "rupture" || cle === "ok" || cle === "alerte" ? cle : "tous";
 }
 
 export default function Niveaux() {
@@ -66,7 +66,7 @@ export default function Niveaux() {
   const enLigne = useEnLigne();
   const [recherche, setRecherche] = useState("");
   const [entrepot, setEntrepot] = useState<string | null>(null);
-  const [etat, setEtat] = useState<EtatStock>(() => etatDemande(params.etat));
+  const [etat, setEtat] = useState<FiltreEtatStock>(() => etatDemande(params.etat));
   const [feuilleFormat, setFeuilleFormat] = useState(false);
   const [envoiExport, setEnvoiExport] = useState(false);
 
@@ -124,6 +124,12 @@ export default function Niveaux() {
       ) : null}
       <ChipRow>
         <Chip label="Tout" actif={etat === "tous"} onPress={() => setEtat("tous")} />
+        {/* Le filtre d'ALERTE n'a de puce que tant qu'il est actif : on y
+            arrive depuis la tuile du tableau de bord, et un filtre posé doit
+            se voir - et se retirer. */}
+        {etat === "alerte" ? (
+          <Chip label="À réapprovisionner" actif onPress={() => setEtat("tous")} onRetirer={() => setEtat("tous")} />
+        ) : null}
         {(Object.keys(ETAT_STOCK) as (keyof typeof ETAT_STOCK)[]).map((cle) => (
           <Chip
             key={cle}
@@ -209,7 +215,9 @@ export default function Niveaux() {
         subtitle={
           etat === "bas"
             ? "Produits en stock bas"
-            : "Vue d'ensemble de tout le stock"
+            : etat === "alerte"
+              ? "Produits à réapprovisionner, ruptures comprises"
+              : "Vue d'ensemble de tout le stock"
         }
         right={
           peutVoir ? (

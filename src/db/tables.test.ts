@@ -10,11 +10,11 @@ describe("la dérivation des noms de tables", () => {
     expect(tablesLocales().length).toBeGreaterThan(3);
   });
 
-  it("rend les 48 tables tirées, enfants compris", () => {
-    // 40 tables de tête au manifeste, plus les 8 enfants tirés imbriqués dans
+  it("rend les 49 tables tirées, enfants compris", () => {
+    // 40 tables de tête au manifeste, plus les 9 enfants tirés imbriqués dans
     // leur parent (`sale_items`, `payments`, `inventory_counts`,
-    // `requisition_items`…).
-    expect(tablesTirees()).toHaveLength(48);
+    // `requisition_items`, `register_session_currency_balances`…).
+    expect(tablesTirees()).toHaveLength(49);
   });
 
   it("nomme les tables qui portent l'argent", () => {

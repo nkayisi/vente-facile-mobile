@@ -12,6 +12,7 @@ import * as Crypto from "expo-crypto";
 import { desc, eq } from "drizzle-orm";
 
 import { db } from "@/db/client";
+import type { FondSaisi } from "@/features/caisse/fond";
 import { registerSessions, registers, warehouses } from "@/db/schema";
 import { enAttenteParType, enqueue, type EtatEnvoi } from "@/sync";
 
@@ -209,7 +210,12 @@ export async function sessionOuverte(): Promise<SessionCaisse | null> {
  */
 export async function ouvrirSession(
   registerId: string,
-  fondDeCaisse: number | null
+  fondDeCaisse: number | null,
+  /**
+   * Les fonds des devises SECONDAIRES renseignées (lot L13). Une devise absente
+   * hérite de la dernière clôture : voir `lireFonds`.
+   */
+  autresFonds: FondSaisi[] = []
 ): Promise<SessionCaisse> {
   const id = Crypto.randomUUID();
 
@@ -232,6 +238,17 @@ export async function ouvrirSession(
     // │ une affirmation, pas un défaut de formulaire.                        │
     // └──────────────────────────────────────────────────────────────────────┘
     ...(fondDeCaisse === null ? {} : { opening_balance: String(fondDeCaisse) }),
+    // Les secondaires voyagent dans la liste, la principale reste le scalaire :
+    // le serveur applique le scalaire puis la liste, et un terminal antérieur
+    // n'envoyait que le premier.
+    ...(autresFonds.length > 0
+      ? {
+          opening_balances: autresFonds.map((f) => ({
+            currency: f.devise,
+            amount: String(f.montant),
+          })),
+        }
+      : {}),
   });
 
   const [caisse] = await db

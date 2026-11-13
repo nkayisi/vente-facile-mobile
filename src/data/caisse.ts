@@ -31,7 +31,7 @@ import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { bornesLocales } from "./periode-filtre";
-import { deviseOuPrincipale } from "./devise-principale";
+import { deviseOuPrincipale, devisePrincipale } from "./devise-principale";
 import {
   depensesEnFile,
   mouvementsEnFile,
@@ -46,6 +46,7 @@ import {
 import type { FiltresCaisse, FiltresDepense } from "@/features/caisse/filtres";
 import { type EtatEnvoi } from "@/sync";
 import { categoriesEnAttente } from "@/features/caisse/actes";
+import { fondsParDevise } from "@/features/caisse/fond";
 import {
   fusionnerCategories,
   type CategorieFusionnee,
@@ -58,6 +59,7 @@ import {
   incomeCategories,
   paymentMethods,
   payments,
+  registerSessionCurrencyBalances,
   registerSessions,
   registers,
   sales,
@@ -779,20 +781,36 @@ export async function sessionACloturer(
     sorties.set(d, (sorties.get(d) ?? 0) + nb(m.amount));
   }
 
+  // Le fonds PAR DEVISE, tiré avec la session depuis le lot L13. Voir
+  // `fondsParDevise` : sans ces lignes, le scalaire va à la devise PRINCIPALE,
+  // et non plus à la devise du premier règlement de la session.
+  const lignesFonds = await db
+    .select({
+      devise: registerSessionCurrencyBalances.currency,
+      ouverture: registerSessionCurrencyBalances.openingBalance,
+    })
+    .from(registerSessionCurrencyBalances)
+    .where(eq(registerSessionCurrencyBalances.sessionId, sessionId));
+  const fonds = fondsParDevise(
+    lignesFonds.map((l) => ({ devise: deviseOuPrincipale(l.devise), ouverture: nb(l.ouverture) })),
+    nb(s.openingBalance),
+    devisePrincipale()
+  );
+
   const devises = new Set<string>([
+    ...fonds.keys(),
     ...entrees.keys(),
     ...sorties.keys(),
   ]);
-  // Le fonds d'ouverture est scalaire dans la table tirée : il appartient à la
-  // devise principale, et les autres devises partent de zéro.
-  const principale = [...devises][0] ?? "";
-  devises.add(principale);
+  // Une session sans aucun mouvement montre au moins sa devise principale :
+  // un écran de clôture sans une seule ligne ne dirait pas quoi compter.
+  if (devises.size === 0) devises.add(devisePrincipale());
 
   const soldes: SoldeDeviseSession[] = [...devises]
     .filter(Boolean)
     .sort()
     .map((devise) => {
-      const ouverture = devise === principale ? nb(s.openingBalance) : 0;
+      const ouverture = fonds.get(devise) ?? 0;
       const e = entrees.get(devise) ?? 0;
       const so = sorties.get(devise) ?? 0;
       return { devise, ouverture, entrees: e, sorties: so, attendu: ouverture + e - so };

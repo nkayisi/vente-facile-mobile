@@ -29,21 +29,25 @@ import { router } from "expo-router";
 import type { MoneyHelpers } from "@vente-facile/core";
 
 import { parcDeCaisses, type CaisseParc } from "@/data/caisses";
+import { devisePrincipale } from "@/data/devise-principale";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { depuis } from "@/data/ventes";
 import { ETAT_SESSION, motifClotureFermee } from "@/features/caisse/apparence";
-import { analyserFond } from "@/features/caisse/fond";
+import { ChampsFonds } from "@/features/caisse/champs-fonds";
+import { devisesDuFonds, lireFonds } from "@/features/caisse/fond";
 import { ouvrirSession, sessionOuverte } from "@/features/pos/caisse";
 import { libelleEnvoi } from "@/data/envoi";
 import { useSession } from "@/session/provider";
 import {
-  Apparition, AppBar, Badge, Banner, Button, Card, EmptyState, FormField, Icon,
-  Input, Mesure, MultiCurrencyTotal, Pressable, Screen, SearchInput, Sheet,
+  Apparition, AppBar, Badge, Banner, Button, Card, EmptyState, Icon,
+  Mesure, MultiCurrencyTotal, Pressable, Screen, SearchInput, Sheet,
   Skeleton, Text, useToast,
 } from "@/ui";
 
-const TABLES = ["registers", "register_sessions", "warehouses", "sales", "users"];
+const TABLES = [
+  "registers", "register_sessions", "register_session_currency_balances", "warehouses", "sales", "users",
+];
 
 /**
  * Au-delà, la recherche gagne sa place. En deçà, elle coûte soixante points
@@ -55,12 +59,13 @@ const SEUIL_RECHERCHE = 5;
 export default function Caisses() {
   const money = useMonnaie();
   const toast = useToast();
-  const { can } = useSession();
+  const { can, snapshot } = useSession();
 
   const [recherche, setRecherche] = useState("");
   const [aOuvrir, setAOuvrir] = useState<CaisseParc | null>(null);
-  const [fond, setFond] = useState("");
-  const [erreurFond, setErreurFond] = useState<string | null>(null);
+  // Un champ PAR DEVISE ; voir `ChampsFonds`.
+  const [fonds, setFonds] = useState<Record<string, string>>({});
+  const [erreursFonds, setErreursFonds] = useState<Record<string, string>>({});
   const [enCours, setEnCours] = useState(false);
   const verrou = useRef(false);
 
@@ -107,19 +112,19 @@ export default function Caisses() {
 
     // La saisie est lue AVANT le verrou : un refus de forme n'est pas un envoi,
     // il ne doit ni bloquer le bouton ni afficher un chargement.
-    const lu = analyserFond(fond);
+    const lu = lireFonds(fonds, money.primaryCode);
     if (!lu.ok) {
-      setErreurFond(lu.message);
+      setErreursFonds(lu.erreurs);
       return;
     }
 
     verrou.current = true;
     setEnCours(true);
     try {
-      await ouvrirSession(aOuvrir.id, lu.montant);
+      await ouvrirSession(aOuvrir.id, lu.principal, lu.autres);
       setAOuvrir(null);
-      setFond("");
-      setErreurFond(null);
+      setFonds({});
+      setErreursFonds({});
       toast.succes(`Session ouverte sur ${aOuvrir.nom}.`);
     } catch (e) {
       toast.erreur(e instanceof Error ? e.message : "La session n'a pas pu être ouverte.");
@@ -193,8 +198,8 @@ export default function Caisses() {
                 peutOuvrir={can("sales.create")}
                 onOuvrir={() => {
                   setAOuvrir(c);
-                  setFond("");
-                  setErreurFond(null);
+                  setFonds({});
+                  setErreursFonds({});
                 }}
               />
             </Apparition>
@@ -232,41 +237,24 @@ export default function Caisses() {
         ) : null}
 
         <View className="mt-4">
-          <FormField
-            // ┌────────────────────────────────────────────────────────────┐
-            // │ UN MONTANT SANS DEVISE NE VEUT RIEN DIRE ICI.             │
-            // │                                                            │
-            // │ Le champ demandait « Fond de caisse » et son contenu part  │
-            // │ en devise PRINCIPALE, ce que rien n'écrivait. Sur un        │
-            // │ établissement qui compte en dollars et encaisse aussi des   │
-            // │ francs, « 50 000 » tapé pour des francs ouvre le tiroir à   │
-            // │ cinquante mille dollars, et le Z du soir constate un        │
-            // │ manquant du même ordre.                                     │
-            // └────────────────────────────────────────────────────────────┘
-            label={`Fond de caisse (${money.primaryCode})`}
-            error={erreurFond ?? undefined}
-            hint={hintFond(aOuvrir, money)}
-          >
-            <Input
-              value={fond}
-              onChangeText={(v) => {
-                setFond(v);
-                // On efface le refus dès la première correction : le laisser
-                // sous un champ qu'on vient de réparer fait douter du remède.
-                if (erreurFond) setErreurFond(null);
-              }}
-              invalid={erreurFond !== null}
-              keyboardType="decimal-pad"
-              placeholder="0"
-              autoFocus
-              leading={
-                <Text variant="caption" className="font-sans-medium">
-                  {money.symbolOf(money.primaryCode)}
-                </Text>
-              }
-              accessibilityLabel={`Fond de caisse en ${money.primaryCode}`}
-            />
-          </FormField>
+          <ChampsFonds
+            devises={devisesDuFonds(snapshot?.currencies ?? [], money.primaryCode)}
+            valeurs={fonds}
+            erreurs={erreursFonds}
+            onChange={(devise, v) => {
+              setFonds((f) => ({ ...f, [devise]: v }));
+              // On efface le refus dès la première correction : le laisser
+              // sous un champ qu'on vient de réparer fait douter du remède.
+              setErreursFonds((e) => {
+                if (!e[devise]) return e;
+                const { [devise]: _retire, ...reste } = e;
+                return reste;
+              });
+            }}
+            herite={heriteDe(aOuvrir)}
+            money={money}
+            autoFocus
+          />
         </View>
 
         <Button fullWidth size="lg" loading={enCours} onPress={() => void ouvrir()}>
@@ -278,22 +266,26 @@ export default function Caisses() {
 }
 
 /**
- * L'aide sous le champ : ce que « vide » veut dire, et ce qu'il vaut.
+ * Ce que la dernière clôture a laissé, par devise : l'aide de chaque champ.
  *
  * Le serveur HÉRITE le tiroir de la dernière clôture quand aucun fonds n'est
  * envoyé. L'écrire sans donner le chiffre demanderait au caissier de faire
  * confiance à un montant qu'il ne voit pas ; le donner quand on le connaît
  * transforme une règle en information.
+ *
+ * ⚠ Sans lignes par devise (session pas encore re-tirée), le compté scalaire
+ *   appartient à la devise PRINCIPALE, comme le serveur l'entend.
  */
-function hintFond(caisse: CaisseParc | null, money: MoneyHelpers): string {
+function heriteDe(caisse: CaisseParc | null): Map<string, number | null> {
+  const herite = new Map<string, number | null>();
   const laisse = caisse?.derniereCloture;
-  if (laisse && laisse.compte !== null) {
-    return `La dernière clôture a laissé ${money.money(
-      laisse.compte,
-      money.primaryCode
-    )} dans ce tiroir. Laissez vide pour le reprendre, ou écrivez 0 si le tiroir est vide.`;
+  if (!laisse) return herite;
+  if (laisse.parDevise.length > 0) {
+    for (const d of laisse.parDevise) herite.set(d.devise, d.compte);
+  } else if (laisse.compte !== null) {
+    herite.set(devisePrincipale(), laisse.compte);
   }
-  return "Ce qui est déjà dans le tiroir. Laissez vide pour reprendre ce que la dernière clôture y a laissé, ou écrivez 0 si le tiroir est vide.";
+  return herite;
 }
 
 function CarteCaisse({

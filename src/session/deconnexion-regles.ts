@@ -18,6 +18,7 @@
  * │ aucune sortie.                                                           │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
+import { pluriel } from "@/data/accord";
 
 /**
  * Tout ce qui n'a jamais atteint le serveur.
@@ -59,9 +60,7 @@ export function nbEnFile(f: EtatFile): number {
  * attendent », le défaut exact que ces deux fonctions existent pour éviter - et
  * qui vivait bel et bien dans le voile d'abonnement, écrit au gabarit.
  */
-export function pluriel(n: number, singulier: string, plur: string): string {
-  return `${n} ${n > 1 ? plur : singulier}`;
-}
+export { pluriel };
 
 export function operations(n: number): string {
   return pluriel(n, "opération", "opérations");

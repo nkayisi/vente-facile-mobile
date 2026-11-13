@@ -20,11 +20,15 @@
  * plausible, et couvrirait autre chose que la liste. D'où ce module pur et
  * son test.
  */
-import type { EtatStock } from "@/data/etats-stock";
+import type { FiltreEtatStock } from "@/data/etats-stock";
 
 /** `undefined` : aucun filtre d'état, donc tout le stock. */
-export function statutServeur(etat: EtatStock | undefined): string | undefined {
+export function statutServeur(etat: FiltreEtatStock | undefined): string | undefined {
   switch (etat) {
+    // L'ALERTE du serveur, telle quelle : c'est le seul cas où `low` est juste,
+    // parce que la liste montre alors exactement cet ensemble.
+    case "alerte":
+      return "low";
     case "rupture":
       return "out";
     case "bas":

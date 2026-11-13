@@ -29,6 +29,9 @@
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 
+import { formatUnitQuantity, roundQuantity } from "@vente-facile/core";
+
+import { accord, pluriel } from "@/data/accord";
 import { useMonnaie } from "@/data/devises";
 import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
@@ -351,7 +354,7 @@ export function FeuilleApproMasse({
         notes: notes.trim() || undefined,
         lignes: retenues.map((r) => r.saisie),
       });
-      toast.succes(`${retenues.length} entrée(s) mises en file`);
+      toast.succes(`${pluriel(retenues.length, "entrée mise", "entrées mises")} en file`);
       onCree();
     } catch {
       toast.erreur("La livraison n'a pas pu être mise en file");
@@ -429,12 +432,12 @@ export function FeuilleApproMasse({
               loading={envoi}
             >
               {retenues.length > 0
-                ? `Enregistrer ${retenues.length} entrée(s)`
+                ? `Enregistrer ${pluriel(retenues.length, "entrée", "entrées")}`
                 : "Enregistrer"}
             </Button>
             {illisibles > 0 ? (
               <Text variant="caption">
-                {`${illisibles} ligne(s) portent une quantité illisible : corrigez-les, sinon elles n'entreront pas en stock.`}
+                {`${pluriel(illisibles, "ligne porte", "lignes portent")} une quantité illisible : ${accord(illisibles, "corrigez-la, sinon elle n'entrera", "corrigez-les, sinon elles n'entreront")} pas en stock.`}
               </Text>
             ) : retenues.length === 0 ? (
               <Text variant="caption">Saisissez au moins une quantité.</Text>
@@ -494,9 +497,9 @@ export function FeuilleApproMasse({
 
           <View className="flex-row flex-wrap gap-x-4 gap-y-1">
             <Text variant="caption">
-              {cadran.lignes} ligne(s) saisie(s) sur {feuille.lignes.length}
+              {`${pluriel(cadran.lignes, "ligne saisie", "lignes saisies")} sur ${feuille.lignes.length}`}
             </Text>
-            <Text variant="caption">{cadran.unites} unité(s)</Text>
+            <Text variant="caption">{formatUnitQuantity(roundQuantity(cadran.unites), "unité")}</Text>
             <Text variant="caption">
               {money.money(cadran.valeur, money.primaryCode)}
             </Text>
@@ -713,7 +716,7 @@ export function FeuilleApproMasse({
               <DeclencheurSelect
                 libelle={
                   categories.length
-                    ? `${categories.length} catégorie(s)`
+                    ? pluriel(categories.length, "catégorie", "catégories")
                     : "Choisir des catégories"
                 }
                 actif={categories.length > 0}
@@ -728,7 +731,7 @@ export function FeuilleApproMasse({
               <DeclencheurSelect
                 libelle={
                   articlesChoisis.length
-                    ? `${articlesChoisis.length} article(s)`
+                    ? pluriel(articlesChoisis.length, "article", "articles")
                     : "Choisir des articles"
                 }
                 actif={articlesChoisis.length > 0}

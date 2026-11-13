@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 
+import { pluriel } from "@/data/accord";
 import { jourISO } from "@/data/dates";
 import { useMonnaie } from "@/data/devises";
 import { depuisQuand, type Periode } from "@/data/periodes";
@@ -172,7 +173,7 @@ export function SectionRapportClient({ clientId }: { clientId: string }) {
                   className="mt-1 flex-row items-center justify-between gap-3"
                 >
                   <Text variant="caption" className="min-w-0 flex-1">
-                    {`${d.devise} · ${d.nombre} vente(s)`}
+                    {`${d.devise} · ${pluriel(d.nombre, "vente", "ventes")}`}
                   </Text>
                   <Mesure value={argent(d.totalNatif, d.devise)} />
                 </View>

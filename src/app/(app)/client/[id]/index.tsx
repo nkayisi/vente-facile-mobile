@@ -124,6 +124,8 @@ export default function FicheClient() {
     }))
     .filter((n) => n.montant > 0);
   const peutEcrire = can("customers.edit");
+  /** Seul le propriétaire tire TOUTES les ventes : voir `lireReliquat`. */
+  const voitToutesLesVentes = snapshot?.membership?.role === "owner";
 
   return (
     <Screen scroll padded={false}>
@@ -337,15 +339,21 @@ export default function FicheClient() {
                 />
               </View>
             ))}
-            {/* Les factures d'un collègue, que ce terminal ne tire pas (lot L9) :
-                la dette les compte, la liste ne peut pas les montrer. Une ligne
+            {/* La dette que les factures listées n'expliquent pas. Pour un
+                tirage BORNÉ (lot L9), ce sont les factures d'un collègue ou
+                d'un autre dépôt ; pour le propriétaire, qui tire tout, c'est
+                une dette HORS FACTURE (ajustement, reliquat ancien). Une ligne
                 par devise, jamais une somme entre devises. */}
             {nonVisibles.map((n, i) => (
               <View key={n.devise}>
                 {c.facturesOuvertes.length > 0 || i > 0 ? <Divider /> : null}
                 <ListItem
-                  title="Autres factures (non visibles)"
-                  subtitle="Faites par un collègue"
+                  title={voitToutesLesVentes ? "Dette hors factures" : "Autres factures (non visibles)"}
+                  subtitle={
+                    voitToutesLesVentes
+                      ? "Ajustement ou reliquat ancien"
+                      : "Faites par un collègue ou dans un autre dépôt"
+                  }
                   value={money.money(n.montant, n.devise)}
                   icon="Receipt"
                 />

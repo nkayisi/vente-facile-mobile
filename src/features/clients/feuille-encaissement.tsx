@@ -32,9 +32,10 @@ import { formatDateFr, formatDateTimeFr } from "@vente-facile/core";
 
 import { facturesOuvertes, type DetailClient } from "@/data/contact-detail";
 import { useMonnaie } from "@/data/devises";
+import { lireNombre } from "@/data/nombres";
 import { useLecture } from "@/data/live";
 import { encaisserClient } from "@/features/clients/actes";
-import { detteNonVisible, imputer } from "@/features/clients/imputation";
+import { detteNonVisible, imputer, lireReliquat } from "@/features/clients/imputation";
 import { moyensDePaiement } from "@/features/pos/donnees";
 import { chromeDeLaSession } from "@/features/pos/ticket";
 import { enregistrerEtImprimer } from "@/printing/jobs";
@@ -66,6 +67,12 @@ export function FeuilleEncaissement({
   const money = useMonnaie();
   const toast = useToast();
   const { snapshot } = useSession();
+  /**
+   * Seul le propriétaire tire TOUTES les ventes (aucune borne de dépôt ni
+   * d'auteur) : pour lui, une dette que ses factures n'expliquent pas est une
+   * dette hors facture. Voir `lireReliquat`.
+   */
+  const voitToutesLesVentes = snapshot?.membership?.role === "owner";
   const devises = snapshot?.currencies ?? [];
   const principale = devises.find((d) => d.is_primary)?.currency_code ?? "CDF";
 
@@ -107,7 +114,15 @@ export function FeuilleEncaissement({
   }, [moyens, methode]);
 
   const moyenChoisi = moyens?.find((m) => m.id === methode) ?? null;
-  const saisi = Number(montant.replace(",", ".")) || 0;
+  // ⚠ `lireNombre` et non `Number(x.replace(",", "."))` : « 12 500 » donnait
+  //   `NaN`, ramené à zéro, et le bouton restait fermé sans un mot.
+  const lu = lireNombre(montant);
+  const saisi = lu.ok ? lu.valeur ?? 0 : 0;
+  const refusMontant = lu.ok
+    ? undefined
+    : lu.motif === "negatif"
+      ? "Le montant reçu ne peut pas être négatif."
+      : "Montant illisible.";
   const ouvertes = factures ?? [];
   /**
    * La dette de cette devise que les factures visibles n'expliquent pas : celles
@@ -118,11 +133,6 @@ export function FeuilleEncaissement({
     client.dettes.find((d) => d.devise === deviseImputation)?.montant ?? 0,
     ouvertes
   );
-  // ⚠ « Des factures » compte AUSSI celles qu'on ne voit pas : sans elles, un
-  //   caissier qui n'en voit aucune annoncerait une AVANCE, et son reçu sortirait
-  //   sous le préfixe `AVC` pour un versement que le serveur impute à des
-  //   factures. Le numéro voyage tel quel jusqu'au serveur.
-  const aDesFactures = ouvertes.length > 0 || nonVisible > 0;
 
   /**
    * L'imputation ANNONCÉE, calculée comme le serveur la fera. Aperçu, pas
@@ -130,7 +140,24 @@ export function FeuilleEncaissement({
    * rendre lisible.
    */
   const enDeviseImputation = money.convMoney(saisi, devise, deviseImputation);
-  const { soldees, partielle, avance } = imputer(enDeviseImputation, ouvertes);
+  const { soldees, partielle, avance: reliquat } = imputer(enDeviseImputation, ouvertes);
+  /**
+   * Ce que le reliquat devient VRAIMENT, et sous quel numéro part le reçu.
+   *
+   * ⚠ `surFactures` décide du préfixe (`RGL` ou `AVC`) d'un numéro que le
+   *   serveur reprend tel quel : il doit décider comme lui. Pour un caissier,
+   *   la part inexpliquée peut être les factures d'un collègue ; pour le
+   *   propriétaire, c'est une dette hors facture, et le serveur ne voit alors
+   *   aucune facture ouverte.
+   */
+  const lecture = lireReliquat({
+    reliquat,
+    nonVisible,
+    nbFacturesOuvertes: ouvertes.length,
+    voitToutesLesVentes,
+  });
+  const { avance, horsFacture } = lecture;
+  const aDesFactures = lecture.surFactures;
 
   const bloque =
     envoi ||
@@ -266,7 +293,7 @@ export function FeuilleEncaissement({
         </>
       ) : null}
 
-      <FormField label={`Montant reçu (${devise})`} required>
+      <FormField label={`Montant reçu (${devise})`} required error={refusMontant}>
         <Input
           value={montant}
           onChangeText={setMontant}
@@ -286,15 +313,20 @@ export function FeuilleEncaissement({
           {partielle ? (
             <Text variant="caption">{`Solde partiellement : ${partielle}`}</Text>
           ) : null}
+          {horsFacture > 0 ? (
+            <Text variant="caption">
+              {`Dette hors factures réduite de : ${money.money(horsFacture, deviseImputation)}`}
+            </Text>
+          ) : null}
           {avance > 0 ? (
             <Text variant="caption">
               {`Reste en avance : ${money.money(money.convMoney(avance, deviseImputation, devise), devise)}`}
             </Text>
           ) : null}
-          {soldees.length === 0 && !partielle && avance <= 0 ? (
+          {soldees.length === 0 && !partielle && avance <= 0 && horsFacture <= 0 ? (
             <Text variant="caption">Rien à imputer.</Text>
           ) : null}
-          {nonVisible > 0 ? (
+          {lecture.nature === "factures_d_un_collegue" ? (
             <Text variant="caption">
               {"Aperçu sur vos factures seulement : le serveur peut solder d'abord celles d'un collègue, si elles sont plus anciennes."}
             </Text>
@@ -333,7 +365,9 @@ export function FeuilleEncaissement({
       {nonVisible > 0 ? (
         <View className="flex-row justify-between gap-3">
           <Text variant="caption" className="min-w-0 flex-1">
-            Autres factures (non visibles)
+            {lecture.nature === "hors_facture"
+              ? "Dette hors factures (ajustement, reliquat ancien)"
+              : "Autres factures (non visibles)"}
           </Text>
           <Text numeric variant="caption" className="shrink-0">
             {money.money(nonVisible, deviseImputation)}

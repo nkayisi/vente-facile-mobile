@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 
+import { pluriel } from "@/data/accord";
 import {
   aBesoinDAttention,
   choisirClasseur,
@@ -83,9 +84,9 @@ export function FeuilleImportArticles({
         // sur un fichier partiellement refusé ferait refermer la feuille avant
         // d'avoir lu les lignes ignorées.
         if (r.skipped > 0 || r.renamed.length > 0) {
-          toast.info(`${r.created} article(s) importé(s). Lisez le détail.`);
+          toast.info(`${pluriel(r.created, "article importé", "articles importés")}. Lisez le détail.`);
         } else {
-          toast.succes(`${r.created} article(s) importé(s).`);
+          toast.succes(`${pluriel(r.created, "article importé", "articles importés")}.`);
         }
       } else {
         toast.erreur(titreDuRapport(r));
@@ -200,7 +201,7 @@ function RapportImport({ rapport }: { rapport: ResultatImport }) {
         title={titreDuRapport(rapport)}
         message={
           rapport.error ??
-          `${rapport.created} créé(s) · ${rapport.skipped} ignoré(s)` +
+          `${pluriel(rapport.created, "créé", "créés")} · ${pluriel(rapport.skipped, "ignoré", "ignorés")}` +
             (rapport.updated > 0 ? ` · ${rapport.updated} mis à jour` : "")
         }
       />

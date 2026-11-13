@@ -670,7 +670,7 @@ export default function TableauDeBord() {
               }
               // Un chiffre d'alerte qui ne mène nulle part ne sert à rien : la
               // liste s'ouvre DÉJÀ filtrée sur les rayons concernés.
-              onPress={() => router.push("/rayon?etat=bas")}
+              onPress={() => router.push("/rayon?etat=alerte")}
             />
             <TuileInventaire
               icon="Package"

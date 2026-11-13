@@ -30,7 +30,12 @@ import {
   type Packaging,
 } from "@vente-facile/core";
 
-import { ETAT_STOCK, etatDuRayon, type EtatStock } from "@/data/etats-stock";
+import {
+  ETAT_STOCK,
+  etatDuRayon,
+  type EtatStock,
+  type FiltreEtatStock,
+} from "@/data/etats-stock";
 import { db } from "@/db/client";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
 
@@ -52,7 +57,7 @@ const prixOuNull = (v: string | number | null | undefined): number | null => {
 };
 
 // Réexportés pour ne casser aucun appelant : leur domicile est le module pur.
-export { ETAT_STOCK, type EtatStock };
+export { ETAT_STOCK, type EtatStock, type FiltreEtatStock };
 
 export interface LigneNiveau {
   id: string;
@@ -144,7 +149,7 @@ export interface FiltresNiveaux {
    * filtrée était silencieusement tronquée, et `total` comptait la fenêtre ».
    */
   categories?: string[];
-  etat?: EtatStock;
+  etat?: FiltreEtatStock;
   /**
    * Ce qu'il faut RÉAPPROVISIONNER : sous un seuil réel, ruptures comprises.
    *
@@ -195,7 +200,7 @@ function conditionnementDe(l: {
  * deux doivent dire la même chose, sinon la pastille d'une rangée contredit la
  * puce qui l'a fait apparaître.
  */
-function conditionsEtat(etat: EtatStock | undefined) {
+function conditionsEtat(etat: FiltreEtatStock | undefined) {
   if (!etat || etat === "tous") return [];
 
   const quantite = sql`cast(${stocks.quantity} as real)`;
@@ -220,6 +225,10 @@ function conditionsEtat(etat: EtatStock | undefined) {
 
   // La rupture ne regarde QUE la quantité : `out` du serveur ne teste pas
   // `track_inventory`, et un rayon vide est vide qu'on le suive ou non.
+  // L'ALERTE du serveur (`low`), ruptures comprises, et SANS exiger un seuil
+  // réel : c'est le critère exact de `low_stock_count` du tableau de bord
+  // serveur, que la tuile du terminal reprend. Voir `FiltreEtatStock`.
+  if (etat === "alerte") return [sql`${quantite} <= ${seuil} and ${suivi}`];
   if (etat === "rupture") return [sql`${quantite} <= 0`];
   if (etat === "bas") return [sql`${quantite} > 0 and ${sousLeSeuil}`];
   return [sql`${quantite} > 0 and not (${sousLeSeuil})`];
