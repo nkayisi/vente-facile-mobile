@@ -154,7 +154,7 @@ export default function Articles() {
       valeur={a.prix ? <Mesure value={formatPrice(a.prix)} tone="primary" /> : undefined}
       // `null` ne se lit JAMAIS comme zéro : un produit non suivi affiche « - »,
       // comme le back-office, et surtout pas « 0 » qui affirmerait une rupture.
-      sousValeur={a.stockAffiche ?? (a.suitLeStock ? "—" : "Non suivi")}
+      sousValeur={a.stockAffiche ?? (a.suitLeStock ? "-" : "Non suivi")}
       onPress={() => router.push(`/article/${a.id}`)}
     />
   );

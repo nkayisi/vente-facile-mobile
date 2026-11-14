@@ -85,17 +85,24 @@ export async function identifiantInstallation(): Promise<string> {
  * « Ce terminal a déjà vu la présentation. »
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ ELLE N'EST PAS DANS `CLES_CONSERVEES`, ET C'EST UNE DÉCISION.           │
+ * │ C'EST UN FAIT SUR L'INSTALLATION, PAS SUR UNE PERSONNE.                 │
  * │                                                                          │
- * │ L'allowlist de `db/purge-regles.ts` ne porte que ce qui décrit le        │
- * │ MATÉRIEL posé sur le comptoir : le thème et l'imprimante. « J'ai vu la   │
- * │ présentation » est un fait sur une PERSONNE, pas sur un appareil, et y   │
- * │ glisser cette clé diluerait un invariant écrit pour un confort.          │
+ * │ La première version le tenait pour un fait de COMPTE et le laissait      │
+ * │ effacer par la purge : le carrousel revenait après chaque déconnexion.   │
+ * │ Décision de l'utilisateur, le 14 novembre 2026 : la présentation est     │
+ * │ pour qui VIENT D'INSTALLER l'application. Un caissier qui rend le        │
+ * │ terminal à son collègue n'a rien à découvrir, il doit trouver l'écran de │
+ * │ connexion.                                                               │
  * │                                                                          │
- * │ Conséquence assumée : le carrousel revient après une déconnexion. Le     │
- * │ geste est rare et confirmé ici - le geste quotidien est le verrou par    │
- * │ code, pas la déconnexion - et revoir trois vues après avoir changé de    │
- * │ compte se défend.                                                        │
+ * │ D'où DEUX gestes, et il faut les deux :                                  │
+ * │ - la clé est dans `CLES_CONSERVEES` (`db/purge-regles.ts`), sans quoi le │
+ * │   nettoyage de la déconnexion l'effacerait ;                             │
+ * │ - la déconnexion la POSE (`session/provider.tsx`), sans quoi un terminal │
+ * │   enrôlé avant que ce drapeau existe ne l'aurait jamais écrit, et        │
+ * │   montrerait la présentation à sa première déconnexion.                  │
+ * │                                                                          │
+ * │ Seule une installation neuve - ou des données effacées par les réglages  │
+ * │ du téléphone - la remontre.                                              │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 export const CLE_ACCUEIL_VU = "accueil.vu";

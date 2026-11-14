@@ -581,7 +581,11 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
   useEffect(() => {
     caissesDisponibles().then((liste) => {
       setCaisses(liste);
-      if (liste.length === 1) setChoisie(liste[0].id);
+      // Un choix unique n'est pas un choix - mais seulement parmi les caisses
+      // LIBRES : présélectionner une caisse déjà ouverte par un autre ferait
+      // ouvrir une seconde session que le serveur refuserait.
+      const libres = liste.filter((c) => !c.occupee);
+      if (libres.length === 1) setChoisie(libres[0].id);
     });
   }, []);
 
@@ -647,21 +651,49 @@ function OuvertureCaisse({ onOuverte }: { onOuverte: (s: SessionCaisse) => void 
         {caisses.map((c) => (
           <Pressable
             key={c.id}
+            // Une caisse déjà ouverte par un autre ne se choisit pas : le
+            // serveur refuse une seconde session sur la même caisse, et un
+            // caissier ne peut pas encaisser sur celle d'un autre. On l'AFFICHE
+            // quand même, avec qui l'occupe : une caisse qui disparaît de la
+            // liste ferait chercher une panne là où il n'y a qu'un tiroir ouvert.
+            disabled={c.occupee !== null}
             onPress={() => setChoisie(c.id)}
+            accessibilityState={{ disabled: c.occupee !== null, selected: choisie === c.id }}
             className={`flex-row items-center rounded-xl border p-4 ${
               choisie === c.id ? "border-primary bg-primary/5" : "border-border"
-            }`}
+            } ${c.occupee ? "opacity-60" : ""}`}
           >
             <View className="flex-1">
               <Text variant="body">{c.name}</Text>
               <Text variant="caption" className="text-muted-foreground">
                 {c.warehouseName ?? "Aucun entrepôt associé"}
               </Text>
+              {c.occupee ? (
+                <Text variant="caption" className="mt-1 text-warning">
+                  {`Déjà ouverte par ${c.occupee.par ?? "un autre utilisateur"}${
+                    c.occupee.depuis ? ` depuis le ${formatDateTimeFr(c.occupee.depuis)}` : ""
+                  }`}
+                </Text>
+              ) : null}
             </View>
             {choisie === c.id ? <Icon name="CheckCircle2" size={22} color="primary" /> : null}
           </Pressable>
         ))}
       </View>
+
+      {caisses.some((c) => c.occupee) ? (
+        <View className="mt-4">
+          <Banner
+            tone="info"
+            title="Une caisse est déjà ouverte par un collègue"
+            message={
+              caisses.every((c) => c.occupee)
+                ? "Toutes les caisses sont occupées. Vous n'encaissez que sur une session que vous avez ouverte : faites clôturer l'une d'elles (Caisses), puis synchronisez."
+                : "Vous n'encaissez que sur une session que vous avez ouverte : choisissez une caisse libre, ou faites clôturer l'autre (Caisses)."
+            }
+          />
+        </View>
+      ) : null}
 
       {choisie && !caisses.find((c) => c.id === choisie)?.warehouseId ? (
         <View className="mt-4">

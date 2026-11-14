@@ -31,6 +31,7 @@ import { formatDateTimeFr } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
+import { lireNombre } from "@/data/nombres";
 import type { DetailVente } from "@/data/vente-detail";
 import { moyensDePaiement } from "@/features/pos/donnees";
 import { chromeDeLaSession } from "@/features/pos/ticket";
@@ -101,7 +102,15 @@ export function FeuilleReglement({
 
   /** Restant dû exprimé dans la devise SAISIE : la seule comparaison valide. */
   const resteDansLaDevise = money.convMoney(resteReel, vente.devise, devise);
-  const saisi = Number(montant.replace(",", ".")) || 0;
+  // ⚠ `lireNombre` et non `Number(x.replace(",", "."))` : « 12 500 » donnait
+  //   `NaN`, ramené à zéro, et le bouton restait fermé sans un mot.
+  const lu = lireNombre(montant);
+  const saisi = lu.ok ? lu.valeur ?? 0 : 0;
+  const refusMontant = lu.ok
+    ? undefined
+    : lu.motif === "negatif"
+      ? "Le montant reçu ne peut pas être négatif."
+      : "Montant illisible : écrivez par exemple 12 500 ou 12,5.";
   const trop = saisi > resteDansLaDevise + 0.0001;
 
   const bloque =
@@ -230,7 +239,10 @@ export function FeuilleReglement({
       <FormField
         label={`Montant reçu (${devise})`}
         required
-        error={trop ? `Au plus ${money.money(resteDansLaDevise, devise)}` : undefined}
+        error={
+          refusMontant ??
+          (trop ? `Au plus ${money.money(resteDansLaDevise, devise)}` : undefined)
+        }
         hint={
           devise !== vente.devise
             ? `Soit ${money.money(money.convMoney(saisi, devise, vente.devise), vente.devise)} sur la facture`
@@ -242,7 +254,7 @@ export function FeuilleReglement({
           onChangeText={setMontant}
           keyboardType="decimal-pad"
           placeholder={money.amountOnly(resteDansLaDevise, devise)}
-          invalid={trop}
+          invalid={trop || refusMontant !== undefined}
           autoFocus
         />
       </FormField>

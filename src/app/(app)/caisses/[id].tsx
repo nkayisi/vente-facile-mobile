@@ -151,7 +151,7 @@ export default function DetailCaisse() {
           <View className="border-t border-border px-4 py-3">
             <Paire
               label="Ouverte le"
-              valeur={s.ouverteLe ? formatDateTimeFr(s.ouverteLe) : "—"}
+              valeur={s.ouverteLe ? formatDateTimeFr(s.ouverteLe) : "-"}
             />
             <Paire label="Fond d'ouverture" valeur={money.money(s.fondOuverture, money.primaryCode)} />
             <Paire label="Attendu" valeur={somme(s.attendu)} />
@@ -221,7 +221,7 @@ export default function DetailCaisse() {
               <View>
                 <Paire
                   label="Ouverte"
-                  valeur={c.session.ouverteLe ? depuis(c.session.ouverteLe) : "—"}
+                  valeur={c.session.ouverteLe ? depuis(c.session.ouverteLe) : "-"}
                 />
                 {c.session.parQui ? (
                   <Paire label="Par" valeur={c.session.parQui} />

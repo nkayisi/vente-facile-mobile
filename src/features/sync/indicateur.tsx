@@ -122,7 +122,12 @@ export function IndicateurSync() {
       })
     );
     animation.start();
-    return () => animation.stop();
+    // L'arrêt REMET à zéro : la vue restant branchée (voir plus bas), c'est ce
+    // qui la redresse quand le cycle se termine au milieu d'un tour.
+    return () => {
+      animation.stop();
+      rotation.setValue(0);
+    };
   }, [etat.anime, reduit, rotation]);
 
   const refuse = compteurs.quarantined > 0;
@@ -151,20 +156,30 @@ export function IndicateurSync() {
         style={{ width: HIT.min, height: HIT.min }}
       >
         <Animated.View
-          style={
-            etat.anime
-              ? {
-                  transform: [
-                    {
-                      rotate: rotation.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ["0deg", "360deg"],
-                      }),
-                    },
-                  ],
-                }
-              : undefined
-          }
+          // ┌────────────────────────────────────────────────────────────────┐
+          // │ LA ROTATION RESTE BRANCHÉE, MÊME À L'ARRÊT.                   │
+          // │                                                                │
+          // │ Le style passait à `undefined` hors cycle : la vue se          │
+          // │ DÉTACHAIT de la valeur animée, pilotée côté natif, et gardait  │
+          // │ l'angle où le dernier tour s'était arrêté. Le `setValue(0)` de │
+          // │ l'effet ne la touchait plus. Relevé sur l'émulateur le         │
+          // │ 2026-11-14 : un triangle d'alerte incliné, et une COCHE        │
+          // │ tournée de travers qui se lisait comme les aiguilles d'une     │
+          // │ horloge - c'est « l'horloge sans pastille » du 12 septembre,   │
+          // │ jamais élucidée parce qu'on cherchait un mauvais glyphe.       │
+          // │                                                                │
+          // │ Branchée en permanence, la vue suit la remise à zéro.          │
+          // └────────────────────────────────────────────────────────────────┘
+          style={{
+            transform: [
+              {
+                rotate: rotation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ["0deg", "360deg"],
+                }),
+              },
+            ],
+          }}
         >
           <Icon name={etat.icone} size={20} color={etat.couleur} />
         </Animated.View>

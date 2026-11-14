@@ -157,7 +157,7 @@ function indexesFor(name, columns) {
     const absentes = cols.filter((c) => !connues.has(c));
     if (absentes.length) {
       console.warn(
-        `  ignoré : index ${name}(${cols.join(", ")}) — colonne(s) inconnue(s) : ${absentes.join(", ")}`
+        `  ignoré : index ${name}(${cols.join(", ")}) - colonne(s) inconnue(s) : ${absentes.join(", ")}`
       );
       continue;
     }

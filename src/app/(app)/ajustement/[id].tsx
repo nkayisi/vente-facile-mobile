@@ -216,7 +216,7 @@ export default function DetailAjustementEcran() {
         <Card>
           <CardHeader title="Informations" />
           <View className="gap-0.5">
-            <Text variant="caption">{`Créé le ${a.cree ? formatDateTimeFr(a.cree) : "—"}`}</Text>
+            <Text variant="caption">{`Créé le ${a.cree ? formatDateTimeFr(a.cree) : "-"}`}</Text>
             {a.approuveLe ? (
               <Text variant="caption">{`Approuvé le ${formatDateTimeFr(a.approuveLe)}`}</Text>
             ) : null}

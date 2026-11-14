@@ -13,6 +13,7 @@
 import { useEffect } from "react";
 import { useRootNavigationState, useRouter, useSegments } from "expo-router";
 
+import { estDejaSurPlace } from "./aiguillage";
 import { useSession } from "./provider";
 import type { SessionStatus } from "./types";
 
@@ -65,27 +66,13 @@ export function SessionGate() {
 
     const target =
       status === "anonymous" && !accueilVu ? "/(auth)/bienvenue" : ROUTE_FOR[status];
-    const current = `/${segments.join("/")}`;
-
-    // `(app)` couvre toute une arborescence : une fois dedans, on laisse
-    // l'utilisateur naviguer librement.
-    //
     // `anonymous` couvre tout le groupe `(auth)`, et pas seulement l'écran de
     // connexion. Sans cela l'ASSISTANT D'INSCRIPTION serait inatteignable : on
     // y navigue depuis la connexion, la garde constate que le chemin n'est pas
     // `/(auth)/login`, et renvoie aussitôt en arrière. Le défaut se voit à
     // l'usage - l'écran clignote et revient - jamais en relisant la table.
-    //
-    // Les autres états visent un écran précis, et on n'y renvoie que si on n'y
-    // est pas déjà : `locked` doit ramener au déverrouillage, où qu'on aille.
-    const alreadyThere =
-      status === "ready"
-        ? segments[0] === "(app)"
-        : status === "anonymous"
-          ? segments[0] === "(auth)"
-          : current === target;
-
-    if (!alreadyThere) router.replace(target as never);
+    // `needs_password` couvre la suite de la connexion (`SUITE_DE_CONNEXION`).
+    if (!estDejaSurPlace(status, segments, target)) router.replace(target as never);
   }, [status, accueilVu, segments, router, navigation?.key]);
 
   return null;

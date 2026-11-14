@@ -41,6 +41,16 @@ describe("messageEchecConnexion", () => {
     );
   });
 
+  it("un mot de passe à changer n'est pas un mot de passe incorrect", () => {
+    const aChanger = new ApiError(
+      "auth",
+      "Votre mot de passe a été réinitialisé : choisissez-en un nouveau avant de continuer.",
+      { status: 403, code: "password_change_required" }
+    );
+    expect(messageEchecConnexion(aChanger)).toMatch(/réinitialisé/);
+    expect(messageEchecConnexion(aChanger)).not.toBe(PHRASE_IDENTIFIANTS);
+  });
+
   it("distingue le réseau d'un refus d'identité", () => {
     expect(messageEchecConnexion(new ApiError("network", "Le serveur est injoignable."))).toBe(PHRASE_RESEAU);
     expect(messageEchecConnexion(new ApiError("auth", "Email ou mot de passe incorrect", { status: 401 }))).toBe(

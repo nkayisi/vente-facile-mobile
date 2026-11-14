@@ -367,7 +367,7 @@ export default function DetailRetourEcran() {
             {r.client ? <Paire label="Client" valeur={r.client} /> : null}
             <Paire
               label="Enregistré le"
-              valeur={r.date ? formatDateTimeFr(r.date) : "—"}
+              valeur={r.date ? formatDateTimeFr(r.date) : "-"}
             />
             {r.creePar ? <Paire label="Par" valeur={r.creePar} /> : null}
             {r.approuveLe ? (

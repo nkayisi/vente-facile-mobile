@@ -142,7 +142,7 @@ export function FeuilleMouvement({
         {m.reference ? <Paire label="Référence" valeur={m.reference} /> : null}
         <Paire
           label="Date"
-          valeur={m.date ? dateLongueFr(m.date) : "—"}
+          valeur={m.date ? dateLongueFr(m.date) : "-"}
         />
         {/* Le seul chiffre qui permette de rapprocher la ligne d'un comptage.
             `null` ne se lit jamais comme zéro : un tiret dit que le serveur ne
@@ -150,7 +150,7 @@ export function FeuilleMouvement({
         <Paire
           label="Solde après, en caisse"
           valeur={
-            m.soldeApres == null ? "—" : money.money(m.soldeApres, m.devise)
+            m.soldeApres == null ? "-" : money.money(m.soldeApres, m.devise)
           }
         />
         {m.auteur ? <Paire label="Enregistré par" valeur={m.auteur} /> : null}

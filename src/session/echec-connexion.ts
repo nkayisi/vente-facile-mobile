@@ -32,7 +32,12 @@ export function messageEchecConnexion(erreur: unknown): string {
       // établissements sont suspendus est refusé à la porte, avec la phrase du
       // serveur. Lui dire « mot de passe incorrect » le ferait retaper un mot
       // de passe juste.
-      return erreur.code === "organization_suspended" && erreur.message ? erreur.message : PHRASE_IDENTIFIANTS;
+      //   De même pour un mot de passe posé par l'administration et pas encore
+      //   changé : c'est un geste à faire, pas une saisie à corriger.
+      return (erreur.code === "organization_suspended" || erreur.code === "password_change_required") &&
+        erreur.message
+        ? erreur.message
+        : PHRASE_IDENTIFIANTS;
     case "throttled":
       // `ApiError.message` porte déjà la phrase du serveur, minutes comprises ;
       // le repli ne sert que si le corps n'en avait pas.

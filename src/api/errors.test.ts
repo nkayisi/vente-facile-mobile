@@ -7,7 +7,14 @@
  *
  * La règle que ces tests protègent : **dans le doute, c'est le réseau.**
  */
-import { ApiError, classifyStatus, classifyThrown, isOffline, readableMessage } from "./errors";
+import {
+  ApiError,
+  classifyStatus,
+  classifyThrown,
+  exigeChangementDeMotDePasse,
+  isOffline,
+  readableMessage,
+} from "./errors";
 
 describe("classifyStatus", () => {
   it("ne traite comme un refus d'identité que 401 et 403", () => {
@@ -112,5 +119,21 @@ describe("readableMessage", () => {
   it("ignore un champ présent mais blanc", () => {
     expect(readableMessage({ detail: "  " }, "repli")).toBe("repli");
     expect(readableMessage("   ", "repli")).toBe("repli");
+  });
+});
+
+describe("exigeChangementDeMotDePasse", () => {
+  it("reconnaît le refus d'un mot de passe à changer, et lui seul", () => {
+    const aChanger = new ApiError("auth", "Votre mot de passe a été réinitialisé.", {
+      status: 403,
+      code: "password_change_required",
+    });
+    expect(exigeChangementDeMotDePasse(aChanger)).toBe(true);
+    // Un refus de droit ordinaire ne doit PAS sortir de la session.
+    expect(exigeChangementDeMotDePasse(new ApiError("auth", "Interdit", { status: 403 }))).toBe(false);
+    expect(
+      exigeChangementDeMotDePasse(new ApiError("auth", "x", { status: 401, code: "password_change_required" }))
+    ).toBe(false);
+    expect(exigeChangementDeMotDePasse(new Error("password_change_required"))).toBe(false);
   });
 });

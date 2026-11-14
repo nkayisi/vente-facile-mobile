@@ -22,9 +22,11 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { formatDateTimeFr } from "@vente-facile/core";
+import { formatMoney } from "@vente-facile/core/receipt";
 
 import { sessionACloturer } from "@/data/caisse";
 import { useMonnaie } from "@/data/devises";
+import { lireNombre } from "@/data/nombres";
 import { useLecture } from "@/data/live";
 import { cloturerSession, enAttenteCaisse } from "@/features/caisse/actes";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
@@ -60,7 +62,11 @@ export default function ClotureCaisse() {
   useEffect(() => {
     if (!s || Object.keys(comptages).length > 0) return;
     setComptages(
-      Object.fromEntries(s.soldes.map((l) => [l.devise, String(l.attendu)]))
+      // ⚠ Un attendu NÉGATIF (monnaie rendue d'un tiroir vide dans cette
+      // devise) ne se pré-remplit pas tel quel : aucun tiroir ne contient de
+      // billets négatifs, et le champ partirait refusé. On part de zéro, et
+      // l'écart s'affiche d'emblée - c'est la vérité du tiroir.
+      Object.fromEntries(s.soldes.map((l) => [l.devise, String(Math.max(l.attendu, 0))]))
     );
   }, [s, comptages]);
 
@@ -93,12 +99,23 @@ export default function ClotureCaisse() {
   const enFile = envoiCloture !== undefined;
 
   const lignes = s.soldes.map((l) => {
-    const saisi = comptages[l.devise];
-    const compte = saisi?.trim() ? Number(saisi.replace(",", ".")) || 0 : null;
-    return { ...l, compte, ecart: compte === null ? null : compte - l.attendu };
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ `lireNombre`, JAMAIS `Number(x.replace(",", ".")) || 0`.            │
+    // │                                                                      │
+    // │ « 1 772,4 » avec l'espace des milliers rendait `NaN`, ramené à ZÉRO : │
+    // │ le Z enregistrait un tiroir vide et un écart de toute la caisse, sur  │
+    // │ une pièce comptable qui ne se corrige pas. Relevé en relisant l'écran │
+    // │ pendant le test de bout en bout du 2026-11-14 ; c'est le motif que    │
+    // │ `data/nombres.ts` ferme partout ailleurs.                             │
+    // └──────────────────────────────────────────────────────────────────────┘
+    const lu = lireNombre(comptages[l.devise] ?? "");
+    const compte = lu.ok ? lu.valeur : null;
+    const refus = lu.ok ? null : lu.motif;
+    return { ...l, compte, refus, ecart: compte === null ? null : compte - l.attendu };
   });
   const ecartNonNul = lignes.some((l) => l.ecart !== null && Math.abs(l.ecart) > 0.005);
-  const bloque = envoi || enFile || (ecartNonNul && notes.trim().length === 0);
+  const illisible = lignes.some((l) => l.refus !== null);
+  const bloque = envoi || enFile || illisible || (ecartNonNul && notes.trim().length === 0);
 
   const valider = async () => {
     if (bloque) return;
@@ -131,13 +148,17 @@ export default function ClotureCaisse() {
           chrome: chromeDeLaSession(snapshot),
           registerName: s.caisse,
           warehouseName: s.entrepot ?? undefined,
-          openedAt: s.ouverteLe ? formatDateTimeFr(s.ouverteLe) : "—",
+          openedAt: s.ouverteLe ? formatDateTimeFr(s.ouverteLe) : "-",
           closedAt: formatDateTimeFr(new Date()),
           closedByName: snapshot?.user.full_name,
           salesCount: s.nbVentes,
           paymentsSummary: s.parMoyen.map((p) => ({
             method: p.moyen,
-            total: money.money(p.montant, p.devise),
+            // Le formateur de PAPIER, jamais celui de l'écran : un document
+            // imprimé ne porte pas l'espace fine insécable de l'écran (sortie
+            // en caractère parasite sur un rouleau en mode texte), et le Z
+            // écrivait « 1 722,4 $ » au milieu de « 1 772.40 $ ».
+            total: formatMoney(p.montant, p.devise),
           })),
           balances: lignes.map((l) => ({
             currency: l.devise,
@@ -180,7 +201,15 @@ export default function ClotureCaisse() {
             <View>
               <Ligne label="Fonds d'ouverture" valeur={money.money(l.ouverture, l.devise)} />
               <Ligne label="Encaissements espèces" valeur={money.money(l.entrees, l.devise)} />
-              <Ligne label="Sorties" valeur={`-${money.money(l.sorties, l.devise)}`} />
+              <Ligne
+                label="Sorties"
+                // « -0 $ » se lisait comme une sortie : un zéro reste un zéro.
+                valeur={
+                  l.sorties > 0
+                    ? `-${money.money(l.sorties, l.devise)}`
+                    : money.money(0, l.devise)
+                }
+              />
               <View className="my-2">
                 <Divider />
               </View>
@@ -189,6 +218,13 @@ export default function ClotureCaisse() {
             <View className="mt-3">
               <FormField
                 label={`Compté (${l.devise})`}
+                error={
+                  l.refus === "negatif"
+                    ? "Un tiroir ne contient pas de billets négatifs : comptez ce qui s'y trouve."
+                    : l.refus === "illisible"
+                      ? "Montant illisible : écrivez par exemple 1 772,4."
+                      : undefined
+                }
                 hint={
                   l.ecart !== null && Math.abs(l.ecart) > 0.005
                     ? `Écart : ${l.ecart > 0 ? "+" : ""}${money.money(l.ecart, l.devise)}`
@@ -201,7 +237,7 @@ export default function ClotureCaisse() {
                     setComptages((c) => ({ ...c, [l.devise]: v }))
                   }
                   keyboardType="decimal-pad"
-                  invalid={l.ecart !== null && Math.abs(l.ecart) > 0.005}
+                  invalid={l.refus !== null || (l.ecart !== null && Math.abs(l.ecart) > 0.005)}
                 />
               </FormField>
             </View>

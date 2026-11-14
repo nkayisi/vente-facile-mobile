@@ -28,6 +28,7 @@ import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
+import { accord, pluriel } from "@/data/accord";
 import { useLecture } from "@/data/live";
 import { useSession } from "@/session/provider";
 import { nbEnFile } from "@/session/deconnexion-regles";
@@ -172,7 +173,7 @@ export default function Reprise() {
         <CardHeader
           title={
             file
-              ? `${file.total} élément${file.total > 1 ? "s" : ""} en attente`
+              ? `${pluriel(file.total, "élément", "éléments")} en attente`
               : "Ce qui attend sur ce terminal"
           }
         />
@@ -216,8 +217,10 @@ export default function Reprise() {
         // La même phrase que « Opérations à corriger » quand on abandonne une
         // opération : c'est la même perte, et elle doit se dire pareil.
         message={
-          `${file?.total ?? 0} élément${(file?.total ?? 0) > 1 ? "s" : ""} de ${proprietaire} ` +
-          "ne partiront jamais. Si c'étaient des ventes encaissées, les " +
+          // Le verbe suit le nombre : « 1 élément … ne partiront jamais »
+          // a été relevé sur l'émulateur le 2026-11-14.
+          `${pluriel(file?.total ?? 0, "élément", "éléments")} de ${proprietaire} ` +
+          `${accord(file?.total ?? 0, "ne partira", "ne partiront")} jamais. Si c'étaient des ventes encaissées, les ` +
           "paiements resteront sans trace au serveur ; les photos d'articles " +
           "n'existent que sur ce terminal.\n\n" +
           "Cette opération ne se défait pas."

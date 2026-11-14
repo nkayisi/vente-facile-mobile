@@ -235,3 +235,34 @@ describe("un verrou occupé", () => {
     expect(MESSAGE_OCCUPE.message).toMatch(/attendez|réessayez/i);
   });
 });
+
+describe("la confirmation ne promet pas l'envoi de ce qui ne partira pas", () => {
+  // Relevé sur l'émulateur le 2026-11-14 : « 1 opération n'a pas encore
+  // atteint le serveur. Elles seront envoyées… » pour une vente REFUSÉE.
+  it("une opération refusée n'est pas annoncée comme envoyée", () => {
+    const c = confirmationAvant(file({ quarantined: 1 }));
+    expect(c.message).not.toMatch(/sera envoyée|seront envoyées|pas encore atteint/);
+    expect(c.message).toContain("1 opération refusée par le serveur ne partira pas");
+    expect(c.action).toBe("Continuer");
+  });
+
+  it("le pronom suit le nombre", () => {
+    const c = confirmationAvant(file({ pending: 1 }));
+    expect(c.message).toContain("elle sera envoyée");
+    expect(c.message).not.toContain("Elles");
+    expect(confirmationAvant(file({ pending: 2 })).message).toContain("elles seront envoyées");
+  });
+
+  it("dit séparément ce qui part et ce qui reste", () => {
+    const c = confirmationAvant(file({ pending: 2, quarantined: 1, blocked: 2 }));
+    expect(c.message).toContain("2 opérations n'ont pas encore atteint le serveur");
+    expect(c.message).toContain("1 opération refusée par le serveur ne partira pas");
+    expect(c.message).toContain("2 opérations attendent un droit");
+    expect(c.action).toBe("Synchroniser et déconnecter");
+  });
+
+  it("un blocage ne propose ni de réessayer ni de synchroniser", () => {
+    const c = confirmationAvant(file({ blocked: 1 }));
+    expect(c.message).not.toMatch(/réessay|synchronis/i);
+  });
+});

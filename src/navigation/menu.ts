@@ -48,43 +48,41 @@ export const MENU: readonly EntreeMenu[] = [
 export type Role = "cashier" | "stock_keeper" | "manager" | "owner";
 
 /**
- * Ce qui est écrit à la place du chevron quand l'entrée est hors droits.
+ * Les sections que ce membre peut OUVRIR, et seulement elles.
  *
- * La raison se déduit du rôle qui détient la permission, jamais d'une table de
- * chaînes figée : une permission déplacée d'un rôle à l'autre côté serveur
- * rendrait cette table fausse en silence.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE SECTION HORS DROITS N'EST PLUS AFFICHÉE.                            │
+ * │                                                                          │
+ * │ La première version les montrait grisées, avec une pastille « Réservé   │
+ * │ au gérant » et un toast au toucher, au motif qu'un caissier qui ne voit  │
+ * │ jamais « Stock » ne sait pas que la fonction existe. À l'usage, c'était  │
+ * │ l'inverse d'une aide : six entrées sur onze qu'un caissier ne peut pas   │
+ * │ ouvrir, et qu'il touche quand même, plusieurs fois par jour. Décision de │
+ * │ l'utilisateur, le 14 novembre 2026 : qui n'est pas censé y entrer ne     │
+ * │ les voit pas.                                                            │
+ * │                                                                          │
+ * │ C'est aussi ce que fait le back-office (`return null` dans               │
+ * │ `sidebar.tsx`) : les deux surfaces ne divergent plus sur ce point.       │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * La règle porte sur la PERMISSION, jamais sur le rôle : un caissier à qui le
+ * marchand accorde `stock.view` par `extra_permissions` voit « Stock » paraître.
+ * L'ORDRE reste celui de `MENU` : une entrée disparaît, les autres ne bougent
+ * pas les unes par rapport aux autres.
  */
-export function raisonHorsDroits(entree: EntreeMenu): string {
-  if (entree.permission === "settings.view" || entree.permission === "users.view") {
-    return "Réservé à l'administrateur";
-  }
-  return "Réservé au gérant";
-}
-
-export interface EtatEntree extends EntreeMenu {
-  accessible: boolean;
-  /** Non vide seulement quand `accessible` est faux. */
-  raison: string | null;
-  /** L'écran existe mais ses actions ne sont pas encore câblées. */
-  bientot: boolean;
+export function entreesDuMenu(peut: (permission: string) => boolean): EntreeMenu[] {
+  return MENU.filter((e) => e.permission === null || peut(e.permission));
 }
 
 /**
- * Les ONZE entrées, toujours les onze.
+ * La permission d'une section du menu, par sa clé.
  *
- * Le web retire les entrées hors droits (`return null` dans `sidebar.tsx`) ; le
- * plan approuvé dit de les griser, et le plan gagne. **Masquer enseigne mal** :
- * un caissier qui ne voit jamais « Stock » ne sait pas que la fonction existe,
- * ni qu'il peut la demander à son responsable.
+ * ⚠ ELLE LÈVE sur une clé inconnue plutôt que de rendre `null` : `null` veut
+ * dire « ouvert à tous », et une faute de frappe ouvrirait la section à
+ * n'importe quel rôle sans que rien ne le signale.
  */
-export function entreesDuMenu(peut: (permission: string) => boolean): EtatEntree[] {
-  return MENU.map((e) => {
-    const accessible = e.permission === null || peut(e.permission);
-    return {
-      ...e,
-      accessible,
-      raison: accessible ? null : raisonHorsDroits(e),
-      bientot: e.lot !== null,
-    };
-  });
+export function permissionDeLaSection(cle: string): string | null {
+  const entree = MENU.find((e) => e.cle === cle);
+  if (!entree) throw new Error(`Section du menu inconnue : « ${cle} »`);
+  return entree.permission;
 }

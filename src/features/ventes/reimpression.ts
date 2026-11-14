@@ -25,6 +25,7 @@
 import { formatDateTimeFr } from "@vente-facile/core";
 import type { SaleReceiptData } from "@vente-facile/core/receipt";
 
+import { dateCourteFr } from "@/data/dates";
 import type { DetailVente } from "@/data/vente-detail";
 import { chromeDeLaSession } from "@/features/pos/ticket";
 import {
@@ -76,8 +77,12 @@ export function ticketDepuisVente(
       currency: vente.devise,
     })),
     changeAmount: vente.monnaieRendue || undefined,
+    // Rendue dans SA devise : le duplicata doit dire ce que l'original a dit.
+    changeCurrency: vente.monnaieRendue ? vente.deviseMonnaie : undefined,
     amountDue: vente.resteAPayer || undefined,
-    dueDate: vente.echeance ? formatDateTimeFr(vente.echeance) : undefined,
+    // Une échéance est un JOUR : « 28 nov. 2026, 01:00 » laissait croire à une
+    // heure limite. Même écriture que le ticket d'origine.
+    dueDate: vente.echeance ? dateCourteFr(vente.echeance) : undefined,
   };
 }
 

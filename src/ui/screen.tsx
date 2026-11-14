@@ -10,7 +10,6 @@
 import type { ReactNode } from "react";
 import {
   KeyboardAvoidingView,
-  Platform,
   RefreshControl,
   ScrollView,
   View,
@@ -209,10 +208,19 @@ export function Screen({
     <View className={`flex-1 ${f.page}`} style={pad}>
       <KeyboardAvoidingView
         className="flex-1"
-        // `padding` sur iOS, `height` sur Android : le comportement natif du
-        // clavier diffère, et un seul réglage laisse un champ sous le clavier
-        // sur l'une des deux plateformes.
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        // ┌──────────────────────────────────────────────────────────────┐
+        // │ `padding` SUR LES DEUX PLATEFORMES, comme `Sheet` (lot L6).  │
+        // │                                                              │
+        // │ `height` comptait sur Android pour redimensionner la         │
+        // │ fenêtre (`adjustResize`), ce que le bord-à-bord n'assure     │
+        // │ plus. Relevé sur l'émulateur le 2026-11-14 : clavier ouvert, │
+        // │ tout le pied du panier - récapitulatif et champ de remise -  │
+        // │ passait SOUS le clavier, et le caissier tapait une remise    │
+        // │ qu'il ne voyait pas. `padding` se calcule depuis la position │
+        // │ du clavier par rapport à la vue : si la fenêtre se           │
+        // │ redimensionne malgré tout, l'écart vaut zéro.                │
+        // └──────────────────────────────────────────────────────────────┘
+        behavior="padding"
       >
         {body}
         {pied ? (

@@ -15,6 +15,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-o
 import { db } from "@/db/client";
 import { outboxOperations, type NewOutboxOperation, type OutboxOperation } from "@/db/schema";
 
+import { envoyables } from "./dependances";
 import { backoffMs } from "./policy";
 
 export type OperationKind =
@@ -172,10 +173,17 @@ export async function enqueue(
   return saved!;
 }
 
-/** Opérations prêtes à partir : en attente, et dont la temporisation est passée. */
+/**
+ * Opérations prêtes à partir : en attente, dont la temporisation est passée, et
+ * dont aucune dépendance n'attend encore dans le journal hors de ce lot.
+ *
+ * ⚠ Sans ce dernier filtre, une vente faite pour un client créé hors ligne
+ * partait SEULE dès que la création du client était temporisée, et le serveur
+ * la refusait pour un client introuvable. Voir `dependances.ts`.
+ */
 export async function readyToSend(limit = BATCH_SIZE): Promise<OutboxOperation[]> {
   const now = new Date();
-  return db
+  const candidats = await db
     .select()
     .from(outboxOperations)
     .where(
@@ -189,6 +197,15 @@ export async function readyToSend(limit = BATCH_SIZE): Promise<OutboxOperation[]
     )
     .orderBy(asc(outboxOperations.seq))
     .limit(limit);
+  const dependancesDe = (o: OutboxOperation): string[] => JSON.parse(o.dependsOn ?? "[]");
+  // Le cas ordinaire : aucune dépendance, aucune lecture de plus.
+  if (candidats.every((o) => dependancesDe(o).length === 0)) return candidats;
+
+  const enAttente = await db
+    .select({ id: outboxOperations.id })
+    .from(outboxOperations)
+    .where(inArray(outboxOperations.state, ["pending", "inflight", "blocked"]));
+  return envoyables(candidats, new Set(enAttente.map((l) => l.id)), dependancesDe);
 }
 
 export async function countByState(): Promise<Record<OutboxState, number>> {

@@ -724,7 +724,7 @@ function RelevesGlobauxVue({
                   .join(" · ")
               : null
           }
-          detail={`Flux net: ${m(r.fluxNet)}`}
+          detail={`Flux net : ${m(r.fluxNet)}`}
         />
         <CarteReleveGlobal
           label="Créances clients"

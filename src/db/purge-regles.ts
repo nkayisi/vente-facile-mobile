@@ -55,6 +55,9 @@ export const TRAITEMENT_LOCAL: Record<string, Traitement> = {
  * la leur faire reperdre à chaque changement de compte obligerait à réappairer
  * avant de pouvoir imprimer un ticket.
  *
+ * « La présentation a été vue » aussi : elle est pour qui vient d'INSTALLER
+ * l'application, pas pour qui change de compte (voir `data/reglages.ts`).
+ *
  * ⚠ Les valeurs sont contre-vérifiées en TEXTE contre `data/reglages.ts` et
  * `printing/preferences.ts` : les importer ici tirerait `@/db/client` et ferait
  * de ce module autre chose qu'un module pur.
@@ -63,6 +66,7 @@ export const CLES_CONSERVEES = [
   "theme.preference",
   "imprimante",
   "appareil.installation",
+  "accueil.vu",
 ] as const;
 
 /**

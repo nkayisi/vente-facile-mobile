@@ -101,4 +101,9 @@ console.error(
 );
 for (const p of paquets) console.error("   - " + p);
 console.error("\n  Réparer :\n    rm -rf " + paquets.join(" ") + " \\\n      && pnpm install --frozen-lockfile\n");
+// ⚠ Réinstaller un paquet SOUS UN METRO EN MARCHE le fait réexécuter à chaud :
+// la vue native se réenregistre et l'application lève « Tried to register two
+// views with the same name » (relevé le 2026-11-14). Sans gravité, mais il faut
+// le dire, sinon on cherche un défaut dans le code.
+console.error("  Puis rechargez l'application (ou arrêtez Metro avant) : une réinstallation\n  sous Metro réexécute le module à chaud et lève « two views with the same name ».\n");
 process.exit(1);

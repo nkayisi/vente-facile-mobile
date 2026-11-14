@@ -53,6 +53,57 @@ function identifiantProjet(): string | null {
   );
 }
 
+/**
+ * « Ce terminal a déjà ouvert l'invite. »
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ SUR ANDROID 13, « JAMAIS DEMANDÉ » SE LIT « REFUSÉ ».                   │
+ * │                                                                          │
+ * │ La permission elle-même est bien `UNDETERMINED`, mais                    │
+ * │ `expo-notifications` replie `!areNotificationsEnabled()` sur `denied`    │
+ * │ (`NotificationPermissionsModule.getPermissionsWithPromiseImplApi33`), et │
+ * │ `canAskAgain` vaut vrai : exactement ce qu'il rend après un PREMIER      │
+ * │ refus. Le réveil déclarait donc `push_refused` au serveur avant toute    │
+ * │ invite, et le bandeau annonçait un refus que le marchand n'avait jamais  │
+ * │ prononcé. Relevé sur l'émulateur le 2026-11-14.                          │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Expo tient sa propre trace des invites ouvertes, mais ne l'expose pas : on
+ * retient donc nous-mêmes qu'on a demandé. ⚠ Lu paresseusement : ce module est importé par
+ * le réveil, et `data/reglages` ouvre la base au chargement.
+ *
+ * ⚠ DANS LE DOUTE, « PAS ENCORE DEMANDÉ ». Une base illisible ou une clé
+ * purgée à la déconnexion rendent faux : le pire est alors un bouton
+ * « Autoriser » qui rouvre une invite que le système accepte encore de
+ * rouvrir - jamais un refus affirmé au serveur sans fondement. Un refus
+ * DÉFINITIF, lui, ne dépend pas de ce drapeau : `canAskAgain` le dit seul.
+ */
+const CLE_DEMANDE = "notifications.demandees";
+
+type Reglages = typeof import("@/data/reglages");
+
+/** `require` et non `import()` : Jest ne transforme pas un import dynamique. */
+function reglages(): Reglages {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- chargement paresseux voulu
+  return require("@/data/reglages") as Reglages;
+}
+
+async function dejaDemande(): Promise<boolean> {
+  try {
+    return await reglages().lireReglage(CLE_DEMANDE, false);
+  } catch {
+    return false;
+  }
+}
+
+async function noterDemande(): Promise<void> {
+  try {
+    await reglages().ecrireReglage(CLE_DEMANDE, true);
+  } catch {
+    // Sans trace, le prochain réveil dira « à demander » : c'est le bon côté.
+  }
+}
+
 /** L'état courant, SANS rien demander : aucune invite ne s'ouvre ici. */
 export async function etatPush(): Promise<EtatPush> {
   const { status, canAskAgain } = await Notifications.getPermissionsAsync();
@@ -64,12 +115,18 @@ export async function etatPush(): Promise<EtatPush> {
       : { etat: "indisponible", motif: "Cet appareil n'a pas rendu d'adresse." };
   }
   if (status === "undetermined") return { etat: "a_demander" };
-  return canAskAgain ? { etat: "refuse" } : { etat: "refuse_definitivement" };
+  if (!canAskAgain) return { etat: "refuse_definitivement" };
+  // `denied` mais redemandable : un refus seulement si l'invite a été ouverte.
+  if (Platform.OS === "android" && !(await dejaDemande())) {
+    return { etat: "a_demander" };
+  }
+  return { etat: "refuse" };
 }
 
 /** Demande la permission. À n'appeler que depuis un GESTE. */
 export async function demanderPush(): Promise<EtatPush> {
   const { status, canAskAgain } = await Notifications.requestPermissionsAsync();
+  await noterDemande();
   if (status !== "granted") {
     return canAskAgain ? { etat: "refuse" } : { etat: "refuse_definitivement" };
   }

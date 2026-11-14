@@ -83,7 +83,7 @@ export default function Inventaire() {
     .filter((c) => !terme || c.nom.toLowerCase().includes(terme))
     .map((c) => ({
       id: c.id,
-      reference: "—",
+      reference: "-",
       nom: c.nom,
       entrepot: null,
       statut: "draft",
@@ -221,7 +221,7 @@ export default function Inventaire() {
           <Text variant="bodySmall" numeric className="font-sans-medium">
             {/* L'avancement, pas un total : c'est ce que le magasinier
                 cherche en rouvrant une session. */}
-            {s.lignes > 0 ? `${s.comptees} / ${s.lignes}` : "—"}
+            {s.lignes > 0 ? `${s.comptees} / ${s.lignes}` : "-"}
           </Text>
         }
         sousValeur={s.date ? formatDateFr(s.date) : null}

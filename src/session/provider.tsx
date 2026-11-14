@@ -52,7 +52,7 @@ import {
   logout as logoutOp,
   refreshSnapshot as refreshSnapshotOp,
   type RelectureSession,
-  type OrganizationChoice,
+  type ResultatConnexion,
 } from "./session";
 import type { SessionSnapshot, SessionStatus } from "./types";
 
@@ -76,7 +76,7 @@ interface SessionValue {
   /** Motif du passage en `needs_password`, pour l'expliquer à l'écran. */
   lostReason: string | null;
 
-  login: (email: string, password: string) => Promise<OrganizationChoice[]>;
+  login: (email: string, password: string) => Promise<ResultatConnexion>;
   chooseOrganization: (organizationId: string) => Promise<void>;
   /** Inscription complète : compte, établissement, puis enrôlement du terminal. */
   inscrire: (
@@ -389,10 +389,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => subscription.remove();
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { organizations } = await loginWithPassword(email, password);
-    return organizations;
-  }, []);
+  const login = useCallback(
+    async (email: string, password: string) => loginWithPassword(email, password),
+    []
+  );
 
   const chooseOrganization = useCallback(
     async (organizationId: string) => {
@@ -453,20 +453,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setLostReason(null);
     setBaseEtrangere(null);
     // ┌──────────────────────────────────────────────────────────────────┐
-    // │ LA PRÉSENTATION REVIENT APRÈS UNE DÉCONNEXION, ET C'EST VOULU.  │
+    // │ UNE DÉCONNEXION MÈNE À L'ÉCRAN DE CONNEXION, JAMAIS À LA        │
+    // │ PRÉSENTATION.                                                    │
     // │                                                                  │
-    // │ `accueil.vu` n'est pas dans l'allowlist de `db/purge-regles.ts` :│
-    // │ celle-ci ne porte que ce qui décrit le MATÉRIEL du comptoir. Le  │
-    // │ nettoyage l'efface donc, et cet état suit.                       │
+    // │ La présentation est pour qui vient d'installer l'application :  │
+    // │ quelqu'un qui était connecté l'a forcément dépassée. On le POSE  │
+    // │ donc ici, et pas seulement à la fin du carrousel : un terminal   │
+    // │ enrôlé avant que ce drapeau existe ne l'a jamais écrit.          │
     // │                                                                  │
-    // │ ⚠ Il le suit même quand l'utilisateur choisit « se déconnecter   │
-    // │ sans effacer », où le drapeau survit en base : la présentation   │
-    // │ reparaît alors une fois de trop, et le lancement suivant la      │
-    // │ sautera. C'est l'écart qui coûte le moins - trois vues balayées  │
-    // │ contre une lecture de base à un instant où la purge n'a peut-    │
-    // │ être pas encore eu lieu.                                         │
+    // │ ⚠ L'ÉTAT AVANT L'ÉCRITURE (voir `marquerAccueilVu`) : la garde   │
+    // │ aiguille au rendu suivant. La clé survit à la purge qui suit,    │
+    // │ elle est dans `CLES_CONSERVEES` (`db/purge-regles.ts`).          │
     // └──────────────────────────────────────────────────────────────────┘
-    setAccueilVu(false);
+    setAccueilVu(true);
+    void ecrireAccueilVu();
     setStatus("anonymous");
   }, []);
 
@@ -497,14 +497,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * garde renvoyer une fois de plus vers la présentation qu'on vient de
    * quitter, et l'écran clignoterait sur le chemin de la connexion.
    *
-   * ⚠ ET ON NE LE REMET JAMAIS À FAUX EN SE DÉCONNECTANT. La clé est bien
-   * PURGÉE de la base avec le reste du compte - c'est la décision écrite dans
-   * `data/reglages.ts` - donc la présentation revient au lancement SUIVANT. La
-   * remettre à faux ici la ferait surgir dans la seconde qui suit la
-   * déconnexion, devant quelqu'un qui vient précisément de se servir de
-   * l'application ; et il faudrait pour bien faire attendre que
-   * `session/deconnexion.tsx` ait fini sa purge, ce qui couplerait ce
-   * fournisseur à une séquence qu'il n'orchestre pas.
+   * Il n'existe PAS de chemin inverse : rien dans l'application ne remet ce
+   * drapeau à faux. `logout` le pose aussi, et la purge l'épargne - la
+   * présentation est pour une installation neuve (voir `data/reglages.ts`).
    */
   const marquerAccueilVu = useCallback(async () => {
     setAccueilVu(true);

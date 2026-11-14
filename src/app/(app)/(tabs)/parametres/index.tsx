@@ -171,7 +171,7 @@ export default function InfosGenerales() {
           </FormField>
 
           {/* Non modifiable après la création, comme sur le web. */}
-          <ListItem title="Type d'activité" value={etab?.typeAffiche ?? "—"}
+          <ListItem title="Type d'activité" value={etab?.typeAffiche ?? "-"}
                     subtitle="Non modifiable après la création" />
 
           <FormField label="Téléphone" required>

@@ -13,6 +13,7 @@ import { formatUnitQuantity, getPackaging } from "@vente-facile/core";
 
 import { devisesAffichables } from "@/features/pos/affichage-devise";
 import { useMonnaie } from "@/data/devises";
+import { lireNombre } from "@/data/nombres";
 import { lineGross, looseQuantityOf, type Saisie } from "@vente-facile/core/pos";
 
 import { etiquetteParDefaut, mettreEnAttente } from "@/features/pos/attente";
@@ -121,9 +122,19 @@ export default function Panier() {
   // rendu à l'autre. Sans cet accord explicite, le champ affichait encore
   // « 1000000 » pendant que la vente appliquait le plafond.
   const [texteRemise, setTexteRemise] = useState("");
+  // ⚠ `lireNombre` et non `Number(x.replace(",", "."))` : « 12 500 » donnait
+  //   `NaN`, ramené à zéro, et la remise disparaissait du total sans un mot.
+  //   Une saisie refusée n'applique AUCUNE remise, et le DIT sous le champ.
+  const remiseLue = lireNombre(texteRemise);
+  const refusRemise = remiseLue.ok
+    ? undefined
+    : remiseLue.motif === "negatif"
+      ? "Une remise ne peut pas être négative."
+      : "Montant illisible : écrivez par exemple 12 500 ou 12,5.";
   const deviseTexte = useRef(panier.deviseFacture);
   useEffect(() => {
-    const saisi = Number(texteRemise.replace(",", ".")) || 0;
+    const lu = lireNombre(texteRemise);
+    const saisi = lu.ok ? lu.valeur ?? 0 : 0;
 
     // La devise de facture a changé depuis la saisie : le nombre tapé désigne
     // maintenant autre chose que ce que son étiquette annonce. On le réécrit.
@@ -212,6 +223,7 @@ export default function Panier() {
                 <FormField
                   label={`Remise (${panier.deviseFacture})`}
                   hint={`Au plus ${panier.argent(versFacture(panier.totaux.remiseGlobaleMax))}`}
+                  error={refusRemise}
                 >
                   <Input
                     value={texteRemise}
@@ -220,13 +232,15 @@ export default function Panier() {
                       // Saisi en devise de FACTURE, rangé en principale : c'est
                       // dans cette devise que le noyau totalise et que le corps
                       // de vente reconvertit.
+                      const lu = lireNombre(v);
                       panier.envoyer({
                         type: "remiseGlobale",
-                        montant: versPrincipale(Number(v.replace(",", ".")) || 0),
+                        montant: versPrincipale(lu.ok ? lu.valeur ?? 0 : 0),
                       });
                     }}
                     keyboardType="decimal-pad"
                     placeholder="0"
+                    invalid={refusRemise !== undefined}
                   />
                 </FormField>
               </View>

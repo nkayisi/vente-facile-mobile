@@ -431,11 +431,11 @@ function CorpsRapport({
       // 80 points, et non 62 : « 02:58:22 » se coupait en deux lignes, et des
       // hauteurs de rangée inégales rendent un journal illisible.
       largeur: 80,
-      valeur: (l) => l.date.slice(11, 19) || "—",
+      valeur: (l) => l.date.slice(11, 19) || "-",
     },
     { cle: "ref", entete: "Référence", largeur: 150, valeur: (l) => l.reference },
     { cle: "type", entete: "Type", largeur: 160, valeur: (l) => libelleTypeCaisse(l.type) },
-    { cle: "desc", entete: "Description", largeur: 200, valeur: (l) => l.description || "—" },
+    { cle: "desc", entete: "Description", largeur: 200, valeur: (l) => l.description || "-" },
     {
       cle: "montant",
       entete: "Montant",

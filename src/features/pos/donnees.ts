@@ -11,6 +11,8 @@ import { and, asc, eq, isNull, like, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { customerLoyalty, customers, paymentMethods } from "@/db/schema";
 import { sansAccent } from "./catalogue";
+import { enAttenteParType } from "@/sync";
+import { clientPosDepuisCreation, fusionnerClients, type CreationClient } from "./clients-en-file";
 import type { ClientPos } from "./panier";
 
 export interface MoyenPaiement {
@@ -70,19 +72,52 @@ export async function chercherClients(terme: string, limite = 25): Promise<Clien
     );
   }
 
-  return db
-    .select({
-      id: customers.id,
-      name: customers.name,
-      phone: customers.phone,
-      allow_credit: customers.allowCredit,
-      credit_limit: customers.creditLimit,
-      current_balance: customers.currentBalance,
-    })
-    .from(customers)
-    .where(and(...conditions))
-    .orderBy(asc(customers.name))
-    .limit(limite);
+  const [tires, enFile] = await Promise.all([
+    db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        phone: customers.phone,
+        allow_credit: customers.allowCredit,
+        credit_limit: customers.creditLimit,
+        current_balance: customers.currentBalance,
+      })
+      .from(customers)
+      .where(and(...conditions))
+      .orderBy(asc(customers.name))
+      .limit(limite),
+    clientsEnFile(),
+  ]);
+  // Un client créé au terminal et pas encore envoyé n'est pas dans la table :
+  // sans la fusion, il était introuvable à l'encaissement. Voir `clients-en-file.ts`.
+  return fusionnerClients(tires, enFile, terme, sansAccent, limite);
+}
+
+/**
+ * Les clients dont la création attend encore dans le journal, bloquées
+ * comprises : un blocage dure le temps qu'un droit soit accordé, et le client
+ * existe déjà pour le caissier qui vient de le saisir.
+ */
+async function clientsEnFile(): Promise<ClientPos[]> {
+  const ops = await enAttenteParType<CreationClient>("customer.create", {
+    avecBloquees: true,
+  });
+  return ops.map((o) => clientPosDepuisCreation(o.payload));
+}
+
+/**
+ * Les opérations dont une pièce faite pour ce client doit DÉPENDRE : sa
+ * création, si elle attend encore dans le journal.
+ *
+ * ⚠ Sans cette dépendance, une vente pour un client créé hors ligne pouvait
+ * partir avant lui (création temporisée) et être refusée pour un client
+ * introuvable, ticket déjà sorti. Le terminal emploie le même identifiant
+ * pour l'acte de création et pour le client.
+ */
+export async function dependancesDuClient(clientId: string | null | undefined): Promise<string[]> {
+  if (!clientId) return [];
+  const enFile = await clientsEnFile();
+  return enFile.some((c) => c.id === clientId) ? [clientId] : [];
 }
 
 /**
@@ -111,7 +146,9 @@ export async function clientParId(id: string): Promise<ClientPos | null> {
       )
     )
     .limit(1);
-  return ligne ?? null;
+  if (ligne) return ligne;
+  // Un panier rangé pour un client créé au terminal : il n'est pas encore tiré.
+  return (await clientsEnFile()).find((c) => c.id === id) ?? null;
 }
 
 /**

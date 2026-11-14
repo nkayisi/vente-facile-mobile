@@ -3,7 +3,7 @@
  *
  * Quatre blocs, dans l'ordre exact du web : l'en-tête de marque (logo,
  * « Vente » puis « Facile » en orange, et la croix de fermeture),
- * l'établissement, les onze sections, et l'avatar du compte en pied.
+ * l'établissement, les sections, et l'avatar du compte en pied.
  *
  * **L'entrée active est en plein orange avec un chevron**, comme sur le web, et
  * elle se calcule comme lui : parmi les entrées dont le chemin est un préfixe
@@ -11,9 +11,10 @@
  * `/stock/niveaux` allumerait « Tableau de bord », dont le chemin `/` est
  * préfixe de tout.
  *
- * **Les onze entrées sont TOUJOURS là.** Le web retire celles hors droits ; le
- * plan approuvé dit de les griser, et le plan gagne : un caissier qui ne voit
- * jamais « Stock » ne sait pas que la fonction existe ni qu'il peut la demander.
+ * **Seules les sections que le rôle peut ouvrir sont listées**, comme sur le
+ * web. Elles étaient grisées, avec une pastille « Réservé au gérant » : un
+ * caissier lisait six entrées sur onze qu'il ne pouvait pas ouvrir. Voir
+ * `entreesDuMenu`.
  */
 import { ScrollView, View } from "react-native";
 import { router, usePathname } from "expo-router";
@@ -34,14 +35,13 @@ import {
   Pressable,
   Text,
   useMargesSysteme,
-  useToast,
 } from "@/ui";
 import { HIT } from "@/ui/tokens";
 import { fermerPuis } from "./fermeture";
-import { entreesDuMenu, type EtatEntree } from "./menu";
+import { entreesDuMenu, type EntreeMenu } from "./menu";
 
 /** Entrée active : le préfixe le PLUS LONG qui corresponde, comme sur le web. */
-function cleActive(chemin: string, entrees: EtatEntree[]): string | null {
+function cleActive(chemin: string, entrees: EntreeMenu[]): string | null {
   const candidates = entrees.filter(
     (e) => chemin === e.href || (e.href !== "/" && chemin.startsWith(`${e.href}/`))
   );
@@ -55,7 +55,6 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
   const { snapshot, can } = useSession();
   const { demander } = useDeconnexion();
   const { donnees: etab } = useLecture(etablissement, { tables: ["organizations"] });
-  const toast = useToast();
   // Le journal se relit dès qu'il change : une opération refusée pendant que le
   // tiroir est ouvert fait paraître sa pastille sans rouvrir le menu.
   const { donnees: journal } = useLecture(countByState, { tables: ["outbox_operations"] });
@@ -67,18 +66,6 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
 
   /** Ferme le tiroir, puis va quelque part. Voir `fermeture.ts`. */
   const aller = (href: string) => fermerPuis(onFermer, () => router.push(href as never));
-
-  /**
-   * Une entrée hors droits se referme AUSSI, et dit pourquoi.
-   *
-   * Elle était simplement inerte : le marchand appuyait, rien ne bougeait, et
-   * rien ne distinguait « vous n'avez pas le droit » de « l'application est
-   * bloquée ». La pastille est pourtant à côté - mais on n'appuie pas sur une
-   * entrée qu'on vient de lire. Le motif part donc dans un toast, qui survit à
-   * la fermeture du tiroir, et le retour haptique est celui d'un REFUS.
-   */
-  const refuser = (raison: string | null) =>
-    fermerPuis(onFermer, raison ? () => toast.info(raison) : undefined);
 
   return (
     <View className="flex-1 bg-card" style={{ paddingTop: marges.haut }}>
@@ -120,21 +107,21 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
         </View>
       </View>
 
-      {/* 3. Les onze sections. */}
+      {/* 3. Les sections que le rôle peut ouvrir. */}
       <ScrollView className="flex-1" contentContainerStyle={{ paddingVertical: 12 }}>
         {entrees.map((e) => {
           const estActive = e.cle === active;
           return (
             <View key={e.cle} className="px-3 py-0.5">
               <Pressable
-                onPress={e.accessible ? aller(e.href) : refuser(e.raison)}
-                haptic={e.accessible ? "selection" : "warning"}
+                onPress={aller(e.href)}
+                haptic="selection"
                 accessibilityRole="link"
                 accessibilityState={{ selected: estActive }}
-                accessibilityLabel={e.raison ? `${e.label}. ${e.raison}` : e.label}
+                accessibilityLabel={e.label}
                 className={`flex-row items-center gap-3 rounded-lg px-4 py-2.5${
                   estActive ? " bg-primary" : ""
-                }${e.accessible ? "" : " opacity-50"}`}
+                }`}
               >
                 <Icon
                   name={e.icon}
@@ -152,9 +139,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
                 >
                   {e.label}
                 </Text>
-                {e.raison ? (
-                  <Badge tone="neutral">{e.raison}</Badge>
-                ) : estActive ? (
+                {estActive ? (
                   <Icon name="ChevronRight" size={16} color="primaryForeground" />
                 ) : null}
               </Pressable>
@@ -175,7 +160,7 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
           │ empêche les deux surfaces de dériver.                             │
           │                                                                  │
           │ Elle est donc dans son propre bloc, et le registre est différent  │
-          │ de celui du menu : les onze entrées ci-dessus sont les SECTIONS   │
+          │ de celui du menu : les entrées ci-dessus sont les SECTIONS        │
           │ de l'établissement, celle-ci est MA lecture.                      │
           │                                                                  │
           │ Elle est ouverte à tous les rôles, et c'est tout son objet : les  │

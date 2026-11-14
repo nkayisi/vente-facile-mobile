@@ -26,7 +26,12 @@ import { rendreTexte } from "@/printing/render-text";
 
 import { formatUnitQuantity } from "@vente-facile/core";
 
-import { donneesTicketVente, libelleQuantite, type ContexteTicket } from "./ticket";
+import {
+  donneesTicketVente,
+  echeanceImprimee,
+  libelleQuantite,
+  type ContexteTicket,
+} from "./ticket";
 import { PANIER_VIDE, reducteurPanier, type EtatPanier } from "./etat-panier";
 import type { ArticlePos } from "./catalogue";
 
@@ -494,5 +499,51 @@ describe("Quantité imprimée", () => {
     expect(JSON.stringify(buildSaleReceipt(donneesTicketVente(contexte(etat, "CDF"))))).not.toContain(
       NNBSP
     );
+  });
+});
+
+describe("L'échéance d'une vente à crédit", () => {
+  it("s'imprime à la française, jamais en « AAAA-MM-JJ »", () => {
+    expect(echeanceImprimee("2026-11-28")).toBe("28/11/2026");
+  });
+
+  it("une échéance absente ou illisible n'imprime rien", () => {
+    expect(echeanceImprimee(null)).toBeUndefined();
+    expect(echeanceImprimee("bientôt")).toBeUndefined();
+  });
+});
+
+describe("La monnaie rendue garde la devise des billets rendus", () => {
+  it("part en francs quand le caissier rend en francs une facture en dollars", () => {
+    // Relevé le 2026-11-14 : « Monnaie rendue 89 240.00 $ », le bon nombre
+    // sous le mauvais symbole.
+    const etat = reducteurPanier(ajouter(PANIER_VIDE, savon, 0, 2), {
+      type: "deviseMonnaie",
+      code: "CDF",
+    });
+    const ctx = contexte(etat, "USD");
+    const t = donneesTicketVente({
+      ...ctx,
+      totaux: { ...ctx.totaux, monnaie: 89240 },
+    });
+    expect(t.changeAmount).toBe(89240);
+    expect(t.changeCurrency).toBe("CDF");
+
+    const ligne = buildSaleReceipt(t)
+      .flatMap((b) => (b.kind === "amounts" ? b.rows : []))
+      .find((r) => r.label === "Monnaie rendue");
+    expect(ligne?.value).toContain("FC");
+    expect(ligne?.value).not.toContain("$");
+  });
+
+  it("retombe sur la devise de la facture quand rien n'a été choisi", () => {
+    const ctx = contexte(ajouter(PANIER_VIDE, savon, 0, 2), "USD");
+    const t = donneesTicketVente({ ...ctx, totaux: { ...ctx.totaux, monnaie: 5 } });
+    expect(t.changeCurrency).toBe("USD");
+  });
+
+  it("sans monnaie rendue, aucune devise n'est annoncée", () => {
+    const t = donneesTicketVente(contexte(ajouter(PANIER_VIDE, savon, 0, 2), "USD"));
+    expect(t.changeCurrency).toBeUndefined();
   });
 });

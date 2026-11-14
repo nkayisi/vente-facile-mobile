@@ -18,7 +18,7 @@
  * │ aucune sortie.                                                           │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { pluriel } from "@/data/accord";
+import { accord, pluriel } from "@/data/accord";
 
 /**
  * Tout ce qui n'a jamais atteint le serveur.
@@ -130,13 +130,47 @@ export function confirmationAvant(
       action: "Se déconnecter",
     };
   }
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ CE QUI PARTIRA ET CE QUI NE PARTIRA PAS NE SE DISENT PAS ENSEMBLE.    │
+  // │                                                                        │
+  // │ La phrase rangeait tout le journal sous « pas encore atteint le        │
+  // │ serveur… elles seront envoyées », refus et blocages compris. Relevé    │
+  // │ sur l'émulateur le 2026-11-14 : « 1 opération n'a pas encore atteint   │
+  // │ le serveur. Elles seront envoyées… » pour une vente REFUSÉE - un       │
+  // │ pronom faux, et surtout une promesse que rien ne tiendra. Le marchand  │
+  // │ ne l'apprenait qu'à l'étape suivante.                                  │
+  // └────────────────────────────────────────────────────────────────────────┘
+  const envoyables = file.pending + file.inflight + file.photos;
+  const phrases: string[] = [];
+  if (envoyables > 0) {
+    phrases.push(
+      `${operations(envoyables)} ${accord(envoyables, "n'a", "n'ont")} pas encore atteint le serveur : ` +
+        `${accord(envoyables, "elle sera envoyée", "elles seront envoyées")} avant que les données ` +
+        "de cet établissement ne soient retirées de ce terminal."
+    );
+  }
+  if (file.quarantined > 0) {
+    const r = file.quarantined;
+    phrases.push(
+      `${operations(r)} ${accord(r, "refusée", "refusées")} par le serveur ne ` +
+        `${accord(r, "partira", "partiront")} pas : ` +
+        `${accord(r, "corrigez-la ou abandonnez-la", "corrigez-les ou abandonnez-les")} ` +
+        "dans « Opérations à corriger », ou partez sans effacer."
+    );
+  }
+  if (file.blocked > 0) {
+    const b = file.blocked;
+    phrases.push(
+      `${operations(b)} ${accord(b, "attend", "attendent")} un droit (un abonnement à régler, ` +
+        `ou une permission à accorder) et ne ${accord(b, "partira", "partiront")} pas maintenant.`
+    );
+  }
   return {
-    titre: "Synchroniser et déconnecter",
-    message:
-      `${operations(n)} n'${n > 1 ? "ont" : "a"} pas encore atteint le serveur. ` +
-      "Elles seront envoyées avant que les données de cet établissement ne soient retirées de ce terminal." +
-      local,
-    action: "Synchroniser et déconnecter",
+    titre: envoyables > 0 ? "Synchroniser et déconnecter" : "Se déconnecter ?",
+    message: phrases.join(" ") + local,
+    // Rien à envoyer : on ne promet pas une synchronisation qui n'aurait rien
+    // à faire, l'étape suivante dira ce qui reste sur le terminal.
+    action: envoyables > 0 ? "Synchroniser et déconnecter" : "Continuer",
   };
 }
 

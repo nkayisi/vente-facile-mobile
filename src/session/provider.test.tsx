@@ -36,6 +36,7 @@ const INSTANTANE = {
 let mockEstampille: Estampille | null = null;
 let mockPurgeLeve = false;
 let mockInstantane: unknown = INSTANTANE;
+let mockAccueilEnBase = true;
 const mockAppels: string[] = [];
 
 jest.mock("@/api/client", () => ({
@@ -44,8 +45,11 @@ jest.mock("@/api/client", () => ({
 }));
 
 jest.mock("@/data/reglages", () => ({
-  accueilDejaVu: async () => true,
-  marquerAccueilVu: async () => {},
+  accueilDejaVu: async () => mockAccueilEnBase,
+  marquerAccueilVu: async () => {
+    mockAppels.push("marquerAccueilVu");
+    mockAccueilEnBase = true;
+  },
 }));
 
 jest.mock("@/db/purge", () => ({
@@ -107,18 +111,22 @@ jest.mock("./session", () => ({
 }));
 
 /** Ce que la garde lirait. */
-let vu: { status: string; lostReason: string | null } = {
+let vu: { status: string; lostReason: string | null; accueilVu: boolean | null } = {
   status: "?",
   lostReason: null,
+  accueilVu: null,
 };
+/** La déconnexion du fournisseur, pour la déclencher depuis un test. */
+let deconnecter: (() => Promise<void>) | null = null;
 
 function Sonde() {
-  const { status, lostReason } = useSession();
+  const { status, lostReason, accueilVu, logout } = useSession();
   // ⚠ Dans un EFFET, jamais au rendu : écrire dans une variable extérieure
   // pendant le rendu est un effet de bord, et le rendu peut se rejouer.
   useEffect(() => {
-    vu = { status, lostReason };
-  }, [status, lostReason]);
+    vu = { status, lostReason, accueilVu };
+    deconnecter = logout;
+  }, [status, lostReason, accueilVu, logout]);
   return null;
 }
 
@@ -152,7 +160,9 @@ beforeEach(() => {
   mockEstampille = null;
   mockPurgeLeve = false;
   mockInstantane = INSTANTANE;
-  vu = { status: "?", lostReason: null };
+  mockAccueilEnBase = true;
+  vu = { status: "?", lostReason: null, accueilVu: null };
+  deconnecter = null;
 });
 
 describe("le démarrage à froid", () => {
@@ -240,5 +250,34 @@ describe("le coût d'un démarrage ordinaire", () => {
     mockVerrouAppareil = false;
     await demarrer();
     expect(vu.status).toBe("ready");
+  });
+});
+
+describe("la déconnexion", () => {
+  /**
+   * ⚠ ELLE MÈNE À LA CONNEXION, JAMAIS À LA PRÉSENTATION.
+   *
+   * La présentation est pour qui vient d'installer l'application. La garde
+   * envoie vers elle tant que `accueilVu` est faux : la déconnexion le remettait
+   * à faux, et un caissier qui rendait le terminal à son collègue repassait par
+   * quatre vues de présentation avant de pouvoir se connecter.
+   *
+   * La base dit ici « jamais vu » : c'est le terminal enrôlé avant que le
+   * drapeau existe, le cas qui oblige `logout` à le POSER plutôt qu'à le relire.
+   */
+  it("pose le drapeau de la présentation, même sur un terminal qui ne l'avait jamais écrit", async () => {
+    mockEstampille = { ...ETRANGERE, userId: "u-1", organizationId: "o-1" };
+    mockVerrouAppareil = false;
+    mockAccueilEnBase = false;
+    await demarrer();
+    expect(vu.status).toBe("ready");
+
+    await act(async () => {
+      await deconnecter!();
+    });
+
+    expect(vu.status).toBe("anonymous");
+    expect(vu.accueilVu).toBe(true);
+    expect(mockAppels).toContain("marquerAccueilVu");
   });
 });

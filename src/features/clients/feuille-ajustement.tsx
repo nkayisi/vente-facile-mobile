@@ -27,6 +27,7 @@ import { formatDateTimeFr } from "@vente-facile/core";
 
 import type { DetailClient } from "@/data/contact-detail";
 import { useMonnaie } from "@/data/devises";
+import { lireNombre } from "@/data/nombres";
 import { ajusterSolde } from "@/features/clients/actes";
 import { montantAjustement } from "@/features/clients/imputation";
 import { chromeDeLaSession } from "@/features/pos/ticket";
@@ -81,7 +82,15 @@ export function FeuilleAjustement({
     verrou.current = false;
   }, [ouvert, deviseDette]);
 
-  const saisi = Number(montant.replace(",", ".")) || 0;
+  // ⚠ `lireNombre` et non `Number(x.replace(",", "."))` : « 12 500 » donnait
+  //   `NaN`, ramené à zéro, et le bouton restait fermé sans un mot.
+  const lu = lireNombre(montant);
+  const saisi = lu.ok ? lu.valeur ?? 0 : 0;
+  const refusMontant = lu.ok
+    ? undefined
+    : lu.motif === "negatif"
+      ? "Écrivez le montant sans signe : c'est le sens choisi qui le donne."
+      : "Montant illisible : écrivez par exemple 12 500 ou 12,5.";
   // Le SIGNE est porté par le sens choisi, jamais par la saisie. `montantAjustement`
   // porte la règle et son test : « -500 » tapé dans « augmenter » ne doit pas
   // inverser l'opération.
@@ -177,12 +186,14 @@ export function FeuilleAjustement({
         label={`Montant (${devise})`}
         required
         hint={`Solde actuel ${money.money(soldeActuel, devise)}`}
+        error={refusMontant}
       >
         <Input
           value={montant}
           onChangeText={setMontant}
           keyboardType="decimal-pad"
           placeholder="0"
+          invalid={refusMontant !== undefined}
           autoFocus
         />
       </FormField>

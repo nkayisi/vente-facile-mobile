@@ -48,10 +48,15 @@ jest.mock("@/db/client", () => ({
 }));
 jest.mock("@/db/schema", () => ({
   registerSessions: { id: "id", registerId: "register_id", status: "status",
-                      openingBalance: "opening_balance", openedAt: "opened_at" },
+                      openingBalance: "opening_balance", openedAt: "opened_at",
+                      openedById: "opened_by_id" },
   registers: { id: "id", name: "name", warehouseId: "warehouse_id", isActive: "is_active" },
   warehouses: { id: "id", name: "name" },
+  users: { id: "id", firstName: "first_name", lastName: "last_name" },
 }));
+/** L'instantané de session : `null` = aucun vendeur connu, donc aucun filtre. */
+let mockSnapshot: unknown = null;
+jest.mock("@/session/storage", () => ({ readSnapshot: async () => mockSnapshot }));
 jest.mock("drizzle-orm", () => ({ desc: () => ({}), eq: () => ({}) }));
 jest.mock("@/sync", () => ({
   enqueue: jest.fn(),
@@ -61,7 +66,7 @@ jest.mock("@/sync", () => ({
     )),
 }));
 
-import { sessionOuverte } from "./caisse";
+import { caissesDisponibles, sessionOuverte } from "./caisse";
 
 const SESSION_TIREE = {
   id: "s-serveur",
@@ -70,6 +75,9 @@ const SESSION_TIREE = {
   warehouseId: "w1",
   openingBalance: "0",
   openedAt: new Date(2026, 7, 31, 8, 0),
+  openedById: "u-patron",
+  ouvreurPrenom: "Nelson",
+  ouvreurNom: "Kayisi",
 };
 
 /**
@@ -98,7 +106,12 @@ function journal(
 beforeEach(() => {
   mockLignes.length = 0;
   mockJournal.clear();
+  mockSnapshot = null;
 });
+
+function connecte(id: string, role: string) {
+  mockSnapshot = { user: { id }, membership: { role } };
+}
 
 describe("sessionOuverte", () => {
   it("rend la session tirée quand rien n'attend au journal", async () => {
@@ -183,5 +196,71 @@ describe("une ouverture BLOQUÉE reste une session", () => {
     journal("register_session.open", []);
 
     expect(await sessionOuverte()).toBeNull();
+  });
+});
+
+describe("un caissier n'encaisse que sur SA session", () => {
+  /**
+   * Relevé sur l'émulateur le 2026-11-14 : le comptoir d'un caissier s'ouvrait
+   * sur la session du propriétaire, et la vente revenait `rejected` (« Cette
+   * session a été ouverte par un autre utilisateur ») après le ticket.
+   */
+  it("écarte la session d'un autre, et rend la main à l'ouverture", async () => {
+    connecte("u-caisse", "cashier");
+    mockLignes.push([SESSION_TIREE]);
+    journal("register_session.open", []);
+
+    expect(await sessionOuverte()).toBeNull();
+  });
+
+  it("retient sa propre session, même plus ancienne qu'une autre", async () => {
+    connecte("u-caisse", "cashier");
+    mockLignes.push([
+      SESSION_TIREE,
+      { ...SESSION_TIREE, id: "s-sienne", registerId: "r2", openedById: "u-caisse" },
+    ]);
+
+    expect((await sessionOuverte())?.id).toBe("s-sienne");
+  });
+
+  it("le gérant et le propriétaire encaissent sur la session d'un autre", async () => {
+    connecte("u-gerant", "manager");
+    mockLignes.push([SESSION_TIREE]);
+    expect((await sessionOuverte())?.id).toBe("s-serveur");
+
+    connecte("u-proprio", "owner");
+    mockLignes.push([SESSION_TIREE]);
+    expect((await sessionOuverte())?.id).toBe("s-serveur");
+  });
+});
+
+describe("caissesDisponibles dit qui occupe une caisse", () => {
+  it("nomme qui a ouvert la session, et laisse libre une caisse sans session", async () => {
+    mockLignes.push([
+      { id: "r1", name: "Caisse 1", warehouseId: "w1", warehouseName: "Entrepôt" },
+      { id: "r2", name: "Caisse 2", warehouseId: "w1", warehouseName: "Entrepôt" },
+    ]);
+    mockLignes.push([SESSION_TIREE]);
+
+    const [c1, c2] = await caissesDisponibles();
+    expect(c1.occupee).toEqual({ par: "Nelson Kayisi", depuis: SESSION_TIREE.openedAt });
+    // Le serveur refuse une seconde session sur une même caisse : la proposer
+    // ferait vendre une journée entière sur une session refusée.
+    expect(c2.occupee).toBeNull();
+  });
+
+  it("une caisse dont la clôture attend son envoi est de nouveau libre", async () => {
+    mockLignes.push([{ id: "r1", name: "Caisse 1", warehouseId: "w1", warehouseName: "E" }]);
+    mockLignes.push([SESSION_TIREE]);
+    journal("register_session.close", [{ session: "s-serveur" }]);
+
+    expect((await caissesDisponibles())[0].occupee).toBeNull();
+  });
+
+  it("un ouvreur absent de la base locale ne cache pas l'occupation", async () => {
+    mockLignes.push([{ id: "r1", name: "Caisse 1", warehouseId: "w1", warehouseName: "E" }]);
+    mockLignes.push([{ ...SESSION_TIREE, ouvreurPrenom: null, ouvreurNom: null }]);
+
+    expect((await caissesDisponibles())[0].occupee?.par).toBeNull();
   });
 });

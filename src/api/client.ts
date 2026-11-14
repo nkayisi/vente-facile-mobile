@@ -14,7 +14,13 @@
  *    utiliseraient un jeton que le premier vient d'invalider.
  */
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from "./config";
-import { ApiError, classifyStatus, readableMessage } from "./errors";
+import {
+  ApiError,
+  CODE_MOT_DE_PASSE_A_CHANGER,
+  classifyStatus,
+  exigeChangementDeMotDePasse,
+  readableMessage,
+} from "./errors";
 import { tokenExpiry } from "./jwt";
 import {
   clearTokens,
@@ -48,8 +54,9 @@ export function currentOrganizationId(): string | null {
 
 /**
  * Appelée quand la session est DÉFINITIVEMENT perdue : le serveur a répondu et
- * refuse à la fois le jeton de rafraîchissement et le jeton d'appareil.
- * Jamais sur une panne réseau.
+ * refuse à la fois le jeton de rafraîchissement et le jeton d'appareil, ou il
+ * exige le changement d'un mot de passe posé par l'administration (motif
+ * `password_change_required`). Jamais sur une panne réseau.
  */
 let onSessionLost: ((reason: string) => void) | null = null;
 export function setSessionLostHandler(handler: ((reason: string) => void) | null) {
@@ -249,6 +256,10 @@ export async function request<T>(
       const renewed = await ensureFreshTokens(true);
       return rawRequest<T>(path, options, renewed.access);
     }
+    // Un mot de passe posé par l'administration et pas encore changé : aucune
+    // route ne s'ouvrira avant le changement, que seule la connexion propose.
+    // On ne touche à AUCUN jeton ni à la base : la connexion les réécrit.
+    if (exigeChangementDeMotDePasse(error)) onSessionLost?.(CODE_MOT_DE_PASSE_A_CHANGER);
     throw error;
   }
 }

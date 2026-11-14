@@ -38,14 +38,24 @@ export interface OrganizationChoice {
  * prenait `orgs[0]` en silence, si bien qu'un gérant de deux boutiques
  * encaissait dans la mauvaise sans jamais l'apprendre.
  */
+export interface ResultatConnexion {
+  organizations: OrganizationChoice[];
+  /**
+   * Le mot de passe a été posé par l'administration : il se change AVANT tout
+   * enrôlement, que le serveur refuse d'ailleurs tant que ce n'est pas fait.
+   * Absent d'un serveur antérieur, il vaut faux.
+   */
+  mustChangePassword: boolean;
+}
+
 export async function loginWithPassword(
   email: string,
   password: string
-): Promise<{ organizations: OrganizationChoice[] }> {
+): Promise<ResultatConnexion> {
   const data = await request<{
     access: string;
     refresh: string;
-    user: { organizations?: OrganizationChoice[] };
+    user: { organizations?: OrganizationChoice[]; must_change_password?: boolean };
   }>("/auth/login/", {
     method: "POST",
     body: { email, password },
@@ -54,7 +64,30 @@ export async function loginWithPassword(
   });
 
   await writeTokens({ access: data.access, refresh: data.refresh });
-  return { organizations: data.user.organizations ?? [] };
+  return {
+    organizations: data.user.organizations ?? [],
+    mustChangePassword: data.user.must_change_password === true,
+  };
+}
+
+/**
+ * Remplace le mot de passe posé par l'administration.
+ *
+ * ⚠ SANS organisation (`org: false`) : on l'appelle juste après la connexion,
+ * avant tout enrôlement, et aucune boutique n'est encore choisie. Le serveur
+ * exige le mot de passe communiqué comme « actuel » : c'est ce qui empêche un
+ * jeton resté ouvert ailleurs de le choisir à la place du titulaire.
+ */
+export async function changerMotDePasse(
+  actuel: string,
+  nouveau: string,
+  confirmation: string
+): Promise<void> {
+  await api.post(
+    "/users/me/change-password/",
+    { current_password: actuel, new_password: nouveau, new_password_confirm: confirmation },
+    { org: false }
+  );
 }
 
 /** Description du terminal, telle qu'elle apparaîtra dans la liste du gérant. */

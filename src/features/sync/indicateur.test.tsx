@@ -122,4 +122,13 @@ describe("le rendu du témoin", () => {
     mockEnCours = true;
     expect(rendu()).toContain("icone:RefreshCw");
   });
+
+  it("garde la rotation BRANCHÉE hors cycle, remise à zéro", () => {
+    // Le style passait à `undefined` hors cycle : la vue se détachait de la
+    // valeur animée et gardait l'angle du dernier tour. Une coche tournée de
+    // travers se lisait comme une horloge (relevé sur l'émulateur le
+    // 2026-11-14). La transformation doit rester là, à zéro degré.
+    poser({ done: 3 });
+    expect(rendu()).toContain('"rotate":"0deg"');
+  });
 });

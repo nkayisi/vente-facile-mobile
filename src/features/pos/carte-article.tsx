@@ -8,7 +8,7 @@
  */
 import { View } from "react-native";
 
-import { formatUnitQuantity, getPackaging } from "@vente-facile/core";
+import { formatQuantity, formatUnitQuantity, getPackaging } from "@vente-facile/core";
 
 import { Icon, Pressable, Text, VignetteArticle } from "@/ui";
 import type { ArticlePos } from "./catalogue";
@@ -81,7 +81,10 @@ export function CarteArticle({
           {auPanier > 0 ? (
             <View className="ml-2 min-w-6 items-center rounded-full bg-primary px-1.5 py-0.5">
               <Text variant="caption" className="text-primary-foreground">
-                {auPanier}
+                {/* Formatée : une demi-unité au panier s'affichait « 0.5 », au
+                    point anglais, au milieu d'un écran qui écrit « 1 122,4 $ »
+                    (relevé sur l'émulateur le 2026-11-14). */}
+                {formatQuantity(auPanier)}
               </Text>
             </View>
           ) : null}

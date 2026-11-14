@@ -265,7 +265,7 @@ describe("la séquence de déconnexion", () => {
       mockFile = { pending: 0, inflight: 0, quarantined: 0, blocked: 0, photos: 0, ...reste };
       const arbre = await monter();
       await act(async () => declencher!());
-      await appuyer(arbre, "Synchroniser et déconnecter");
+      await appuyer(arbre, "Continuer");
       expect(mockJournal.join(" ")).not.toContain("purge");
     }
   });
@@ -278,7 +278,7 @@ describe("la séquence de déconnexion", () => {
     mockFile = { ...mockFile, blocked: 1 };
     const arbre = await monter();
     await act(async () => declencher!());
-    await appuyer(arbre, "Synchroniser et déconnecter");
+    await appuyer(arbre, "Continuer");
     await appuyer(arbre, "Se déconnecter sans effacer");
 
     expect(mockJournal).toContain("logout");
@@ -379,7 +379,7 @@ describe("la séquence de déconnexion", () => {
     mockFile = { ...mockFile, blocked: 1 };
     const arbre = await monter();
     await act(async () => declencher!());
-    await appuyer(arbre, "Synchroniser et déconnecter");
+    await appuyer(arbre, "Continuer");
 
     await expect(appuyer(arbre, "Voir les opérations")).rejects.toThrow();
     // L'issue non destructrice, elle, reste toujours offerte : sans elle, un PIN

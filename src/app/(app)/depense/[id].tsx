@@ -268,7 +268,7 @@ export default function DetailDepense() {
             {d.reference_paiement ? (
               <Paire label="Référence du paiement" valeur={d.reference_paiement} />
             ) : null}
-            <Paire label="Date" valeur={d.date ? formatDateTimeFr(d.date) : "—"} />
+            <Paire label="Date" valeur={d.date ? formatDateTimeFr(d.date) : "-"} />
             {d.payeeLe ? (
               <Paire label="Payée le" valeur={formatDateTimeFr(d.payeeLe)} />
             ) : null}

@@ -13,14 +13,79 @@ import { desc, eq } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import type { FondSaisi } from "@/features/caisse/fond";
-import { registerSessions, registers, warehouses } from "@/db/schema";
+import { registerSessions, registers, users, warehouses } from "@/db/schema";
+import { readSnapshot } from "@/session/storage";
+import type { SessionSnapshot } from "@/session/types";
 import { enAttenteParType, enqueue, type EtatEnvoi } from "@/sync";
+
+import { peutVendreSur, type Vendeur } from "./session-vendeur";
 
 export interface CaissePos {
   id: string;
   name: string;
   warehouseId: string | null;
   warehouseName: string | null;
+  /**
+   * Une session est DÉJÀ ouverte sur cette caisse, par quelqu'un d'autre que le
+   * vendeur (sinon le comptoir l'aurait reprise et cet écran ne s'afficherait
+   * pas).
+   *
+   * Le serveur refuse une seconde session sur une même caisse, quel que soit le
+   * rôle (`SessionDejaOuverte`). La proposer à l'ouverture ferait vendre toute
+   * une journée sur une session que le serveur refusera, avec chacune de ses
+   * ventes. `par` est le nom tel que la base locale le connaît, `null` quand
+   * l'auteur n'y est pas descendu.
+   */
+  occupee: { par: string | null; depuis: Date | null } | null;
+}
+
+/**
+ * Le vendeur courant, lu de l'instantané de session.
+ *
+ * `null` quand il n'y en a pas : `peutVendreSur` ne filtre alors rien, ce qui
+ * reste l'ancien comportement et ne ferme jamais la caisse sur une lecture
+ * manquée. Le groupe `(app)` n'étant monté qu'avec une session prête, ce cas ne
+ * se présente pas au comptoir.
+ */
+async function vendeurCourant(): Promise<Vendeur | null> {
+  const snap = await readSnapshot<SessionSnapshot>().catch(() => null);
+  if (!snap?.user?.id) return null;
+  return { id: snap.user.id, role: snap.membership?.role ?? null };
+}
+
+/**
+ * Les sessions OUVERTES de la table tirée, avec qui les a ouvertes.
+ *
+ * Une session dont la clôture attend son envoi n'en est déjà plus une pour le
+ * comptoir : on l'écarte ici, une fois, pour les deux lecteurs.
+ */
+async function sessionsTireesOuvertes(fermees: Set<string>) {
+  const lignes = await db
+    .select({
+      id: registerSessions.id,
+      registerId: registerSessions.registerId,
+      registerName: registers.name,
+      warehouseId: registers.warehouseId,
+      warehouseName: warehouses.name,
+      openingBalance: registerSessions.openingBalance,
+      openedAt: registerSessions.openedAt,
+      openedById: registerSessions.openedById,
+      ouvreurPrenom: users.firstName,
+      ouvreurNom: users.lastName,
+    })
+    .from(registerSessions)
+    .innerJoin(registers, eq(registers.id, registerSessions.registerId))
+    // `leftJoin` : une caisse sans dépôt assigné est tolérée à l'ouverture, et
+    // un `innerJoin` la ferait disparaître - donc plus de session du tout, sur
+    // un comptoir qui vend.
+    .leftJoin(warehouses, eq(warehouses.id, registers.warehouseId))
+    // `leftJoin` aussi : `users` descend borné par appartenance, et un
+    // ancien employé qui a ouvert la session peut ne plus y figurer. Sa
+    // session n'en reste pas moins ouverte.
+    .leftJoin(users, eq(users.id, registerSessions.openedById))
+    .where(eq(registerSessions.status, "open"))
+    .orderBy(desc(registerSessions.openedAt));
+  return lignes.filter((l) => !fermees.has(l.id));
 }
 
 export interface SessionCaisse {
@@ -82,7 +147,18 @@ export async function caissesDisponibles(): Promise<CaissePos[]> {
     .from(registers)
     .leftJoin(warehouses, eq(warehouses.id, registers.warehouseId))
     .where(eq(registers.isActive, true));
-  return lignes;
+
+  const ouvertes = await sessionsTireesOuvertes(await sessionsClotureesEnAttente());
+  const parCaisse = new Map(ouvertes.map((o) => [o.registerId, o]));
+
+  return lignes.map((c) => {
+    const o = parCaisse.get(c.id);
+    const nom = o ? [o.ouvreurPrenom, o.ouvreurNom].filter(Boolean).join(" ").trim() : "";
+    return {
+      ...c,
+      occupee: o ? { par: nom || null, depuis: o.openedAt ?? null } : null,
+    };
+  });
 }
 
 /**
@@ -110,34 +186,39 @@ export async function caissesDisponibles(): Promise<CaissePos[]> {
  * │ déjà sur l'écran de clôture (`enAttenteCaisse().clotures`).              │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
- * On ne filtre PAS sur l'utilisateur : une session appartient à la CAISSE, et
- * deux vendeurs qui se relaient au même comptoir travaillent sur la même. Le
- * serveur, lui, contrôle qui a le droit de la fermer.
+ * ⚠ ON FILTRE SUR LE VENDEUR, et ce paragraphe disait l'inverse jusqu'au
+ * 2026-11-14 (« une session appartient à la CAISSE, deux vendeurs qui se
+ * relaient travaillent sur la même »). C'est vrai de la CLÔTURE, faux de la
+ * VENTE : le serveur refuse au caissier d'encaisser sur la session d'un autre,
+ * et le comptoir lui proposait la session du propriétaire. Voir
+ * `session-vendeur.ts`.
+ *
+ * Une ouverture encore EN FILE n'a pas à passer ce filtre : elle vient de ce
+ * terminal, et l'estampille de la base (`session/proprietaire.ts`) garantit
+ * qu'elle appartient au compte connecté.
  */
 export async function sessionOuverte(): Promise<SessionCaisse | null> {
   const fermees = await sessionsClotureesEnAttente();
+  const vendeur = await vendeurCourant();
 
-  const [ligne] = await db
-    .select({
-      id: registerSessions.id,
-      registerId: registerSessions.registerId,
-      registerName: registers.name,
-      warehouseId: registers.warehouseId,
-      warehouseName: warehouses.name,
-      openingBalance: registerSessions.openingBalance,
-      openedAt: registerSessions.openedAt,
-    })
-    .from(registerSessions)
-    .innerJoin(registers, eq(registers.id, registerSessions.registerId))
-    // `leftJoin` : une caisse sans dépôt assigné est tolérée à l'ouverture, et
-    // un `innerJoin` la ferait disparaître - donc plus de session du tout, sur
-    // un comptoir qui vend.
-    .leftJoin(warehouses, eq(warehouses.id, registers.warehouseId))
-    .where(eq(registerSessions.status, "open"))
-    .orderBy(desc(registerSessions.openedAt))
-    .limit(1);
+  // La plus récente des sessions OUVERTES sur lesquelles ce vendeur a le droit
+  // d'encaisser : voir `session-vendeur.ts`.
+  const ligne = (await sessionsTireesOuvertes(fermees)).find((l) =>
+    peutVendreSur(l.openedById, vendeur)
+  );
 
-  if (ligne && !fermees.has(ligne.id)) return { ...ligne, envoi: "envoye" };
+  if (ligne) {
+    return {
+      id: ligne.id,
+      registerId: ligne.registerId,
+      registerName: ligne.registerName,
+      warehouseId: ligne.warehouseId,
+      warehouseName: ligne.warehouseName,
+      openingBalance: ligne.openingBalance,
+      openedAt: ligne.openedAt,
+      envoi: "envoye",
+    };
+  }
 
   // Rien d'authentique : une ouverture peut attendre dans le journal. On ne
   // l'écrit pas dans la table tirée, sans quoi un refus du serveur laisserait

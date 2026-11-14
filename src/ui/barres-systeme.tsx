@@ -22,25 +22,68 @@
  * ⚠ `NavigationBar.setStyle` n'a d'effet que si le VOILE DE CONTRASTE d'Android
  * est désactivé, d'où `enforceContrast: false` sur le greffon dans
  * `app.config.ts`. Sans ce drapeau, ce composant serait inerte - et on le
- * croirait branché. Le composant rend `null` hors Android : rien à garder.
+ * croirait branché. Hors Android, le module n'existe pas : rien à appeler.
  *
  * ⚠ La documentation d'Expo prévient qu'un bogue de l'ÉMULATEUR Android 15 peut
  * rendre `setStyle` sans effet. Si la teinte n'y bouge pas, ce n'est pas une
  * preuve : il faut un appareil ou une autre version.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ ON N'EMPLOIE PAS LE COMPOSANT `<NavigationBar>` DE LA BIBLIOTHÈQUE.     │
+ * │                                                                          │
+ * │ Il appelle `setStyle` et `setHidden` du module natif SANS rattraper      │
+ * │ leur promesse, y compris à son démontage. Or ces fonctions lèvent quand  │
+ * │ l'activité a disparu (`throwingActivity`) : fermeture de l'application,  │
+ * │ rechargement. Chaque fermeture laissait une promesse rejetée et non      │
+ * │ rattrapée, qui remontait en bruit dans le rapport de plantage. Relevé    │
+ * │ le 2026-11-14.                                                           │
+ * │                                                                          │
+ * │ On appelle donc le module natif nous-mêmes, une fois par changement de   │
+ * │ thème, et on rattrape. Rien au démontage : l'activité qui disparaît      │
+ * │ emporte sa barre avec elle, il n'y a rien à rétablir.                    │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { NavigationBar } from "expo-navigation-bar";
+import { useEffect } from "react";
+import { Platform } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
 import { useTheme } from "./theme";
+
+interface ModuleBarre {
+  setStyle(style: "light" | "dark"): Promise<void>;
+}
+
+let module: ModuleBarre | null | undefined;
+
+function charger(): ModuleBarre | null {
+  if (module !== undefined) return module;
+  if (Platform.OS !== "android") {
+    module = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- module natif optionnel
+    const expo = require("expo") as {
+      requireOptionalNativeModule<T>(name: string): T | null;
+    };
+    module = expo.requireOptionalNativeModule<ModuleBarre>("ExpoNavigationBar");
+  } catch {
+    module = null;
+  }
+  return module;
+}
 
 export function BarresSysteme() {
   const { scheme } = useTheme();
   const style = scheme === "dark" ? "light" : "dark";
 
-  return (
-    <>
-      <StatusBar style={style} />
-      <NavigationBar style={style} />
-    </>
-  );
+  useEffect(() => {
+    const barre = charger();
+    if (!barre) return;
+    // Une teinte qui ne s'applique pas n'est pas une panne : la barre garde la
+    // précédente, et l'écran reste utilisable.
+    barre.setStyle(style).catch(() => undefined);
+  }, [style]);
+
+  return <StatusBar style={style} />;
 }

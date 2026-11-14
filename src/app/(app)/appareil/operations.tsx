@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useFocusEffect } from "expo-router";
 
-import { pluriel } from "@/data/accord";
+import { accord, pluriel } from "@/data/accord";
 import { dateHeureCourteFr } from "@/data/dates";
 import { bloquees, discard, quarantined } from "@/sync";
 import type { OutboxOperation } from "@/db/schema";
@@ -171,7 +171,13 @@ export default function Operations() {
         <View className="mb-5">
           <Text variant="muted">
             {rows.length > 0
-              ? `Le serveur a refusé ${rows.length} opération${rows.length > 1 ? "s" : ""}. Elles ne repartiront pas d'elles-mêmes.`
+              ? // Le verbe et le pronom suivent le NOMBRE : « 1 opération. Elles
+                // ne repartiront pas » a été relevé sur l'émulateur le 2026-11-14.
+                `Le serveur a refusé ${pluriel(rows.length, "opération", "opérations")}. ${accord(
+                  rows.length,
+                  "Elle ne repartira pas d'elle-même.",
+                  "Elles ne repartiront pas d'elles-mêmes."
+                )}`
               : "Aucune opération refusée."}
           </Text>
         </View>

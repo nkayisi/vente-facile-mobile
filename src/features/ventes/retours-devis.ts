@@ -17,6 +17,7 @@
 import * as Crypto from "expo-crypto";
 
 import { enAttenteParType, enqueue } from "@/sync";
+import { dependancesDuClient } from "@/features/pos/donnees";
 
 import { attentesPar, type Attentes } from "@/features/sync/attente";
 
@@ -83,6 +84,9 @@ export async function creerDevis(saisie: {
   conditions?: string;
 }): Promise<string> {
   const id = Crypto.randomUUID();
+  // Un devis fait pour un client créé au terminal attend sa création : parti
+  // seul, il serait refusé pour un client introuvable.
+  const dependsOn = await dependancesDuClient(saisie.client);
   await enqueue(id, "quotation.create", {
     id,
     ...(saisie.client ? { customer: saisie.client } : {}),
@@ -98,7 +102,7 @@ export async function creerDevis(saisie: {
       total: String(l.quantite * l.prixUnitaire),
       ...(l.description ? { description: l.description } : {}),
     })),
-  });
+  }, { dependsOn });
   return id;
 }
 

@@ -11,7 +11,7 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  *
  * `null` ne se lit jamais comme zéro : un prix non défini s'écrit « Non
- * défini », et une marge inconnue « — » plutôt que « 0 % ».
+ * défini », et une marge inconnue « - » plutôt que « 0 % ».
  */
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -206,7 +206,7 @@ export default function FicheArticle() {
                   valeur={
                     c.margePourcent != null
                       ? `${formatFixedFr(c.margePourcent, 1)} %`
-                      : "—"
+                      : "-"
                   }
                 />
               </View>

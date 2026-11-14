@@ -71,7 +71,7 @@ describe("Aucun appui du tiroir n'échappe à la fermeture", () => {
   );
 
   /** Les fabriques de gestionnaires, toutes bâties sur `fermerPuis`. */
-  const AUTORISES = ["fermerPuis(", "aller(", "refuser("];
+  const AUTORISES = ["fermerPuis(", "aller("];
 
   it("le balayage MORD : il trouve bien les appuis du menu", () => {
     // Un balayage qui ne balaie rien passe au vert et ne prouve rien. Le dépôt

@@ -25,8 +25,9 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatDateTimeFr } from "@vente-facile/core";
+import { formatDateTimeFr, formatQuantity } from "@vente-facile/core";
 
+import { accord } from "@/data/accord";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { detailVente, type LigneVente } from "@/data/vente-detail";
@@ -141,7 +142,7 @@ function LigneArticle({
             liste entière pour n'apporter rien. */}
         {ligne.contenants > 0 ? (
           <Text numeric variant="caption" className="shrink-0">
-            {`${ligne.quantiteTotale} au total`}
+            {`${formatQuantity(ligne.quantiteTotale)} au total`}
           </Text>
         ) : null}
       </View>
@@ -158,7 +159,9 @@ function LigneArticle({
           <Badge tone={rendu >= ligne.quantiteTotale ? "warning" : "neutral"}>
             {rendu >= ligne.quantiteTotale
               ? "Entièrement rendu"
-              : `${rendu} rendu${rendu > 1 ? "s" : ""} sur ${ligne.quantiteTotale}`}
+              : // La quantité peut être fractionnaire (vente au poids) : formatée,
+                // et accordée sous DEUX (« 1,5 rendu »), jamais `> 1`.
+                `${formatQuantity(rendu)} ${accord(rendu, "rendu", "rendus")} sur ${formatQuantity(ligne.quantiteTotale)}`}
           </Badge>
         </View>
       ) : null}
@@ -514,7 +517,7 @@ export default function DetailVenteEcran() {
             {vente.monnaieRendue > 0 ? (
               <Paire
                 label="Monnaie rendue"
-                valeur={money.money(vente.monnaieRendue, vente.devise)}
+                valeur={money.money(vente.monnaieRendue, vente.deviseMonnaie)}
               />
             ) : null}
           </View>

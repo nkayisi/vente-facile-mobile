@@ -10,6 +10,8 @@ import { useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 
+import { CODE_MOT_DE_PASSE_A_CHANGER } from "@/api/errors";
+import { PHRASE_AUCUN_ETABLISSEMENT, etapeApresConnexion } from "@/session/apres-connexion";
 import { messageEchecConnexion } from "@/session/echec-connexion";
 import { MOTIF_DEMARRAGE, useSession } from "@/session/provider";
 import { Banner, Button, FormField, Input, Logo, Pressable, Screen, Text } from "@/ui";
@@ -34,24 +36,31 @@ export default function Login() {
 
     setBusy(true);
     try {
-      const organizations = await login(email.trim().toLowerCase(), password);
+      const resultat = await login(email.trim().toLowerCase(), password);
+      const etape = etapeApresConnexion(resultat);
 
-      if (organizations.length === 0) {
-        // Ce n'était qu'un message : le compte existait, mais l'écran ne
-        // proposait rien. On nomme la sortie.
-        setError(
-          "Aucun établissement n'est rattaché à ce compte. Créez votre boutique pour commencer."
-        );
+      if (etape.type === "changer_mot_de_passe") {
+        // Les établissements voyagent avec : l'écran du changement reprend la
+        // même suite une fois le mot de passe remplacé.
+        router.push({
+          pathname: "/(auth)/nouveau-mot-de-passe",
+          params: { organizations: JSON.stringify(resultat.organizations) },
+        });
         return;
       }
-      // Une seule boutique : rien à demander. Au-delà, on demande, toujours.
-      if (organizations.length === 1) {
-        await chooseOrganization(organizations[0]!.id);
+      if (etape.type === "aucun_etablissement") {
+        // Ce n'était qu'un message : le compte existait, mais l'écran ne
+        // proposait rien. On nomme la sortie.
+        setError(PHRASE_AUCUN_ETABLISSEMENT);
+        return;
+      }
+      if (etape.type === "choisir_d_office") {
+        await chooseOrganization(etape.organizationId);
         return;
       }
       router.push({
         pathname: "/(auth)/organization",
-        params: { organizations: JSON.stringify(organizations) },
+        params: { organizations: JSON.stringify(resultat.organizations) },
       });
     } catch (e) {
       setError(messageEchecConnexion(e));
@@ -85,7 +94,9 @@ export default function Login() {
             title={
               lostReason === MOTIF_DEMARRAGE
                 ? "Le terminal n'a pas pu ouvrir sa session"
-                : "Session expirée"
+                : lostReason === CODE_MOT_DE_PASSE_A_CHANGER
+                  ? "Mot de passe à changer"
+                  : "Session expirée"
             }
             message={
               lostReason === MOTIF_DEMARRAGE
@@ -94,7 +105,9 @@ export default function Login() {
                   "La lecture des données locales a échoué au démarrage. Rien n'a été effacé : vos ventes et vos opérations en attente sont toujours sur l'appareil. Reconnectez-vous pour reprendre."
                 : lostReason === "no_device"
                   ? "Ce terminal doit être enrôlé à nouveau. Vos données restent sur l'appareil."
-                  : "L'accès de ce terminal a été révoqué ou a expiré. Vos ventes en attente sont conservées et repartiront après reconnexion."
+                  : lostReason === CODE_MOT_DE_PASSE_A_CHANGER
+                    ? "Le mot de passe de ce compte a été réinitialisé. Connectez-vous avec le mot de passe communiqué, puis choisissez le vôtre. Vos ventes en attente sont conservées."
+                    : "L'accès de ce terminal a été révoqué ou a expiré. Vos ventes en attente sont conservées et repartiront après reconnexion."
             }
           />
         </View>

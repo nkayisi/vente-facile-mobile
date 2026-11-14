@@ -16,6 +16,7 @@
 import { View } from "react-native";
 import { computeMargin, formatNumberFr } from "@vente-facile/core";
 
+import { lireNombre } from "@/data/nombres";
 import { FormField, Input, Text } from "@/ui";
 
 export function BlocCanal({
@@ -52,7 +53,12 @@ export function BlocCanal({
   /** Faux sur une sortie : elle n'a aucun prix d'achat à déclarer. */
   prixVisibles: boolean;
 }) {
-  const marge = computeMargin(Number(cout.replace(",", ".")), Number(prix.replace(",", ".")));
+  // `lireNombre` : « 12 500 » est un prix, et la marge doit s'afficher dessous.
+  const lu = (v: string) => {
+    const l = lireNombre(v);
+    return l.ok ? l.valeur : null;
+  };
+  const marge = computeMargin(lu(cout), lu(prix));
 
   return (
     <View className="gap-3 rounded-lg border border-border p-3">

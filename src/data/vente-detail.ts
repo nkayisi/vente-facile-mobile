@@ -103,6 +103,8 @@ export interface DetailVente {
   paye: number;
   resteAPayer: number;
   monnaieRendue: number;
+  /** La devise des billets rendus (`change_currency`), à défaut celle de la facture. */
+  deviseMonnaie: string;
 
   lignes: LigneVente[];
   reglements: ReglementVente[];
@@ -201,6 +203,7 @@ export async function detailVente(id: string): Promise<DetailVente | null> {
     paye: nb(s.amountPaid),
     resteAPayer: nb(s.amountDue),
     monnaieRendue: nb(s.changeAmount),
+    deviseMonnaie: s.changeCurrency || s.currency,
 
     lignes: lignes.map((l) => {
       const totalUnites = nb(l.quantity);

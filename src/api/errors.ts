@@ -70,6 +70,21 @@ export function classifyThrown(error: unknown): FailureKind {
 export const isOffline = (error: unknown) =>
   classifyThrown(error) === "network";
 
+/** Code du serveur pour un mot de passe posé par l'administration, pas encore changé. */
+export const CODE_MOT_DE_PASSE_A_CHANGER = "password_change_required";
+
+/**
+ * Le serveur refuse la route tant que le mot de passe communiqué n'est pas
+ * remplacé (403 `password_change_required`).
+ *
+ * ⚠ CE N'EST PAS UN REFUS DE DROIT ORDINAIRE : la session est valide, mais rien
+ * d'autre que le changement ne s'ouvrira. Un terminal qui redémarre après une
+ * connexion au mot de passe communiqué entre en `ready` avec ces jetons-là, et
+ * chaque écran se ferait refuser sans rien pour le conduire au changement.
+ */
+export const exigeChangementDeMotDePasse = (error: unknown) =>
+  error instanceof ApiError && error.status === 403 && error.code === CODE_MOT_DE_PASSE_A_CHANGER;
+
 /**
  * Longueur au-delà de laquelle un « message » n'en est plus un.
  *

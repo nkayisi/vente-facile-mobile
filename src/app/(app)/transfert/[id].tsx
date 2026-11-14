@@ -266,11 +266,11 @@ export default function DetailTransfertEcran() {
           <CardHeader title="Informations" />
           <View>
             <Ligne label="Référence" valeur={t.reference} />
-            <Ligne label="Source" valeur={t.source ?? "—"} />
-            <Ligne label="Destination" valeur={t.destination ?? "—"} />
+            <Ligne label="Source" valeur={t.source ?? "-"} />
+            <Ligne label="Destination" valeur={t.destination ?? "-"} />
             <Ligne
               label="Demandé le"
-              valeur={t.demandeLe ? formatDateTimeFr(t.demandeLe) : "—"}
+              valeur={t.demandeLe ? formatDateTimeFr(t.demandeLe) : "-"}
             />
             {t.expedieLe ? (
               <Ligne label="Expédié le" valeur={formatDateTimeFr(t.expedieLe)} />

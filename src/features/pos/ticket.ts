@@ -32,6 +32,7 @@ import {
 } from "@vente-facile/core/receipt";
 
 import type { SessionSnapshot } from "@/session/types";
+import { dateCourteFr, dateDepuisJourISO } from "@/data/dates";
 
 import type { EtatPanier, LignePanier } from "./etat-panier";
 import { logoCourant } from "@/printing/logo-courant";
@@ -299,9 +300,16 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
       amount: Number(r.amount) || 0,
       currency: r.currency,
     })),
+    // La monnaie est calculée dans la devise des billets RENDUS (`deviseMonnaie`
+    // du panier, à défaut la facture) : elle part avec la sienne, sinon une
+    // monnaie rendue en francs s'imprimait sous le symbole du dollar.
     changeAmount: totaux.monnaie || undefined,
+    changeCurrency: totaux.monnaie ? etat.deviseMonnaie ?? facture.currency : undefined,
     amountDue: contexte.restantDu || undefined,
-    dueDate: etat.echeance ?? undefined,
+    // L'échéance est rangée en « AAAA-MM-JJ » : imprimée telle quelle, le client
+    // lisait « 2026-11-28 » sous un ticket tout entier écrit à la française.
+    // « 28/11/2026 », comme le ticket du back-office et comme la réimpression.
+    dueDate: echeanceImprimee(etat.echeance),
     // `show` est piloté par le réglage du marchand : certains ne veulent pas
     // du bloc fidélité sur le papier. Le bloc s'imprime dès qu'un client est
     // rattaché, même sans gain : c'est justement le cumul qu'il vient lire.
@@ -319,4 +327,10 @@ export function donneesTicketVente(contexte: ContexteTicket): SaleReceiptData {
         }
       : undefined,
   };
+}
+
+/** L'échéance d'une vente à crédit, telle que le client la lit sur son papier. */
+export function echeanceImprimee(iso: string | null | undefined): string | undefined {
+  const jour = dateDepuisJourISO(iso);
+  return jour ? dateCourteFr(jour) : undefined;
 }

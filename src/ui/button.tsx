@@ -90,6 +90,11 @@ export function Button({
       disabled={inactive}
       haptic={inactive ? "none" : haptic}
       accessibilityRole="button"
+      // ⚠ L'ÉTIQUETTE EST POSÉE, pas déduite des enfants. Sans elle, Android
+      // remplace la description par « busy » pendant le chargement et ne la
+      // rétablit pas ensuite : relevé le 2026-11-14 sur le bandeau des
+      // notifications, un lecteur d'écran annonçait occupé un bouton au repos.
+      accessibilityLabel={typeof children === "string" ? children : undefined}
       accessibilityState={{ disabled: inactive, busy: loading }}
       pressedClassName="active:opacity-80"
       // ⚠ `fusionner`, ET PAS UNE CONCATÉNATION. En NativeWind, deux classes

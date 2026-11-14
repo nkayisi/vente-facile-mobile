@@ -64,8 +64,10 @@ import {
 } from "@/ui";
 
 import { sessionOuverte, type SessionCaisse } from "./caisse";
+import { PanneauNouveauClient } from "./panneau-nouveau-client";
 import {
   chercherClients,
+  dependancesDuClient,
   moyensDePaiement,
   type MoyenPaiement,
 } from "./donnees";
@@ -88,7 +90,7 @@ import { prochaineReference } from "./numerotation";
 import { usePanier, type ClientPos } from "./panier";
 import { donneesTicketVente } from "./ticket";
 
-type Panneau = "formulaire" | "client" | "moyen" | "cagnotte";
+type Panneau = "formulaire" | "client" | "nouveauClient" | "moyen" | "cagnotte";
 
 /**
  * Glyphe d'un moyen de paiement, par son genre.
@@ -112,7 +114,7 @@ function glypheDuMoyen(genre: string): IconName {
 
 export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
   const panier = usePanier();
-  const { snapshot } = useSession();
+  const { snapshot, can } = useSession();
   const toast = useToast();
   const { etat, totaux, devises, parDevise, deviseFacture, deviseMonnaie, argent } =
     panier;
@@ -377,15 +379,22 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
         isPos: true,
       });
 
-      await enqueue(id, "sale.create", {
+      await enqueue(
         id,
-        reference,
-        // La session est nommee explicitement : le serveur la retrouverait par
-        // la caisse, mais une session ouverte hors ligne n'existe encore que
-        // dans le journal, et c'est celle-la qu'il faut viser.
-        session: session.id,
-        ...corps,
-      });
+        "sale.create",
+        {
+          id,
+          reference,
+          // La session est nommee explicitement : le serveur la retrouverait par
+          // la caisse, mais une session ouverte hors ligne n'existe encore que
+          // dans le journal, et c'est celle-la qu'il faut viser.
+          session: session.id,
+          ...corps,
+        },
+        // Un client cree au terminal attend sa creation : la vente part avec
+        // elle, jamais avant (sinon refus pour client introuvable, ticket sorti).
+        { dependsOn: await dependancesDuClient(etat.client?.id) },
+      );
 
       const monnaie = totaux.monnaie;
 
@@ -486,13 +495,17 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
 
   const reculer = () => {
     if (panneau === "formulaire") return annuler();
-    setPanneau("formulaire");
+    // La création d'un client se fait DEPUIS le choix du client : reculer y
+    // ramène, avec la recherche intacte.
+    setPanneau(panneau === "nouveauClient" ? "client" : "formulaire");
   };
 
   const titre =
     panneau === "client"
       ? "Choisir un client"
-      : panneau === "moyen"
+      : panneau === "nouveauClient"
+        ? "Nouveau client"
+        : panneau === "moyen"
         ? "Moyen de paiement"
         : panneau === "cagnotte"
           ? "Cagnotte à utiliser"
@@ -514,6 +527,9 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
               envoyer({ type: "client", client: c });
               setPanneau("formulaire");
             }}
+            onNouveau={
+              can("customers.create") ? () => setPanneau("nouveauClient") : undefined
+            }
             onRetirer={
               etat.client
                 ? () => {
@@ -530,6 +546,16 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
                   }
                 : undefined
             }
+          />
+        ) : panneau === "nouveauClient" ? (
+          <PanneauNouveauClient
+            recherche={recherche}
+            onCree={(c) => {
+              envoyer({ type: "client", client: c });
+              toast.succes(`Client « ${c.name} » créé et rattaché à la vente.`);
+              setPanneau("formulaire");
+            }}
+            onErreur={(m) => toast.erreur(m)}
           />
         ) : panneau === "moyen" ? (
           <ListeChoix
@@ -701,7 +727,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
                 <View className="flex-row items-center gap-2">
                   <Icon name="AlertTriangle" size={16} color="warning" />
                   <Text variant="label" className="min-w-0 flex-1">
-                    Vente à crédit — un client est obligatoire
+                    Vente à crédit : un client est obligatoire
                   </Text>
                 </View>
                 {!etat.client ? (
@@ -1116,6 +1142,7 @@ function PanneauClient({
   principale,
   onChoisir,
   onRetirer,
+  onNouveau,
 }: {
   recherche: string;
   onRecherche: (v: string) => void;
@@ -1124,6 +1151,8 @@ function PanneauClient({
   principale: string;
   onChoisir: (c: ClientPos) => void;
   onRetirer?: () => void;
+  /** Absent sans le droit `customers.create` : le bouton n'est alors pas proposé. */
+  onNouveau?: () => void;
 }) {
   return (
     <>
@@ -1132,6 +1161,11 @@ function PanneauClient({
         onChange={onRecherche}
         placeholder="Nom, téléphone ou code"
       />
+      {onNouveau ? (
+        <Button variant="outline" fullWidth leftIcon="UserPlus" onPress={onNouveau}>
+          Nouveau client
+        </Button>
+      ) : null}
       {onRetirer ? (
         <Button variant="outline" fullWidth leftIcon="X" onPress={onRetirer}>
           Aucun client (vente au comptant)
@@ -1140,7 +1174,9 @@ function PanneauClient({
       {clients.length === 0 ? (
         <Text variant="caption">
           {recherche
-            ? "Aucun client ne correspond. Essayez le téléphone ou le code."
+            ? onNouveau
+              ? "Aucun client ne correspond. Essayez le téléphone, ou créez-le avec « Nouveau client »."
+              : "Aucun client ne correspond. Essayez le téléphone ou le code."
             : "Cherchez un client par son nom, son téléphone ou son code."}
         </Text>
       ) : (

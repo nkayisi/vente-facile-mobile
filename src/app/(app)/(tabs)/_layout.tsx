@@ -10,11 +10,12 @@
  *   │           la page               │
  *   │                                 │
  *   ├─────────────────────────────────┤
- *   │ Accueil Caisse POS Stock Param. │  cinq onglets FIXES
+ *   │ Accueil Caisse POS Stock Param. │  cinq onglets, selon les droits
  *   └─────────────────────────────────┘
  *
- * Le hamburger ouvre le tiroir, qui EST la barre latérale du web : les onze
- * sections, dans le même ordre, avec les mêmes libellés et les mêmes glyphes.
+ * Le hamburger ouvre le tiroir, qui EST la barre latérale du web : les mêmes
+ * sections, dans le même ordre, avec les mêmes libellés et les mêmes glyphes,
+ * et comme sur le web seulement celles que le rôle peut ouvrir.
  *
  * `TiroirProvider` enveloppe `Tabs` et non l'inverse : c'est ce qui fait que le
  * voile du menu couvre AUSSI la barre d'onglets, comme sur le web où la barre
@@ -27,9 +28,8 @@
 import { Tabs, router } from "expo-router";
 
 import { IndicateurSync } from "@/features/sync/indicateur";
-import { MENU } from "@/navigation/menu";
 import { styleBarreOnglets } from "@/navigation/metriques";
-import { NOMS_ONGLETS, ONGLETS } from "@/navigation/onglets";
+import { ecransDeLaBarre } from "@/navigation/onglets";
 import { TiroirProvider, useTiroir } from "@/navigation/tiroir";
 import { useSession } from "@/session/provider";
 import {
@@ -37,25 +37,8 @@ import {
   TopBar,
   useMargesSysteme,
   useTheme,
-  type IconName,
 } from "@/ui";
 import { ClocheNotifications } from "@/notifications/cloche";
-
-/**
- * Tous les écrans déclarés : les onglets d'abord (leur ordre est celui de la
- * barre), puis les sections atteintes seulement par le tiroir.
- */
-const ECRANS: { nom: string; titre: string; icon: IconName }[] = [
-  ...ONGLETS.map((o) => ({ nom: o.nom, titre: o.label, icon: o.icon })),
-  ...MENU.filter((e) => !NOMS_ONGLETS.includes(e.cle)).map((e) => ({
-    nom: e.cle,
-    titre: e.label,
-    icon: e.icon,
-  })),
-  // « Mon profil » n'est pas une entrée du menu, sur le web non plus : il vit
-  // dans le menu avatar de l'en-tête, et ici dans le pied du tiroir.
-  { nom: "profil", titre: "Mon profil", icon: "User" },
-];
 
 function Coquille() {
   const { colors } = useTheme();
@@ -66,7 +49,11 @@ function Coquille() {
   // reprend sa formule avec la marge corrigée.
   const { bas } = useMargesSysteme();
   const { ouvrir } = useTiroir();
-  const { snapshot } = useSession();
+  const { snapshot, can } = useSession();
+  // Cinq boutons, choisis selon les droits. ⚠ L'ORDRE des écrans, lui, ne
+  // bouge jamais : le réordonner barre montée fait planter Fabric. Voir
+  // `onglets.ts`.
+  const ecrans = ecransDeLaBarre(can);
 
   return (
     <Tabs
@@ -103,15 +90,17 @@ function Coquille() {
         tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11 },
       }}
     >
-      {ECRANS.map((e) => (
+      {ecrans.map((e) => (
         <Tabs.Screen
           key={e.nom}
           name={e.nom}
           options={{
             title: e.titre,
-            // `href: null` retire le BOUTON, jamais la route : la section reste
-            // atteignable depuis le tiroir, et elle y garde sa barre d'onglets.
-            href: NOMS_ONGLETS.includes(e.nom) ? undefined : null,
+            tabBarLabel: e.bouton ?? e.titre,
+            // `href: null` retire le BOUTON, jamais la route : une section sans
+            // bouton reste atteignable depuis le tiroir, et elle y garde sa barre
+            // d'onglets.
+            href: e.bouton ? undefined : null,
             tabBarIcon: ({ color }) => <IconBrute name={e.icon} color={color} size={22} />,
           }}
         />

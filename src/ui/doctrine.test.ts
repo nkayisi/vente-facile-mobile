@@ -1271,7 +1271,7 @@ describe("tout nom de glyphe est un IconName valide", () => {
       // forme EXACTE du défaut : le champ accepte alors n'importe quel mot.
       for (const m of code.matchAll(new RegExp(String.raw`\b(${CHAMPS})\??\s*:\s*string\b`, "g"))) {
         const ligne = code.slice(0, m.index).split("\n").length;
-        fautifs.push(`${relative(RACINE, f)}:${ligne} — ${m[0]}`);
+        fautifs.push(`${relative(RACINE, f)}:${ligne} - ${m[0]}`);
       }
     }
     expect(fautifs).toEqual([]);
@@ -1308,7 +1308,7 @@ describe("tout nom de glyphe est un IconName valide", () => {
         if (connus.has(nom)) continue;
         if (JETONS.has(nom)) continue;
         const ligne = code.slice(0, m.index).split("\n").length;
-        fautifs.push(`${relative(RACINE, f)}:${ligne} — « ${nom} » absent du registre`);
+        fautifs.push(`${relative(RACINE, f)}:${ligne} - « ${nom} » absent du registre`);
       }
     }
     expect(fautifs).toEqual([]);
@@ -3055,5 +3055,64 @@ describe("la poussée d'arrière-plan est chargée au démarrage du paquet", () 
     const routeur = entree.indexOf('import "expo-router/entry"');
     expect(tache).toBeGreaterThanOrEqual(0);
     expect(routeur).toBeGreaterThan(tache);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE SAISIE DE NOMBRE SE LIT PAR `lireNombre`, JAMAIS PAR `Number(…)`.   │
+ * │                                                                          │
+ * │ `Number(x.replace(",", ".")) || 0` rend `NaN` sur « 12 500 », que `|| 0` │
+ * │ change en zéro : un comptage de tiroir s'enregistrait à zéro, une remise │
+ * │ disparaissait du total, et un bouton restait fermé sans un mot. Relevé   │
+ * │ le 2026-11-14 sur quatre écrans encore, après trois lots qui l'avaient   │
+ * │ corrigé ailleurs : la forme revient tant que rien ne la refuse.          │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("aucune saisie de nombre lue à la main", () => {
+  const MOTIF = /Number\(\s*[\w.?]+\.replace\(\s*["'],["']\s*,\s*["']\.["']\s*\)\s*\)/g;
+
+  it("le balayage MORD", () => {
+    expect('const n = Number(montant.replace(",", ".")) || 0;'.match(MOTIF)).toHaveLength(1);
+    expect('computeMargin(Number(cout.replace(",", ".")))'.match(MOTIF)).toHaveLength(1);
+    expect("const n = lireNombre(montant);".match(MOTIF)).toBeNull();
+  });
+
+  it("aucun fichier ne convertit une saisie par `Number(x.replace(…))`", () => {
+    const tous = fichiers(RACINE);
+    expect(tous.length).toBeGreaterThan(200);
+    const fautifs: string[] = [];
+    for (const f of tous) {
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      for (const m of code.matchAll(MOTIF)) {
+        const ligne = code.slice(0, m.index).split("\n").length;
+        fautifs.push(`${relative(RACINE, f)}:${ligne} - ${m[0]}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
+
+/**
+ * Le tiret cadratin est proscrit dans tout le dépôt (CLAUDE.md, §9), libellés
+ * compris : il servait de « valeur absente » dans une trentaine de rangées
+ * jusqu'au 2026-11-14. On écrit « - » pour une valeur absente, et « : » ou
+ * « , » pour une incise.
+ */
+describe("aucun tiret cadratin", () => {
+  const CADRATIN = "—";
+
+  it("aucun fichier de l'application ne porte de tiret cadratin", () => {
+    const tous = fichiers(RACINE);
+    expect(tous.length).toBeGreaterThan(200);
+    const fautifs: string[] = [];
+    for (const f of tous) {
+      readFileSync(f, "utf8")
+        .split("\n")
+        .forEach((l, i) => {
+          if (l.includes(CADRATIN)) fautifs.push(`${relative(RACINE, f)}:${i + 1}`);
+        });
+    }
+    expect(fautifs).toEqual([]);
   });
 });

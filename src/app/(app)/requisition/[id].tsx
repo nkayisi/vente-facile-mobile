@@ -272,7 +272,7 @@ export default function FicheRequisition() {
 
         <Card className="overflow-hidden p-0">
           <CardHeader title="Suivi" />
-          <ListItem title="Demandée le" value={r.demandeLe ? formatDateFr(r.demandeLe) : "—"} />
+          <ListItem title="Demandée le" value={r.demandeLe ? formatDateFr(r.demandeLe) : "-"} />
           {r.decideLe ? (
             <>
               <Divider inset />

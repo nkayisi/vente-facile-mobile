@@ -31,10 +31,10 @@ import {
 } from "@/ui";
 
 function dateLisible(v: string | null | undefined): string {
-  if (!v) return "—";
+  if (!v) return "-";
   const d = new Date(v);
   return Number.isNaN(d.getTime())
-    ? "—"
+    ? "-"
     // `formatDateFr` du noyau rend « 31 août 2026 », exactement ce que
     // rendait `toLocaleDateString` ici. Voir `data/dates.ts` : une locale que
     // le moteur ne reconnaît pas se replie sur l'anglais SANS lever.
@@ -58,7 +58,7 @@ export default function Profil() {
       <Card className="mt-4 items-center p-6">
         <Avatar nom={u?.full_name} taille={96} />
         <Text variant="h4" className="mt-4 text-center">
-          {u?.full_name ?? "—"}
+          {u?.full_name ?? "-"}
         </Text>
         <Text variant="muted" className="text-center">
           {u?.email ?? ""}
@@ -72,20 +72,20 @@ export default function Profil() {
 
       <Section title="Informations personnelles">
         <Card className="overflow-hidden p-0">
-          <ListItem title="Prénom" value={u?.first_name?.trim() || "—"} />
+          <ListItem title="Prénom" value={u?.first_name?.trim() || "-"} />
           <Divider inset />
-          <ListItem title="Nom" value={u?.last_name?.trim() || "—"} />
+          <ListItem title="Nom" value={u?.last_name?.trim() || "-"} />
           <Divider inset />
           {/* L'e-mail n'est jamais modifiable, sur le web non plus. */}
-          <ListItem title="Email" value={u?.email ?? "—"} />
+          <ListItem title="Email" value={u?.email ?? "-"} />
           <Divider inset />
-          <ListItem title="Téléphone" value={u?.phone?.trim() || "—"} />
+          <ListItem title="Téléphone" value={u?.phone?.trim() || "-"} />
         </Card>
       </Section>
 
       <Section title="Informations du compte">
         <Card className="overflow-hidden p-0">
-          <ListItem title="Terminal" icon="Cpu" value={snapshot?.device?.device_code ?? "—"} />
+          <ListItem title="Terminal" icon="Cpu" value={snapshot?.device?.device_code ?? "-"} />
           <Divider inset />
           <ListItem
             title="Session valide jusqu'au"

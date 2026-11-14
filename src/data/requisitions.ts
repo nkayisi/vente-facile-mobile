@@ -221,7 +221,7 @@ export async function listeRequisitions(
     const items = Array.isArray(corps.items) ? corps.items : [];
     enAttente.push({
       id: (corps.id as string) ?? op.id,
-      reference: reference || "—",
+      reference: reference || "-",
       statut: "draft",
       statutLabel: STATUT_REQUISITION.draft,
       entrepotId: (corps.warehouse as string) ?? null,
@@ -378,7 +378,7 @@ async function ficheEnFile(
       id: (corps.id as string) ?? op.id,
       // Le numéro d'appareil, DÉFINITIF dès l'impression : c'est lui qui
       // permet de réimprimer le bordereau sans attendre le réseau.
-      reference: String(corps.reference ?? "") || "—",
+      reference: String(corps.reference ?? "") || "-",
       statut: "draft",
       statutLabel: STATUT_REQUISITION.draft,
       entrepotId: (corps.warehouse as string) ?? null,

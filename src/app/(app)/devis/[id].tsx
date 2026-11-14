@@ -200,7 +200,7 @@ export default function DetailDevisEcran() {
           <Banner
             tone="warning"
             title="Ce devis est périmé"
-            message={`Sa validité s'est arrêtée le ${d.valideJusquau ? formatDateFr(d.valideJusquau) : "—"}. Vous pouvez toujours le convertir, aux prix du jour où il a été établi ; sinon, refaites-en un.`}
+            message={`Sa validité s'est arrêtée le ${d.valideJusquau ? formatDateFr(d.valideJusquau) : "-"}. Vous pouvez toujours le convertir, aux prix du jour où il a été établi ; sinon, refaites-en un.`}
           />
         ) : null}
 
@@ -276,11 +276,11 @@ export default function DetailDevisEcran() {
           <View>
             <Paire
               label="Créé le"
-              valeur={d.date ? formatDateTimeFr(d.date) : "—"}
+              valeur={d.date ? formatDateTimeFr(d.date) : "-"}
             />
             <Paire
               label="Valable jusqu'au"
-              valeur={d.valideJusquau ? formatDateFr(d.valideJusquau) : "—"}
+              valeur={d.valideJusquau ? formatDateFr(d.valideJusquau) : "-"}
             />
           </View>
           {d.notes ? (

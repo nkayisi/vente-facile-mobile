@@ -12,7 +12,7 @@
  * │ appliqué. Il se découvre à l'oeil, sur un terminal, ou pas du tout.      │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { Dimensions, ScrollView, View } from "react-native";
+import { Dimensions, KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 
 import { PLANCHER_BARRE_SYSTEME } from "@/features/diagnostic/marge-basse";
@@ -226,4 +226,30 @@ describe("Screen et la zone sûre", () => {
     poserEcran(848);
     expect(rembourrageRendu(<Screen><View /></Screen>).paddingBottom).toBe(0);
   });
+});
+
+describe("Screen et le clavier", () => {
+  const plateformeOrigine = Platform.OS;
+  afterEach(() => {
+    Platform.OS = plateformeOrigine;
+  });
+
+  it.each(["ios", "android"] as const)(
+    "rembourre au-dessus du clavier sur %s, sans s'en remettre a la fenetre",
+    (os) => {
+      // `height` sur Android laissait le pied du panier SOUS le clavier depuis
+      // le bord-a-bord : la fenetre ne se redimensionne plus. Releve sur
+      // l'emulateur le 2026-11-14.
+      Platform.OS = os;
+      let rendu!: ReturnType<typeof create>;
+      act(() => {
+        rendu = create(
+          <Screen pied={<View />}>
+            <View />
+          </Screen>
+        );
+      });
+      expect(rendu.root.findByType(KeyboardAvoidingView).props.behavior).toBe("padding");
+    }
+  );
 });

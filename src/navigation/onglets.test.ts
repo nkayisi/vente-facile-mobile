@@ -3,62 +3,216 @@
  *
  * Ce sont des règles de doctrine, pas des détails.
  */
-import { MENU, entreesDuMenu } from "./menu";
-import { NOMS_ONGLETS, ONGLETS } from "./onglets";
+import { MENU, entreesDuMenu, permissionDeLaSection } from "./menu";
+import {
+  NOMS_ONGLETS,
+  ONGLETS,
+  ORDRE_DE_LA_BARRE,
+  PERMISSION_DU_COMPTOIR,
+  REMPLACANTS,
+  ecransDeLaBarre,
+  ongletsDuMembre,
+} from "./onglets";
+
+/**
+ * Les droits de chaque rôle, tels que le serveur les accorde
+ * (`apps/core/services.py`, `ROLE_PERMISSIONS`), réduits à ceux que la
+ * navigation lit. Recopiés ici parce que ce sont des FIXTURES : la règle
+ * éprouvée est celle de la permission, et un rôle n'est qu'un jeu de droits.
+ */
+const DROITS: Record<string, string[]> = {
+  cashier: ["sales.view", "sales.create", "products.view", "customers.view", "cashbook.view"],
+  stock_keeper: ["products.view", "stock.view", "inventory.view", "customers.view", "cashbook.view"],
+  manager: [
+    "sales.view", "sales.create", "products.view", "stock.view", "inventory.view",
+    "cashbook.view", "reports.view", "customers.view", "users.view", "settings.view",
+  ],
+};
+const peutEtre = (role: string) => (permission: string) => DROITS[role].includes(permission);
+const AUCUN = () => false;
+const TOUT = () => true;
+
+const noms = (peut: (p: string) => boolean) => ongletsDuMembre(peut).map((o) => o.nom);
 
 describe("barre d'onglets", () => {
-  it("a cinq emplacements, et ils ne dépendent pas du rôle", () => {
-    // Une barre qui change de contenu selon qui se connecte oblige à
-    // réapprendre l'application à chaque poste.
+  it("donne au propriétaire la barre de base : accueil, caisse, POS, stock, paramètres", () => {
     expect(ONGLETS).toHaveLength(5);
-  });
-
-  it("place le POS au centre, là où le pouce est le plus sûr", () => {
-    expect(ONGLETS[2].nom).toBe("vendre");
-  });
-
-  it("suit l'ordre convenu : accueil, caisse, POS, stock, paramètres", () => {
     expect(NOMS_ONGLETS).toEqual(["index", "caisse", "vendre", "stock", "parametres"]);
+    expect(noms(TOUT)).toEqual([...NOMS_ONGLETS]);
+  });
+
+  it("donne la même barre au gérant : il peut ouvrir les cinq", () => {
+    expect(noms(peutEtre("manager"))).toEqual([...NOMS_ONGLETS]);
+  });
+
+  it("donne CINQ onglets au caissier, remplaçants compris", () => {
+    // Stock et Paramètres lui sont fermés : Ventes et Produits prennent leur
+    // place. Une barre à trois boutons gaspillait la place la plus accessible.
+    expect(noms(peutEtre("cashier"))).toEqual(["index", "caisse", "vendre", "ventes", "articles"]);
+  });
+
+  it("donne CINQ onglets au magasinier, sans le POS : il ne peut pas vendre", () => {
+    expect(noms(peutEtre("stock_keeper"))).toEqual(["index", "caisse", "articles", "stock", "inventaire"]);
+  });
+
+  it("garde le POS au centre pour qui peut vendre", () => {
+    expect(ONGLETS[2].nom).toBe("vendre");
+    expect(noms(peutEtre("cashier"))[2]).toBe("vendre");
+  });
+
+  it("range toujours les boutons dans l'ordre fixe de la barre", () => {
+    for (const role of Object.keys(DROITS)) {
+      const barre = noms(peutEtre(role));
+      expect(barre).toEqual(ORDRE_DE_LA_BARRE.filter((n) => barre.includes(n)));
+    }
+  });
+
+  it("place chaque onglet de base, puis chaque remplaçant, dans l'ordre fixe", () => {
+    // Un nom oublié dans `ORDRE_DE_LA_BARRE` aurait le rang -1 : il passerait en
+    // tête de la barre, devant l'accueil.
+    const tous = [...NOMS_ONGLETS, ...REMPLACANTS.map((o) => o.nom)];
+    expect([...ORDRE_DE_LA_BARRE].sort()).toEqual([...tous].sort());
+    expect(ORDRE_DE_LA_BARRE.filter((n) => NOMS_ONGLETS.includes(n))).toEqual([...NOMS_ONGLETS]);
+  });
+
+  it("ne montre JAMAIS un onglet que le membre ne peut pas ouvrir", () => {
+    for (const role of Object.keys(DROITS)) {
+      for (const o of ongletsDuMembre(peutEtre(role))) {
+        expect(o.permission === null || peutEtre(role)(o.permission)).toBe(true);
+      }
+    }
+  });
+
+  it("ne montre jamais deux fois la même section", () => {
+    for (const role of [...Object.keys(DROITS)]) {
+      const barre = noms(peutEtre(role));
+      expect(new Set(barre).size).toBe(barre.length);
+    }
+  });
+
+  it("n'invente pas d'onglet quand le membre n'a rien d'autre à ouvrir", () => {
+    // Moins de cinq onglets plutôt qu'un onglet qui ne s'ouvrirait pas.
+    expect(noms(AUCUN)).toEqual(["index"]);
+  });
+
+  it("suit la PERMISSION, pas le rôle : un droit accordé rend sa place à l'onglet de base", () => {
+    const caissierAvecStock = (p: string) => p === "stock.view" || peutEtre("cashier")(p);
+    expect(noms(caissierAvecStock)).toEqual(["index", "caisse", "vendre", "ventes", "stock"]);
   });
 
   it("garde des étiquettes courtes : un bouton n'a qu'un cinquième de la largeur", () => {
-    for (const o of ONGLETS) expect(o.label.length).toBeLessThanOrEqual(10);
+    for (const o of [...ONGLETS, ...REMPLACANTS]) expect(o.label.length).toBeLessThanOrEqual(10);
   });
 
   it("ne place dans la barre que des sections du menu, ou le comptoir", () => {
-    for (const nom of NOMS_ONGLETS) {
-      if (nom === "vendre") continue;
-      expect(MENU.some((e) => e.cle === nom)).toBe(true);
+    for (const o of [...ONGLETS, ...REMPLACANTS]) {
+      if (o.nom === "vendre") continue;
+      expect(MENU.some((e) => e.cle === o.nom)).toBe(true);
+    }
+  });
+
+  it("ne propose pas en remplaçant un onglet de base", () => {
+    for (const o of REMPLACANTS) expect(NOMS_ONGLETS).not.toContain(o.nom);
+  });
+
+  it("garde chaque onglet par le MÊME droit que son entrée du tiroir", () => {
+    // Deux droits pour un seul écran feraient qu'un rôle le voit dans la barre
+    // et pas dans le menu, ou l'inverse.
+    for (const o of [...ONGLETS, ...REMPLACANTS]) {
+      if (o.nom === "vendre") {
+        expect(o.permission).toBe(PERMISSION_DU_COMPTOIR);
+        continue;
+      }
+      expect(o.permission).toBe(permissionDeLaSection(o.nom));
+    }
+  });
+
+  it("reprend le glyphe du tiroir, sauf « Ventes », dont le chariot est déjà celui du POS", () => {
+    for (const o of [...ONGLETS, ...REMPLACANTS]) {
+      if (o.nom === "vendre" || o.nom === "ventes") continue;
+      expect(o.icon).toBe(MENU.find((e) => e.cle === o.nom)?.icon);
+    }
+  });
+
+  it("ne montre jamais deux fois le même glyphe dans une barre", () => {
+    // Vu à l'écran : « POS » et « Ventes » côte à côte, deux chariots.
+    const caissierAvecStock = (p: string) => p === "stock.view" || peutEtre("cashier")(p);
+    for (const peut of [TOUT, AUCUN, caissierAvecStock, ...Object.keys(DROITS).map(peutEtre)]) {
+      const glyphes = ongletsDuMembre(peut).map((o) => o.icon);
+      expect(new Set(glyphes).size).toBe(glyphes.length);
+    }
+  });
+});
+
+describe("les écrans déclarés", () => {
+  /**
+   * ⚠ L'INVARIANT QUI ÉVITE UN PLANTAGE.
+   *
+   * Les boutons se rangent dans l'ordre des `Tabs.Screen`. Une version qui
+   * déclarait les écrans dans un ordre calculé depuis les droits les
+   * réordonnait à la déconnexion, barre encore montée, et Fabric plantait
+   * l'application (« addViewAt: failed to insert view »). Seul le bouton doit
+   * varier avec les droits ; la liste et son ordre, jamais.
+   */
+  it("déclare les mêmes écrans, dans le même ordre, quels que soient les droits", () => {
+    const ordre = (peut: (p: string) => boolean) => ecransDeLaBarre(peut).map((e) => e.nom);
+    const reference = ordre(TOUT);
+    for (const peut of [AUCUN, ...Object.keys(DROITS).map(peutEtre)]) {
+      expect(ordre(peut)).toEqual(reference);
+    }
+  });
+
+  it("déclare chaque section du menu, le POS et le profil, une seule fois", () => {
+    // Une route absente de la déclaration perdrait la barre d'onglets quand on
+    // y entre depuis le tiroir.
+    const noms = ecransDeLaBarre(TOUT).map((e) => e.nom);
+    expect(new Set(noms).size).toBe(noms.length);
+    expect([...noms].sort()).toEqual(
+      [...MENU.map((e) => e.cle), "vendre", "profil"].sort()
+    );
+  });
+
+  it("donne un bouton aux seuls onglets du membre", () => {
+    for (const role of Object.keys(DROITS)) {
+      const avecBouton = ecransDeLaBarre(peutEtre(role)).filter((e) => e.bouton).map((e) => e.nom);
+      expect(avecBouton).toEqual(noms(peutEtre(role)));
     }
   });
 });
 
 describe("tiroir latéral", () => {
-  const AUCUN = () => false;
-  const TOUT = () => true;
-
-  it("montre TOUJOURS les onze entrées, même sans aucun droit", () => {
-    // Le web les retire ; le plan dit de les griser. Masquer enseigne mal : un
-    // caissier qui ne voit jamais « Stock » ne sait pas que la fonction existe.
-    expect(entreesDuMenu(AUCUN)).toHaveLength(11);
+  it("montre les onze entrées quand tout est permis", () => {
     expect(entreesDuMenu(TOUT)).toHaveLength(11);
   });
 
-  it("donne une raison non vide à chaque entrée hors droits", () => {
-    for (const e of entreesDuMenu(AUCUN)) {
-      if (e.accessible) continue;
-      expect(e.raison).toBeTruthy();
-      expect(e.raison!.length).toBeGreaterThan(3);
+  it("ne montre au caissier aucune section qu'il ne peut pas ouvrir", () => {
+    // Elles étaient grisées avec « Réservé au gérant » : six sur onze que le
+    // caissier touchait sans pouvoir y entrer.
+    expect(entreesDuMenu(peutEtre("cashier")).map((e) => e.cle)).toEqual([
+      "index", "ventes", "articles", "caisse", "contacts",
+    ]);
+  });
+
+  it("ne montre au magasinier ni les ventes, ni les rapports, ni l'administration", () => {
+    expect(entreesDuMenu(peutEtre("stock_keeper")).map((e) => e.cle)).toEqual([
+      "index", "articles", "stock", "inventaire", "caisse", "contacts",
+    ]);
+  });
+
+  it("garde l'ordre du menu : une entrée disparaît, les autres ne bougent pas", () => {
+    for (const role of Object.keys(DROITS)) {
+      const cles = entreesDuMenu(peutEtre(role)).map((e) => e.cle);
+      const ordre = MENU.map((e) => e.cle).filter((c) => cles.includes(c));
+      expect(cles).toEqual(ordre);
     }
   });
 
-  it("n'est jamais à la fois accessible et porteur d'une raison", () => {
-    for (const e of [...entreesDuMenu(AUCUN), ...entreesDuMenu(TOUT)]) {
-      expect(e.accessible === (e.raison === null)).toBe(true);
-    }
+  it("laisse « Tableau de bord » visible sans aucun droit, comme le web", () => {
+    expect(entreesDuMenu(AUCUN).map((e) => e.cle)).toEqual(["index"]);
   });
 
-  it("laisse « Tableau de bord » accessible sans aucun droit, comme le web", () => {
-    expect(entreesDuMenu(AUCUN).find((e) => e.cle === "index")?.accessible).toBe(true);
+  it("refuse une clé de section inconnue plutôt que de l'ouvrir à tous", () => {
+    // `null` veut dire « ouvert à tous » : une faute de frappe ne doit pas y mener.
+    expect(() => permissionDeLaSection("stok")).toThrow("stok");
   });
 });
