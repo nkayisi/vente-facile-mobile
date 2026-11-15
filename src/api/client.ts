@@ -29,6 +29,7 @@ import {
   writeTokens,
   type TokenPair,
 } from "@/session/storage";
+import { estUnePerteDeSession } from "./perte-session";
 
 /** Marge avant expiration : on rafraîchit sans attendre le premier 401. */
 const REFRESH_MARGIN_MS = 60_000;
@@ -224,7 +225,10 @@ async function ensureFreshTokens(force = false): Promise<TokenPair> {
         error instanceof ApiError && error.code === "no_device"
           ? "no_device"
           : ((error as ApiError).code ?? "device_not_authorized");
-      onSessionLost?.(reason);
+      // ⚠ On ne perd que ce qu'on avait : une requête revenue APRÈS une
+      // déconnexion volontaire ne trouve ni jeton ni appareil, et ce n'est pas
+      // une session expirée (voir `perte-session.ts`).
+      if (estUnePerteDeSession(current !== null, reason)) onSessionLost?.(reason);
       throw error;
     }
   })().finally(() => {

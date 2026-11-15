@@ -130,6 +130,7 @@ export function AlertDialog({
   titre: string;
   message?: string;
   confirmer: string;
+  /** Vide : une seule action (un compte rendu, pas une confirmation). */
   annuler?: string;
   destructif?: boolean;
   onConfirmer: () => void;
@@ -152,9 +153,15 @@ export function AlertDialog({
           >
             {confirmer}
           </Button>
-          <Button fullWidth variant="outline" onPress={onAnnuler} disabled={enCours}>
-            {annuler}
-          </Button>
+          {/* Un COMPTE RENDU n'a qu'une issue : un libellé vide ne rend pas de
+              second bouton. Sans cette garde, la boîte montrait un cadre sans
+              mot, qu'on lit comme une panne d'affichage. Fermer par le voile ou
+              le bouton retour reste possible (`onFermer`). */}
+          {annuler ? (
+            <Button fullWidth variant="outline" onPress={onAnnuler} disabled={enCours}>
+              {annuler}
+            </Button>
+          ) : null}
         </>
       }
     />
