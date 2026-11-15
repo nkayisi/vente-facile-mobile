@@ -33,7 +33,6 @@ import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 
 import { dateLongueFr } from "@/data/dates";
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import {
   PERIMETRE_INVENTAIRE,
   articlesInventoriables,
@@ -41,7 +40,6 @@ import {
   entrepotADuStock,
 } from "@/data/inventaire";
 import { useLecture } from "@/data/live";
-import { entrepotsSansValorisation } from "@/data/stock";
 import { creerSession } from "@/features/inventaire/actes";
 import {
   verifierSaisie,
@@ -49,6 +47,7 @@ import {
   type Perimetre,
   type SaisieSession,
 } from "@/features/inventaire/nouvelle-session";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import {
   Banner, Button, DeclencheurSelect, FormField, Icon, Input, ListeChoix,
   ListeChoixMultiple, SearchInput, Sheet, Text, useToast,
@@ -84,7 +83,10 @@ export function FeuilleNouvelInventaire({
   const [panneau, setPanneau] = useState<Panneau | null>(null);
   const [recherche, setRecherche] = useState("");
 
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
+  // Une saisie est une ACTION : seuls les entrepôts où le membre agit, actifs,
+  // sont proposés - jamais toute la table locale, qui porte aussi les dépôts
+  // seulement LISIBLES (case « Consulter tous ») et les dépôts désactivés.
+  const { actionnables: depots, parDefaut } = useEntrepotsDuMembre();
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐
@@ -97,7 +99,7 @@ export function FeuilleNouvelInventaire({
    * │ premier rendu où les dépôts sont là, et un choix explicite l'emporte.│
    * └──────────────────────────────────────────────────────────────────────┘
    */
-  const entrepot = entrepotChoisi ?? entrepotParDefaut(depots);
+  const entrepot = entrepotChoisi ?? parDefaut;
 
   const chargerStock = useCallback(
     () => (entrepot ? entrepotADuStock(entrepot) : Promise.resolve(true)),

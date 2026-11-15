@@ -64,3 +64,18 @@ export function doitSignaler(origine: OrigineSync, kind: FailureKind | null): bo
   if (!estAutomatique(origine)) return true;
   return kind !== "network";
 }
+
+/**
+ * Ce qu'on dit quand les données sont descendues mais que les DROITS n'ont pas
+ * pu être relus.
+ *
+ * Le réveil qui suit le tirage rapporte le rôle, les entrepôts, la case
+ * « Consulter tous » et l'annuaire. S'il échoue, le terminal garde ceux du
+ * réveil d'avant - c'est voulu, ouvrir sans réseau ne doit pas enfermer dehors -
+ * mais le taire ferait croire qu'un entrepôt qu'on vient d'affecter est arrivé.
+ *
+ * ⚠ Ni « synchronisez » ni « réessayez » : le prochain cycle le refera de
+ * lui-même, et le marchand n'a rien à faire de plus.
+ */
+export const DROITS_NON_RELUS =
+  "Les données sont à jour, mais vos droits et vos entrepôts n'ont pas pu être relus : ils restent ceux de la dernière synchronisation, jusqu'à la prochaine.";

@@ -41,6 +41,8 @@ interface BatchResponse {
   batch_id: string | null;
   server_time: string;
   results: OperationResult[];
+  /** L'empreinte du périmètre au moment du rejeu. Absente d'un serveur antérieur. */
+  perimetre_version?: string;
 }
 
 /**
@@ -165,6 +167,16 @@ export interface PushOutcome {
   blocked: number;
   /** Vrai s'il reste des opérations prêtes à partir. */
   more: boolean;
+  /**
+   * L'empreinte du périmètre que le serveur a rendue avec le DERNIER lot, ou
+   * `undefined` si aucun lot n'a reçu de réponse (rien à envoyer, réseau
+   * coupé, serveur antérieur).
+   *
+   * Un refus `consultation_seule` ou `entrepot_inactif` vient souvent d'un
+   * périmètre qui a bougé depuis le dernier réveil : c'est ce signal qui fait
+   * relire les droits et retirer les tables, sans attendre le prochain tirage.
+   */
+  perimetreVersion?: string;
 }
 
 const VIDE: PushOutcome = {
@@ -264,7 +276,11 @@ export async function pushOnce(
   }
 
   const parKind = new Map(lot.map((o) => [o.id, o]));
-  const resultat = { ...VIDE, sent: lot.length };
+  const resultat: PushOutcome = {
+    ...VIDE,
+    sent: lot.length,
+    ...(reponse.perimetre_version ? { perimetreVersion: reponse.perimetre_version } : {}),
+  };
   const tables = new Set<string>();
 
   for (const r of reponse.results) {
@@ -355,6 +371,9 @@ export async function pushAll(
     // │ suivante sans que rien ne le dise.                                   │
     // └──────────────────────────────────────────────────────────────────────┘
     cumul.more = r.more;
+    // Le DERNIER que le serveur a rendu : c'est l'état de ses droits le plus
+    // récent qu'on connaisse.
+    if (r.perimetreVersion) cumul.perimetreVersion = r.perimetreVersion;
     if (!r.more || r.sent === 0) break;
   }
   return cumul;

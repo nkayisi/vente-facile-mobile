@@ -131,6 +131,11 @@ function toSnapshot(data: SessionResponse): SessionSnapshot {
     // filtre avec son motif. La forcer à `null` reviendrait à affirmer que
     // l'organisation n'a personne.
     team: data.team,
+    // Même lecture que `team` : `undefined` est « annuaire inconnu » (serveur
+    // antérieur), et le lecteur retombe alors sur la table locale. Le forcer à
+    // `null` ou `[]` ferait croire qu'il n'existe aucun entrepôt de
+    // destination.
+    warehouse_directory: data.warehouse_directory,
     fetched_at: data.server_time ?? new Date().toISOString(),
   };
 }

@@ -224,6 +224,44 @@ async function fetchChangedTables(
   }
 }
 
+/**
+ * La sonde LÉGÈRE du périmètre : une seule requête, aucune ligne tirée.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN PÉRIMÈTRE QUI CHANGE NE SE VOIT PAS DANS LES LIGNES.                 │
+ * │                                                                          │
+ * │ Un entrepôt affecté au magasinier pendant que son application reste au   │
+ * │ premier plan : rien n'est « neuf » dans ses tables, et sous le plancher  │
+ * │ de cinq minutes aucun tirage ne part. Il attendait le cycle complet      │
+ * │ suivant - jamais, si l'application restait ouverte - pour voir l'entrepôt│
+ * │ qu'on venait de lui confier. `pull/changed/` rend l'empreinte du         │
+ * │ périmètre : il suffit de la comparer à celle du dernier réveil.          │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * `null` : sonde indisponible (réseau, serveur antérieur). Elle peut retarder
+ * la découverte d'un changement, jamais empêcher quoi que ce soit.
+ */
+export async function sonderPerimetre(signal?: AbortSignal): Promise<string | null> {
+  try {
+    const states = await readAllStates();
+    const cursors: Record<string, string | null> = {};
+    const deletedCursors: Record<string, string | null> = {};
+    for (const state of states) {
+      if (!state.lastFullSyncAt || state.hasMore) continue;
+      cursors[state.table] = state.cursor ?? null;
+      deletedCursors[state.table] = state.deletedCursor ?? null;
+    }
+    const reponse = await api.post<ChangedTables & { perimetre_version?: string }>(
+      "/sync/pull/changed/",
+      { cursors, deleted_cursors: deletedCursors },
+      { signal, timeoutMs: SYNC_TIMEOUT_MS }
+    );
+    return reponse.perimetre_version || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Ce qu'un cycle de tirage a réellement fait. */
 export interface BilanPull {
   /** Tables tirées jusqu'au bout. */

@@ -1,4 +1,4 @@
-export { pullAll, pullTable, fetchManifest } from "./pull";
+export { pullAll, pullTable, fetchManifest, sonderPerimetre } from "./pull";
 export { pushAll, pushOnce, type OptionsEnvoi, type PushOutcome, type Verdict } from "./push";
 export { backoffMs, messageOf } from "./policy";
 export {

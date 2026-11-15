@@ -63,6 +63,7 @@ import {
   pullAll,
   pushAll,
   rendre,
+  sonderPerimetre,
   unblockAll,
   type PullProgress,
 } from "@/sync";
@@ -70,8 +71,14 @@ import { inscrireTachePoussee } from "@/sync/arriere-plan";
 import { useToast } from "@/ui";
 
 import { BarreProgressionSync } from "./barre-progression";
-import { doitNotifier, doitSignaler, type OrigineSync } from "./origines";
-import { decider, type Declencheur, type Portee } from "./planificateur";
+import { DROITS_NON_RELUS, doitNotifier, doitSignaler, type OrigineSync } from "./origines";
+import {
+  RANG_DE_PORTEE,
+  decider,
+  perimetreAChangeSurLeServeur,
+  type Declencheur,
+  type Portee,
+} from "./planificateur";
 
 export type { OrigineSync } from "./origines";
 export type { Portee } from "./planificateur";
@@ -184,6 +191,28 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
 
   const vivant = useRef(true);
   const derniereComplete = useRef<Date | null>(null);
+  /**
+   * L'empreinte de périmètre que le serveur a ANNONCÉE et qu'aucun cycle
+   * complet n'a encore prise en compte (`null` : rien en attente), et la
+   * dernière qu'un cycle complet a traitée. Voir `perimetreAChangeSurLeServeur`
+   * pour la seconde, qui est ce qui empêche un tirage complet à chaque vente
+   * quand la relecture des droits échoue.
+   */
+  const perimetreAttendu = useRef<string | null>(null);
+  const perimetreTraite = useRef<string | null>(null);
+
+  /** Retient une empreinte reçue si elle annonce des droits qui ont bougé. */
+  const noterPerimetre = useCallback((recue: string | null | undefined) => {
+    if (
+      perimetreAChangeSurLeServeur(
+        snapshotRef.current?.membership?.perimetre_version,
+        recue,
+        perimetreTraite.current
+      )
+    ) {
+      perimetreAttendu.current = recue ?? null;
+    }
+  }, []);
   /** UN seul réveil programmé à la fois. Jamais `setInterval` : un intervalle qui
    *  dérive pendant qu'un cycle tourne empile les réveils. */
   const reveil = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,7 +234,8 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const executer = useCallback(
-    async (jusquOu: Portee, depuis: OrigineSync) => {
+    async (portee: Portee, depuis: OrigineSync) => {
+      let jusquOu = portee;
       // ┌──────────────────────────────────────────────────────────────────┐
       // │ LE VERROU SE POSE AVANT LE PREMIER `await`, ET C'EST OBLIGÉ.    │
       // │                                                                  │
@@ -246,6 +276,25 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ LA SONDE NE TOUCHE À AUCUN ÉTAT PARTAGÉ.                        │
+      // │                                                                  │
+      // │ Une requête, aucune ligne tirée, aucun `enCours` : les boutons   │
+      // │ de vingt écrans ne clignotent pas à chaque retour au premier     │
+      // │ plan. Elle ne fait qu'une chose - demander si les droits ont     │
+      // │ bougé - et, s'ils ont bougé, rendre le verrou et demander le     │
+      // │ cycle complet qui les relira.                                    │
+      // └──────────────────────────────────────────────────────────────────┘
+      if (jusquOu === "sonde") {
+        try {
+          noterPerimetre(await sonderPerimetre());
+        } finally {
+          rendre();
+        }
+        if (perimetreAttendu.current !== null) void solliciteRef.current?.("minuteur");
+        return;
+      }
+
       origineRef.current = depuis;
       setOrigine(depuis);
       setPortee(jusquOu);
@@ -262,7 +311,18 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
         // Un instantané absent ne bloque RIEN : le serveur traite le lot sans
         // `device_id` (il ne sert qu'à la numérotation des ventes). Refuser de
         // pousser enfermerait dehors un terminal démarré à froid sans réseau.
-        await pushAll(snapshotRef.current?.device?.id);
+        const envoi = await pushAll(snapshotRef.current?.device?.id);
+
+        // L'enveloppe de la poussée dit si le périmètre a bougé : un refus
+        // `consultation_seule` ou `entrepot_inactif` en vient presque toujours.
+        // Un simple envoi devient alors un cycle complet, tout de suite - le
+        // verrou est déjà à nous, et attendre le prochain réveil laisserait le
+        // marchand sur des droits que le serveur vient de démentir.
+        noterPerimetre(envoi?.perimetreVersion);
+        if (jusquOu === "envoi" && perimetreAttendu.current !== null) {
+          jusquOu = "complet";
+          setPortee("complet");
+        }
 
         // ┌──────────────────────────────────────────────────────────────────┐
         // │ SUSPENDU : LA POUSSÉE, PUIS LE RÉVEIL, ET RIEN D'AUTRE.         │
@@ -303,6 +363,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
           // et son dernier refus, que la fiche de l'article affiche.
         }
 
+        let droitsRelus = true;
         if (jusquOu === "complet") {
           const bilan = await pullAll({
             signal: abort.current.signal,
@@ -322,6 +383,11 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
           // └──────────────────────────────────────────────────────────────┘
           try {
             const relu = await rafraichirSession();
+            // ⚠ UN RÉVEIL QUI N'A PAS ABOUTI SE DIT. Les données sont passées,
+            // mais les droits, les entrepôts et l'annuaire restent ceux du
+            // réveil d'avant : annoncer « Synchronisation terminée » laisserait
+            // croire qu'un entrepôt qu'on vient d'affecter est là.
+            droitsRelus = relu.frais;
             // ⚠ ON NE DÉBLOQUE QUE SI LA PORTE EST OUVERTE.
             //
             // Depuis qu'un 402 range le lot en `blocked`, un `unblockAll()`
@@ -342,12 +408,20 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
           } catch {
             // Le terminal garde l'instantané qu'il avait : ouvrir
             // l'application sans réseau ne doit jamais enfermer dehors.
+            droitsRelus = false;
           }
 
           // ⚠ Un tirage INTERROMPU n'est pas un tirage complet. L'inscrire
           // comme tel ferait sauter le prochain tirage de retour au premier
           // plan, qui se croirait à jour.
           if (!interrompu) {
+            // L'empreinte annoncée est TRAITÉE, que la relecture ait abouti ou
+            // non : sans quoi chaque vente relancerait un tirage complet tant
+            // que la session ne se relit pas.
+            if (perimetreAttendu.current !== null) {
+              perimetreTraite.current = perimetreAttendu.current;
+              perimetreAttendu.current = null;
+            }
             const fin = new Date();
             derniereComplete.current = fin;
             setDerniereSync(fin);
@@ -376,6 +450,9 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
           // Interruption volontaire : rien à annoncer, rien à corriger. Ce qui
           // est descendu est conservé, la reprise partira de là.
           setErreur(null);
+        } else if (!droitsRelus) {
+          setErreur(DROITS_NON_RELUS);
+          if (doitNotifier(depuis)) toast.erreur(DROITS_NON_RELUS);
         } else {
           // Le succès efface le dernier échec : il n'a plus cours.
           setErreur(null);
@@ -414,7 +491,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
         void solliciteRef.current?.("minuteur");
       }
     },
-    [rafraichirSession, toast]
+    [rafraichirSession, toast, noterPerimetre]
   );
 
   useEffect(() => {
@@ -447,7 +524,9 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
     const encours = differe.current;
 
     const porteeFinale: Portee =
-      encours && (encours.portee === "complet" || jusquOu === "complet") ? "complet" : jusquOu;
+      encours && RANG_DE_PORTEE[encours.portee] > RANG_DE_PORTEE[jusquOu]
+        ? encours.portee
+        : jusquOu;
     const echeanceFinale = encours ? Math.min(encours.echeance, echeance) : echeance;
 
     if (encours) clearTimeout(encours.timer);
@@ -476,6 +555,7 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
         derniereComplete: derniereComplete.current,
         maintenant: new Date(),
         alea: Math.random(),
+        perimetreChange: perimetreAttendu.current !== null,
       });
 
       programmerReveil(d.reveilDans);

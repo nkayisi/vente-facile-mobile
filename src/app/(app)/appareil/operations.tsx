@@ -15,6 +15,7 @@ import { useFocusEffect } from "expo-router";
 
 import { accord, pluriel } from "@/data/accord";
 import { dateHeureCourteFr } from "@/data/dates";
+import { conseilDuRefus } from "@/features/sync/conseils-refus";
 import { bloquees, discard, quarantined } from "@/sync";
 import type { OutboxOperation } from "@/db/schema";
 import {
@@ -251,6 +252,13 @@ export default function Operations() {
               <Text variant="bodySmall" className="mt-3">
                 {op.lastError ?? "Motif inconnu."}
               </Text>
+              {/* Le motif dit pourquoi ; le conseil dit quoi faire. Sans lui,
+                  « Abandonner » restait la seule issue lisible. */}
+              {conseilDuRefus(op.errorCode) ? (
+                <Text variant="caption" className="mt-2">
+                  {conseilDuRefus(op.errorCode)}
+                </Text>
+              ) : null}
               <Text variant="caption" className="mt-1">
                 {dateHeureCourteFr(op.occurredAt)}
               </Text>

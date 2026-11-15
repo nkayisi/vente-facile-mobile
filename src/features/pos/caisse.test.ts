@@ -199,7 +199,7 @@ describe("une ouverture BLOQUÉE reste une session", () => {
   });
 });
 
-describe("un caissier n'encaisse que sur SA session", () => {
+describe("on n'encaisse que sur SA session, quel que soit le rôle", () => {
   /**
    * Relevé sur l'émulateur le 2026-11-14 : le comptoir d'un caissier s'ouvrait
    * sur la session du propriétaire, et la vente revenait `rejected` (« Cette
@@ -223,14 +223,19 @@ describe("un caissier n'encaisse que sur SA session", () => {
     expect((await sessionOuverte())?.id).toBe("s-sienne");
   });
 
-  it("le gérant et le propriétaire encaissent sur la session d'un autre", async () => {
+  it("le gérant et le propriétaire ne vendent plus sur la session d'un autre", async () => {
+    // ⚠ L'ancienne règle les laissait faire : le serveur refuse désormais à
+    // TOUS (`session_d_un_autre`). Les y laisser vendre ferait imprimer un
+    // ticket pour une vente qu'il rejettera.
     connecte("u-gerant", "manager");
     mockLignes.push([SESSION_TIREE]);
-    expect((await sessionOuverte())?.id).toBe("s-serveur");
+    journal("register_session.open", []);
+    expect(await sessionOuverte()).toBeNull();
 
     connecte("u-proprio", "owner");
     mockLignes.push([SESSION_TIREE]);
-    expect((await sessionOuverte())?.id).toBe("s-serveur");
+    journal("register_session.open", []);
+    expect(await sessionOuverte()).toBeNull();
   });
 });
 

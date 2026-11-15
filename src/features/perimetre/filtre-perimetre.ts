@@ -27,13 +27,17 @@
  */
 import {
   LIBELLES_VERROU_PERIMETRE,
+  estBorneParAuteur,
+  litTousLesEntrepots,
   verrouEntrepot,
   type MotifVerrouPerimetre,
 } from "@vente-facile/core";
 
 import {
-  entrepotsAccessibles,
+  entrepotsLisiblesDuMembre,
+  libelleEntrepot,
   type EntrepotNomme,
+  type MembreDuTerminal,
   type RoleMembre,
 } from "./entrepots";
 
@@ -45,7 +49,7 @@ export interface FiltrePerimetre {
 
 export const PERIMETRE_VIDE: FiltrePerimetre = { entrepot: null, utilisateur: null };
 
-/** Un membre, tel que la SESSION le descend. Jamais la table locale. */
+/** Un membre de l'ÉQUIPE, tel que la SESSION le descend. Jamais la table locale. */
 export interface MembrePerimetre {
   userId: string;
   nom: string;
@@ -57,7 +61,7 @@ export interface MembrePerimetre {
 /**
  * Pourquoi un filtre est fermé. `null` : il est ouvert.
  *
- * Les TROIS PREMIERS viennent de `@vente-facile/core` : ils sont communs au
+ * Les QUATRE PREMIERS viennent de `@vente-facile/core` : ils sont communs au
  * back-office, et leurs libellés y étaient recopiés au caractère près. Les deux
  * suivants sont PROPRES au terminal - le back-office retire le champ d'une
  * donnée sans auteur plutôt que de l'expliquer, et lui n'a pas de roster à
@@ -83,10 +87,11 @@ export interface OffrePerimetre {
 }
 
 export interface EntreeDePerimetre {
-  role: RoleMembre;
+  /** Le membre au sens du noyau : rôle, case, `sales.view_all`, affectations. */
+  membre: MembreDuTerminal;
   /** L'identifiant de l'utilisateur connecté. */
   moi: string | null;
-  assignes: { id: string }[];
+  /** Tous les entrepôts que le terminal sait nommer (`entrepotsConnus`). */
   tousLesEntrepots: EntrepotNomme[];
   /** `undefined` : roster inconnu. `[]` : roster vide. Les deux diffèrent. */
   equipe: MembrePerimetre[] | undefined;
@@ -97,97 +102,70 @@ export interface EntreeDePerimetre {
 
 /**
  * Ce qu'un écran propose, ce qu'il verrouille, et ce qu'il applique réellement.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN FILTRE EST DE LECTURE : LES ENTREPÔTS DÉSACTIVÉS Y RESTENT.          │
+ * │                                                                          │
+ * │ Ils disparaissaient des filtres, même pour le propriétaire : un dépôt    │
+ * │ fermé hier ne permettait plus de relire ses ventes d'avant-hier. Ils y   │
+ * │ sont, et leur libellé le dit (« (inactif) ») : c'est l'ACTION qui leur   │
+ * │ est fermée, pas le passé.                                                │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'AUTEUR SUIT LA PERMISSION, PAS LE RÔLE « CAISSIER ».                  │
+ * │                                                                          │
+ * │ Le caissier était verrouillé sur lui-même par son rôle, si bien que la   │
+ * │ case « Voir tout » que le gérant venait de cocher ne changeait rien à    │
+ * │ son terminal. C'est `estBorneParAuteur` du noyau qui tranche : faux avec │
+ * │ `sales.view_all`, faux en lecture sous « Consulter tous ».               │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
-  const accessibles = entrepotsAccessibles(e.role, e.assignes, e.tousLesEntrepots);
-  const options: OptionPerimetre[] = accessibles.map((d) => ({
+  const lisibles = entrepotsLisiblesDuMembre(e.membre, e.tousLesEntrepots);
+  const options: OptionPerimetre[] = lisibles.map((d) => ({
     valeur: d.id,
-    label: d.nom,
+    label: libelleEntrepot(d),
   }));
+  const permis = new Set(options.map((o) => o.valeur));
 
-  // ── LE CAISSIER : les deux filtres sont fermés, et son périmètre est imposé.
+  // ── L'ENTREPÔT. Le verrou vient du paquet, partagé avec le back-office :
   //
-  // C'est la première fois que la règle de rôle du serveur s'applique aux
-  // listes LOCALES : le tirage borne par entrepôt mais pas par auteur, si bien
-  // qu'un caissier détient en base les ventes de ses collègues du même dépôt.
-  // Le verrou n'est donc pas cosmétique, et le masquer d'un champ ne suffirait
-  // pas.
-  //
-  // ┌──────────────────────────────────────────────────────────────────────┐
-  // │ ⚠ SA BORNE N'EST PAS LA MÊME SELON QUE LA DONNÉE A UN AUTEUR.        │
-  // │                                                                      │
-  // │ C'est la seule asymétrie du rôle, et l'ignorer se paie des deux       │
-  // │ côtés. Le serveur oppose au caissier :                                │
-  // │                                                                      │
-  // │ - sur une donnée qui a un AUTEUR (ventes, caisse, dépenses) :         │
-  // │   `filter(created_by=user)`, **sans le moindre entrepôt**             │
-  // │   (`restrict_visibility_for_*`,                                       │
-  // │   `_scope_cash_movements_to_membership`) ;                            │
-  // │ - sur une donnée qui n'en a PAS (stock, transferts, inventaire) :     │
-  // │   son ENTREPÔT, et rien d'autre (`WarehouseScopedQuerysetMixin`,      │
-  // │   `filter_stock_transfer_queryset`, qui n'ont aucune branche          │
-  // │   caissier).                                                          │
-  // │                                                                      │
-  // │ Lui imposer son dépôt sur la PREMIÈRE famille resserrait au-delà de   │
-  // │ la règle, et la donnée disparaissait sans un mot : un mouvement de    │
-  // │ caisse saisi HORS LIGNE n'a ni vente, ni dépense, ni session tant     │
-  // │ que la poussée ne l'a pas rattaché, si bien qu'il n'existait nulle    │
-  // │ part sur l'écran même où le caissier le cherche - et il le            │
-  // │ ressaisissait. Pire, un mouvement poussé APRÈS la clôture du tiroir   │
-  // │ n'obtient JAMAIS de session (`get_open_session_for_user` résout au    │
-  // │ rejeu, pas à la saisie) : il restait invisible pour toujours.         │
-  // │                                                                      │
-  // │ Le lui retirer sur la SECONDE l'élargirait tout autant :              │
-  // │ `stock_transfers` n'est délibérément pas borné au tirage (un          │
-  // │ transfert relie deux dépôts), et son entrepôt y est la seule borne.   │
-  // │                                                                      │
-  // │ Rien ne s'élargit sur la première famille : `cash_movements` et       │
-  // │ `expenses` n'ont pas de `warehouse_path` au tirage, donc l'auteur y   │
-  // │ est la seule borne qui tienne - et elle est plus étroite que le       │
-  // │ dépôt ; `sales` et `stock_movements`, eux, sont déjà bornés par       │
-  // │ entrepôt AU TIRAGE pour un rôle borné.                                │
-  // └──────────────────────────────────────────────────────────────────────┘
-  if (e.role === "cashier") {
-    const sonDepot = options.length === 1 ? options[0].valeur : null;
-    return {
-      entrepots: options,
-      utilisateurs: [],
-      entrepotVerrouille: "cashier",
-      // ⚠ Une donnée sans auteur le dit, plutôt que d'annoncer « vous ne
-      // voyez que vos propres données » sur un niveau de stock qui n'a
-      // jamais eu d'auteur, pour personne.
-      utilisateurVerrouille: e.avecAuteur ? "cashier" : "sans-auteur",
-      applique: e.avecAuteur
-        ? { entrepot: null, utilisateur: e.moi }
-        : { entrepot: sonDepot, utilisateur: null },
-    };
-  }
-
-  // ── L'ENTREPÔT. Le verrou vient du paquet, il n'est plus calculé ici : la
-  // même règle vivait dans `hooks/use-perimeter.ts` du back-office, et deux
-  // copies d'une règle de visibilité divergent sans qu'aucune erreur ne le dise.
-  //
-  // Ce qu'elle porte, et qui ne se devine pas :
-  //
-  // - un rôle borné SANS affectation rend « aucun-entrepot ». ⚠ Le serveur,
-  //   lui, NE BORNE PAS dans ce cas (« borner ici viderait l'écran d'un membre
-  //   mal configuré au lieu de signaler la configuration ») : on le DIT plutôt
-  //   que de laisser croire à un accès complet ou à une organisation vide ;
+  // - un rôle borné SANS affectation rend « aucun-entrepot ». Le serveur ne lui
+  //   rend plus rien (`.none()` partout, tirage compris) : on le DIT plutôt que
+  //   de laisser croire à une organisation vide ;
   // - choisir entre une seule chose n'est pas un choix, d'où
   //   « un-seul-entrepot » ;
-  // - un PROPRIÉTAIRE n'est jamais fermé, même à zéro ou un dépôt : il n'a
-  //   aucune affectation, et c'est précisément ce qui le rend « partout ».
+  // - le PROPRIÉTAIRE et la case « Consulter tous » ne sont jamais fermés.
   const entrepotVerrouille: MotifVerrou | null = verrouEntrepot(
-    e.role,
-    accessibles.length
+    e.membre,
+    lisibles.length,
+    "lecture"
   );
-
-  const permis = new Set(options.map((o) => o.valeur));
   const entrepotDemande =
     e.choix.entrepot && permis.has(e.choix.entrepot) ? e.choix.entrepot : null;
-  // Un entrepôt unique s'applique SANS être choisi : c'est déjà le périmètre.
+
+  const borneParAuteur = e.avecAuteur && estBorneParAuteur(e.membre, "lecture");
+
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ UN MEMBRE BORNÉ PAR AUTEUR VOIT AUSSI SES LIGNES SANS ENTREPÔT.      │
+  // │                                                                      │
+  // │ C'est la règle du serveur (`borner_visibilite`) : ses propres lignes │
+  // │ dans ses entrepôts, PLUS celles qui n'en ont aucun - un mouvement de │
+  // │ caisse poussé après la clôture du tiroir n'obtient jamais de         │
+  // │ session, et un mouvement saisi hors ligne n'en a pas encore. Lui     │
+  // │ imposer son dépôt unique sur une donnée qui a un auteur les lui      │
+  // │ cacherait sur le seul écran où il les cherche, et il les             │
+  // │ ressaisirait. La base locale est déjà bornée par le tirage à ses     │
+  // │ entrepôts et à ses lignes : l'auteur suffit.                         │
+  // │                                                                      │
+  // │ Sur une donnée SANS auteur (stock, transferts), son entrepôt est au  │
+  // │ contraire la seule borne, et il s'applique.                          │
+  // └──────────────────────────────────────────────────────────────────────┘
   const entrepotApplique =
-    entrepotVerrouille === "un-seul-entrepot" ? options[0].valeur : entrepotDemande;
+    entrepotVerrouille === "un-seul-entrepot" && !borneParAuteur
+      ? options[0].valeur
+      : entrepotDemande;
 
   // ── L'UTILISATEUR.
   if (!e.avecAuteur) {
@@ -195,8 +173,20 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
       entrepots: options,
       utilisateurs: [],
       entrepotVerrouille,
+      // ⚠ Une donnée sans auteur le dit, plutôt que d'annoncer « vous ne
+      // voyez que vos propres données » sur un niveau de stock qui n'a
+      // jamais eu d'auteur, pour personne.
       utilisateurVerrouille: "sans-auteur",
       applique: { entrepot: entrepotApplique, utilisateur: null },
+    };
+  }
+  if (borneParAuteur) {
+    return {
+      entrepots: options,
+      utilisateurs: [],
+      entrepotVerrouille,
+      utilisateurVerrouille: "propres-donnees",
+      applique: { entrepot: entrepotApplique, utilisateur: e.moi },
     };
   }
   if (e.equipe === undefined) {
@@ -252,8 +242,9 @@ function membresProposables(
     if (entrepotApplique) return m.entrepots.includes(entrepotApplique);
     // Sans entrepôt choisi, un rôle borné ne propose que les membres avec qui
     // il partage au moins un dépôt : sans cette borne, un gérant lirait
-    // l'activité d'une boutique qu'il ne dirige pas.
-    if (e.role === "owner") return true;
+    // l'activité d'une boutique qu'il ne dirige pas. Le propriétaire et la
+    // case « Consulter tous » lisent tout le monde.
+    if (litTousLesEntrepots(e.membre)) return true;
     return m.entrepots.some((id) => permis.has(id));
   });
 }

@@ -8,7 +8,7 @@
  * pour les transporter. Un panier en CDF à sept chiffres perd ses unités en
  * virgule flottante.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { products, stockLocations, stocks, warehouses } from "@/db/schema";
@@ -108,17 +108,21 @@ export interface EntrepotResume {
   parDefaut: boolean;
   actif: boolean;
   valeurStock: number;
-  /**
-   * Le dépôt tolère un solde négatif.
-   *
-   * C'est LUI qui décide, jamais le produit : le serveur tranche au niveau de
-   * l'entrepôt partout en aval (`assert_sealed_available`, `Stock.save`), et
-   * lire le champ du produit était un bug corrigé au lot 4. Quand il est vrai,
-   * aucun avertissement de disponible n'a lieu d'être : le serveur n'oppose
-   * alors rien à l'expédition.
-   */
-  stockNegatifAutorise: boolean;
+  // ⚠ `stockNegatifAutorise` A DISPARU, et la colonne reste au schéma tiré
+  // jusqu'au lot E10. Le stock négatif n'existe plus sur la plateforme : le
+  // serveur force la colonne à faux et refuse toute sortie sous zéro. La lire
+  // encore ferait taire, sur un terminal resté à `true`, l'avertissement qui
+  // annonce précisément ce refus.
 }
+
+/**
+ * L'ordre des entrepôts, partout : par nom, SANS tenir compte de la casse.
+ *
+ * Sans `ORDER BY`, SQLite rend l'ordre d'insertion, c'est-à-dire celui du
+ * tirage : la liste changeait d'ordre d'un terminal à l'autre, et d'un tirage
+ * à l'autre sur le même terminal.
+ */
+const PAR_NOM = asc(sql`lower(${warehouses.name})`);
 
 /** Entrepôts, avec la valeur du stock qu'ils portent. */
 /**
@@ -146,7 +150,7 @@ export interface EntrepotResume {
  * montrent : le concentrateur de stock et la fiche d'un entrepôt.
  */
 export async function entrepotsSansValorisation(): Promise<EntrepotResume[]> {
-  const liste = await db.select().from(warehouses);
+  const liste = await db.select().from(warehouses).orderBy(PAR_NOM);
   return liste.map((w) => ({
     id: w.id,
     nom: w.name,
@@ -155,12 +159,11 @@ export async function entrepotsSansValorisation(): Promise<EntrepotResume[]> {
     parDefaut: Boolean(w.isDefault),
     actif: Boolean(w.isActive),
     valeurStock: 0,
-    stockNegatifAutorise: Boolean(w.allowNegativeStock),
   }));
 }
 
 export async function entrepots(): Promise<EntrepotResume[]> {
-  const liste = await db.select().from(warehouses);
+  const liste = await db.select().from(warehouses).orderBy(PAR_NOM);
   const lignes = await db
     .select({
       warehouseId: stocks.warehouseId,
@@ -185,7 +188,6 @@ export async function entrepots(): Promise<EntrepotResume[]> {
     parDefaut: Boolean(w.isDefault),
     actif: Boolean(w.isActive),
     valeurStock: valeurs.get(w.id) ?? 0,
-    stockNegatifAutorise: Boolean(w.allowNegativeStock),
   }));
 }
 
@@ -248,7 +250,6 @@ export async function detailEntrepot(id: string): Promise<DetailEntrepot | null>
     responsableId: w.managerId ?? null,
     parDefaut: Boolean(w.isDefault),
     actif: Boolean(w.isActive),
-    stockNegatifAutorise: Boolean(w.allowNegativeStock),
     valeurStock: valeur,
     produits: lignes.length,
     unitesAuTotal: unites,

@@ -10,7 +10,7 @@ import {
   type EntreeDePerimetre,
   type MembrePerimetre,
 } from "./filtre-perimetre";
-import type { EntrepotNomme } from "./entrepots";
+import type { EntrepotNomme, MembreDuTerminal } from "./entrepots";
 
 const A = "wh-a";
 const B = "wh-b";
@@ -27,11 +27,28 @@ const PATRON: MembrePerimetre[] = [
   { userId: "u-cbi", nom: "Caissier B", role: "cashier", entrepots: [B] },
 ];
 
+/** Un membre au sens du noyau. Le gérant et le magasinier ont `sales.view_all` par leur rôle. */
+function m(
+  role: MembreDuTerminal["role"],
+  affectes: string[] = [],
+  o: { consulteTout?: boolean; voitCollegues?: boolean } = {}
+): MembreDuTerminal {
+  return {
+    role,
+    consulteTout: o.consulteTout ?? false,
+    voitCollegues: o.voitCollegues ?? (role === "manager" || role === "stock_keeper"),
+    affectes: affectes.map((id) => ({
+      id,
+      name: depots.find((d) => d.id === id)?.nom ?? id,
+      is_active: depots.find((d) => d.id === id)?.actif ?? true,
+    })),
+  };
+}
+
 function offre(patch: Partial<EntreeDePerimetre> = {}) {
   return offreDePerimetre({
-    role: "owner",
+    membre: m("owner"),
     moi: "u-own",
-    assignes: [],
     tousLesEntrepots: depots,
     equipe: PATRON,
     choix: { entrepot: null, utilisateur: null },
@@ -45,13 +62,14 @@ describe("offreDePerimetre", () => {
     // Même en posant un choix étranger dans son état d'écran, ce qui borne sa
     // lecture reste lui-même, dans son dépôt.
     const o = offre({
-      role: "cashier",
+      membre: m("cashier", [A]),
       moi: "u-cai",
-      assignes: [{ id: A }],
       choix: { entrepot: B, utilisateur: "u-cbi" },
     });
-    expect(o.entrepotVerrouille).toBe("cashier");
-    expect(o.utilisateurVerrouille).toBe("cashier");
+    // Son unique dépôt ferme le filtre d'entrepôt ; son RÔLE n'y est pour rien,
+    // c'est l'absence de `sales.view_all` qui ferme celui de l'utilisateur.
+    expect(o.entrepotVerrouille).toBe("un-seul-entrepot");
+    expect(o.utilisateurVerrouille).toBe("propres-donnees");
     // ⚠ SA BORNE EST L'AUTEUR, PAS L'ENTREPÔT - et c'est exactement ce que le
     // serveur oppose (`filter(created_by=user)`, sans dépôt). Lui imposer son
     // dépôt en plus resserrait au-delà de la règle : un mouvement de caisse
@@ -68,9 +86,8 @@ describe("offreDePerimetre", () => {
     // `stock_transfers` n'est délibérément pas borné au tirage : lui retirer
     // son dépôt ici lui ouvrirait les transferts de toute l'organisation.
     const o = offre({
-      role: "cashier",
+      membre: m("cashier", [A]),
       moi: "u-cai",
-      assignes: [{ id: A }],
       avecAuteur: false,
     });
     expect(o.applique).toEqual({ entrepot: A, utilisateur: null });
@@ -83,13 +100,13 @@ describe("offreDePerimetre", () => {
     // Le pendant du caissier : lui, le serveur le borne bien par entrepôt, et
     // `cash_movements` / `expenses` n'ayant aucun `warehouse_path` au tirage,
     // c'est la SEULE borne qui les tienne en base locale.
-    const o = offre({ role: "manager", moi: "u-ger", assignes: [{ id: A }] });
+    const o = offre({ membre: m("manager", [A]), moi: "u-ger" });
     expect(o.entrepotVerrouille).toBe("un-seul-entrepot");
     expect(o.applique.entrepot).toBe(A);
   });
 
   it("un gérant ne se voit proposer que ses entrepôts", () => {
-    const o = offre({ role: "manager", moi: "u-ger", assignes: [{ id: A }] });
+    const o = offre({ membre: m("manager", [A]), moi: "u-ger" });
     expect(o.entrepots.map((x) => x.valeur)).toEqual([A]);
   });
 
@@ -113,9 +130,8 @@ describe("offreDePerimetre", () => {
     // propose toujours soi-même » : il restait VERT en retirant l'exemption de
     // rôle, donc il ne démontrait rien.
     const o = offre({
-      role: "manager",
+      membre: m("manager", [A]),
       moi: "u-ger",
-      assignes: [{ id: A }],
       choix: { entrepot: A, utilisateur: null },
     });
     expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-own");
@@ -123,16 +139,15 @@ describe("offreDePerimetre", () => {
 
   it("on se propose toujours soi-même, même hors de son dépôt", () => {
     const o = offre({
-      role: "manager",
+      membre: m("manager", [A]),
       moi: "u-ger",
-      assignes: [{ id: A }],
       choix: { entrepot: A, utilisateur: null },
     });
     expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-ger");
   });
 
   it("un gérant ne se voit pas proposer les membres d'une autre boutique", () => {
-    const o = offre({ role: "manager", moi: "u-ger", assignes: [{ id: A }] });
+    const o = offre({ membre: m("manager", [A]), moi: "u-ger" });
     expect(o.utilisateurs.map((x) => x.valeur)).not.toContain("u-cbi");
   });
 
@@ -158,24 +173,23 @@ describe("offreDePerimetre", () => {
   });
 
   it("un rôle borné à un seul dépôt l'applique sans le faire choisir", () => {
-    const o = offre({ role: "manager", moi: "u-ger", assignes: [{ id: A }] });
+    const o = offre({ membre: m("manager", [A]), moi: "u-ger" });
     expect(o.entrepotVerrouille).toBe("un-seul-entrepot");
     expect(o.applique.entrepot).toBe(A);
   });
 
   it("un rôle borné SANS affectation le dit, au lieu de laisser croire à tout", () => {
-    // ⚠ Le serveur, lui, ne borne pas dans ce cas : sans ce message, l'écran
-    // montrerait toute l'organisation sans que rien ne l'explique.
-    const o = offre({ role: "manager", moi: "u-ger", assignes: [] });
+    // Le serveur ne lui rend plus rien (`.none()`, tirage compris) : sans ce
+    // message, l'écran vide se lirait comme une organisation sans données.
+    const o = offre({ membre: m("manager", []), moi: "u-ger" });
     expect(o.entrepotVerrouille).toBe("aucun-entrepot");
     expect(o.entrepots).toEqual([]);
   });
 
   it("un entrepôt hors périmètre est écarté, jamais appliqué", () => {
     const o = offre({
-      role: "manager",
+      membre: m("manager", [A]),
       moi: "u-ger",
-      assignes: [{ id: A }],
       choix: { entrepot: B, utilisateur: null },
     });
     expect(o.applique.entrepot).toBe(A);
@@ -187,9 +201,66 @@ describe("offreDePerimetre", () => {
   });
 });
 
+describe("la case « Consulter tous » et la permission « Voir tout »", () => {
+  const FERME: EntrepotNomme = { id: "wh-z", nom: "Dépôt fermé", parDefaut: false, actif: false };
+
+  it("un caissier qui a « Voir tout » choisit ses collègues", () => {
+    // La permission, pas le rôle : sans elle, cocher la case au back-office ne
+    // changeait rien au terminal du caissier.
+    const o = offre({
+      membre: m("cashier", [A], { voitCollegues: true }),
+      moi: "u-cai",
+    });
+    expect(o.utilisateurVerrouille).toBeNull();
+    expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-cai");
+    // Mais jamais au-delà de ses entrepôts.
+    expect(o.utilisateurs.map((x) => x.valeur)).not.toContain("u-cbi");
+  });
+
+  it("« Consulter tous » ouvre la LECTURE de tous les entrepôts et de tous les auteurs", () => {
+    const o = offre({
+      membre: m("cashier", [A], { consulteTout: true }),
+      moi: "u-cai",
+    });
+    expect(o.entrepotVerrouille).toBeNull();
+    expect(o.entrepots.map((x) => x.valeur)).toEqual([A, B]);
+    expect(o.utilisateurVerrouille).toBeNull();
+    expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-cbi");
+  });
+
+  it("« Consulter tous » propose les collègues d'un dépôt pas encore descendu", () => {
+    // Juste après que la case est cochée, la table locale ne porte encore que
+    // les dépôts d'avant : le re-tirage n'a pas eu lieu. Croiser l'équipe avec
+    // cette liste ferait disparaître les collègues du dépôt B, que le serveur
+    // laisse pourtant lire.
+    const o = offre({
+      membre: m("manager", [A], { consulteTout: true }),
+      moi: "u-ger",
+      tousLesEntrepots: [depots[0]],
+    });
+    expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-cbi");
+  });
+
+  it("un entrepôt désactivé reste dans les filtres, et le dit", () => {
+    // Il disparaissait, même pour le propriétaire : son passé ne se relisait
+    // plus. C'est l'ACTION qui lui est fermée, pas la lecture.
+    const o = offre({ tousLesEntrepots: [...depots, FERME] });
+    const option = o.entrepots.find((x) => x.valeur === FERME.id);
+    expect(option?.label).toBe("Dépôt fermé (inactif)");
+  });
+
+  it("un caissier borné par auteur ne se voit pas imposer son dépôt sur une donnée qui a un auteur", () => {
+    // Ses lignes SANS entrepôt sont à lui (règle du serveur) : lui imposer son
+    // dépôt les cacherait. Le filtre reste fermé, et il le dit.
+    const o = offre({ membre: m("cashier", [A]), moi: "u-cai" });
+    expect(o.entrepotVerrouille).toBe("un-seul-entrepot");
+    expect(o.applique).toEqual({ entrepot: null, utilisateur: "u-cai" });
+  });
+});
+
 describe("la pastille et les puces", () => {
   it("un filtre verrouillé ne compte pas dans la pastille", () => {
-    const o = offre({ role: "cashier", moi: "u-cai", assignes: [{ id: A }] });
+    const o = offre({ membre: m("cashier", [A]), moi: "u-cai" });
     expect(nombreDeFiltresPerimetre(o)).toBe(0);
     expect(resumeDuPerimetre(o)).toEqual([]);
   });
@@ -232,9 +303,10 @@ describe("parametresDePerimetre", () => {
 describe("libelleDuVerrou", () => {
   it("chaque motif a une phrase, et aucune n'est vide", () => {
     for (const motif of [
-      "cashier",
+      "propres-donnees",
       "un-seul-entrepot",
       "aucun-entrepot",
+      "entrepot-inactif",
       "sans-auteur",
       "equipe-inconnue",
     ] as const) {
@@ -245,7 +317,12 @@ describe("libelleDuVerrou", () => {
   it("aucun verrou n'invite à un geste qui n'y changerait rien", () => {
     // « Synchronisez » sur un verrou de rôle enverrait le marchand chercher du
     // réseau pendant des jours. Seul `equipe-inconnue` se règle ainsi.
-    for (const motif of ["cashier", "un-seul-entrepot", "sans-auteur"] as const) {
+    for (const motif of [
+      "propres-donnees",
+      "un-seul-entrepot",
+      "entrepot-inactif",
+      "sans-auteur",
+    ] as const) {
       expect(libelleDuVerrou(motif).toLowerCase()).not.toContain("synchronis");
       expect(libelleDuVerrou(motif).toLowerCase()).not.toContain("réessay");
     }
@@ -256,8 +333,8 @@ describe("entrepotInconnuAdmis", () => {
   it("un VERROU tolère une ligne dont on ignore le dépôt", () => {
     // Un verrou est le périmètre du RÔLE : la ligne ne peut appartenir qu'à
     // lui. L'écarter ferait disparaître ce que le marchand vient de saisir.
-    const caissier = offre({ role: "cashier", moi: "u-cai", assignes: [{ id: A }] });
-    const monoDepot = offre({ role: "manager", moi: "u-ger", assignes: [{ id: A }] });
+    const caissier = offre({ membre: m("cashier", [A]), moi: "u-cai" });
+    const monoDepot = offre({ membre: m("manager", [A]), moi: "u-ger" });
     expect(entrepotInconnuAdmis(caissier)).toBe(true);
     expect(entrepotInconnuAdmis(monoDepot)).toBe(true);
   });
@@ -271,7 +348,7 @@ describe("entrepotInconnuAdmis", () => {
   });
 
   it("le contexte de file porte l'auteur ET la tolérance", () => {
-    const o = offre({ role: "manager", moi: "u-ger", assignes: [{ id: A }] });
+    const o = offre({ membre: m("manager", [A]), moi: "u-ger" });
     expect(contexteFileDe(o, "u-ger")).toEqual({
       moi: "u-ger",
       entrepotInconnuAdmis: true,

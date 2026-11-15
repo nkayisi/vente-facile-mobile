@@ -23,8 +23,6 @@ import {
   detailDevis,
   type DetailDevis,
 } from "@/data/retours-devis";
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
-import { entrepotsSansValorisation } from "@/data/stock";
 import { nomsDeProduits } from "@/data/articles";
 import {
   convertirDevis,
@@ -108,7 +106,6 @@ export default function DetailDevisEcran() {
   const { donnees: attente } = useLecture(enAttenteRetoursDevis, {
     tables: ["outbox_operations"],
   });
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
 
   if (chargement && !d) {
     return (
@@ -154,7 +151,13 @@ export default function DetailDevisEcran() {
     if (envoi) return;
     setEnvoi(true);
     try {
-      await convertirDevis(d.id, entrepotParDefaut(depots));
+      // ⚠ AUCUN ENTREPÔT IMPOSÉ. Un devis porte désormais le sien, que le
+      // serveur retient (`resolve_conversion_warehouse`) : le client a vu un
+      // prix et une disponibilité de CE dépôt. Le terminal ne le connaît pas
+      // (colonne figée au tirage), et lui substituer le principal convertirait
+      // ailleurs. Sans entrepôt au devis, le serveur prend le principal de mes
+      // entrepôts où j'agis.
+      await convertirDevis(d.id, null);
       setConfirmation(false);
       toast.succes("Conversion mise en file. Elle partira à la prochaine synchronisation.");
     } catch (e) {

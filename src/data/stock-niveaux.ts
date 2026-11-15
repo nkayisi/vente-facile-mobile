@@ -20,7 +20,7 @@
  * **Le filtre `bas` reprend le critère de l'action `low-stock` du serveur.**
  * S'en écarter ferait diverger l'écran de la liste qui le déclenche.
  */
-import { and, asc, eq, inArray, like, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import {
   availableSplit,
@@ -134,6 +134,15 @@ export interface LigneNiveau {
    * c'est déjà ce que `quantiteAffichee` emploie - il le lisait sans l'exposer.
    */
   uniteDetail: string | null;
+  /**
+   * Aucune ligne de stock n'existe encore pour cet article DANS CET ENTREPÔT.
+   *
+   * Rendu seulement par une lecture `catalogueEntier` : c'est le cas d'un
+   * entrepôt neuf, ou d'une référence jamais reçue là. Les compteurs y valent
+   * zéro parce qu'il n'y a RIEN, et l'écran doit le dire autrement qu'une
+   * rupture constatée : `null` ne se lit jamais comme zéro.
+   */
+  sansLigneDeStock: boolean;
 }
 
 export interface FiltresNiveaux {
@@ -160,6 +169,25 @@ export interface FiltresNiveaux {
    * diverger­aient sur tout article épuisé.
    */
   reassort?: boolean;
+  /**
+   * Partir du CATALOGUE, et non des lignes de stock : tout article suivi,
+   * actif, avec son stock DANS `entrepot` s'il en a un.
+   *
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │ UN ENTREPÔT NEUF NE S'APPROVISIONNAIT PAS.                           │
+   * │                                                                      │
+   * │ La feuille d'approvisionnement et celle d'ajustement lisaient        │
+   * │ `stocks` : un article n'y apparaissait qu'après avoir déjà été reçu  │
+   * │ dans cet entrepôt. Le premier approvisionnement d'un dépôt qu'on     │
+   * │ vient de créer était donc impossible depuis le terminal - la liste   │
+   * │ était vide - alors que le serveur le fait par un joint EXTERNE       │
+   * │ (`_articles_du_perimetre`). On reprend sa forme, et son critère :    │
+   * │ `track_inventory` exigé, un service n'a pas de stock.                │
+   * └──────────────────────────────────────────────────────────────────────┘
+   *
+   * Exige `entrepot` : sans lui, « le stock de l'entrepôt » ne veut rien dire.
+   */
+  catalogueEntier?: boolean;
   limite?: number;
 }
 
@@ -264,8 +292,19 @@ export async function niveauxDeStock(
   const uniteDetail = alias(units, "unite_detail");
   const uniteContenant = alias(units, "unite_contenant");
 
+  const parCatalogue = Boolean(f.catalogueEntier && f.entrepot);
+
   const conditions = [
-    f.entrepot ? eq(stocks.warehouseId, f.entrepot) : undefined,
+    // Par le catalogue, l'entrepôt est dans la JOINTURE : le mettre ici
+    // écarterait précisément les articles qui n'y ont pas encore de ligne.
+    f.entrepot && !parCatalogue ? eq(stocks.warehouseId, f.entrepot) : undefined,
+    ...(parCatalogue
+      ? [
+          eq(products.isActive, true),
+          eq(products.trackInventory, true),
+          or(eq(products.isDeleted, false), isNull(products.isDeleted)),
+        ]
+      : []),
     f.categorie ? eq(products.categoryId, f.categorie) : undefined,
     // Plusieurs catégories : le SOUS-ARBRE que l'appelant a résolu. En SQL, et
     // non après la fenêtre - voir la docstring de `FiltresNiveaux.categories`.
@@ -313,10 +352,10 @@ export async function niveauxDeStock(
     ...conditionsEtat(f.etat),
   ].filter(Boolean);
 
-  const lignes = await db
-    .select({
+  const colonnes = {
       id: stocks.id,
-      productId: stocks.productId,
+      productId: products.id,
+      stockProductId: stocks.productId,
       warehouseId: stocks.warehouseId,
       quantity: stocks.quantity,
       reserved: stocks.reservedQuantity,
@@ -338,18 +377,41 @@ export async function niveauxDeStock(
       uniteContenant: uniteContenant.name,
       categorie: categories.name,
       entrepot: warehouses.name,
-    })
-    .from(stocks)
-    .leftJoin(products, eq(products.id, stocks.productId))
-    .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
-    .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
-    .leftJoin(categories, eq(categories.id, products.categoryId))
-    .leftJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(asc(products.name))
-    .limit(f.limite ?? 200);
+  };
+  const filtre = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const lignes = parCatalogue
+    ? await db
+        .select(colonnes)
+        .from(products)
+        .leftJoin(
+          stocks,
+          and(eq(stocks.productId, products.id), eq(stocks.warehouseId, f.entrepot!))
+        )
+        .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+        .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+        .leftJoin(categories, eq(categories.id, products.categoryId))
+        .leftJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
+        .where(filtre)
+        .orderBy(asc(products.name))
+        .limit(f.limite ?? 200)
+    : await db
+        .select(colonnes)
+        .from(stocks)
+        .leftJoin(products, eq(products.id, stocks.productId))
+        .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
+        .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+        .leftJoin(categories, eq(categories.id, products.categoryId))
+        .leftJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
+        .where(filtre)
+        .orderBy(asc(products.name))
+        .limit(f.limite ?? 200);
 
   const rendues = lignes.map((l) => {
+    // Le produit vient de la table qui MÈNE la lecture : `products` par le
+    // catalogue, `stocks` sinon (un produit supprimé y laisse sa ligne).
+    const produitId = l.productId ?? l.stockProductId ?? "";
+    const sansLigneDeStock = l.id === null;
     const total = nb(l.quantity);
     const reserve = nb(l.reserved);
     const seuil = nb(l.reorderPoint);
@@ -386,16 +448,20 @@ export async function niveauxDeStock(
     const cout = nb(l.avgCost) > 0 ? nb(l.avgCost) : nb(l.costPrice);
 
     return {
-      id: l.id,
-      produitId: l.productId,
+      // Sans ligne de stock, l'identifiant de rangée se fabrique sur le
+      // produit : il est unique dans une lecture bornée à UN entrepôt.
+      id: l.id ?? `produit:${produitId}`,
+      produitId,
       produit: l.produit ?? "Produit supprimé",
       sku: l.sku ?? null,
       categorie: l.categorie ?? null,
       entrepot: l.entrepot ?? null,
-      entrepotId: l.warehouseId ?? null,
-      quantiteAffichee: cond
-        ? formatPackagedSplit(cond, paquets, vrac)
-        : `${formatUnitQuantity(total, l.unite ?? "unité")}`,
+      entrepotId: l.warehouseId ?? f.entrepot ?? null,
+      quantiteAffichee: sansLigneDeStock
+        ? "Aucun stock ici"
+        : cond
+          ? formatPackagedSplit(cond, paquets, vrac)
+          : `${formatUnitQuantity(total, l.unite ?? "unité")}`,
       disponibleAffiche: cond
         ? formatPackagedSplit(cond, dispo.packages, dispo.loose)
         : formatUnitQuantity(Math.max(0, total - reserve), l.unite ?? "unité"),
@@ -416,6 +482,7 @@ export async function niveauxDeStock(
       prixVenteGros: prixOuNull(l.wholesalePrice),
       perissable: Boolean(l.perissable),
       uniteDetail: cond?.retailWord ?? l.unite ?? null,
+      sansLigneDeStock,
     };
   });
 
@@ -530,6 +597,7 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
     prixVenteDetail: prixOuNull(l.sellingPrice),
     prixVenteGros: prixOuNull(l.wholesalePrice),
     perissable: Boolean(l.perissable),
+    sansLigneDeStock: false,
     emplacement: null,
     dernierMouvement: s.lastMovementAt ?? null,
     dernierComptage: s.lastCountedAt ?? null,

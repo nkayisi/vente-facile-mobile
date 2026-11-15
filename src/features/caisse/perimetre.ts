@@ -12,16 +12,16 @@
  * │ part. Elle n'est pas perdue, elle est invisible - ce qui est pire, parce │
  * │ qu'il la ressaisit.                                                      │
  * │                                                                          │
- * │ Le caissier, lui, est borné par `created_by` : l'entrepôt ne change rien │
- * │ à SA visibilité. Il décide en revanche si le gérant qui doit approuver   │
- * │ verra jamais son brouillon.                                              │
+ * │ Un membre borné par auteur voit ses propres lignes sans entrepôt :       │
+ * │ l'entrepôt ne change rien à SA visibilité. Il décide en revanche si le   │
+ * │ gérant qui doit approuver verra jamais son brouillon.                    │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ LE DÉFAUT SE PREND DANS LES ENTREPÔTS ACCESSIBLES, JAMAIS DANS TOUTE LA │
- * │ TABLE.                                                                   │
+ * │ LE DÉFAUT SE PREND DANS LES ENTREPÔTS ACTIONNABLES, JAMAIS DANS TOUTE   │
+ * │ LA TABLE.                                                                │
  * │                                                                          │
- * │ `create_expense` oppose `assert_warehouse_allowed_for_request` dès qu'un │
+ * │ `create_expense` oppose `exiger_entrepot_actionnable` dès qu'un          │
  * │ entrepôt est présent : un entrepôt hors périmètre lève une erreur de     │
  * │ validation, donc verdict `rejected`, donc quarantaine. Un                │
  * │ `entrepotParDefaut(tousLesEntrepots)` naïf enverrait donc TOUTES les     │
@@ -32,64 +32,70 @@
  * Module PUR : il décide de ce qui part au serveur, il doit s'éprouver sans
  * appareil.
  */
+import { estBorneParAuteur, litTousLesEntrepots } from "@vente-facile/core";
+
 import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import {
-  entrepotsAccessibles,
-  ROLES_BORNES_PAR_ENTREPOT as ROLES_BORNES,
+  entrepotsActionnablesDuMembre,
   type EntrepotNomme,
-  type RoleMembre,
+  type MembreDuTerminal,
 } from "@/features/perimetre/entrepots";
 
-// La règle « quels entrepôts ce rôle peut-il viser » a DÉMÉNAGÉ dans
-// `features/perimetre/entrepots.ts` : elle sert désormais tous les filtres de
-// l'application, et un module qui parle de dépenses n'était pas sa place. On la
-// réexporte pour que les appelants existants n'aient rien à changer.
-export { entrepotsAccessibles };
-export type { EntrepotNomme, RoleMembre };
+export type { EntrepotNomme, MembreDuTerminal };
 
 /**
- * L'entrepôt à proposer d'emblée, pris dans les seuls accessibles.
+ * L'entrepôt à proposer d'emblée, pris dans les seuls ACTIONNABLES.
  *
  * Rend `null` quand il y a plusieurs dépôts et aucun principal : deviner ferait
  * rattacher la dépense au mauvais établissement, et le marchand ne s'en
  * apercevrait qu'en cherchant une pièce qu'il ne retrouve pas.
+ *
+ * ⚠ ACTIONNABLES, PAS LISIBLES : un membre « Consulter tous » lit tous les
+ * dépôts, et lui proposer le principal d'un autre ferait refuser sa dépense en
+ * `consultation_seule`, donc la ferait partir en quarantaine.
  */
 export function entrepotDeLaDepense(
-  role: RoleMembre,
-  assignes: { id: string }[],
+  membre: MembreDuTerminal,
   tous: EntrepotNomme[]
 ): string | null {
-  return entrepotParDefaut(entrepotsAccessibles(role, assignes, tous));
+  return entrepotParDefaut(entrepotsActionnablesDuMembre(membre, tous));
 }
 
 /**
  * Cette dépense échappera-t-elle à la vue de son auteur une fois envoyée ?
  *
- * Vrai pour un rôle borné qui n'attache aucun entrepôt. Le propriétaire, lui,
- * voit tout : `null` lui est parfaitement licite, et c'est même le seul moyen
- * d'enregistrer une charge d'établissement.
+ * C'est la règle du serveur (`borner_visibilite`), prise à l'envers : une
+ * dépense SANS entrepôt n'est lue que par qui lit tout (propriétaire, case
+ * « Consulter tous ») et par son AUTEUR quand il est borné par auteur. Un
+ * gérant, qui lit le travail de ses collègues, ne la reverrait pas.
+ *
+ * Le propriétaire n'est jamais averti : `null` lui est licite, et c'est même le
+ * seul moyen d'enregistrer une charge d'établissement.
  */
 export function depenseSeraitInvisible(
-  role: RoleMembre,
+  membre: MembreDuTerminal,
   entrepotChoisi: string | null
 ): boolean {
-  return entrepotChoisi === null && ROLES_BORNES.includes(role);
+  if (entrepotChoisi !== null || membre.role === null) return false;
+  if (litTousLesEntrepots(membre)) return false;
+  return !estBorneParAuteur(membre, "lecture");
 }
 
 /**
- * Un rôle borné SANS aucune affectation ne peut pas saisir utilement.
+ * Le membre ne peut-il saisir AUCUNE dépense utile ?
  *
- * Le formulaire le DIT au lieu de laisser enregistrer une pièce que personne
- * ne reverra : c'est « `null` ne se lit jamais comme zéro » appliqué à la
- * visibilité. L'absence d'affectation se dit, elle ne se devine pas.
+ * Vrai quand il n'a aucun entrepôt où agir ET qu'une dépense sans entrepôt lui
+ * serait invisible. Le formulaire le DIT au lieu de laisser enregistrer une
+ * pièce que personne ne reverra : c'est « `null` ne se lit jamais comme zéro »
+ * appliqué à la visibilité. Le MOTIF (aucune affectation, ou seulement des
+ * entrepôts désactivés) vient de `verrouEntrepot` du noyau.
  */
 export function saisieSansIssue(
-  role: RoleMembre,
-  assignes: { id: string }[],
+  membre: MembreDuTerminal,
   tous: EntrepotNomme[]
 ): boolean {
   return (
-    ROLES_BORNES.includes(role) &&
-    entrepotsAccessibles(role, assignes, tous).length === 0
+    entrepotsActionnablesDuMembre(membre, tous).length === 0 &&
+    depenseSeraitInvisible(membre, null)
   );
 }

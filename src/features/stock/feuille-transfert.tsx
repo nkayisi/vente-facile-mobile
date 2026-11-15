@@ -33,10 +33,10 @@ import { View } from "react-native";
 import { type Packaging } from "@vente-facile/core";
 
 import { chercherArticlesPourTransfert } from "@/data/articles";
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepotsSansValorisation } from "@/data/stock";
+import { destinationsDuTransfert, libelleEntrepot } from "@/features/perimetre/entrepots";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import { creerTransfert, type LigneSaisie } from "@/features/stock/actes";
 import {
   afficherPartage,
@@ -124,7 +124,18 @@ export function FeuilleNouveauTransfert({
   const [vrac, setVrac] = useState("");
   const [erreurs, setErreurs] = useState<ErreursQuantite>({});
 
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LA SOURCE ET LA DESTINATION NE SE CHOISISSENT PAS DANS LA MÊME LISTE.│
+  // │                                                                      │
+  // │ La SOURCE est une action : un de MES entrepôts, actif. La            │
+  // │ DESTINATION est tout entrepôt actif de l'établissement, y compris un │
+  // │ dépôt qui ne m'est pas affecté - c'est le cas ordinaire d'un         │
+  // │ réassort (`exiger_entrepot_de_destination`). Les deux tirées de la   │
+  // │ table locale, un magasinier ne pouvait expédier que vers ses propres │
+  // │ dépôts, et un serveur qui l'aurait accepté ne lui était pas proposé. │
+  // │ La destination vient donc de l'ANNUAIRE, noms seuls.                 │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const { actionnables: depots, tous, parDefaut, annuaireConnu } = useEntrepotsDuMembre();
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐
@@ -144,8 +155,7 @@ export function FeuilleNouveauTransfert({
    */
   // Seule la SOURCE est proposée : la destination est le choix qui compte, et
   // la deviner ferait expédier ailleurs qu'on ne voulait.
-  const source = sourceChoisie ?? entrepotParDefaut(depots);
-  const depotSource = (depots ?? []).find((d) => d.id === source) ?? null;
+  const source = sourceChoisie ?? parDefaut;
 
   const chargerArticles = useCallback(
     () =>
@@ -159,12 +169,16 @@ export function FeuilleNouveauTransfert({
     deps: [panneauArticle, source, recherche],
   });
 
-  const optionsEntrepot: OptionSelect[] = (depots ?? []).map((d) => ({
+  const optionsEntrepot: OptionSelect[] = depots.map((d) => ({
     valeur: d.id,
     label: d.nom,
   }));
-  const nomDe = (id: string | null) =>
-    optionsEntrepot.find((o) => o.valeur === id)?.label;
+  const optionsDestination: OptionSelect[] = destinationsDuTransfert(tous, source).map(
+    (d) => ({ valeur: d.id, label: libelleEntrepot(d) })
+  );
+  // Le nom se cherche parmi TOUS les entrepôts connus : la destination n'est
+  // pas forcément l'un des miens.
+  const nomDe = (id: string | null) => tous.find((d) => d.id === id)?.nom;
 
   const nContenants = lire(contenants);
   const nVrac = lire(vrac);
@@ -178,9 +192,7 @@ export function FeuilleNouveauTransfert({
   );
 
   const recap = resumeConversion(saisie, "transférez");
-  const alerte = alerteDisponible(saisie, choisi?.disponible ?? null, {
-    negatifAutorise: Boolean(depotSource?.stockNegatifAutorise),
-  });
+  const alerte = alerteDisponible(saisie, choisi?.disponible ?? null);
 
   // Les deux entrepôts doivent DIFFÉRER : un transfert sur place ne veut rien
   // dire, et le serveur le refuserait après coup, hors ligne, en quarantaine.
@@ -415,7 +427,8 @@ export function FeuilleNouveauTransfert({
                     if (v !== source) setLignes([]);
                     setSourceChoisie(v);
                   },
-                  messageVide: "Aucun entrepôt n'est encore descendu sur ce terminal.",
+                  messageVide:
+                    "Aucun entrepôt où vous pouvez agir : un entrepôt actif doit vous être affecté.",
                 })
               }
             />
@@ -434,14 +447,18 @@ export function FeuilleNouveauTransfert({
               onPress={() =>
                 setChoix({
                   titre: "Entrepôt de destination",
-                  // La SOURCE est retirée de la liste : proposer un transfert
-                  // sur place, que le serveur refuse, c'est laisser le
-                  // magasinier découvrir le refus après coup.
-                  options: optionsEntrepot.filter((o) => o.valeur !== source),
+                  // La SOURCE est retirée de la liste, et les dépôts désactivés
+                  // aussi : proposer un transfert que le serveur refuse, c'est
+                  // laisser le magasinier découvrir le refus après coup.
+                  options: optionsDestination,
                   valeur: destination,
                   onChoisir: setDestination,
-                  messageVide:
-                    "Il n'y a qu'un entrepôt : un transfert demande deux dépôts.",
+                  // Sans annuaire (serveur antérieur), la liste se réduit à ce
+                  // que la base locale connaît : le dire évite de croire qu'il
+                  // n'existe qu'un dépôt.
+                  messageVide: annuaireConnu
+                    ? "Il n'y a pas d'autre entrepôt actif : un transfert demande deux dépôts."
+                    : "Aucun autre entrepôt n'est connu de ce terminal. Synchronisez pour recevoir la liste des entrepôts.",
                 })
               }
             />

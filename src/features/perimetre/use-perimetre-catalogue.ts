@@ -5,8 +5,8 @@
  * dans les quatre écrans qui consultent un catalogue : une répétition de cette
  * forme dérive, et celle-ci déciderait de ce qu'un employé voit.
  *
- * Rend `null` pour le propriétaire (aucune restriction) et la liste de ses
- * dépôts sinon, possiblement vide. Voir `data/perimetre-catalogue.ts` pour la
+ * Rend `null` pour le propriétaire et pour la case « Consulter tous » (aucune
+ * restriction), et la liste de ses dépôts sinon, possiblement vide. Voir `data/perimetre-catalogue.ts` pour la
  * règle elle-même et pour la réserve sur le tirage.
  */
 import { useMemo } from "react";
@@ -14,13 +14,14 @@ import { useMemo } from "react";
 import { entrepotsDuCatalogue } from "@/data/perimetre-catalogue";
 import { useSession } from "@/session/provider";
 
+import { membreDeLaSession } from "./entrepots";
+
 export function usePerimetreCatalogue(): string[] | null {
   const { snapshot } = useSession();
-  const role = snapshot?.membership.role ?? null;
-  const assignes = snapshot?.membership.assigned_warehouses;
+  const membership = snapshot?.membership;
 
   return useMemo(
-    () => entrepotsDuCatalogue(role, assignes ?? []),
-    [role, assignes]
+    () => entrepotsDuCatalogue(membreDeLaSession(membership)),
+    [membership]
   );
 }

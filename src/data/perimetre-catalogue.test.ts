@@ -14,6 +14,8 @@ import { join } from "node:path";
 
 import { QueryBuilder } from "drizzle-orm/sqlite-core";
 
+import type { MembrePerimetre } from "@vente-facile/core";
+
 import { products } from "@/db/schema";
 
 import {
@@ -30,16 +32,36 @@ function sqlDe(entrepots: string[] | null) {
   return q.toSQL();
 }
 
+/** Un membre au sens du noyau. */
+function m(
+  role: MembrePerimetre["role"],
+  affectes: string[] = [],
+  consulteTout = false
+): MembrePerimetre {
+  return {
+    role,
+    consulteTout,
+    voitCollegues: false,
+    affectes: affectes.map((id) => ({ id, name: id })),
+  };
+}
+
 describe("les entrepôts qui bornent le catalogue", () => {
   it("le propriétaire n'a AUCUNE restriction", () => {
     // `null`, jamais `[]` : son accès vient de son rôle, pas d'une affectation.
-    expect(entrepotsDuCatalogue("owner", [])).toBeNull();
-    expect(entrepotsDuCatalogue("owner", [{ id: "wh-1" }])).toBeNull();
+    expect(entrepotsDuCatalogue(m("owner"))).toBeNull();
+    expect(entrepotsDuCatalogue(m("owner", ["wh-1"]))).toBeNull();
+  });
+
+  it("« Consulter tous » ouvre le catalogue entier, comme au propriétaire", () => {
+    // La case ouvre la LECTURE de tout, partout : le catalogue en fait partie.
+    expect(entrepotsDuCatalogue(m("manager", ["a"], true))).toBeNull();
+    expect(entrepotsDuCatalogue(m("cashier", ["a"], true))).toBeNull();
   });
 
   it("un rôle borné rend SES dépôts", () => {
-    expect(entrepotsDuCatalogue("cashier", [{ id: "wh-1" }])).toEqual(["wh-1"]);
-    expect(entrepotsDuCatalogue("manager", [{ id: "a" }, { id: "b" }])).toEqual(["a", "b"]);
+    expect(entrepotsDuCatalogue(m("cashier", ["wh-1"]))).toEqual(["wh-1"]);
+    expect(entrepotsDuCatalogue(m("manager", ["a", "b"]))).toEqual(["a", "b"]);
   });
 
   it("un rôle borné SANS affectation rend une liste vide, et non `null`", () => {
@@ -48,8 +70,8 @@ describe("les entrepôts qui bornent le catalogue", () => {
     // │ que les articles non suivis. Les confondre ouvrirait le catalogue│
     // │ entier au membre qui n'a droit à rien.                           │
     // └──────────────────────────────────────────────────────────────────┘
-    expect(entrepotsDuCatalogue("manager", [])).toEqual([]);
-    expect(entrepotsDuCatalogue(null, [])).toEqual([]);
+    expect(entrepotsDuCatalogue(m("manager"))).toEqual([]);
+    expect(entrepotsDuCatalogue(m(null))).toEqual([]);
   });
 });
 

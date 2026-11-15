@@ -39,17 +39,15 @@ import { formatDateFr } from "@vente-facile/core";
 
 import { jourISO } from "@/data/dates";
 import { useMonnaie } from "@/data/devises";
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepotsSansValorisation } from "@/data/stock";
 import { chercherArticles } from "@/features/pos/catalogue";
-import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import { chercherClients } from "@/features/pos/donnees";
 import { creerDevis, type LigneDevisSaisie } from "@/features/ventes/retours-devis";
 import {
-  Banner, Button, ChampDate, Chip, ChipRow, DataRow, Divider, FormField, Icon, Input,
-  Pressable, SearchInput, Sheet, Text, useToast,
+  Banner, Button, ChampDate, Chip, ChipRow, DataRow, DeclencheurSelect, Divider, FormField,
+  Icon, Input, ListeChoix, Pressable, SearchInput, Sheet, Text, useToast,
 } from "@/ui";
 
 /** Les échéances que le comptoir propose. Trente jours est l'usage courant. */
@@ -61,7 +59,7 @@ function dansNJours(n: number): string {
   return jourISO(d);
 }
 
-type Panneau = "devis" | "client" | "article";
+type Panneau = "devis" | "client" | "article" | "entrepot";
 
 type LigneSaisie = LigneDevisSaisie & { nom: string };
 
@@ -104,9 +102,22 @@ export function FeuilleNouveauDevis({
   const [prix, setPrix] = useState("");
   const [erreurLigne, setErreurLigne] = useState<{ q?: string; p?: string }>({});
 
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
-  const entrepot = entrepotParDefaut(depots);
-  const entrepotsCatalogue = usePerimetreCatalogue();
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ SANS PRINCIPAL, LE DEVIS NE SE REMPLISSAIT PAS.                      │
+  // │                                                                      │
+  // │ L'entrepôt était deviné (`entrepotParDefaut`) et le panneau des      │
+  // │ articles n'en cherchait aucun sans lui : avec deux dépôts et aucun   │
+  // │ principal, la recherche restait vide, sans un mot. L'entrepôt se     │
+  // │ CHOISIT désormais, parmi ceux où le membre agit, et il part avec le  │
+  // │ devis (`Quotation.warehouse`) : c'est lui qui le range dans un       │
+  // │ périmètre. Le catalogue, lui, ne dépend plus de ce choix - on        │
+  // │ propose un prix sur tout ce qui se vend, le stock n'étant engagé     │
+  // │ qu'à la conversion.                                                  │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const { actionnables, parDefaut } = useEntrepotsDuMembre();
+  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(null);
+  const entrepot = entrepotChoisi ?? parDefaut;
+  const nomEntrepot = actionnables.find((e) => e.id === entrepot)?.nom ?? null;
 
   const chargerClients = useCallback(
     () => (panneau === "client" ? chercherClients(recherche, 12) : Promise.resolve([])),
@@ -119,15 +130,17 @@ export function FeuilleNouveauDevis({
 
   const chargerArticles = useCallback(
     () =>
-      panneau === "article" && entrepot
+      panneau === "article"
         ? chercherArticles({
+            // Le stock affiché est celui de l'entrepôt du devis, s'il en a un.
             warehouseId: entrepot,
             terme: recherche,
             limite: 20,
-            entrepotsCatalogue,
+            // TOUT le catalogue vendable : un devis n'engage aucun stock.
+            entrepotsCatalogue: null,
           })
         : Promise.resolve([]),
-    [panneau, recherche, entrepot, entrepotsCatalogue]
+    [panneau, recherche, entrepot]
   );
   const { donnees: articles } = useLecture(chargerArticles, {
     tables: ["products", "stocks"],
@@ -196,6 +209,7 @@ export function FeuilleNouveauDevis({
     try {
       const id = await creerDevis({
         client: client?.id ?? null,
+        entrepot,
         valideJusquau: validite,
         notes,
         lignes: lignes.map(({ produit, quantite: q, prixUnitaire }) => ({
@@ -222,7 +236,9 @@ export function FeuilleNouveauDevis({
   };
 
   const titre =
-    panneau === "client"
+    panneau === "entrepot"
+      ? "Entrepôt du devis"
+      : panneau === "client"
       ? "Choisir un client"
       : panneau === "article"
         ? choisi
@@ -237,7 +253,17 @@ export function FeuilleNouveauDevis({
       titre={titre}
       retour={panneau === "devis" ? undefined : reculer}
     >
-      {panneau === "client" ? (
+      {panneau === "entrepot" ? (
+        <ListeChoix
+          options={actionnables.map((e) => ({ valeur: e.id, label: e.nom }))}
+          valeur={entrepot}
+          onChoisir={(v) => {
+            if (v) setEntrepotChoisi(v);
+            setPanneau("devis");
+          }}
+          messageVide="Aucun entrepôt où vous pouvez agir : un entrepôt actif doit vous être affecté."
+        />
+      ) : panneau === "client" ? (
         <PanneauClient
           recherche={recherche}
           onRecherche={setRecherche}
@@ -337,6 +363,22 @@ export function FeuilleNouveauDevis({
         )
       ) : (
         <>
+          {/* Un choix unique n'est pas un choix : avec un seul entrepôt où
+              agir, il part sans qu'on le demande. */}
+          {actionnables.length > 1 ? (
+            <FormField
+              label="Entrepôt"
+              hint="Le devis sera rangé dans cet entrepôt, et converti depuis lui."
+            >
+              <DeclencheurSelect
+                libelle={nomEntrepot ?? "Choisir un entrepôt"}
+                actif={Boolean(nomEntrepot)}
+                accessibilityLabel="Entrepôt du devis"
+                onPress={() => setPanneau("entrepot")}
+              />
+            </FormField>
+          ) : null}
+
           <FormField label="Client" hint="Facultatif : un devis peut être anonyme.">
             <Button
               variant="outline"

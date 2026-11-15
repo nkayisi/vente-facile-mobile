@@ -101,10 +101,13 @@ export default function FicheEntrepot() {
           <CardHeader title="Réglages" />
           <View className="gap-1">
             {e.adresse ? <Text variant="bodySmall">{e.adresse}</Text> : null}
+            {/* Le stock négatif n'existe plus : la phrase qui le réglait par
+                entrepôt cède la place à ce qui, elle, varie - l'état. Un
+                entrepôt désactivé reste lisible et fermé à toute opération. */}
             <Text variant="caption">
-              {e.stockNegatifAutorise
-                ? "Le stock peut descendre sous zéro dans cet entrepôt."
-                : "Le stock ne peut pas descendre sous zéro."}
+              {e.actif
+                ? "Le stock ne peut pas descendre sous zéro."
+                : "Entrepôt désactivé : son historique se consulte, aucune opération n'y est possible."}
             </Text>
           </View>
         </Card>

@@ -33,12 +33,10 @@ import { formatUnitQuantity, roundQuantity } from "@vente-facile/core";
 
 import { accord, pluriel } from "@/data/accord";
 import { useMonnaie } from "@/data/devises";
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre, type LectureNombre } from "@/data/nombres";
 import { categoriesPourFiltre } from "@/data/categories";
 import { sousArbre } from "@/data/categories-arbre";
-import { entrepotsSansValorisation } from "@/data/stock";
 import { niveauxDeStock, type LigneNiveau } from "@/data/stock-niveaux";
 import { TYPE_MOUVEMENT_STOCK, typesSaisissables } from "@/data/types-mouvement";
 import { creerLivraison, type SaisieMouvement } from "@/features/stock/actes";
@@ -51,6 +49,7 @@ import {
   type PorteeAppro,
 } from "@/features/stock/perimetre-appro";
 import { useSession } from "@/session/provider";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import {
   Banner,
   Button,
@@ -163,12 +162,13 @@ export function FeuilleApproMasse({
   >(null);
   const [panneauMultiple, setPanneauMultiple] = useState<"categories" | "articles" | null>(null);
 
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, {
-    tables: ["warehouses"],
-  });
+  // Une saisie est une ACTION : seuls les entrepôts où le membre agit, actifs,
+  // sont proposés - jamais toute la table locale, qui porte aussi les dépôts
+  // seulement LISIBLES (case « Consulter tous ») et les dépôts désactivés.
+  const { actionnables: depots, parDefaut } = useEntrepotsDuMembre();
   // Le défaut se DÉRIVE : un `setState` dans un effet serait un rendu de plus
   // et une règle qui dépend de l'ordre des effets.
-  const entrepot = entrepotChoisi ?? entrepotParDefaut(depots);
+  const entrepot = entrepotChoisi ?? parDefaut;
   // ⚠ Résolu UNE FOIS : un montant sans devise ne dit rien dans une
   //   application où le même chiffre vaut soit trois dollars, soit trois
   //   francs, et un garde-fou de doctrine interdit la devise vide.
@@ -200,7 +200,9 @@ export function FeuilleApproMasse({
         categories: descendance,
         recherche,
       });
-      const { elements } = await niveauxDeStock({ ...filtres, entrepot });
+      // ⚠ PAR LE CATALOGUE : un entrepôt neuf n'a encore aucune ligne de stock,
+      //   et c'est justement lui qu'on approvisionne. Voir `catalogueEntier`.
+      const { elements } = await niveauxDeStock({ ...filtres, entrepot, catalogueEntier: true });
       // La portée « liste » se filtre en mémoire : elle est bornée par ce que
       // le magasinier a tapé, jamais par la taille du catalogue.
       const retenues =
@@ -262,7 +264,9 @@ export function FeuilleApproMasse({
   const chargerArticles = useCallback(
     () =>
       panneauMultiple === "articles"
-        ? niveauxDeStock({ entrepot, recherche, limite: 60 }).then((r) => r.elements)
+        ? niveauxDeStock({ entrepot, recherche, limite: 60, catalogueEntier: true }).then(
+            (r) => r.elements
+          )
         : Promise.resolve([]),
     [panneauMultiple, entrepot, recherche]
   );

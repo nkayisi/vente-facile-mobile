@@ -31,11 +31,18 @@ import {
   FeuilleReception,
   type LigneRecue,
 } from "@/features/stock/feuille-reception";
+import { nomOuInconnu } from "@/features/perimetre/entrepots";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
+import {
+  COTE_DE_LA_TRANSITION,
+  transitionDuBonCote,
+} from "@/features/stock/cotes-transfert";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
   AlertDialog,
   AppBar,
+  Banner,
   Badge,
   Button,
   Card,
@@ -100,7 +107,9 @@ const ACTIONS: Record<
 export default function DetailTransfertEcran() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
-  const { can } = useSession();
+  const { can, snapshot } = useSession();
+  const annuaire = snapshot?.warehouse_directory;
+  const { actionnables } = useEntrepotsDuMembre();
   const [confirmation, setConfirmation] = useState<TransitionTransfert | null>(null);
   // ⚠ La RÉCEPTION n'est pas une simple confirmation : une réception partielle
   // est le cas ordinaire, et le magasinier doit pouvoir dire ce qu'il a
@@ -108,8 +117,11 @@ export default function DetailTransfertEcran() {
   const [reception, setReception] = useState(false);
   const [envoi, setEnvoi] = useState(false);
 
-  const charger = useCallback(() => detailTransfert(id), [id]);
-  const { donnees: t, chargement } = useLecture(charger, { tables: TABLES, deps: [id] });
+  const charger = useCallback(() => detailTransfert(id, annuaire), [id, annuaire]);
+  const { donnees: t, chargement } = useLecture(charger, {
+    tables: TABLES,
+    deps: [id, annuaire],
+  });
   const { donnees: attente } = useLecture(enAttenteSurStock, {
     tables: ["outbox_operations"],
   });
@@ -142,9 +154,24 @@ export default function DetailTransfertEcran() {
   const s = STATUT_TRANSFERT[t.statut];
   const envoiEnFile = attente?.transferts.get(t.id);
   const enFile = envoiEnFile !== undefined;
-  const possibles = (Object.keys(ACTIONS) as TransitionTransfert[]).filter(
+  // ⚠ LE DROIT NE SUFFIT PAS, IL FAUT AUSSI LE BON CÔTÉ. Approuver, expédier
+  // et annuler engagent la source ; réceptionner engage la destination. Un
+  // bouton du mauvais côté partirait au journal et reviendrait en quarantaine.
+  const ici = new Set(actionnables.map((e) => e.id));
+  const ouvertes = (Object.keys(ACTIONS) as TransitionTransfert[]).filter(
     (a) => ACTIONS[a].depuis.includes(t.statut) && can(ACTIONS[a].permission)
   );
+  const possibles = ouvertes.filter((a) => transitionDuBonCote(a, t, ici));
+  // Une transition que le droit ouvrirait mais que le CÔTÉ ferme se DIT : sans
+  // la phrase, le magasinier de destination chercherait le bouton « Expédier »
+  // d'un envoi qu'il attend.
+  const fermeesParLeCote = ouvertes.filter((a) => !possibles.includes(a));
+  const motifDuCote =
+    fermeesParLeCote.length === 0
+      ? null
+      : fermeesParLeCote.some((a) => COTE_DE_LA_TRANSITION[a] === "destination")
+        ? `La réception se fait depuis ${nomOuInconnu(t.destination)}.`
+        : `L'expédition et l'annulation se font depuis ${nomOuInconnu(t.source)}.`;
 
   const executer = async (
     transition: TransitionTransfert,
@@ -230,7 +257,7 @@ export default function DetailTransfertEcran() {
     <Screen scroll padded={false} pied={barreActions}>
       <AppBar
         title={t.reference}
-        subtitle={`${t.source ?? "?"} → ${t.destination ?? "?"}`}
+        subtitle={`${nomOuInconnu(t.source)} → ${nomOuInconnu(t.destination)}`}
         right={s ? <Badge tone={s.ton}>{s.label}</Badge> : undefined}
       />
 
@@ -240,6 +267,10 @@ export default function DetailTransfertEcran() {
           titre="Une opération attend son envoi"
           consequence="Le statut ci-dessus ne changera qu'après, et les actions restent fermées d'ici là pour ne pas expédier deux fois."
         />
+
+        {motifDuCote ? (
+          <Banner tone="info" title="Ce n'est pas de votre côté" message={motifDuCote} />
+        ) : null}
 
         {/* ┌──────────────────────────────────────────────────────────────────┐
             │ LE GESTE RARE ET LOURD RESTE ICI, LOIN DU POUCE.                 │
@@ -266,8 +297,8 @@ export default function DetailTransfertEcran() {
           <CardHeader title="Informations" />
           <View>
             <Ligne label="Référence" valeur={t.reference} />
-            <Ligne label="Source" valeur={t.source ?? "-"} />
-            <Ligne label="Destination" valeur={t.destination ?? "-"} />
+            <Ligne label="Source" valeur={nomOuInconnu(t.source)} />
+            <Ligne label="Destination" valeur={nomOuInconnu(t.destination)} />
             <Ligne
               label="Demandé le"
               valeur={t.demandeLe ? formatDateTimeFr(t.demandeLe) : "-"}

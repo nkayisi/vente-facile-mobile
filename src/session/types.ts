@@ -53,11 +53,47 @@ export interface SessionOrganization {
   is_active?: boolean;
 }
 
+/**
+ * Un entrepôt tel que la session le nomme : affecté au membre, ou porté par
+ * l'annuaire de l'établissement.
+ *
+ * ⚠ `is_active` est FACULTATIF et son absence vaut ACTIF : un instantané écrit
+ * avant cette version ne porte pas le champ, et le lire comme « désactivé »
+ * fermerait toute saisie sur tout le parc le jour de la mise à jour.
+ */
+export interface EntrepotDeSession {
+  id: string;
+  name: string;
+  is_active?: boolean;
+}
+
 export interface SessionMembership {
   role: "owner" | "manager" | "stock_keeper" | "cashier" | null;
   /** Permissions effectives : rôle plus permissions individuelles. */
   permissions: string[];
-  assigned_warehouses: { id: string; name: string }[];
+  /**
+   * Les entrepôts affectés, INACTIFS COMPRIS : un entrepôt désactivé reste
+   * lisible (on relit son passé), il est seulement fermé aux opérations.
+   * Vide pour un propriétaire : c'est son rôle qui lui donne tout.
+   */
+  assigned_warehouses: EntrepotDeSession[];
+  /**
+   * La case « Consulter tous les entrepôts », accordée par le propriétaire :
+   * le membre LIT tout, partout, et n'AGIT que dans ses entrepôts.
+   *
+   * ⚠ Facultative : un serveur antérieur ne l'envoie pas, et l'absence vaut
+   * « non cochée », c'est-à-dire la lecture la plus étroite. Elle ne se lit
+   * QUE dans la charge de réveil : la table tirée `memberships` a ses colonnes
+   * figées, et ne la portera jamais.
+   */
+  consult_all_warehouses?: boolean;
+  /**
+   * L'empreinte du périmètre : rôle, case, permissions, affectations. Le
+   * serveur la renvoie aussi après chaque poussée et chaque sonde ; une valeur
+   * différente de celle-ci veut dire que les droits ont bougé depuis le
+   * dernier réveil, et force un cycle complet.
+   */
+  perimetre_version?: string;
 }
 
 /**
@@ -262,6 +298,24 @@ export interface SessionSnapshot {
    * cette porte existe pour éviter.
    */
   app_update?: SessionAppUpdate | null;
+  /**
+   * L'annuaire des entrepôts de l'établissement : TOUS, noms seuls, actifs
+   * d'abord. Jamais d'adresse ni de stock.
+   *
+   * Il sert à ce que la base locale ne peut pas dire : la destination d'un
+   * transfert (tout entrepôt actif, y compris hors de mes affectations), et
+   * le nom d'un entrepôt qu'un transfert relie au mien.
+   *
+   * ⚠ CE N'EST PAS UNE TABLE TIRÉE, et ce n'est pas un oubli : une table
+   * nouvelle au manifeste ferait échouer le tirage des terminaux anciens, qui
+   * insèrent les colonnes à l'aveugle.
+   *
+   * ⚠ `undefined` veut dire « INCONNU » (serveur ou instantané antérieurs), et
+   * se lit tout autrement qu'une liste vide : on retombe alors sur la table
+   * locale `warehouses`, bornée au périmètre de lecture. Le forcer à `[]`
+   * affirmerait qu'il n'existe aucun entrepôt.
+   */
+  warehouse_directory?: EntrepotDeSession[] | null;
   /** Date du dernier réveil réussi : sert à dater la fraîcheur des droits. */
   fetched_at: string;
 }

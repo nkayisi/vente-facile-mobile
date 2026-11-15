@@ -6,16 +6,18 @@
  * vérifie que le câblage. Un test qui rejouerait la table de décision à
  * travers le rendu serait plus lent et moins précis.
  */
+import { useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 
 // Module PUR, sans effet de bord : il peut rester en tête.
 import { reinitialiserPourTest } from "@/sync/verrou";
 
-const mockPushAll = jest.fn<Promise<void>, unknown[]>();
+const mockPushAll = jest.fn<Promise<unknown>, unknown[]>();
+const mockSonder = jest.fn<Promise<string | null>, unknown[]>();
 const mockPullAll = jest.fn<Promise<unknown>, unknown[]>();
 const mockUnblockAll = jest.fn<Promise<void>, unknown[]>();
 const mockEtatJournal = jest.fn<Promise<{ nbPret: number; prochaineTentativeAt: Date | null }>, []>();
-const mockRefresh = jest.fn<Promise<void>, []>();
+const mockRefresh = jest.fn<Promise<{ snapshot: unknown; frais: boolean }>, []>();
 const mockToast = { succes: jest.fn(), erreur: jest.fn(), info: jest.fn() };
 
 let mockEnLigne = true;
@@ -43,6 +45,7 @@ jest.mock("@/sync", () => ({
   ...jest.requireActual("@/sync/verrou"),
   pushAll: (...a: unknown[]) => mockPushAll(...a),
   pullAll: (...a: unknown[]) => mockPullAll(...a),
+  sonderPerimetre: (...a: unknown[]) => mockSonder(...a),
   unblockAll: () => mockUnblockAll(),
   etatJournal: () => mockEtatJournal(),
 }));
@@ -88,7 +91,26 @@ jest.mock("expo-sqlite", () => ({
 // eslint-disable-next-line import/first
 import { DEBOUNCE_JOURNAL_MS, DELAI_ENTREE_MS, GIGUE_RESEAU_MS } from "./planificateur";
 // eslint-disable-next-line import/first
-import { SynchronisationProvider } from "./provider";
+import { SynchronisationProvider, useSynchronisation } from "./provider";
+// eslint-disable-next-line import/first
+import { DROITS_NON_RELUS } from "./origines";
+// eslint-disable-next-line import/first
+import { AppState } from "react-native";
+
+/**
+ * Ce que le fournisseur expose, relevé après chaque rendu.
+ *
+ * ⚠ Dans un effet, pas pendant le rendu : écrire une variable du module en
+ * plein rendu est l'effet de bord que `react-hooks/globals` refuse, à raison.
+ */
+let mockEtat: ReturnType<typeof useSynchronisation> | null = null;
+function Temoin() {
+  const etat = useSynchronisation();
+  useEffect(() => {
+    mockEtat = etat;
+  });
+  return null;
+}
 
 const BILAN = { tables: 3, rows: 10, interrupted: false, skipped: 0, echecs: [] };
 
@@ -113,7 +135,11 @@ async function avancer(ms: number) {
 function monter() {
   let arbre!: TestRenderer.ReactTestRenderer;
   act(() => {
-    arbre = TestRenderer.create(<SynchronisationProvider>{null}</SynchronisationProvider>);
+    arbre = TestRenderer.create(
+      <SynchronisationProvider>
+        <Temoin />
+      </SynchronisationProvider>
+    );
   });
   return arbre;
 }
@@ -132,9 +158,11 @@ describe("le fournisseur de synchronisation", () => {
     mockRetourReseau = null;
     mockChangement = null;
     mockPushAll.mockResolvedValue(undefined);
+    mockSonder.mockResolvedValue(null);
+    mockEtat = null;
     mockPullAll.mockResolvedValue(BILAN);
     mockUnblockAll.mockResolvedValue(undefined);
-    mockRefresh.mockResolvedValue(undefined);
+    mockRefresh.mockResolvedValue({ snapshot: null, frais: true });
     mockEtatJournal.mockResolvedValue({ nbPret: 0, prochaineTentativeAt: null });
   });
 
@@ -297,6 +325,115 @@ describe("le fournisseur de synchronisation", () => {
     await avancer(GIGUE_RESEAU_MS);
     expect(mockPushAll).toHaveBeenCalledTimes(1);
     expect(mockPullAll).toHaveBeenCalledTimes(1);
+    act(() => arbre.unmount());
+  });
+
+  describe("un périmètre qui bouge sur le serveur", () => {
+    const SNAP = { membership: { perimetre_version: "v1" }, device: { id: "d" } };
+
+    it("une poussée qui annonce une empreinte neuve devient un cycle COMPLET", async () => {
+      // Un refus `consultation_seule` vient presque toujours d'un périmètre qui
+      // a bougé : attendre le prochain tirage laisserait le marchand sur des
+      // droits que le serveur vient de démentir.
+      mockSnapshot = SNAP;
+      const arbre = monter();
+      await souffler();
+      await avancer(DELAI_ENTREE_MS);
+      mockPullAll.mockClear();
+
+      mockPushAll.mockResolvedValue({ perimetreVersion: "v2" });
+      mockEtatJournal.mockResolvedValue({ nbPret: 1, prochaineTentativeAt: null });
+      act(() => mockChangement?.({ tableName: "outbox_operations" }));
+      await souffler();
+      await avancer(DEBOUNCE_JOURNAL_MS);
+      await souffler();
+      expect(mockPullAll).toHaveBeenCalledTimes(1);
+      expect(mockRefresh).toHaveBeenCalled();
+      act(() => arbre.unmount());
+    });
+
+    it("une même empreinte ne relance pas un second tirage, même si la relecture échoue", async () => {
+      // La relecture rend ici toujours l'ancien instantané (v1) : sans la
+      // mémoire de ce qui a été traité, chaque vente retirerait tout.
+      mockSnapshot = SNAP;
+      const arbre = monter();
+      await souffler();
+      await avancer(DELAI_ENTREE_MS);
+      mockPushAll.mockResolvedValue({ perimetreVersion: "v2" });
+      mockEtatJournal.mockResolvedValue({ nbPret: 1, prochaineTentativeAt: null });
+
+      act(() => mockChangement?.({ tableName: "outbox_operations" }));
+      await souffler();
+      await avancer(DEBOUNCE_JOURNAL_MS);
+      await souffler();
+      mockPullAll.mockClear();
+
+      act(() => mockChangement?.({ tableName: "outbox_operations" }));
+      await souffler();
+      await avancer(DEBOUNCE_JOURNAL_MS);
+      await souffler();
+      expect(mockPullAll).not.toHaveBeenCalled();
+      act(() => arbre.unmount());
+    });
+
+    it("la même empreinte qu'au dernier réveil ne tire rien de plus", async () => {
+      mockSnapshot = SNAP;
+      const arbre = monter();
+      await souffler();
+      await avancer(DELAI_ENTREE_MS);
+      mockPullAll.mockClear();
+
+      mockPushAll.mockResolvedValue({ perimetreVersion: "v1" });
+      mockEtatJournal.mockResolvedValue({ nbPret: 1, prochaineTentativeAt: null });
+      act(() => mockChangement?.({ tableName: "outbox_operations" }));
+      await souffler();
+      await avancer(DEBOUNCE_JOURNAL_MS);
+      await souffler();
+      expect(mockPullAll).not.toHaveBeenCalled();
+      act(() => arbre.unmount());
+    });
+
+    it("le retour au premier plan SONDE sous le plancher, et tire si le périmètre a bougé", async () => {
+      // ⚠ PAS de `jest.spyOn(...).mockRestore()` : sous jest-expo,
+      // `addEventListener` est DÉJÀ une doublure, et la « restaurer » lui retire
+      // son implémentation - les tests suivants recevraient `undefined`.
+      let auPremierPlan: ((etat: string) => void) | null = null;
+      const original = AppState.addEventListener;
+      AppState.addEventListener = ((_type: string, quand: (etat: string) => void) => {
+        auPremierPlan = quand;
+        return { remove: () => undefined };
+      }) as unknown as typeof AppState.addEventListener;
+      mockSnapshot = SNAP;
+      const arbre = monter();
+      await souffler();
+      await avancer(DELAI_ENTREE_MS);
+      await souffler();
+      mockPullAll.mockClear();
+
+      mockSonder.mockResolvedValue("v2");
+      act(() => auPremierPlan?.("active"));
+      await souffler();
+      await avancer(0);
+      await souffler();
+      expect(mockSonder).toHaveBeenCalledTimes(1);
+      // La sonde a rendu le verrou et demandé le cycle complet : il part au
+      // départ différé suivant, sans attendre le plancher de cinq minutes.
+      await avancer(0);
+      await souffler();
+      expect(mockPullAll).toHaveBeenCalledTimes(1);
+      act(() => arbre.unmount());
+      AppState.addEventListener = original;
+    });
+  });
+
+  it("une relecture des droits qui ÉCHOUE se dit, au lieu de « terminée »", async () => {
+    mockRefresh.mockResolvedValue({ snapshot: null, frais: false });
+    const arbre = monter();
+    await souffler();
+    await avancer(DELAI_ENTREE_MS);
+    await souffler();
+    expect(mockPullAll).toHaveBeenCalledTimes(1);
+    expect(mockEtat?.erreur).toBe(DROITS_NON_RELUS);
     act(() => arbre.unmount());
   });
 

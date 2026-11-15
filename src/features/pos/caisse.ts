@@ -189,9 +189,9 @@ export async function caissesDisponibles(): Promise<CaissePos[]> {
  * ⚠ ON FILTRE SUR LE VENDEUR, et ce paragraphe disait l'inverse jusqu'au
  * 2026-11-14 (« une session appartient à la CAISSE, deux vendeurs qui se
  * relaient travaillent sur la même »). C'est vrai de la CLÔTURE, faux de la
- * VENTE : le serveur refuse au caissier d'encaisser sur la session d'un autre,
- * et le comptoir lui proposait la session du propriétaire. Voir
- * `session-vendeur.ts`.
+ * VENTE : le serveur refuse à TOUS, propriétaire compris, d'encaisser sur la
+ * session d'un autre (`session_d_un_autre`), et le comptoir proposait au
+ * caissier celle du propriétaire. Voir `session-vendeur.ts`.
  *
  * Une ouverture encore EN FILE n'a pas à passer ce filtre : elle vient de ce
  * terminal, et l'estampille de la base (`session/proprietaire.ts`) garantit

@@ -33,10 +33,8 @@ import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { type Packaging } from "@vente-facile/core";
 
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepotsSansValorisation } from "@/data/stock";
 import { niveauxDeStock } from "@/data/stock-niveaux";
 import { TYPE_AJUSTEMENT } from "@/data/stock-operations";
 import { creerAjustement } from "@/features/stock/actes";
@@ -51,6 +49,7 @@ import {
   type SaisieQuantite,
 } from "@/features/stock/lignes-conditionnees";
 import { SaisieQuantiteConditionnee } from "@/features/stock/saisie-quantite";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import {
   Banner, Button, CardHeader, DataRow, DeclencheurSelect, Divider, FormField,
   Icon, IconButton, Input, ListeChoix, SearchInput, Sheet, Text, useToast,
@@ -121,7 +120,10 @@ export function FeuilleNouvelAjustement({
   const [vrac, setVrac] = useState("");
   const [erreurs, setErreurs] = useState<ErreursQuantite>({});
 
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
+  // Une saisie est une ACTION : seuls les entrepôts où le membre agit, actifs,
+  // sont proposés - jamais toute la table locale, qui porte aussi les dépôts
+  // seulement LISIBLES (case « Consulter tous ») et les dépôts désactivés.
+  const { actionnables: depots, parDefaut } = useEntrepotsDuMembre();
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐
@@ -137,12 +139,14 @@ export function FeuilleNouvelAjustement({
    * │ avec son test.                                                        │
    * └──────────────────────────────────────────────────────────────────────┘
    */
-  const entrepot = entrepotChoisi ?? entrepotParDefaut(depots);
+  const entrepot = entrepotChoisi ?? parDefaut;
 
   const chargerLignes = useCallback(
     () =>
       panneauArticle && entrepot
-        ? niveauxDeStock({ entrepot, recherche, limite: 40 })
+        ? // Par le CATALOGUE : on compte aussi ce qui n'a jamais été reçu ici -
+          // un carton trouvé dans un entrepôt neuf s'ajuste à partir de zéro.
+          niveauxDeStock({ entrepot, recherche, limite: 40, catalogueEntier: true })
         : Promise.resolve({ elements: [], total: 0 }),
     [panneauArticle, entrepot, recherche]
   );

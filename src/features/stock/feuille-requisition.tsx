@@ -23,13 +23,11 @@ import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { formatNumberFr } from "@vente-facile/core";
 
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
 import { lignesProposees, type LigneProposee } from "@/data/requisitions";
-import { entrepotsSansValorisation } from "@/data/stock";
 import { creerRequisition, type LigneSaisie } from "@/features/stock/actes-requisition";
-import { entrepotsAccessibles } from "@/features/perimetre/entrepots";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import { useSession } from "@/session/provider";
 import {
   Banner, Button, Checkbox, DeclencheurSelect, Divider, EmptyState, FormField,
@@ -73,14 +71,10 @@ export function FeuilleNouvelleRequisition({
 }) {
   const toast = useToast();
   const { snapshot } = useSession();
-  const role = snapshot?.membership.role ?? null;
-  // Mémoïsé : un `?? []` fabrique un tableau NEUF à chaque rendu, et le
-  // `useMemo` qui suit se recalculerait donc toujours - la famille de défaut
-  // qui a fait tourner l'écran d'encaissement en boucle.
-  const assignes = useMemo(
-    () => snapshot?.membership.assigned_warehouses ?? [],
-    [snapshot?.membership.assigned_warehouses]
-  );
+  // Une réquisition est une ACTION : seuls les entrepôts où le membre agit,
+  // actifs, sont proposés. Un dépôt seulement lisible (case « Consulter
+  // tous ») ou désactivé ferait revenir la demande en quarantaine.
+  const { actionnables: accessibles, parDefaut } = useEntrepotsDuMembre();
 
   const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
@@ -90,22 +84,14 @@ export function FeuilleNouvelleRequisition({
   const [choix, setChoix] = useState<DemandeChoix | null>(null);
   const [envoi, setEnvoi] = useState(false);
 
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, {
-    tables: ["warehouses"],
-  });
-
   /**
    * Le défaut se DÉRIVE, il ne se pose pas dans un effet - motif de
-   * `feuille-transfert`. Et il se prend dans les entrepôts ACCESSIBLES :
-   * `create_requisition` oppose `assert_warehouse_allowed_for_request`, donc
-   * proposer le dépôt principal à un magasinier qui ne l'a pas enverrait sa
-   * demande en quarantaine.
+   * `feuille-transfert`. Et il se prend dans les entrepôts ACTIONNABLES :
+   * `create_requisition` oppose `exiger_entrepot_actionnable`, donc proposer
+   * le dépôt principal à un magasinier qui ne l'a pas enverrait sa demande en
+   * quarantaine.
    */
-  const accessibles = useMemo(
-    () => entrepotsAccessibles(role, assignes, depots ?? []),
-    [role, assignes, depots]
-  );
-  const entrepot = entrepotChoisi ?? entrepotParDefaut(accessibles);
+  const entrepot = entrepotChoisi ?? parDefaut;
 
   const chargerProposition = useCallback(
     () =>

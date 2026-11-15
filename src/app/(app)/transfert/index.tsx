@@ -15,6 +15,7 @@ import {
   sansLeFiltrePerimetre,
   type FiltrePerimetre,
 } from "@/features/perimetre/filtre-perimetre";
+import { nomOuInconnu } from "@/features/perimetre/entrepots";
 import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import {
   STATUT_TRANSFERT,
@@ -41,7 +42,10 @@ import {
 const TABLES = ["stock_transfers", "stock_transfer_items", "warehouses"];
 
 export default function Transferts() {
-  const { can } = useSession();
+  const { can, snapshot } = useSession();
+  // L'annuaire nomme les dépôts hors de mon périmètre : un transfert reçu
+  // vient presque toujours de l'un d'eux.
+  const annuaire = snapshot?.warehouse_directory;
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
   const [feuille, setFeuille] = useState(false);
@@ -56,12 +60,12 @@ export default function Transferts() {
   const applique = perimetre.applique;
 
   const charger = useCallback(
-    () => listeTransferts({ recherche, statut, entrepot: applique.entrepot }),
-    [recherche, statut, applique]
+    () => listeTransferts({ recherche, statut, entrepot: applique.entrepot, annuaire }),
+    [recherche, statut, applique, annuaire]
   );
   const { donnees, chargement } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, statut, applique],
+    deps: [recherche, statut, applique, annuaire],
   });
   const { donnees: attente } = useLecture(enAttenteSurStock, {
     tables: ["outbox_operations"],
@@ -126,7 +130,7 @@ export default function Transferts() {
     return (
       <DataRow
         principal={t.reference}
-        secondaire={`${t.source ?? "?"} → ${t.destination ?? "?"}`}
+        secondaire={`${nomOuInconnu(t.source)} → ${nomOuInconnu(t.destination)}`}
         badge={
           enFile ? (
             <Badge tone="warning">En attente d&apos;envoi</Badge>

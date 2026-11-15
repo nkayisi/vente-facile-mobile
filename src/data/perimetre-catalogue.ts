@@ -35,26 +35,25 @@
  * fonction serveur dont ce module est le miroir.
  */
 import { and, eq, exists, inArray, or, sql } from "drizzle-orm";
+import { litTousLesEntrepots, type MembrePerimetre } from "@vente-facile/core";
 
 import { products, stocks } from "@/db/schema";
-
-/** Le rôle tel que l'instantané de session le porte. */
-export type RoleCatalogue = "owner" | "manager" | "stock_keeper" | "cashier";
 
 /**
  * Les entrepôts qui bornent le catalogue, ou `null` pour « aucune restriction ».
  *
- * Miroir strict d'`accessible_warehouse_ids` : `null` est le PROPRIÉTAIRE, dont
- * l'accès vient de son rôle et non d'une affectation, et `[]` est un rôle borné
- * sans aucun dépôt - deux situations OPPOSÉES que les écrire pareil
- * confondrait, en ouvrant tout au second.
+ * Miroir de `filter_product_queryset` en LECTURE : `null` est le propriétaire,
+ * ET le membre à qui la case « Consulter tous les entrepôts » a été cochée -
+ * il lit tout, partout, le catalogue compris. `[]` est un membre borné sans
+ * aucun dépôt. Deux situations OPPOSÉES, que les écrire pareil confondrait en
+ * ouvrant tout au second.
+ *
+ * Les entrepôts DÉSACTIVÉS comptent : c'est une lecture, et un article qu'on
+ * n'a stocké que là reste consultable.
  */
-export function entrepotsDuCatalogue(
-  role: RoleCatalogue | null,
-  assignes: { id: string }[]
-): string[] | null {
-  if (role === "owner") return null;
-  return assignes.map((a) => a.id);
+export function entrepotsDuCatalogue(membre: MembrePerimetre): string[] | null {
+  if (litTousLesEntrepots(membre)) return null;
+  return membre.affectes.map((a) => a.id);
 }
 
 /**

@@ -11,6 +11,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import ts from "typescript";
 import { join, relative, resolve } from "node:path";
 
+import { LIBELLES_VERROU_PERIMETRE } from "@vente-facile/core";
+
 import { tablesTirees } from "@/db/tables";
 import { PALETTES } from "./tokens";
 
@@ -2164,7 +2166,7 @@ describe("le périmètre appliqué est la seule borne", () => {
     // égard au rôle : le tirage ne borne pas `warehouses`. S'en servir pour
     // peupler un filtre proposerait à un magasinier des dépôts que le serveur
     // lui refusera ensuite. Les écrans de SAISIE, eux, ont leur propre règle
-    // (`entrepotsAccessibles` via `features/caisse/perimetre`).
+    // (les entrepôts ACTIONNABLES de `useEntrepotsDuMembre`, voir plus bas).
     const fautifs: string[] = [];
     for (const f of fichiers(RACINE)) {
       const code = sansCommentaires(readFileSync(f, "utf8"));
@@ -2173,6 +2175,68 @@ describe("le périmètre appliqué est la seule borne", () => {
       if (/\bentrepots\b\s*,\s*\{\s*tables/.test(code)) {
         fautifs.push(relative(RACINE, f));
       }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE SAISIE NE PROPOSE QUE LES ENTREPÔTS OÙ L'ON PEUT AGIR.              │
+ * │                                                                          │
+ * │ Sept feuilles de saisie proposaient `entrepotParDefaut(entrepots)` sur   │
+ * │ TOUS les dépôts descendus : un gérant qui « consulte tous » se voyait    │
+ * │ proposer celui d'un collègue, saisissait, et l'opération revenait        │
+ * │ `consultation_seule`, en quarantaine, le lendemain. Un entrepôt          │
+ * │ désactivé y restait proposé lui aussi.                                   │
+ * │                                                                          │
+ * │ La liste se lit à UN endroit (`useEntrepotsDuMembre`), qui la croise     │
+ * │ avec la règle du noyau. Le défaut d'un écran se prend dans les           │
+ * │ ACTIONNABLES, jamais dans la table.                                      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("une saisie ne propose que les entrepôts actionnables", () => {
+  //: Les seuls fichiers qui ont le droit de lire la table brute ou d'en tirer
+  //: un défaut. Exceptions NOMMÉES : la définition, le hook, et la règle des
+  //: dépenses, qui reçoit déjà les actionnables.
+  const LIT_LA_TABLE = new Set([
+    "data/stock.ts",
+    "features/perimetre/use-entrepots.ts",
+  ]);
+  const TIRE_UN_DEFAUT = new Set([
+    "data/entrepot-defaut.ts",
+    "features/perimetre/use-entrepots.ts",
+    "features/caisse/perimetre.ts",
+  ]);
+  const sources = fichiers(RACINE);
+
+  it("le balayage MORD : il voit les feuilles de saisie", () => {
+    const saisies = sources.filter((f) =>
+      /\buseEntrepotsDuMembre\s*\(/.test(sansCommentaires(readFileSync(f, "utf8")))
+    );
+    //: Mouvement, appro de masse, ajustement, transfert, réquisition,
+    //: inventaire, dépense, devis : au moins six.
+    expect(saisies.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("aucun écran ne lit la table des entrepôts pour une saisie", () => {
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const nom = relative(RACINE, f);
+      if (LIT_LA_TABLE.has(nom)) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/\bentrepotsSansValorisation\b/.test(code)) fautifs.push(nom);
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("aucun écran ne tire un entrepôt par défaut de sa propre liste", () => {
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const nom = relative(RACINE, f);
+      if (TIRE_UN_DEFAUT.has(nom)) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/\bentrepotParDefaut\s*\(/.test(code)) fautifs.push(nom);
     }
     expect(fautifs).toEqual([]);
   });
@@ -2191,11 +2255,11 @@ describe("la règle de périmètre n'a qu'une seule écriture", () => {
    * lanceur de tests : de son côté, seul `tsc` retient la divergence, et il ne
    * voit pas une chaîne recopiée.
    */
-  const LIBELLES_COMMUNS = [
-    "Vous ne voyez que vos propres données.",
-    "Vous n'avez accès qu'à un seul entrepôt.",
-    "Aucun entrepôt ne vous est assigné. Demandez-en un au gérant.",
-  ];
+  //: ⚠ LUS DANS LE PAQUET, JAMAIS RECOPIÉS ICI. Une liste tenue à la main dans
+  //: ce test a déjà dérivé : elle cherchait « Demandez-en un au gérant » quand
+  //: le noyau dit « au propriétaire » depuis v0.9.0, et un balayage qui cherche
+  //: une phrase que personne n'écrit plus passe au vert sur toute recopie.
+  const LIBELLES_COMMUNS = Object.values(LIBELLES_VERROU_PERIMETRE);
 
   const MODULE = "features/perimetre/filtre-perimetre.ts";
   const sources = fichiers(RACINE);
@@ -2203,6 +2267,9 @@ describe("la règle de périmètre n'a qu'une seule écriture", () => {
   it("le balayage MORD : il voit le module de périmètre", () => {
     expect(sources.length).toBeGreaterThan(300);
     expect(sources.some((f) => f.endsWith(MODULE))).toBe(true);
+    // Les quatre motifs du noyau, dont `entrepot-inactif` : un paquet qui
+    // n'en rendrait plus aucun ferait passer le balayage sur une liste vide.
+    expect(LIBELLES_COMMUNS.length).toBeGreaterThanOrEqual(4);
   });
 
   it("aucun libellé de verrou commun n'est recopié dans l'application", () => {

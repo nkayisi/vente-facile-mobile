@@ -169,12 +169,11 @@ describe("l'avertissement de disponible", () => {
     );
   });
 
-  it("se tait quand le dépôt tolère les soldes négatifs", () => {
-    // Le serveur n'oppose alors RIEN à l'expédition. Avertir d'un refus qui
-    // n'aura pas lieu apprend à ne plus lire l'écran.
-    expect(
-      alerteDisponible(saisie({ contenants: 99 }), dispo, { negatifAutorise: true })
-    ).toBeNull();
+  it("avertit TOUJOURS au-delà du disponible : le stock négatif n'existe plus", () => {
+    // Le dépôt « tolérant » faisait taire l'avertissement. Il n'y en a plus :
+    // le serveur refuse l'expédition (`stock_insuffisant`), et l'écran doit
+    // le dire avant.
+    expect(alerteDisponible(saisie({ contenants: 99 }), dispo)).not.toBeNull();
   });
 
   it("se tait sans ligne de stock : `null` n'est pas zéro", () => {

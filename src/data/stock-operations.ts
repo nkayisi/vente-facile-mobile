@@ -82,9 +82,36 @@ export const TYPE_AJUSTEMENT: Record<string, string> = {
 
 // ------------------------------------------------------------------ transferts
 
+/**
+ * Les noms d'entrepôt que ce terminal connaît : la table locale, PUIS
+ * l'annuaire de la session, qui la corrige et la complète.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN TRANSFERT RELIE MON DÉPÔT À UN AUTRE, QUE LA BASE LOCALE NE PORTE    │
+ * │ PAS.                                                                     │
+ * │                                                                          │
+ * │ La table `warehouses` est bornée au périmètre de lecture : un            │
+ * │ magasinier de Boutique Nord ne détient que la sienne. Les transferts     │
+ * │ qu'on lui expédie s'affichaient donc « ? → Boutique Nord », et il ne     │
+ * │ savait pas d'où venait ce qu'il réceptionnait. L'annuaire, lui, nomme    │
+ * │ tous les entrepôts de l'établissement, sans adresse ni stock.            │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export type AnnuaireEntrepots = readonly { id: string; name: string }[] | null | undefined;
+
+async function nomsDesEntrepots(annuaire: AnnuaireEntrepots): Promise<Map<string, string>> {
+  const noms = new Map(
+    (await db.select({ id: warehouses.id, name: warehouses.name }).from(warehouses))
+      .map((w) => [w.id, w.name] as const)
+  );
+  for (const a of annuaire ?? []) if (a.name) noms.set(a.id, a.name);
+  return noms;
+}
+
 export interface TransfertResume {
   id: string;
   reference: string;
+  /** `null` : entrepôt que ce terminal ne sait pas nommer (`nomOuInconnu`). */
   source: string | null;
   destination: string | null;
   statut: string;
@@ -105,13 +132,12 @@ export async function listeTransferts(
      */
     entrepot?: string | null;
     limite?: number;
+    /** L'annuaire de la session, pour nommer les dépôts hors de mon périmètre. */
+    annuaire?: AnnuaireEntrepots;
   } = {}
 ): Promise<{ elements: TransfertResume[]; total: number }> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
-  const source = warehouses;
-  const destination = { ...warehouses };
-
   const conditions = [
     f.statut ? eq(stockTransfers.status, f.statut) : undefined,
     f.entrepot
@@ -141,10 +167,7 @@ export async function listeTransferts(
   // Un transfert relie DEUX entrepôts : deux jointures sur la même table se
   // font mal en Drizzle sans alias, et une requête par ligne serait un N+1.
   // On charge les entrepôts une fois, ils sont peu nombreux par construction.
-  const noms = new Map(
-    (await db.select({ id: warehouses.id, name: warehouses.name }).from(warehouses))
-      .map((w) => [w.id, w.name] as const)
-  );
+  const noms = await nomsDesEntrepots(f.annuaire);
   const compte = new Map<string, number>();
   for (const r of await db
     .select({ id: stockTransferItems.transferId })
@@ -193,6 +216,12 @@ export interface DetailTransfert {
   statut: string;
   source: string | null;
   destination: string | null;
+  /**
+   * Les IDENTIFIANTS des deux côtés : c'est d'eux, et pas des noms, que dépend
+   * qui peut faire quoi (expédier côté source, réceptionner côté destination).
+   */
+  sourceId: string;
+  destinationId: string;
   notes: string;
   demandeLe: Date | null;
   expedieLe: Date | null;
@@ -200,7 +229,10 @@ export interface DetailTransfert {
   lignes: LigneTransfert[];
 }
 
-export async function detailTransfert(id: string): Promise<DetailTransfert | null> {
+export async function detailTransfert(
+  id: string,
+  annuaire?: AnnuaireEntrepots
+): Promise<DetailTransfert | null> {
   const [t] = await db
     .select()
     .from(stockTransfers)
@@ -208,10 +240,7 @@ export async function detailTransfert(id: string): Promise<DetailTransfert | nul
     .limit(1);
   if (!t) return null;
 
-  const noms = new Map(
-    (await db.select({ id: warehouses.id, name: warehouses.name }).from(warehouses))
-      .map((w) => [w.id, w.name] as const)
-  );
+  const noms = await nomsDesEntrepots(annuaire);
 
   const lignes = await db
     .select({
@@ -241,6 +270,8 @@ export async function detailTransfert(id: string): Promise<DetailTransfert | nul
     statut: t.status,
     source: noms.get(t.sourceWarehouseId) ?? null,
     destination: noms.get(t.destinationWarehouseId) ?? null,
+    sourceId: t.sourceWarehouseId,
+    destinationId: t.destinationWarehouseId,
     notes: t.notes ?? "",
     demandeLe: t.requestedAt ?? null,
     expedieLe: t.shippedAt ?? null,

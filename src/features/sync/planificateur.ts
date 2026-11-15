@@ -35,8 +35,55 @@ export type Declencheur =
  * (`pushOnce` appelle `refreshTables`), donc ce qui vient de changer redescend
  * sans que les trente-huit tables soient sondées.
  * `complet` : poussée, photos, tirage, rafraîchissement des droits.
+ * `sonde` : UNE requête, qui ne tire rien et ne montre rien - elle demande au
+ * serveur l'empreinte du périmètre, pour savoir si les droits ont bougé.
  */
-export type Portee = "envoi" | "complet";
+export type Portee = "sonde" | "envoi" | "complet";
+
+/**
+ * De la plus étroite à la plus large : deux départs différés qui se croisent
+ * retiennent la plus LARGE, qui fait tout ce que fait l'autre.
+ */
+export const RANG_DE_PORTEE: Record<Portee, number> = { sonde: 0, envoi: 1, complet: 2 };
+
+/**
+ * Le serveur annonce-t-il un périmètre que ce terminal n'a pas encore pris en
+ * compte ?
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN PÉRIMÈTRE QUI BOUGE N'ATTEND PAS LE PLANCHER DE CINQ MINUTES.        │
+ * │                                                                          │
+ * │ Un entrepôt affecté, une case « Consulter tous » cochée, un dépôt        │
+ * │ désactivé : les lignes qui deviennent éligibles sont DERRIÈRE le         │
+ * │ curseur de chaque table, et la sonde `pull/changed/` répond « rien de    │
+ * │ neuf ». Le terminal restait donc sur ses droits d'hier tant que          │
+ * │ l'application était ouverte. Le serveur rend désormais l'empreinte du    │
+ * │ périmètre après chaque poussée et chaque sonde : une valeur que le       │
+ * │ dernier réveil ne porte pas force un cycle complet, qui relit les droits │
+ * │ et retire les tables dont le jeton a changé.                             │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * @param connue   L'empreinte du dernier réveil (`membership.perimetre_version`).
+ * @param recue    Celle que le serveur vient de rendre.
+ * @param traitee  La dernière qu'un cycle complet a DÉJÀ prise en compte.
+ *
+ * ⚠ `traitee` EST CE QUI EMPÊCHE LA BOUCLE. Si la relecture des droits échoue
+ * (appareil révoqué, serveur qui ne répond qu'à moitié), `connue` reste
+ * l'ancienne : sans elle, chaque vente relancerait un tirage complet, pour
+ * toujours. Une même empreinte ne force qu'un seul cycle.
+ *
+ * ⚠ Une empreinte ABSENTE n'est pas un changement : un serveur antérieur ne
+ * l'envoie pas, et la lire comme « tout a changé » ferait tout re-tirer à
+ * chaque poussée.
+ */
+export function perimetreAChangeSurLeServeur(
+  connue: string | null | undefined,
+  recue: string | null | undefined,
+  traitee: string | null
+): boolean {
+  if (!recue) return false;
+  return recue !== (connue ?? null) && recue !== traitee;
+}
 
 /**
  * Le premier écran doit peindre avant que le réseau ne soit sollicité, et les
@@ -93,6 +140,11 @@ export interface EntreePlanificateur {
   maintenant: Date;
   /** Tirage au sort dans [0, 1], INJECTÉ : un module pur ne tire pas au hasard. */
   alea: number;
+  /**
+   * Le serveur a annoncé un périmètre que le terminal n'a pas encore relu
+   * (`perimetreAChangeSurLeServeur`). Facultatif : absent vaut faux.
+   */
+  perimetreChange?: boolean;
 }
 
 export interface Decision {
@@ -176,6 +228,19 @@ export function decider(e: EntreePlanificateur): Decision {
   // └──────────────────────────────────────────────────────────────────────┘
   if (e.declencheur !== "manuel" && !e.enLigne) return rien("hors ligne");
 
+  // Les droits ont bougé : quel que soit le déclencheur, on relit tout, tout de
+  // suite - un membre qui vient de recevoir un entrepôt doit le voir, et un
+  // membre qui vient d'en perdre un ne doit plus y lire.
+  if (e.perimetreChange) {
+    return {
+      lancer: true,
+      portee: "complet",
+      delaiMs: 0,
+      motif: "le périmètre a changé sur le serveur",
+      reveilDans,
+    };
+  }
+
   switch (e.declencheur) {
     case "manuel":
       return {
@@ -215,6 +280,8 @@ export function decider(e: EntreePlanificateur): Decision {
         };
       }
       if (e.nbPret > 0) {
+        // L'enveloppe de la poussée porte l'empreinte du périmètre : l'envoi
+        // fait donc aussi office de sonde.
         return {
           lancer: true,
           portee: "envoi",
@@ -223,7 +290,17 @@ export function decider(e: EntreePlanificateur): Decision {
           reveilDans,
         };
       }
-      return rien("retour au premier plan, rien à faire");
+      // ⚠ RIEN À ENVOYER N'EST PAS « RIEN À FAIRE ». Sous le plancher, aucun
+      // tirage ne part ; sans cette sonde, un entrepôt affecté pendant que
+      // l'application reste ouverte n'apparaîtrait qu'au prochain cycle
+      // complet - jamais, si personne ne la ferme. Une requête, sans écran.
+      return {
+        lancer: true,
+        portee: "sonde",
+        delaiMs: 0,
+        motif: "retour au premier plan, sonde du périmètre",
+        reveilDans,
+      };
     }
 
     case "journal":

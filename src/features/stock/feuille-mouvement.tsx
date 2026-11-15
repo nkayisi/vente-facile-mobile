@@ -50,10 +50,9 @@ import {
 } from "@/data/articles";
 import { jourISO } from "@/data/dates";
 import { useMonnaie } from "@/data/devises";
-import { entrepotParDefaut } from "@/data/entrepot-defaut";
 import { useLecture } from "@/data/live";
 import { lireNombre, type LectureNombre } from "@/data/nombres";
-import { emplacementsDeLEntrepot, entrepotsSansValorisation } from "@/data/stock";
+import { emplacementsDeLEntrepot } from "@/data/stock";
 import {
   TYPE_MOUVEMENT_STOCK,
   estEntreeValorisee,
@@ -69,6 +68,7 @@ import {
   type SaisieFormulaireMouvement,
 } from "@/features/stock/payload-mouvement";
 import { useSession } from "@/session/provider";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import {
   Banner, Button, ChampDate, DataRow, DeclencheurSelect, FormField, Input,
   ListeChoix, SearchInput, Sheet, Switch, Text, useToast,
@@ -167,7 +167,10 @@ export function FeuilleNouveauMouvement({
   const [panneauArticle, setPanneauArticle] = useState(false);
   const [recherche, setRecherche] = useState("");
 
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
+  // Une saisie est une ACTION : seuls les entrepôts où le membre agit, actifs,
+  // sont proposés - jamais toute la table locale, qui porte aussi les dépôts
+  // seulement LISIBLES (case « Consulter tous ») et les dépôts désactivés.
+  const { actionnables: depots, parDefaut } = useEntrepotsDuMembre();
 
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐
@@ -179,7 +182,7 @@ export function FeuilleNouveauMouvement({
    * │ là, et un choix explicite l'emporte.                                  │
    * └──────────────────────────────────────────────────────────────────────┘
    */
-  const entrepot = entrepotChoisi ?? entrepotParDefaut(depots);
+  const entrepot = entrepotChoisi ?? parDefaut;
 
   const chargerArticles = useCallback(
     () =>

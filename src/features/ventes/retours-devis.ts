@@ -78,6 +78,12 @@ export interface LigneDevisSaisie {
 
 export async function creerDevis(saisie: {
   client?: string | null;
+  /**
+   * L'entrepôt du devis (`Quotation.warehouse`). Absent : le serveur retient
+   * celui qui s'impose au membre. Le nommer range le devis dans le bon
+   * périmètre - un gérant ne lit que les devis de ses entrepôts.
+   */
+  entrepot?: string | null;
   valideJusquau: string;
   lignes: LigneDevisSaisie[];
   notes?: string;
@@ -90,6 +96,7 @@ export async function creerDevis(saisie: {
   await enqueue(id, "quotation.create", {
     id,
     ...(saisie.client ? { customer: saisie.client } : {}),
+    ...(saisie.entrepot ? { warehouse: saisie.entrepot } : {}),
     // `valid_until` est OBLIGATOIRE : un devis sans date de validité n'expire
     // jamais, et le serveur refuse d'en créer.
     valid_until: saisie.valideJusquau,

@@ -26,7 +26,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
-import type { MoneyHelpers } from "@vente-facile/core";
+import { formatDateTimeFr, type MoneyHelpers } from "@vente-facile/core";
 
 import { parcDeCaisses, type CaisseParc } from "@/data/caisses";
 import { devisePrincipale } from "@/data/devise-principale";
@@ -37,6 +37,7 @@ import { ETAT_SESSION, motifClotureFermee } from "@/features/caisse/apparence";
 import { ChampsFonds } from "@/features/caisse/champs-fonds";
 import { devisesDuFonds, lireFonds } from "@/features/caisse/fond";
 import { ouvrirSession, sessionOuverte } from "@/features/pos/caisse";
+import { refusDOuverture } from "@/features/pos/session-vendeur";
 import { libelleEnvoi } from "@/data/envoi";
 import { useSession } from "@/session/provider";
 import {
@@ -99,16 +100,18 @@ export default function Caisses() {
   const parc = useMemo(() => donnees?.caisses ?? [], [donnees]);
   const ouvertes = donnees?.nbSessionsOuvertes ?? 0;
 
-  const dejaOuverte =
-    sessionDuComptoir && sessionDuComptoir.registerId !== aOuvrir?.id
-      ? sessionDuComptoir
-      : null;
+  // ⚠ `sessionOuverte` ne rend plus que la session du VENDEUR : on ne vend que
+  // dans la sienne. Une autre session à lui, ailleurs, interdit d'en ouvrir une
+  // seconde - le serveur la refuserait (`session_personnelle_ouverte`).
+  const refus = aOuvrir
+    ? refusDOuverture(sessionDuComptoir ?? null, aOuvrir.id, formatDateTimeFr)
+    : null;
 
   const ouvrir = async () => {
     // Verrou SYNCHRONE avant tout `setState` : deux appuis rapprochés
     // ouvriraient deux sessions sur le même comptoir, dont l'une serait
     // refusée avec toutes les ventes qui s'y rattachent.
-    if (verrou.current || !aOuvrir) return;
+    if (verrou.current || !aOuvrir || refus) return;
 
     // La saisie est lue AVANT le verrou : un refus de forme n'est pas un envoi,
     // il ne doit ni bloquer le bouton ni afficher un chargement.
@@ -223,16 +226,9 @@ export default function Caisses() {
           dit d&apos;où sort le stock et où entre l&apos;argent.
         </Text>
 
-        {dejaOuverte ? (
+        {refus ? (
           <View className="mt-3">
-            <Banner
-              tone="warning"
-              title={`Une session est déjà ouverte sur ${dejaOuverte.registerName}`}
-              // On ne promet PAS lequel des deux comptoirs le point de vente
-              // retiendra : cela dépend de l'état d'envoi de chacun, et une
-              // règle annoncée de travers est pire que la prudence.
-              message="Le comptoir n'en sert qu'une à la fois : ouvrir ici ne bascule pas forcément la vente sur cette caisse. Clôturez l'autre d'abord si vous changez de comptoir."
-            />
+            <Banner tone="warning" title="Vous tenez déjà une caisse" message={refus} />
           </View>
         ) : null}
 
@@ -257,7 +253,13 @@ export default function Caisses() {
           />
         </View>
 
-        <Button fullWidth size="lg" loading={enCours} onPress={() => void ouvrir()}>
+        <Button
+          fullWidth
+          size="lg"
+          loading={enCours}
+          disabled={refus !== null}
+          onPress={() => void ouvrir()}
+        >
           Ouvrir la session
         </Button>
       </Sheet>

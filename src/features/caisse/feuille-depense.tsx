@@ -51,16 +51,16 @@ import { jourISO } from "@/data/dates";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
-import { entrepotsSansValorisation } from "@/data/stock";
 import { creerDepense } from "@/features/caisse/actes";
 import { FeuilleCategorieCaisse } from "@/features/caisse/feuille-categorie";
 import { montrerConversion } from "@/features/caisse/montant-devise";
 import {
   depenseSeraitInvisible,
   entrepotDeLaDepense,
-  entrepotsAccessibles,
   saisieSansIssue,
 } from "@/features/caisse/perimetre";
+import { libelleDuVerrou } from "@/features/perimetre/filtre-perimetre";
+import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import { moyensDePaiement } from "@/features/pos/donnees";
 import { chromeDeLaSession } from "@/features/pos/ticket";
 import { enregistrerEtImprimer } from "@/printing/jobs";
@@ -91,14 +91,9 @@ export function FeuilleNouvelleDepense({
   const { snapshot } = useSession();
   const devises = snapshot?.currencies ?? [];
   const principale = money.primaryCode;
-  const role = snapshot?.membership.role ?? null;
-  // Mémoïsé : un `?? []` fabrique un tableau NEUF à chaque rendu, et le
-  // `useMemo` du périmètre se recalculerait donc toujours - la famille de
-  // défaut qui a fait tourner l'écran d'encaissement en boucle.
-  const assignes = useMemo(
-    () => snapshot?.membership.assigned_warehouses ?? [],
-    [snapshot?.membership.assigned_warehouses]
-  );
+  // Le membre et ses entrepôts viennent d'UN seul endroit : les saisies n'y
+  // prennent que les ACTIONNABLES, jamais toute la table locale.
+  const { membre, tous, actionnables, verrouAction } = useEntrepotsDuMembre();
 
   const [panneau, setPanneau] = useState<Panneau>("depense");
   const [categorieChoisie, setCategorie] = useState<string | null>(null);
@@ -130,25 +125,17 @@ export function FeuilleNouvelleDepense({
   const { donnees: moyens } = useLecture(moyensDePaiement, {
     tables: ["payment_methods"],
   });
-  const { donnees: depots } = useLecture(entrepotsSansValorisation, { tables: ["warehouses"] });
-
-  const accessibles = useMemo(
-    () => entrepotsAccessibles(role, assignes, depots ?? []),
-    [role, assignes, depots]
-  );
-  const sansIssue = saisieSansIssue(role, assignes, depots ?? []);
+  const sansIssue = saisieSansIssue(membre, tous);
 
   // Une catégorie unique n'est pas un choix : elle se propose d'elle-même.
   const categorie =
     categorieChoisie ?? (categories?.length === 1 ? categories[0].id : null);
 
-  // L'entrepôt se propose parmi les ACCESSIBLES, jamais dans toute la table :
-  // un entrepôt hors périmètre est refusé par le serveur, donc mis en
+  // L'entrepôt se propose parmi les ACTIONNABLES, jamais dans toute la table :
+  // un entrepôt hors périmètre d'action est refusé par le serveur, donc mis en
   // quarantaine, à chaque dépense.
   const entrepot =
-    entrepotChoisi === undefined
-      ? entrepotDeLaDepense(role, assignes, depots ?? [])
-      : entrepotChoisi;
+    entrepotChoisi === undefined ? entrepotDeLaDepense(membre, tous) : entrepotChoisi;
 
   const lecture = lireNombre(montant);
   const somme = lecture.ok ? (lecture.valeur ?? 0) : 0;
@@ -167,8 +154,8 @@ export function FeuilleNouvelleDepense({
   }, [montant, devise, principale, devises.length, somme, money]);
 
   const optionsEntrepot: OptionSelect[] = useMemo(
-    () => accessibles.map((d) => ({ valeur: d.id, label: d.nom })),
-    [accessibles]
+    () => actionnables.map((d) => ({ valeur: d.id, label: d.nom })),
+    [actionnables]
   );
   const nomEntrepot =
     optionsEntrepot.find((o) => o.valeur === entrepot)?.label ??
@@ -291,8 +278,16 @@ export function FeuilleNouvelleDepense({
       {sansIssue ? (
         <Banner
           tone="warning"
-          title="Aucun entrepôt ne vous est assigné"
-          message="Une dépense sans entrepôt ne vous serait plus visible après envoi. Demandez une affectation avant de la saisir."
+          // Deux causes, deux remèdes : rien d'affecté, ou seulement des
+          // entrepôts désactivés. Le motif vient du noyau.
+          title={
+            verrouAction === "entrepot-inactif"
+              ? "Votre entrepôt est désactivé"
+              : "Aucun entrepôt ne vous est assigné"
+          }
+          message={`Une dépense sans entrepôt ne vous serait plus visible après envoi. ${libelleDuVerrou(
+            verrouAction ?? "aucun-entrepot"
+          )}`}
         />
       ) : null}
 
@@ -374,7 +369,7 @@ export function FeuilleNouvelleDepense({
         </FormField>
       ) : null}
 
-      {depenseSeraitInvisible(role, entrepot) && !sansIssue ? (
+      {depenseSeraitInvisible(membre, entrepot) && !sansIssue ? (
         <Banner
           tone="warning"
           title="Sans entrepôt, vous ne reverrez pas cette dépense"

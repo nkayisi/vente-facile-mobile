@@ -5,6 +5,7 @@ import {
   GIGUE_RESEAU_MS,
   PLANCHER_COMPLET_MS,
   decider,
+  perimetreAChangeSurLeServeur,
   type Declencheur,
   type EntreePlanificateur,
 } from "./planificateur";
@@ -140,13 +141,16 @@ describe("le planificateur de synchronisation", () => {
       expect(d.portee).toBe("complet");
     });
 
-    it("ne refait PAS un tirage complet sous le plancher", () => {
+    it("ne refait PAS un tirage complet sous le plancher : il SONDE le périmètre", () => {
       // Le verrouillage remonte le groupe (app) toutes les cinq minutes : sans
       // plancher, un caissier qui repose son terminal sonderait trente-huit
-      // tables à chaque reprise.
+      // tables à chaque reprise. Une sonde, elle, coûte une requête - et c'est
+      // elle qui fait voir un entrepôt affecté pendant que l'application
+      // restait ouverte.
       const recent = new Date(MAINTENANT.getTime() - 60_000);
       const d = decider(entree({ declencheur: "premier-plan", derniereComplete: recent, nbPret: 0 }));
-      expect(d.lancer).toBe(false);
+      expect(d.lancer).toBe(true);
+      expect(d.portee).toBe("sonde");
     });
 
     it("se rabat sur l'envoi seul quand il reste quelque chose à pousser", () => {
@@ -154,6 +158,52 @@ describe("le planificateur de synchronisation", () => {
       const d = decider(entree({ declencheur: "premier-plan", derniereComplete: recent, nbPret: 4 }));
       expect(d.lancer).toBe(true);
       expect(d.portee).toBe("envoi");
+    });
+  });
+
+  describe("un périmètre qui change sur le serveur", () => {
+    it("force un cycle COMPLET, même sous le plancher et sans rien à envoyer", () => {
+      const recent = new Date(MAINTENANT.getTime() - 60_000);
+      for (const declencheur of AUTOMATIQUES) {
+        const d = decider(
+          entree({ declencheur, derniereComplete: recent, nbPret: 0, perimetreChange: true })
+        );
+        expect(d.lancer).toBe(true);
+        expect(d.portee).toBe("complet");
+        expect(d.delaiMs).toBe(0);
+      }
+    });
+
+    it("n'outrepasse ni le cycle en cours ni l'absence de réseau", () => {
+      expect(decider(entree({ perimetreChange: true, cycleEnCours: true })).lancer).toBe(false);
+      expect(
+        decider(entree({ declencheur: "journal", perimetreChange: true, enLigne: false })).lancer
+      ).toBe(false);
+    });
+  });
+
+  describe("l'empreinte du périmètre", () => {
+    it("une empreinte différente de celle du dernier réveil est un changement", () => {
+      expect(perimetreAChangeSurLeServeur("v1", "v2", null)).toBe(true);
+    });
+
+    it("la même empreinte n'en est pas un", () => {
+      expect(perimetreAChangeSurLeServeur("v1", "v1", null)).toBe(false);
+    });
+
+    it("une empreinte ABSENTE n'en est pas un : un serveur antérieur ne l'envoie pas", () => {
+      expect(perimetreAChangeSurLeServeur("v1", undefined, null)).toBe(false);
+      expect(perimetreAChangeSurLeServeur("v1", "", null)).toBe(false);
+    });
+
+    it("un instantané antérieur, sans empreinte, apprend la sienne une fois", () => {
+      expect(perimetreAChangeSurLeServeur(undefined, "v1", null)).toBe(true);
+    });
+
+    it("une empreinte déjà TRAITÉE ne relance rien, même si la relecture a échoué", () => {
+      // Sans cette mémoire, chaque vente relancerait un tirage complet tant
+      // que la session ne se relit pas.
+      expect(perimetreAChangeSurLeServeur("v1", "v2", "v2")).toBe(false);
     });
   });
 
