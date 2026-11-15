@@ -122,6 +122,13 @@ const CHAMPS = {
    * │ un morceau du stock. On somme, par article, comme le back-office     │
    * │ (`total_stock` de la liste des produits, `?warehouse=`).             │
    * │                                                                      │
+   * │ ⚠ SEULEMENT LES RAYONS SANS VARIANTE. C'est la règle du pré-contrôle │
+   * │ de `SaleCreateSerializer` : une ligne de vente sans variante (tous   │
+   * │ les paniers d'aujourd'hui) se compare aux seules lignes de stock     │
+   * │ `variant_id IS NULL` de l'entrepôt, tous emplacements confondus.     │
+   * │ Sommer les variantes accepterait ici ce que le serveur refuse, après │
+   * │ l'impression du ticket.                                              │
+   * │                                                                      │
    * │ `sum()` rend NULL quand aucune ligne ne joint : c'est ce qui garde   │
    * │ « aucun stock ici » distinct d'un zéro enregistré.                   │
    * └──────────────────────────────────────────────────────────────────────┘
@@ -393,7 +400,11 @@ function base(warehouseId?: string | null) {
     .leftJoin(
       stocks,
       warehouseId
-        ? and(eq(stocks.productId, products.id), eq(stocks.warehouseId, warehouseId))
+        ? and(
+            eq(stocks.productId, products.id),
+            eq(stocks.warehouseId, warehouseId),
+            isNull(stocks.variantId)
+          )
         : // Sans entrepôt on ne joint RIEN plutôt que le premier venu : afficher
           // le stock d'un autre dépôt serait pire qu'afficher « inconnu ».
           sql`1 = 0`
@@ -427,6 +438,8 @@ async function disponibiliteAilleurs(
     .where(
       and(
         inArray(stocks.productId, ids),
+        // Le même disponible que celui de la caisse : sans variante.
+        isNull(stocks.variantId),
         sauf ? ne(stocks.warehouseId, sauf) : undefined,
         // Un entrepôt désactivé ne vend plus : y envoyer le client serait
         // une fausse piste.

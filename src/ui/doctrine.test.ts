@@ -2270,6 +2270,20 @@ describe("le comptoir suit la règle du noyau", () => {
       .toBeGreaterThan(15);
   });
 
+  it("le disponible du comptoir ne compte que les rayons SANS variante", () => {
+    // Règle du pré-contrôle de `SaleCreateSerializer` : une ligne sans variante
+    // se compare aux seules lignes de stock `variant_id IS NULL`. Chaque lecture
+    // de `stocks` du catalogue (la caisse, puis « ailleurs ») doit la poser,
+    // sinon le comptoir accepte ce que le serveur refuse, après impression.
+    const code = sansCommentaires(
+      readFileSync(join(RACINE, "features/pos/catalogue.ts"), "utf8")
+    );
+    const lectures = (code.match(/stocks\.warehouseId/g) ?? []).length;
+    const bornes = (code.match(/isNull\(stocks\.variantId\)/g) ?? []).length;
+    expect(lectures).toBeGreaterThanOrEqual(2);
+    expect(bornes).toBeGreaterThanOrEqual(2);
+  });
+
   it("aucun écran ne relit le découvert autorisé", () => {
     const fautifs: string[] = [];
     for (const f of sources) {
