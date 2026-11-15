@@ -64,6 +64,7 @@ import { ApiError } from "@/api/errors";
 import { useSession } from "@/session/provider";
 import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
 import {
+  afficheFiltresDePerimetre,
   nombreDeFiltresPerimetre,
   PERIMETRE_VIDE,
   resumeDuPerimetre,
@@ -372,10 +373,12 @@ export default function Rapports() {
                 ))}
               </ChipRow>
             </View>
-            <BoutonFiltres
-              actifs={nombreDeFiltresPerimetre(perimetre)}
-              onPress={() => setFeuillePerimetre(true)}
-            />
+            {afficheFiltresDePerimetre(perimetre) ? (
+              <BoutonFiltres
+                actifs={nombreDeFiltresPerimetre(perimetre)}
+                onPress={() => setFeuillePerimetre(true)}
+              />
+            ) : null}
           </View>
 
           {resumeDuPerimetre(perimetre).length > 0 ? (

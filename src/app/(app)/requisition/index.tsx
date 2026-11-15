@@ -30,6 +30,7 @@ import {
 } from "@/data/requisitions";
 import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
 import {
+  afficheFiltresDePerimetre,
   nombreDeFiltresPerimetre,
   PERIMETRE_VIDE,
   resumeDuPerimetre,
@@ -122,10 +123,12 @@ export default function Requisitions() {
             placeholder="Rechercher une référence..."
           />
         </View>
-        <BoutonFiltres
-          actifs={nombreDeFiltresPerimetre(perimetre)}
-          onPress={() => setFeuillePerimetre(true)}
-        />
+        {afficheFiltresDePerimetre(perimetre) ? (
+          <BoutonFiltres
+            actifs={nombreDeFiltresPerimetre(perimetre)}
+            onPress={() => setFeuillePerimetre(true)}
+          />
+        ) : null}
       </View>
 
       {resumeDuPerimetre(perimetre).length > 0 ? (

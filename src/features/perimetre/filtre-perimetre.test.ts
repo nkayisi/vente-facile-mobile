@@ -1,4 +1,5 @@
 import {
+  afficheFiltresDePerimetre,
   contexteFileDe,
   entrepotInconnuAdmis,
   libelleDuVerrou,
@@ -353,5 +354,54 @@ describe("entrepotInconnuAdmis", () => {
       moi: "u-ger",
       entrepotInconnuAdmis: true,
     });
+  });
+});
+
+describe("ce que l'écran affiche (décision du 2026-11-15)", () => {
+  const champs = (o: ReturnType<typeof offre>) => ({
+    entrepot: o.champEntrepot,
+    utilisateur: o.champUtilisateur,
+    bouton: afficheFiltresDePerimetre(o),
+  });
+
+  it("le propriétaire a les deux champs", () => {
+    expect(champs(offre())).toEqual({ entrepot: true, utilisateur: true, bouton: true });
+  });
+
+  it("un caissier sans aucune case n'a AUCUN filtre de périmètre", () => {
+    const o = offre({ membre: m("cashier", [A]), moi: "u-cai" });
+    expect(champs(o)).toEqual({ entrepot: false, utilisateur: false, bouton: false });
+    // ⚠ Masquer n'est pas lever : il reste borné à ses propres lignes.
+    expect(o.applique.utilisateur).toBe("u-cai");
+  });
+
+  it("« Voir tout dans son entrepôt » ouvre l'utilisateur, jamais l'entrepôt", () => {
+    const o = offre({ membre: m("cashier", [A], { voitCollegues: true }), moi: "u-cai" });
+    expect(champs(o)).toEqual({ entrepot: false, utilisateur: true, bouton: true });
+  });
+
+  it("« Consulter tous les entrepôts » ouvre les deux", () => {
+    const o = offre({ membre: m("cashier", [A], { consulteTout: true }), moi: "u-cai" });
+    expect(champs(o)).toEqual({ entrepot: true, utilisateur: true, bouton: true });
+  });
+
+  it("un gérant de deux dépôts sans case n'a pas le champ entrepôt, ni de choix fantôme", () => {
+    // Un choix resté dans l'état de l'écran deviendrait un filtre INVISIBLE,
+    // que le gérant n'aurait aucun moyen de retirer.
+    const o = offre({
+      membre: m("manager", [A, B]),
+      moi: "u-ger",
+      choix: { entrepot: B, utilisateur: null },
+    });
+    expect(champs(o)).toEqual({ entrepot: false, utilisateur: true, bouton: true });
+    expect(o.applique.entrepot).toBeNull();
+    expect(resumeDuPerimetre(o)).toEqual([]);
+  });
+
+  it("une donnée sans auteur ne propose jamais le champ utilisateur", () => {
+    const o = offre({ avecAuteur: false });
+    expect(champs(o)).toEqual({ entrepot: true, utilisateur: false, bouton: true });
+    const caissier = offre({ membre: m("cashier", [A], { voitCollegues: true }), avecAuteur: false });
+    expect(afficheFiltresDePerimetre(caissier)).toBe(false);
   });
 });

@@ -51,6 +51,7 @@ import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
 import {
+  afficheFiltresDePerimetre,
   nombreDeFiltresPerimetre,
   PERIMETRE_VIDE,
   resumeDuPerimetre,
@@ -442,10 +443,12 @@ export default function TableauDeBord() {
             écran, et les séparer ferait chercher l'un après avoir trouvé
             l'autre. La pastille ne compte que ce qui est CHOISI : un caissier
             porte deux contraintes qu'il n'a pas posées. */}
-        <BoutonFiltres
-          actifs={nombreDeFiltresPerimetre(perimetre)}
-          onPress={() => setFeuillePerimetre(true)}
-        />
+        {afficheFiltresDePerimetre(perimetre) ? (
+          <BoutonFiltres
+            actifs={nombreDeFiltresPerimetre(perimetre)}
+            onPress={() => setFeuillePerimetre(true)}
+          />
+        ) : null}
       </View>
 
       {puces.length > 0 ? (

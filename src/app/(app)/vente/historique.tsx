@@ -56,6 +56,7 @@ import { useSession } from "@/session/provider";
 import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
 import {
   entrepotInconnuAdmis,
+  afficheFiltresDePerimetre,
   nombreDeFiltresPerimetre,
   parametresDePerimetre,
   PERIMETRE_VIDE,
@@ -332,10 +333,12 @@ export default function Historique() {
             onChange={changerPeriode}
           />
         </View>
-        <BoutonFiltres
-          actifs={nombreDeFiltresPerimetre(perimetre)}
-          onPress={() => setFeuillePerimetre(true)}
-        />
+        {afficheFiltresDePerimetre(perimetre) ? (
+          <BoutonFiltres
+            actifs={nombreDeFiltresPerimetre(perimetre)}
+            onPress={() => setFeuillePerimetre(true)}
+          />
+        ) : null}
       </View>
 
       {resumeDuPerimetre(perimetre).length > 0 ? (

@@ -27,6 +27,8 @@
  */
 import {
   LIBELLES_VERROU_PERIMETRE,
+  afficheFiltreEntrepot,
+  afficheFiltreUtilisateur,
   estBorneParAuteur,
   litTousLesEntrepots,
   verrouEntrepot,
@@ -80,6 +82,12 @@ export interface OptionPerimetre {
 export interface OffrePerimetre {
   entrepots: OptionPerimetre[];
   utilisateurs: OptionPerimetre[];
+  /**
+   * Le champ s'AFFICHE-t-il ? Distinct du verrou : un verrou dit ce qui borne
+   * la lecture, ceci dit si le marchand a quelque chose à choisir.
+   */
+  champEntrepot: boolean;
+  champUtilisateur: boolean;
   entrepotVerrouille: MotifVerrou | null;
   utilisateurVerrouille: MotifVerrou | null;
   /** Le périmètre CONTRAINT : la seule chose qu'une lecture a le droit de lire. */
@@ -122,6 +130,24 @@ export interface EntreeDePerimetre {
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ ON NE MONTRE QUE CE QU'ON PEUT CHOISIR (décision du 2026-11-15).     │
+  // │                                                                      │
+  // │ Le champ Entrepôt ne paraît qu'au propriétaire et sous « Consulter   │
+  // │ tous les entrepôts » ; le champ Utilisateur qu'avec « Voir tout dans │
+  // │ son entrepôt » (ou ce qui l'implique), et seulement sur une donnée   │
+  // │ qui a un auteur. Sans aucun des deux, l'écran ne propose plus de     │
+  // │ filtre de périmètre du tout. Règle du noyau, la même qu'au           │
+  // │ back-office.                                                         │
+  // │                                                                      │
+  // │ ⚠ MASQUER N'EST PAS LEVER : `applique` garde ses verrous. Et un      │
+  // │ choix d'entrepôt resté dans l'état d'un écran n'est plus appliqué    │
+  // │ quand son champ est masqué : il deviendrait un filtre invisible,     │
+  // │ que le marchand n'aurait aucun moyen de retirer.                     │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const champEntrepot = afficheFiltreEntrepot(e.membre);
+  const champUtilisateur = e.avecAuteur && afficheFiltreUtilisateur(e.membre);
+
   const lisibles = entrepotsLisiblesDuMembre(e.membre, e.tousLesEntrepots);
   const options: OptionPerimetre[] = lisibles.map((d) => ({
     valeur: d.id,
@@ -143,7 +169,9 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
     "lecture"
   );
   const entrepotDemande =
-    e.choix.entrepot && permis.has(e.choix.entrepot) ? e.choix.entrepot : null;
+    champEntrepot && e.choix.entrepot && permis.has(e.choix.entrepot)
+      ? e.choix.entrepot
+      : null;
 
   const borneParAuteur = e.avecAuteur && estBorneParAuteur(e.membre, "lecture");
 
@@ -172,6 +200,8 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
     return {
       entrepots: options,
       utilisateurs: [],
+      champEntrepot,
+      champUtilisateur,
       entrepotVerrouille,
       // ⚠ Une donnée sans auteur le dit, plutôt que d'annoncer « vous ne
       // voyez que vos propres données » sur un niveau de stock qui n'a
@@ -184,6 +214,8 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
     return {
       entrepots: options,
       utilisateurs: [],
+      champEntrepot,
+      champUtilisateur,
       entrepotVerrouille,
       utilisateurVerrouille: "propres-donnees",
       applique: { entrepot: entrepotApplique, utilisateur: e.moi },
@@ -193,6 +225,8 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
     return {
       entrepots: options,
       utilisateurs: [],
+      champEntrepot,
+      champUtilisateur,
       entrepotVerrouille,
       utilisateurVerrouille: "equipe-inconnue",
       applique: { entrepot: entrepotApplique, utilisateur: null },
@@ -213,6 +247,8 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
   return {
     entrepots: options,
     utilisateurs,
+    champEntrepot,
+    champUtilisateur,
     entrepotVerrouille,
     utilisateurVerrouille: null,
     applique: { entrepot: entrepotApplique, utilisateur: utilisateurApplique },
@@ -304,6 +340,16 @@ export function contexteFileDe(o: OffrePerimetre, moi: string | null): ContexteF
  */
 export function entrepotInconnuAdmis(o: OffrePerimetre): boolean {
   return o.entrepotVerrouille !== null;
+}
+
+/**
+ * L'écran a-t-il au moins un champ de périmètre à proposer ?
+ *
+ * Faux : il ne pose ni bouton de filtres ni feuille. Un bouton qui ouvre une
+ * feuille vide se lirait comme une panne.
+ */
+export function afficheFiltresDePerimetre(o: OffrePerimetre): boolean {
+  return o.champEntrepot || o.champUtilisateur;
 }
 
 /**

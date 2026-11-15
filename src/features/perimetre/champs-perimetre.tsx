@@ -2,24 +2,22 @@
  * Les deux champs de périmètre, posables dans n'importe quelle feuille de filtres.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ UN VERROU DE DROIT S'AFFICHE FERMÉ ; UNE DONNÉE SANS AUTEUR DISPARAÎT. │
+ * │ UN CHAMP QU'ON NE PEUT PAS CHANGER NE S'AFFICHE PAS (2026-11-15).       │
  * │                                                                          │
- * │ La frontière n'est pas cosmétique, elle tient à CE QUE LE VERROU DIT.   │
+ * │ Les champs fermés « qui disent pourquoi » ont été retirés, sur décision  │
+ * │ de l'utilisateur : un caissier sans case n'a rien à choisir, et un       │
+ * │ composant de filtre qui ne lui propose rien ne lui apprend rien.         │
  * │                                                                          │
- * │ `cashier`, `un-seul-entrepot` et `aucun-entrepot` parlent de VOUS : on   │
- * │ vous refuse quelque chose que d'autres ont. Retirer le contrôle se       │
- * │ lirait alors comme une fonction manquante - le caissier conclurait que   │
- * │ l'application ne sait pas filtrer, et le signalerait comme un défaut.    │
- * │ Un contrôle fermé QUI DIT POURQUOI se lit comme une règle.               │
+ * │ - Entrepôt : le propriétaire, et « Consulter tous les entrepôts ».       │
+ * │ - Utilisateur : « Voir tout dans son entrepôt » (ou ce qui l'implique),  │
+ * │   et seulement sur une donnée qui a un auteur.                           │
  * │                                                                          │
- * │ `sans-auteur` parle de la DONNÉE : un niveau de stock n'a jamais eu      │
- * │ d'auteur, pour personne. Afficher un champ grisé qui explique l'absence  │
- * │ d'une chose que nul n'a demandée est du bruit permanent sur chaque écran │
- * │ de stock. On le retire.                                                  │
+ * │ La décision est dans `offreDePerimetre` (`champEntrepot`,                │
+ * │ `champUtilisateur`), d'après le noyau : le back-office (`PerimeterFilters`)│
+ * │ applique la même. Ce composant ne fait que la lire.                      │
  * │                                                                          │
- * │ ⚠ LE WEB SUIT LA MÊME RÈGLE (`PerimeterFilters`, prop `withUser`). Les   │
- * │ deux surfaces divergeaient sur ce point à l'écriture, et deux écrans qui │
- * │ traitent différemment le même verrou font douter qu'il s'agisse du même. │
+ * │ ⚠ MASQUER N'EST PAS LEVER : le périmètre appliqué garde ses verrous, et  │
+ * │ le serveur borne toujours.                                               │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
  * ⚠ Il ne rend AUCUNE `Sheet` : il reçoit le `setChoix` de la feuille hôte.
@@ -44,14 +42,9 @@ import {
    │ le déclencheur fermé, sinon on ne sait pas qu'on revient au point de      │
    │ départ.                                                                  │
    │                                                                          │
-   │ ⚠ AUCUN SECOND GARDE N'EST NÉCESSAIRE POUR LES VERROUS. `disabled` plus   │
-   │ bas ferme le déclencheur, donc `onPress` ne part jamais et le panneau ne  │
-   │ s'ouvre pas : la sentinelle est hors d'atteinte pour les quatre motifs.   │
-   │ `un-seul-entrepot` est le cas qui le mérite le plus - son entrepôt est    │
-   │ IMPOSÉ (`filtre-perimetre.ts`, `applique`), donc « Tous les entrepôts »   │
-   │ y serait un mensonge que le serveur refuserait ensuite en 400. Ne pas     │
-   │ ajouter de condition redondante ici : un lecteur futur la « simplifierait »│
-   │ et ne saurait pas laquelle des deux tenait vraiment.                     │
+   │ ⚠ UN CHAMP AFFICHÉ PEUT ENCORE ÊTRE FERMÉ (rôle inconnu, liste           │
+   │ d'utilisateurs pas encore reçue) : `disabled` ferme alors le déclencheur, │
+   │ donc la sentinelle « Tous » est hors d'atteinte.                         │
    └──────────────────────────────────────────────────────────────────────────┘ */
 const TOUS_ENTREPOTS = "Tous les entrepôts";
 const TOUS_UTILISATEURS = "Tous les utilisateurs";
@@ -76,29 +69,36 @@ export function ChampsPerimetre({
 
   return (
     <>
-      <FormField
-        label="Entrepôt"
-        hint={offre.entrepotVerrouille ? libelleDuVerrou(offre.entrepotVerrouille) : undefined}
-      >
-        <DeclencheurSelect
-          libelle={nomEntrepot ?? TOUS_ENTREPOTS}
-          actif={Boolean(nomEntrepot) && !offre.entrepotVerrouille}
-          disabled={Boolean(offre.entrepotVerrouille)}
-          accessibilityLabel="Entrepôt"
-          onPress={() =>
-            setChoix({
-              titre: "Entrepôt",
-              options: offre.entrepots,
-              valeur: valeur.entrepot,
-              onChoisir: (v) => onChanger({ ...valeur, entrepot: v }),
-              libelleVide: TOUS_ENTREPOTS,
-              messageVide: "Aucun entrepôt n'est encore descendu sur ce terminal.",
-            })
+      {offre.champEntrepot ? (
+        <FormField
+          label="Entrepôt"
+          hint={
+            offre.entrepotVerrouille
+              ? libelleDuVerrou(offre.entrepotVerrouille)
+              : undefined
           }
-        />
-      </FormField>
+        >
+          <DeclencheurSelect
+            libelle={nomEntrepot ?? TOUS_ENTREPOTS}
+            actif={Boolean(nomEntrepot) && !offre.entrepotVerrouille}
+            disabled={Boolean(offre.entrepotVerrouille)}
+            accessibilityLabel="Entrepôt"
+            onPress={() =>
+              setChoix({
+                titre: "Entrepôt",
+                options: offre.entrepots,
+                valeur: valeur.entrepot,
+                onChoisir: (v) => onChanger({ ...valeur, entrepot: v }),
+                libelleVide: TOUS_ENTREPOTS,
+                messageVide:
+                  "Aucun entrepôt n'est encore descendu sur ce terminal.",
+              })
+            }
+          />
+        </FormField>
+      ) : null}
 
-      {offre.utilisateurVerrouille === "sans-auteur" ? null : (
+      {offre.champUtilisateur ? (
         <FormField
           label="Utilisateur"
           hint={
@@ -124,7 +124,7 @@ export function ChampsPerimetre({
             }
           />
         </FormField>
-      )}
+      ) : null}
     </>
   );
 }

@@ -69,6 +69,7 @@ import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
 import {
   contexteFileDe,
+  afficheFiltresDePerimetre,
   nombreDeFiltresPerimetre,
   PERIMETRE_VIDE,
   resumeDuPerimetre,
@@ -490,10 +491,12 @@ export default function EcranCreances() {
                 placeholder="Rechercher un client ou un numéro..."
               />
             </View>
-            <BoutonFiltres
-              actifs={nombreDeFiltresPerimetre(perimetre)}
-              onPress={() => setFeuillePerimetre(true)}
-            />
+            {afficheFiltresDePerimetre(perimetre) ? (
+              <BoutonFiltres
+                actifs={nombreDeFiltresPerimetre(perimetre)}
+                onPress={() => setFeuillePerimetre(true)}
+              />
+            ) : null}
           </View>
 
           {resumeDuPerimetre(perimetre).length > 0 ? (

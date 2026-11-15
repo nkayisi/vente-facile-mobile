@@ -2131,6 +2131,24 @@ describe("le périmètre appliqué est la seule borne", () => {
     expect(fautifs).toEqual([]);
   });
 
+  it("un écran à feuille de périmètre ne montre pas son bouton quand rien n'est proposé", () => {
+    //: Décision du 2026-11-15 : sans « Consulter tous les entrepôts » ni
+    //: « Voir tout dans son entrepôt », le marchand n'a rien à choisir, et un
+    //: bouton qui ouvre une feuille vide se lirait comme une panne. La règle
+    //: est dans `afficheFiltresDePerimetre` ; chaque écran doit la lire.
+    const balayes: string[] = [];
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/<FeuilleFiltresPerimetre\b/.test(code)) continue;
+      balayes.push(relative(RACINE, f));
+      if (!/\bafficheFiltresDePerimetre\s*\(/.test(code)) fautifs.push(relative(RACINE, f));
+    }
+    // Un balayage qui ne balaie rien passe au vert et ne prouve rien.
+    expect(balayes.length).toBeGreaterThanOrEqual(8);
+    expect(fautifs).toEqual([]);
+  });
+
   it("un écran qui exporte TRANSMET son périmètre au document", () => {
     //: ┌──────────────────────────────────────────────────────────────────┐
     //: │ LE GARDE-FOU D'À CÔTÉ VÉRIFIE LA LECTURE, PAS LA TRANSMISSION.   │
