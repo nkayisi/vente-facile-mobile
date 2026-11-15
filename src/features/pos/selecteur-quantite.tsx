@@ -34,6 +34,7 @@ import type { Saisie } from "@vente-facile/core/pos";
 
 import { lireNombre } from "@/data/nombres";
 import { Button, Divider, Icon, Pressable, Text, useMargesSysteme } from "@/ui";
+import { libelleAilleurs } from "./ailleurs";
 import type { ArticlePos } from "./catalogue";
 import { paliersRemise } from "./remise-ligne";
 import { frapper as frapperTouche, SEPARATEUR } from "./saisie-quantite";
@@ -332,6 +333,11 @@ export function SelecteurQuantite({
             motContenant={motContenant}
             motDetail={motDetail}
           />
+          {libelleAilleurs(article.ailleurs, motDetail) ? (
+            <Text variant="caption" className="mt-1 px-5 text-muted-foreground">
+              {libelleAilleurs(article.ailleurs, motDetail)}
+            </Text>
+          ) : null}
 
           {refus ? (
             <View className="mx-5 mt-3 flex-row items-start gap-2 rounded-xl bg-destructive/10 px-4 py-3">

@@ -101,6 +101,18 @@ describe("l'option credit du selecteur", () => {
 });
 
 describe("ce qui ferme le bouton", () => {
+  it("se ferme sur une ligne qui ne s'encaisse pas, même payée en totalité", () => {
+    // Un inventaire démarré pendant que la feuille est ouverte : le comptoir
+    // l'a vu (le verrou se relit), la feuille doit le voir aussi, sinon le
+    // ticket sort pour une vente que le serveur refusera.
+    const motif = "Primus est bloqué par un inventaire en cours (INV-1).";
+    expect(blocageEncaissement(entree({ motifsLignes: [motif] }))).toBe(
+      "lignes-non-encaissables"
+    );
+    expect(phraseBlocage("lignes-non-encaissables")).toContain("proforma");
+    expect(blocageEncaissement(entree({ motifsLignes: [] }))).toBeNull();
+  });
+
   it("laisse passer une vente de comptoir ordinaire", () => {
     expect(blocageEncaissement(entree())).toBeNull();
   });

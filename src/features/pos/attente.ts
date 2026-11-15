@@ -111,6 +111,7 @@ export async function reprendre(
     return {
       etat: PANIER_VIDE,
       ecartees: ["Ce panier est illisible et a été retiré de la liste."],
+      nonEncaissables: [],
       prixChanges: [],
       clientPerdu: false,
     };
@@ -120,7 +121,10 @@ export async function reprendre(
     contenu.lignes.map((l) => l.productId),
     warehouseId
   );
-  const { lignes, ecartees, prixChanges } = restaurerLignes(contenu, articles);
+  const { lignes, ecartees, prixChanges, nonEncaissables } = restaurerLignes(
+    contenu,
+    articles
+  );
 
   const client = contenu.clientId ? await clientParId(contenu.clientId) : null;
   const clientPerdu = contenu.clientId !== null && client === null;
@@ -137,6 +141,7 @@ export async function reprendre(
       deviseMonnaie: contenu.deviseMonnaie,
     },
     ecartees,
+    nonEncaissables,
     prixChanges,
     clientPerdu,
   };

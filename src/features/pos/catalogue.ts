@@ -9,14 +9,15 @@
  * La conversion en nombre n'a lieu qu'au moment de calculer, jamais au stockage
  * ni à la comparaison SQL, où `"0.000" > "12.000"` lexicographiquement.
  */
-import { and, asc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
-import { availableSplit, getPackaging, remainingChannels } from "@vente-facile/core";
+import { and, asc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
+import {
+  availableSplit, getPackaging, remainingChannels, roundQuantity,
+} from "@vente-facile/core";
 import { alias } from "drizzle-orm/sqlite-core";
 import { addDatabaseChangeListener } from "expo-sqlite";
 
 import { db } from "@/db/client";
 import { categories, products, stocks, units, warehouses } from "@/db/schema";
-import { conditionCatalogue } from "@/data/perimetre-catalogue";
 import { reservesEnAttente, type ReserveLocale } from "./reserve-locale";
 import { produitsVerrouilles, type VerrouInventaire } from "./verrou-inventaire";
 
@@ -49,7 +50,6 @@ export interface ArticlePos {
   allow_auto_unpacking: boolean;
 
   track_inventory: boolean;
-  allow_negative_stock: boolean;
 
   /**
    * DISPONIBLE de l'entrepôt courant, réservations déduites, ventilé.
@@ -73,9 +73,27 @@ export interface ArticlePos {
    *
    * Le serveur refuse la vente d'un produit sous inventaire ; le comptoir le
    * dit AVANT l'impression, et nomme la session pour que le caissier sache
-   * quoi attendre.
+   * quoi attendre. ⚠ Le verrou n'empêche plus l'AJOUT : il ferme
+   * l'ENCAISSEMENT (`lignesEnRupture` du noyau), la proforma restant ouverte.
    */
   verrou_inventaire: string | null;
+
+  /**
+   * Le disponible des AUTRES entrepôts, pour un membre qui les lit tous.
+   *
+   * `null` : non demandé (le membre ne lit que ses entrepôts, ou l'écran n'en
+   * a pas besoin). Une liste vide : demandé, et rien ailleurs. Information de
+   * conseil seulement - on ne vend jamais que le stock de la CAISSE.
+   */
+  ailleurs: DisponibiliteAilleurs[] | null;
+}
+
+/** Ce qu'un autre entrepôt porte encore de cet article. */
+export interface DisponibiliteAilleurs {
+  entrepotId: string;
+  entrepot: string;
+  /** Disponible, réservations déduites, en unité de détail. */
+  disponible: number;
 }
 
 const CHAMPS = {
@@ -94,41 +112,48 @@ const CHAMPS = {
   units_per_package: products.unitsPerPackage,
   allow_auto_unpacking: products.allowAutoUnpacking,
   track_inventory: products.trackInventory,
-  _quantity: stocks.quantity,
-  _reserved: stocks.reservedQuantity,
-  _packages: stocks.packageQuantity,
-  _loose: stocks.looseQuantity,
   /**
-   * LE DÉCOUVERT SE DÉCIDE AU NIVEAU DE L'ENTREPÔT, PAS DU PRODUIT.
-   *
-   * C'est ce que fait le serveur partout en aval - `assert_sealed_available`,
-   * `ensure_loose_available`, `Stock.save` - et son pré-contrôle de vente le
-   * documente explicitement : lire `product.allow_negative_stock` était un
-   * bug. Sur une configuration divergente (produit permissif, entrepôt strict)
-   * le comptoir acceptait une vente que le serveur refuse ensuite ; dans
-   * l'autre sens il refusait une vente parfaitement licite.
+   * ┌──────────────────────────────────────────────────────────────────────┐
+   * │ LE STOCK D'UN ARTICLE EST LA SOMME DE SES LIGNES DANS L'ENTREPÔT.   │
+   * │                                                                      │
+   * │ Une ligne de `stocks` par variante et par emplacement : joindre la   │
+   * │ table telle quelle rendait UNE CARTE PAR LIGNE, si bien qu'un article │
+   * │ à deux variantes paraissait deux fois au comptoir, chaque carte avec │
+   * │ un morceau du stock. On somme, par article, comme le back-office     │
+   * │ (`total_stock` de la liste des produits, `?warehouse=`).             │
+   * │                                                                      │
+   * │ `sum()` rend NULL quand aucune ligne ne joint : c'est ce qui garde   │
+   * │ « aucun stock ici » distinct d'un zéro enregistré.                   │
+   * └──────────────────────────────────────────────────────────────────────┘
    */
-  _allow_negative: warehouses.allowNegativeStock,
+  _quantity: sql<number | null>`sum(cast(${stocks.quantity} as real))`,
+  _reserved: sql<number | null>`sum(cast(${stocks.reservedQuantity} as real))`,
+  _packages: sql<number | null>`sum(cast(${stocks.packageQuantity} as real))`,
+  _loose: sql<number | null>`sum(cast(${stocks.looseQuantity} as real))`,
 };
 
-/** Les décimales voyagent en chaînes ; on ne les convertit qu'ici. */
+/**
+ * Les décimales voyagent en chaînes ; on ne les convertit qu'ici.
+ *
+ * ⚠ QUANTISÉ : une somme SQL en flottant rend `0.30000000000000004` pour deux
+ * lignes de 0,1 et 0,2, et ce nombre s'afficherait sur la carte.
+ */
 function nombre(v: string | number | null | undefined): number {
   const n = typeof v === "string" ? parseFloat(v) : Number(v ?? 0);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? roundQuantity(n) : 0;
 }
 
 type LigneBrute = Record<string, unknown>;
 
 /** Ce que la lecture doit connaître en plus des colonnes, une fois par requête. */
 export interface Contexte {
-  /** Vrai quand aucune caisse n'est ouverte : il n'y a pas d'entrepôt à opposer. */
-  sansEntrepot: boolean;
   verrou: VerrouInventaire;
   reserve: ReserveLocale;
+  /** Le disponible des autres entrepôts, quand il a été demandé. */
+  ailleurs?: Map<string, DisponibiliteAilleurs[]> | null;
 }
 
 const CONTEXTE_VIDE: Contexte = {
-  sansEntrepot: true,
   verrou: new Map(),
   reserve: new Map(),
 };
@@ -147,27 +172,30 @@ const CONTEXTE_VIDE: Contexte = {
  */
 export function versArticle(ligne: LigneBrute, ctx: Contexte = CONTEXTE_VIDE): ArticlePos {
   const {
-    _quantity, _reserved, _packages, _loose, _allow_negative, ...reste
+    _quantity, _reserved, _packages, _loose, ...reste
   } = ligne as {
-    _quantity: string | null;
-    _reserved: string | null;
-    _packages: string | null;
-    _loose: string | null;
-    /** Colonne booléenne de l'entrepôt, `null` si la jointure n'a rien trouvé. */
-    _allow_negative: boolean | null;
+    _quantity: string | number | null;
+    _reserved: string | number | null;
+    _packages: string | number | null;
+    _loose: string | number | null;
   } & Record<string, unknown>;
 
   const article = reste as unknown as ArticlePos;
   article.verrou_inventaire = ctx.verrou.get(article.id) ?? null;
+  article.ailleurs = ctx.ailleurs ? (ctx.ailleurs.get(article.id) ?? []) : null;
 
-  // SANS ENTREPÔT, AUCUNE BORNE. Le serveur fait exactement pareil : son
-  // pré-contrôle de stock est enveloppé dans un `if warehouse:`. Poser ici une
-  // borne à zéro rendrait invendable tout le catalogue d'une caisse sans dépôt,
-  // configuration que l'écran d'ouverture tolère avec un avertissement.
-  article.allow_negative_stock = ctx.sansEntrepot ? true : _allow_negative === true;
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LE STOCK NÉGATIF N'EXISTE PLUS, NI « SANS ENTREPÔT = PAS DE BORNE ».│
+  // │                                                                      │
+  // │ L'article portait `allow_negative_stock`, vrai dès que la caisse     │
+  // │ n'avait pas d'entrepôt : le comptoir encaissait alors sans aucune    │
+  // │ borne. Aucune sortie ne passe plus sous zéro (décision 5), et un     │
+  // │ stock inconnu ferme l'encaissement en le DISANT (`motifStockInconnu`│
+  // │ du noyau) au lieu d'ouvrir la porte.                                 │
+  // └──────────────────────────────────────────────────────────────────────┘
 
-  // Aucune ligne de stock : on ne sait RIEN, et un zéro bloquerait la vente
-  // d'un produit peut-être abondant. Le serveur reste juge.
+  // Aucune ligne de stock : on ne sait RIEN, et `null` ne se lit jamais comme
+  // zéro. Le noyau le dira « aucun stock ici » à l'encaissement.
   if (_quantity === null || _quantity === undefined) {
     return { ...article, stock_quantity: null, stock_packages: null, stock_loose: null, reserved_quantity: 0 };
   }
@@ -293,7 +321,7 @@ async function contexteDe(warehouseId?: string | null): Promise<Contexte> {
     produitsVerrouilles(warehouseId),
     reservesEnAttente(warehouseId),
   ]);
-  const ctx: Contexte = { sansEntrepot: !warehouseId, verrou, reserve };
+  const ctx: Contexte = { verrou, reserve };
 
   // Un changement survenu PENDANT la lecture la rend périmée : on la rend à
   // l'appelant, qui l'a demandée avant, mais on ne la range pas.
@@ -326,6 +354,17 @@ export function oublierLeContexte(): void {
 const uniteDetail = alias(units, "unite_detail");
 const uniteContenant = alias(units, "unite_contenant");
 
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ TOUT LE CATALOGUE VENDABLE, ET LE STOCK DE LA CAISSE.                   │
+ * │                                                                          │
+ * │ Le comptoir bornait son catalogue au périmètre du membre : un article    │
+ * │ stocké au seul dépôt d'en face était introuvable, donc impossible à      │
+ * │ chiffrer sur une proforma ou un devis. Il montre désormais tout ce qui   │
+ * │ est vendable (décision 4), et le stock affiché reste celui de la CAISSE. │
+ * │ Un article sans stock ici s'ajoute ; c'est l'encaissement qui ferme.     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
 interface Filtre {
   /** Entrepôt de la session de caisse ; sans lui, le stock reste inconnu. */
   warehouseId?: string | null;
@@ -333,20 +372,11 @@ interface Filtre {
   categoryId?: string | null;
   limite?: number;
   /**
-   * Les entrepôts qui bornent le catalogue. **Requis**, et c'est voulu.
-   *
-   * ⚠ CE N'EST PAS `warehouseId`, et les confondre serait un défaut. Celui-ci
-   * est l'entrepôt de LA CAISSE, d'où le stock est lu ; celui-là est le
-   * périmètre du MEMBRE, qui peut en couvrir plusieurs. Le back-office borne
-   * son catalogue sur le second, et c'est lui que T5 du retour de test
-   * demande : un caissier de WH-MAIN ne voit pas un article stocké au seul
-   * WH-NORD, mais il voit ceux de ses autres dépôts - où le stock sortira
-   * « inconnu », ce qui est l'état vrai.
-   *
-   * Un champ requis fait NOMMER chaque appelant par le compilateur ; `null`
-   * est la décision explicite « aucune restriction », le cas du propriétaire.
+   * Joindre le disponible des AUTRES entrepôts. Réservé à qui les lit tous
+   * (`litTousLesEntrepots`) : c'est la décision 4, et le tirage ne descend
+   * de toute façon pas le stock d'un dépôt hors du périmètre de lecture.
    */
-  entrepotsCatalogue: string[] | null;
+  avecAilleurs?: boolean;
 }
 
 function base(warehouseId?: string | null) {
@@ -367,14 +397,53 @@ function base(warehouseId?: string | null) {
         : // Sans entrepôt on ne joint RIEN plutôt que le premier venu : afficher
           // le stock d'un autre dépôt serait pire qu'afficher « inconnu ».
           sql`1 = 0`
-    )
-    // L'entrepôt de la session, pour son seul réglage de découvert. Jointure
-    // sur une constante et non sur une colonne : le stock est déjà filtré sur
-    // ce dépôt, la ligne d'entrepôt est la même pour tout le résultat.
-    .leftJoin(
-      warehouses,
-      warehouseId ? eq(warehouses.id, warehouseId) : sql`1 = 0`
     );
+}
+
+/**
+ * Le disponible des autres entrepôts, article par article.
+ *
+ * Une seule requête pour tout le résultat, groupée par (article, entrepôt) :
+ * une par article ferait autant d'allers-retours que de cartes à la grille.
+ * Seuls les entrepôts qui portent ENCORE quelque chose sont rendus - la liste
+ * dit où envoyer le client, pas où il n'y a rien.
+ */
+async function disponibiliteAilleurs(
+  ids: string[],
+  sauf: string | null | undefined
+): Promise<Map<string, DisponibiliteAilleurs[]>> {
+  const carte = new Map<string, DisponibiliteAilleurs[]>();
+  if (ids.length === 0) return carte;
+  const lignes = await db
+    .select({
+      produit: stocks.productId,
+      entrepotId: stocks.warehouseId,
+      entrepot: warehouses.name,
+      quantite: sql<number>`sum(cast(${stocks.quantity} as real))`,
+      reserve: sql<number>`sum(cast(${stocks.reservedQuantity} as real))`,
+    })
+    .from(stocks)
+    .innerJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
+    .where(
+      and(
+        inArray(stocks.productId, ids),
+        sauf ? ne(stocks.warehouseId, sauf) : undefined,
+        // Un entrepôt désactivé ne vend plus : y envoyer le client serait
+        // une fausse piste.
+        eq(warehouses.isActive, true)
+      )
+    )
+    .groupBy(stocks.productId, stocks.warehouseId)
+    .orderBy(asc(sql`lower(${warehouses.name})`));
+
+  for (const l of lignes) {
+    const disponible = roundQuantity(nombre(l.quantite) - Math.max(0, nombre(l.reserve)));
+    if (disponible <= 0) continue;
+    const liste = carte.get(l.produit) ?? [];
+    liste.push({ entrepotId: l.entrepotId, entrepot: l.entrepot, disponible });
+    carte.set(l.produit, liste);
+  }
+  return carte;
 }
 
 /** Condition commune : un article vendable, non supprimé. */
@@ -391,14 +460,10 @@ export async function chercherArticles({
   terme,
   categoryId,
   limite = 80,
-  entrepotsCatalogue,
+  avecAilleurs = false,
 }: Filtre): Promise<ArticlePos[]> {
   const motif = terme?.trim();
   const conditions = [vendable()];
-
-  // Le périmètre du MEMBRE, en plus de la vendabilité. Voir `Filtre`.
-  const perimetre = conditionCatalogue(entrepotsCatalogue);
-  if (perimetre) conditions.push(perimetre);
 
   if (motif) {
     // `like` de SQLite est insensible à la casse sur l'ASCII ; les accents, non.
@@ -417,11 +482,19 @@ export async function chercherArticles({
   if (categoryId) conditions.push(eq(products.categoryId, categoryId));
 
   const [lignes, ctx] = await Promise.all([
-    base(warehouseId).where(and(...conditions)).orderBy(asc(products.name)).limit(limite),
+    base(warehouseId)
+      .where(and(...conditions))
+      // Une carte par ARTICLE : voir `CHAMPS`.
+      .groupBy(products.id)
+      .orderBy(asc(products.name))
+      .limit(limite),
     contexteDe(warehouseId),
   ]);
 
-  return lignes.map((l) => versArticle(l, ctx));
+  const ailleurs = avecAilleurs
+    ? await disponibiliteAilleurs(lignes.map((l) => l.id), warehouseId)
+    : null;
+  return lignes.map((l) => versArticle(l, { ...ctx, ailleurs }));
 }
 
 /**
@@ -432,18 +505,15 @@ export async function chercherArticles({
  */
 export async function articleParCodeBarres(
   code: string,
-  warehouseId: string | null | undefined,
-  /**
-   * Le périmètre du membre. ⚠ IL FAUT LE BORNER ICI AUSSI : un scan qui
-   * passerait outre serait une porte dérobée dans la règle de catalogue, et
-   * c'est précisément le geste le plus rapide du comptoir.
-   */
-  entrepotsCatalogue: string[] | null
+  warehouseId: string | null | undefined
 ): Promise<ArticlePos | null> {
-  const perimetre = conditionCatalogue(entrepotsCatalogue);
+  // Le même catalogue que la grille : tout ce qui est vendable. Un scan qui
+  // trouverait moins que la recherche ferait chercher à la main ce que le
+  // lecteur vient de refuser.
   const [lignes, ctx] = await Promise.all([
     base(warehouseId)
-      .where(and(vendable(), eq(products.barcode, code.trim()), perimetre))
+      .where(and(vendable(), eq(products.barcode, code.trim())))
+      .groupBy(products.id)
       .limit(1),
     contexteDe(warehouseId),
   ]);
@@ -474,7 +544,7 @@ export async function articlesParIds(
   if (uniques.length === 0) return new Map();
 
   const [lignes, ctx] = await Promise.all([
-    base(warehouseId).where(and(vendable(), inArray(products.id, uniques))),
+    base(warehouseId).where(and(vendable(), inArray(products.id, uniques))).groupBy(products.id),
     contexteDe(warehouseId),
   ]);
 
@@ -499,37 +569,22 @@ export async function articlesParIds(
  *
  * Appelée SEULEMENT quand la grille est vide : sur une grille pleine il n'y a
  * rien à expliquer, et ce comptage balaie toute la table.
+ *
+ * Le comptoir montrant tout le catalogue vendable, aucun périmètre n'entre
+ * plus dans ce comptage : il n'y a plus d'article « hors de portée » à
+ * distinguer d'un article hors vente.
  */
-export async function diagnostiquerCatalogue(
-  entrepotsCatalogue?: string[] | null
-): Promise<{
+export async function diagnostiquerCatalogue(): Promise<{
   recus: number;
   vendables: number;
-  visibles: number;
 }> {
-  // ┌──────────────────────────────────────────────────────────────────────────┐
-  // │ LE PÉRIMÈTRE DOIT ENTRER DANS LE COMPTAGE, SINON SA CAUSE EST           │
-  // │ INDIAGNOSTICABLE.                                                        │
-  // │                                                                          │
-  // │ Ce comptage ignorait le périmètre de catalogue posé par T5 : sur un      │
-  // │ caissier dont le dépôt ne porte aucun article, il rendait `recus > 0` et │
-  // │ `vendables > 0`, donc l'écran retombait sur « Aucun article dans cette   │
-  // │ rubrique · Choisissez Tout » - alors que « Tout » était déjà             │
-  // │ sélectionné. Un cul-de-sac, et c'est le défaut même que ce diagnostic    │
-  // │ existe pour retirer.                                                     │
-  // └──────────────────────────────────────────────────────────────────────────┘
-  //
   // ⚠ UN SEUL ALLER-RETOUR, par agrégat conditionnel. Deux requêtes pourraient
-  //   tomber de part et d'autre d'un tirage et rendre `visibles > vendables`,
-  //   un état impossible dont aucune cause ne se déduirait.
-  const perimetre = conditionCatalogue(entrepotsCatalogue ?? null);
+  //   tomber de part et d'autre d'un tirage et rendre `vendables > recus`, un
+  //   état impossible dont aucune cause ne se déduirait.
   const [ligne] = await db
     .select({
       recus: sql<number>`count(*)`,
       vendables: sql<number>`sum(case when ${products.isActive} = 1 and ${products.isSellable} = 1 then 1 else 0 end)`,
-      visibles: perimetre
-        ? sql<number>`sum(case when ${products.isActive} = 1 and ${products.isSellable} = 1 and (${perimetre}) then 1 else 0 end)`
-        : sql<number>`sum(case when ${products.isActive} = 1 and ${products.isSellable} = 1 then 1 else 0 end)`,
     })
     .from(products)
     .where(or(eq(products.isDeleted, false), isNull(products.isDeleted)));
@@ -539,7 +594,6 @@ export async function diagnostiquerCatalogue(
   return {
     recus: Number(ligne?.recus ?? 0),
     vendables: Number(ligne?.vendables ?? 0),
-    visibles: Number(ligne?.visibles ?? 0),
   };
 }
 

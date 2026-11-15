@@ -2242,6 +2242,71 @@ describe("une saisie ne propose que les entrepôts actionnables", () => {
   });
 });
 
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE COMPTOIR FERME L'ENCAISSEMENT PAR LA RÈGLE DU NOYAU, ET RIEN D'AUTRE.│
+ * │                                                                          │
+ * │ Trois retours en arrière que rien d'autre ne signalerait :               │
+ * │                                                                          │
+ * │ 1. un écran qui relit `allow_negative_stock` rouvrirait l'encaissement   │
+ * │    sans borne sur un entrepôt « négatif autorisé » - la colonne reste au │
+ * │    schéma tiré jusqu'à ce que le parc soit à jour (E10), et c'est        │
+ * │    précisément ce qui la rend tentante ;                                 │
+ * │ 2. un comptoir qui borne de nouveau son catalogue au périmètre du membre │
+ * │    rendrait introuvable l'article du dépôt d'en face, donc impossible à  │
+ * │    chiffrer sur une proforma (décision 4) ;                              │
+ * │ 3. une phrase de verrou recopiée ferait dire au terminal autre chose que │
+ * │    le comptoir web sur le même inventaire.                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("le comptoir suit la règle du noyau", () => {
+  const sources = fichiers(RACINE);
+  //: Le schéma ENGENDRÉ porte encore la colonne ; il ne la lit pas.
+  const SCHEMA = "db/schema/pulled.ts";
+
+  it("le balayage MORD : il voit le comptoir", () => {
+    expect(sources.some((f) => relative(RACINE, f) === "features/pos/catalogue.ts")).toBe(true);
+    expect(sources.filter((f) => relative(RACINE, f).startsWith("features/pos/")).length)
+      .toBeGreaterThan(15);
+  });
+
+  it("aucun écran ne relit le découvert autorisé", () => {
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const nom = relative(RACINE, f);
+      if (nom === SCHEMA) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/\ballowNegativeStock\b|\ballow_negative_stock\b/.test(code)) fautifs.push(nom);
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le comptoir ne borne pas son catalogue au périmètre du membre", () => {
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const nom = relative(RACINE, f);
+      if (!nom.startsWith("features/pos/") && !nom.startsWith("app/(app)/pos/")
+          && nom !== "app/(app)/(tabs)/vendre.tsx") continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/\bconditionCatalogue\b|\busePerimetreCatalogue\b|perimetre-catalogue/.test(code)) {
+        fautifs.push(nom);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("les phrases du verrou et du stock inconnu ne sont pas recopiées", () => {
+    const fautifs: string[] = [];
+    for (const f of sources) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/bloqué par un inventaire en cours|Aucun stock enregistré pour/.test(code)) {
+        fautifs.push(relative(RACINE, f));
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
+
 describe("la règle de périmètre n'a qu'une seule écriture", () => {
   /**
    * Les trois motifs COMMUNS de verrou et leurs libellés vivent dans

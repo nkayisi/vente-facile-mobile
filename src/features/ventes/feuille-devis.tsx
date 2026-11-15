@@ -136,8 +136,8 @@ export function FeuilleNouveauDevis({
             warehouseId: entrepot,
             terme: recherche,
             limite: 20,
-            // TOUT le catalogue vendable : un devis n'engage aucun stock.
-            entrepotsCatalogue: null,
+            // Le catalogue du comptoir est désormais TOUT le catalogue
+            // vendable : un devis n'engage aucun stock.
           })
         : Promise.resolve([]),
     [panneau, recherche, entrepot]

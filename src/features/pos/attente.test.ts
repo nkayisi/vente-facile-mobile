@@ -29,12 +29,12 @@ const casier = {
   packaging_unit_name: "casier",
   allow_auto_unpacking: true,
   track_inventory: true,
-  allow_negative_stock: false,
   stock_quantity: 60,
   stock_packages: 4,
   stock_loose: 12,
   reserved_quantity: 0,
   verrou_inventaire: null,
+  ailleurs: null,
 } satisfies ArticlePos;
 
 const savon = {
@@ -130,14 +130,33 @@ describe("Reprise", () => {
     expect(prixChanges).toEqual(["Primus 65cl"]);
   });
 
-  it("écarte une ligne dont le stock est tombé, en le disant", () => {
+  it("reprend ENTIÈRE une ligne dont le stock est tombé, et dit qu'elle ne s'encaisse pas", () => {
+    // Elle était écartée : le caissier retrouvait un panier amputé de ce que
+    // le client avait demandé, qu'il aurait pu remettre en proforma.
     const contenu = serialiser(ajouter(PANIER_VIDE, savon, 0, 8));
     const epuise = { ...savon, stock_quantity: 2, stock_loose: 2 };
 
-    const { lignes, ecartees } = restaurerLignes(contenu, carte(epuise));
-    expect(lignes).toHaveLength(0);
-    expect(ecartees[0]).toContain("Stock insuffisant");
-    expect(ecartees[0]).toContain("Savon");
+    const { lignes, ecartees, nonEncaissables } = restaurerLignes(contenu, carte(epuise));
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0].quantity).toBe(8);
+    expect(ecartees).toEqual([]);
+    expect(nonEncaissables).toHaveLength(1);
+    expect(nonEncaissables[0]).toContain("Stock insuffisant");
+    expect(nonEncaissables[0]).toContain("Savon");
+  });
+
+  it("reprend une ligne sous inventaire, et nomme la session", () => {
+    const contenu = serialiser(ajouter(PANIER_VIDE, savon, 0, 2));
+    const bloque = { ...savon, verrou_inventaire: "INV-20261115-0001" };
+
+    const { lignes, nonEncaissables } = restaurerLignes(contenu, carte(bloque));
+    expect(lignes).toHaveLength(1);
+    expect(nonEncaissables[0]).toContain("INV-20261115-0001");
+  });
+
+  it("une ligne tenable se reprend sans rien annoncer", () => {
+    const contenu = serialiser(ajouter(PANIER_VIDE, savon, 0, 2));
+    expect(restaurerLignes(contenu, carte(savon)).nonEncaissables).toEqual([]);
   });
 
   it("écarte un article sorti du catalogue sans perdre les autres", () => {
@@ -150,8 +169,10 @@ describe("Reprise", () => {
     expect(ecartees).toHaveLength(1);
   });
 
-  it("mesure le stock contre les lignes DÉJÀ restaurées, pas contre un panier vide", () => {
+  it("fond deux lignes du même article, et mesure le stock sur leur somme", () => {
     // Deux lignes du même article, chacune tenable seule, impossibles ensemble.
+    // Elles se FONDENT comme à l'ajout : le noyau ne compte qu'une ligne par
+    // article, et deux lignes séparées passeraient sans rien dire.
     const contenu: ContenuEnAttente = {
       version: 1,
       lignes: [
@@ -164,9 +185,11 @@ describe("Reprise", () => {
       deviseMonnaie: null,
     };
 
-    const { lignes, ecartees } = restaurerLignes(contenu, carte(savon));
+    const { lignes, ecartees, nonEncaissables } = restaurerLignes(contenu, carte(savon));
     expect(lignes).toHaveLength(1);
-    expect(ecartees).toHaveLength(1);
+    expect(lignes[0].quantity).toBe(14);
+    expect(ecartees).toEqual([]);
+    expect(nonEncaissables).toHaveLength(1);
   });
 
   it("conserve la remise de ligne", () => {

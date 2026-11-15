@@ -271,6 +271,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
     mode,
     nbLignes: etat.lignes.length,
     sessionOuverte: Boolean(session),
+    motifsLignes: panier.ruptures,
     moyenChoisi: Boolean(reglement?.method),
     referenceExigee: Boolean(moyenChoisi?.requiresReference),
     reference: reglement?.reference ?? "",

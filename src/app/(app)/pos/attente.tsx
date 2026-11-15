@@ -84,6 +84,14 @@ export default function Attente() {
     // comptoir. Un panier revenu amputé sans un mot ferait vendre moins que ce
     // que le client a demandé, et personne ne s'en apercevrait.
     const messages = [...reprise.ecartees];
+    // Reprises ENTIÈRES, mais elles ferment l'encaissement : le caissier doit
+    // le savoir avant d'annoncer le total au client.
+    if (reprise.nonEncaissables.length > 0) {
+      messages.push(
+        `${reprise.nonEncaissables.join("\n")}\n\nLe panier est repris en entier : ` +
+          "il reste chiffrable en proforma, mais ne s'encaissera pas en l'état."
+      );
+    }
     if (reprise.clientPerdu) messages.push("Le client attaché n'est plus au fichier.");
     if (reprise.prixChanges.length > 0) {
       messages.push(

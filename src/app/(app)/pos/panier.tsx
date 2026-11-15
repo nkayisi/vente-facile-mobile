@@ -14,6 +14,7 @@ import { formatUnitQuantity, getPackaging } from "@vente-facile/core";
 import { devisesAffichables } from "@/features/pos/affichage-devise";
 import { useMonnaie } from "@/data/devises";
 import { lireNombre } from "@/data/nombres";
+import { accord, pluriel } from "@/data/accord";
 import { lineGross, looseQuantityOf, type Saisie } from "@vente-facile/core/pos";
 
 import { etiquetteParDefaut, mettreEnAttente } from "@/features/pos/attente";
@@ -255,9 +256,12 @@ export default function Panier() {
                 <View className="flex-row items-center gap-1.5">
                   <Icon name="AlertCircle" size={15} color="destructive" />
                   <Text variant="bodySmall" className="flex-1 font-sans-medium text-destructive">
-                    {panier.ruptures.length === 1
-                      ? "Un article manque en stock"
-                      : `${panier.ruptures.length} articles manquent en stock`}
+                    {/* Stock OU inventaire : chaque phrase dit laquelle. */}
+                    {`${pluriel(panier.ruptures.length, "ligne", "lignes")} ${accord(
+                      panier.ruptures.length,
+                      "ne s'encaisse pas",
+                      "ne s'encaissent pas"
+                    )}`}
                   </Text>
                 </View>
                 {panier.ruptures.slice(0, 3).map((motif) => (
@@ -393,12 +397,15 @@ export default function Panier() {
         devises={devisesDeLEtablissement}
         deviseFacture={panier.deviseFacture}
         deviseInitiale={ligne?.priceCurrency}
-        // Un article verrouillé par un inventaire depuis sa mise au panier se
-        // dit ICI, pas à l'encaissement. `verifierModification` retire la ligne
-        // éditée de son propre contrôle de stock : `verifier` la compterait
-        // contre elle-même et refuserait une correction possible.
+        // `verifierModification` retire la ligne éditée de son propre
+        // contrôle : `verifier` la compterait contre elle-même. Le stock et
+        // l'inventaire ne ferment plus la correction, ils se DISENT
+        // (`avertirModification`) et fermeront l'encaissement.
         verifier={(saisie: Saisie) =>
           enEdition === null ? null : panier.verifierModification(enEdition, saisie)
+        }
+        avertir={(saisie: Saisie) =>
+          enEdition === null ? null : panier.avertirModification(enEdition, saisie)
         }
         libelleValider="Mettre à jour"
         // La remise par ligne, sous le plafond DU JOUR (instantané de session).

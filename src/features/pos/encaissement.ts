@@ -89,6 +89,7 @@ export function phraseCreditFerme(
 export type BlocageEncaissement =
   | "panier-vide"
   | "sans-session"
+  | "lignes-non-encaissables"
   | "sans-moyen"
   | "montant-illisible"
   | "reference-manquante"
@@ -102,6 +103,11 @@ export interface EntreeEncaissement {
   nbLignes: number;
   /** Une session de caisse est ouverte (tiree, en file ou bloquee). */
   sessionOuverte: boolean;
+  /**
+   * Les phrases du noyau qui ferment l'encaissement (stock, inventaire), une
+   * par ligne en cause. Absent : rien ne ferme.
+   */
+  motifsLignes?: readonly string[];
   moyenChoisi: boolean;
   /** Le moyen retenu exige une reference de transaction. */
   referenceExigee: boolean;
@@ -129,6 +135,16 @@ export function blocageEncaissement(
 ): BlocageEncaissement | null {
   if (e.nbLignes === 0) return "panier-vide";
   if (!e.sessionOuverte) return "sans-session";
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LA FEUILLE GARDE LA PORTE ELLE-MÊME.                                 │
+  // │                                                                      │
+  // │ Le bouton du comptoir se fermait déjà, mais la feuille ouverte ne    │
+  // │ regardait plus les lignes : un inventaire démarré pendant qu'elle    │
+  // │ était ouverte (le verrou se relit de la base) laissait imprimer un   │
+  // │ ticket que le serveur refusera. Aucun ticket ne sort pour une vente  │
+  // │ qu'il refusera : c'est l'invariant, il se tient ici aussi.           │
+  // └──────────────────────────────────────────────────────────────────────┘
+  if (e.motifsLignes && e.motifsLignes.length > 0) return "lignes-non-encaissables";
   if (e.totalFacture < 0) return "total-negatif";
   if (!e.moyenChoisi) return "sans-moyen";
   if (!e.montantLisible) return "montant-illisible";
@@ -177,6 +193,8 @@ export function phraseBlocage(
       return "La référence de la transaction est obligatoire.";
     case "total-negatif":
       return "Le total ne peut pas être négatif. Réduisez les remises.";
+    case "lignes-non-encaissables":
+      return "Une ligne du panier ne s'encaisse pas en l'état : voyez le panier. La proforma reste possible.";
     // Le sous-paiement est deja chiffre par « Il manque X », la session par son
     // bandeau, le credit par le sien, et un panier vide n'atteint pas l'ecran.
     default:

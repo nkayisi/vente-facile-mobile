@@ -27,6 +27,13 @@ jest.mock("./reserve-locale", () => ({
 }));
 jest.mock("./donnees", () => ({ pointsDuClient: jest.fn(async () => 0) }));
 jest.mock("@/session/provider", () => ({ useSession: () => ({ snapshot: null }) }));
+// Le verrou relu sous un panier ouvert : la base n'a rien à faire ici, et le
+// panier de ces tests reste vide, donc la lecture n'est jamais demandée.
+jest.mock("./caisse", () => ({ sessionOuverte: jest.fn(async () => null) }));
+jest.mock("./verrou-inventaire", () => ({ produitsVerrouilles: jest.fn(async () => new Map()) }));
+jest.mock("@/data/live", () => ({
+  useLecture: () => ({ donnees: null, chargement: false, erreur: null, recharger: () => {} }),
+}));
 
 import { PanierProvider, usePanier } from "./panier";
 

@@ -266,7 +266,6 @@ export interface DetailArticle {
   margePourcent: number | null;
 
   suitLeStock: boolean;
-  stockNegatifAutorise: boolean;
   seuilReassort: number;
   uniteDetail: string | null;
   uniteContenant: string | null;
@@ -389,7 +388,6 @@ export async function detailArticle(id: string): Promise<DetailArticle | null> {
     margePourcent: marge(achat, vente),
 
     suitLeStock: Boolean(p.trackInventory),
-    stockNegatifAutorise: Boolean(p.allowNegativeStock),
     seuilReassort: Number(p.reorderPoint ?? 0),
     uniteDetail: l.unite ?? null,
     uniteContenant: l.uniteContenant ?? null,

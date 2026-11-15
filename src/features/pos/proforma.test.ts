@@ -33,12 +33,12 @@ const savon = {
   packaging_unit_name: null,
   allow_auto_unpacking: false,
   track_inventory: true,
-  allow_negative_stock: false,
   stock_quantity: 100,
   stock_packages: null,
   stock_loose: 100,
   reserved_quantity: 0,
   verrou_inventaire: null,
+  ailleurs: null,
 } satisfies ArticlePos;
 
 const casier = {

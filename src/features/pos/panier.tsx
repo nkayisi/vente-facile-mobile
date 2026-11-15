@@ -35,9 +35,12 @@ import {
   type Saisie,
 } from "@vente-facile/core/pos";
 
+import { useLecture } from "@/data/live";
 import { useSession } from "@/session/provider";
+import { sessionOuverte } from "./caisse";
 import { cagnotteDuClient } from "./donnees";
 import { detteEnAttente } from "./reserve-locale";
+import { produitsVerrouilles } from "./verrou-inventaire";
 import {
   avertissementDeStock,
   motifDeRefus,
@@ -158,6 +161,11 @@ interface ValeurPanier {
    */
   avertir: (article: ArticlePos, saisie: Saisie) => string | null;
   /**
+   * L'avertissement d'une MODIFICATION de ligne, contre le panier privé de
+   * cette ligne - même raison que `verifierModification`.
+   */
+  avertirModification: (index: number, saisie: Saisie) => string | null;
+  /**
    * Ce qui ferme l'ENCAISSEMENT, ligne par ligne. Vide = le panier s'encaisse.
    *
    * La proforma, elle, reste ouverte quoi qu'il arrive : c'est tout l'intérêt
@@ -169,9 +177,44 @@ interface ValeurPanier {
 
 const Contexte = createContext<ValeurPanier | null>(null);
 
+/**
+ * Ce qui peut faire apparaître ou disparaître un verrou d'inventaire sous un
+ * panier ouvert : les sessions et leurs feuilles (tirées), le stock (une
+ * réception crée une ligne qu'un périmètre total verrouille), et la session
+ * de caisse, qui décide de l'entrepôt.
+ */
+const TABLES_DES_VERROUS = [
+  "inventory_sessions",
+  "inventory_counts",
+  "stocks",
+  "register_sessions",
+  "outbox_operations",
+];
+
 export function PanierProvider({ children }: { children: ReactNode }) {
   const { snapshot } = useSession();
   const [etat, envoyer] = useReducer(reducteurPanier, PANIER_VIDE);
+
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ LE VERROU SE RELIT SOUS UN PANIER OUVERT.                              │
+  // │                                                                        │
+  // │ Le verrou n'empêche plus l'ajout : il ferme l'ENCAISSEMENT. Le lire    │
+  // │ sur l'article tel qu'il était au moment de l'ajout laisserait passer   │
+  // │ une vente dont l'inventaire a démarré ENTRE-TEMPS - le serveur la      │
+  // │ refuserait, ticket imprimé. On le relit donc de la base, pour          │
+  // │ l'entrepôt de la caisse, dès qu'une table qui le porte bouge.          │
+  // │                                                                        │
+  // │ Rien n'est lu sur un panier vide : il n'y a rien à fermer.             │
+  // └────────────────────────────────────────────────────────────────────────┘
+  const aDesLignes = etat.lignes.length > 0;
+  const { donnees: verrousVivants } = useLecture(
+    async () => {
+      if (!aDesLignes) return null;
+      const session = await sessionOuverte();
+      return produitsVerrouilles(session?.warehouseId ?? null);
+    },
+    { tables: TABLES_DES_VERROUS, deps: [aDesLignes] }
+  );
 
   const devises = useMemo(
     () =>
@@ -341,23 +384,27 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       parDevise,
       argent: (montant, code) => devises.money(montant, code ?? deviseFacture),
       rafraichirClient,
-      // LE VERROU D'INVENTAIRE PASSE AVANT LE STOCK, et c'est l'ordre du
-      // serveur : `SaleCreateSerializer.validate` refuse les produits bloqués
-      // AVANT de regarder les quantités. Dire « stock insuffisant » sur un
-      // article sous inventaire enverrait le caissier chercher au dépôt une
-      // marchandise qui est là, mais interdite à la vente.
+      // Le verrou d'inventaire et le stock ne ferment plus l'AJOUT : ils se
+      // DISENT (`avertir`) et ferment l'ENCAISSEMENT (`ruptures`), le verrou
+      // avant le stock comme chez le serveur.
       verifier: (article, saisie) => motifDeRefus(article, etat.lignes, saisie),
       avertir: (article, saisie) => avertissementDeStock(article, etat.lignes, saisie),
-      ruptures: motifsEncaissement(etat.lignes),
+      ruptures: motifsEncaissement(etat.lignes, verrousVivants),
       verifierModification: (index, saisie) => {
         const courante = etat.lignes[index];
         if (!courante) return null;
         const autres = etat.lignes.filter((_, i) => i !== index);
         return motifDeRefus(courante.product, autres, saisie);
       },
+      avertirModification: (index, saisie) => {
+        const courante = etat.lignes[index];
+        if (!courante) return null;
+        const autres = etat.lignes.filter((_, i) => i !== index);
+        return avertissementDeStock(courante.product, autres, saisie);
+      },
       envoyer,
     }),
-    [etat, devises, deviseFacture, deviseMonnaie, totaux, parDevise, rafraichirClient]
+    [etat, devises, deviseFacture, deviseMonnaie, totaux, parDevise, rafraichirClient, verrousVivants]
   );
 
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>;

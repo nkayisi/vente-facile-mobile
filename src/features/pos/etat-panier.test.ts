@@ -10,6 +10,7 @@ import {
   motifsEncaissement,
   PANIER_VIDE,
   reducteurPanier,
+  verrousDuPanier,
   type EtatPanier,
 } from "./etat-panier";
 import type { ArticlePos } from "./catalogue";
@@ -28,12 +29,12 @@ const casier = {
   packaging_unit_name: "casier",
   allow_auto_unpacking: true,
   track_inventory: true,
-  allow_negative_stock: false,
   stock_quantity: 60,
   stock_packages: 4,
   stock_loose: 12,
   reserved_quantity: 0,
   verrou_inventaire: null,
+  ailleurs: null,
 } satisfies ArticlePos;
 
 const detail = {
@@ -229,14 +230,23 @@ describe("motifDeRefus", () => {
     expect(motifDeRefus(casier, [], { packages: 1, loose: 0 })).toBeNull();
   });
 
-  it("oppose le VERROU avant le stock", () => {
+  it("NE REFUSE PLUS un article sous inventaire : il s'ajoute", () => {
+    // Sa carte était inerte et l'ajout refusé : le caissier ne pouvait même
+    // pas le chiffrer sur une proforma. C'est l'ENCAISSEMENT qui se ferme.
+    const bloque = { ...casier, verrou_inventaire: "INV-0001" };
+    expect(motifDeRefus(bloque, [], saisie)).toBeNull();
+    const etat = ajouter(PANIER_VIDE, bloque, 0, 1);
+    expect(etat.lignes).toHaveLength(1);
+  });
+
+  it("le VERROU se DIT à l'ajout, et passe avant le stock", () => {
     // L'ordre du serveur : `SaleCreateSerializer.validate` refuse les produits
     // bloqués avant de regarder les quantités. Dire « stock insuffisant » sur
     // un article sous inventaire enverrait le caissier chercher au dépôt une
     // marchandise qui est là, mais interdite à la vente.
     const bloque = { ...casier, stock_quantity: 0, stock_packages: 0, stock_loose: 0,
                      verrou_inventaire: "INV-0001" };
-    const motif = motifDeRefus(bloque, [], saisie)!;
+    const motif = avertissementDeStock(bloque, [], saisie)!;
 
     expect(motif).toContain("INV-0001");
     expect(motif).not.toContain("Stock insuffisant");
@@ -258,7 +268,7 @@ describe("motifDeRefus", () => {
     const inconnu = { ...casier, stock_quantity: null, stock_packages: null, stock_loose: null };
     const motif = avertissementDeStock(inconnu, [], saisie)!;
 
-    expect(motif).toContain("Aucun stock enregistré");
+    expect(motif).toContain("Aucun stock de Primus 65cl dans cet entrepôt");
     expect(motif).not.toContain("0 en stock");
   });
 
@@ -270,7 +280,7 @@ describe("motifDeRefus", () => {
     const motif = avertissementDeStock(vide, [], saisie)!;
 
     expect(motif).toContain("Stock insuffisant");
-    expect(motif).not.toContain("Aucun stock enregistré");
+    expect(motif).not.toContain("Aucun stock de");
   });
 
   it("réétiquette le stock INCONNU de la même façon à l'encaissement", () => {
@@ -278,17 +288,16 @@ describe("motifDeRefus", () => {
     // problèmes distincts.
     const inconnu = { ...casier, stock_quantity: null, stock_packages: null, stock_loose: null };
     const etat = ajouter(PANIER_VIDE, inconnu, 0, 1);
-    expect(motifsEncaissement(etat.lignes)[0]).toContain("Aucun stock enregistré");
+    expect(motifsEncaissement(etat.lignes)[0]).toContain("Aucun stock de Primus 65cl");
   });
 
-  it("n'oppose AUCUNE borne quand l'entrepôt tolère le découvert", () => {
-    // Stock inconnu ET découvert autorisé : le serveur ne contrôle rien, le
-    // comptoir non plus. Refuser ici bloquerait une caisse sans entrepôt.
-    const libre = {
-      ...casier, stock_quantity: null, stock_packages: null, stock_loose: null,
-      allow_negative_stock: true,
-    };
-    expect(motifDeRefus(libre, [], saisie)).toBeNull();
+  it("un stock inconnu FERME l'encaissement : le découvert n'existe plus", () => {
+    // Il l'ouvrait quand l'entrepôt « tolérait le découvert », ou quand la
+    // caisse n'avait pas d'entrepôt : on encaissait alors sans aucune borne.
+    const inconnu = { ...casier, stock_quantity: null, stock_packages: null, stock_loose: null };
+    const etat = ajouter(PANIER_VIDE, inconnu, 0, 1);
+    expect(etat.lignes).toHaveLength(1);
+    expect(motifsEncaissement(etat.lignes)).toHaveLength(1);
   });
 
   it("rend le motif du NOYAU quand le stock est simplement trop court", () => {
@@ -297,12 +306,31 @@ describe("motifDeRefus", () => {
     expect(motif).toContain("Primus 65cl");
   });
 
-  it("le VERROU reste un refus, lui, et il prime", () => {
-    // Un article sous inventaire est refusé par le serveur avant même qu'il
-    // regarde les quantités : le comptoir doit refuser aussi.
-    const bloque = { ...casier, verrou_inventaire: "INV-0002" };
-    expect(motifDeRefus(bloque, [], saisie)).toContain("INV-0002");
-    expect(avertissementDeStock(bloque, [], saisie)).toBeNull();
+  it("le VERROU ferme l'encaissement, en nommant la session, avant le stock", () => {
+    const bloque = { ...casier, stock_quantity: 0, stock_packages: 0, stock_loose: 0,
+                     verrou_inventaire: "INV-0002" };
+    const etat = ajouter(PANIER_VIDE, bloque, 0, 1);
+    const motifs = motifsEncaissement(etat.lignes);
+    expect(motifs).toHaveLength(1);
+    expect(motifs[0]).toContain("INV-0002");
+    expect(motifs[0]).not.toContain("Stock insuffisant");
+  });
+
+  it("le verrou RELU de la base fait foi sur celui de l'article", () => {
+    // L'inventaire a démarré APRÈS la mise au panier : l'article du panier se
+    // croit libre, la base dit le contraire. Le serveur suivra la base.
+    const etat = ajouter(PANIER_VIDE, casier, 0, 1);
+    expect(motifsEncaissement(etat.lignes)).toEqual([]);
+    const vivants = new Map([["p1", "INV-0003"], ["absent-du-panier", "INV-0003"]]);
+    expect(motifsEncaissement(etat.lignes, vivants)[0]).toContain("INV-0003");
+    // Et seuls les articles DU PANIER y entrent.
+    expect([...verrousDuPanier(etat.lignes, vivants).keys()]).toEqual(["p1"]);
+  });
+
+  it("un inventaire clos depuis la mise au panier ne ferme plus rien", () => {
+    const bloque = { ...casier, verrou_inventaire: "INV-0004" };
+    const etat = ajouter(PANIER_VIDE, bloque, 0, 1);
+    expect(motifsEncaissement(etat.lignes, new Map())).toEqual([]);
   });
 });
 

@@ -4,17 +4,9 @@ import {
   type DiagnosticCatalogue,
 } from "./etat-catalogue";
 
-/**
- * Un catalogue sain : des articles reçus, vendables, VISIBLES, aucun filtre.
- *
- * ⚠ `visibles` suit `vendables` par défaut. Le laisser à zéro ferait tomber
- * chaque cas dans `"perimetre"`, et les six tests de filtre passeraient pour
- * une raison qui n'est pas la leur.
- */
+/** Un catalogue sain : des articles reçus, vendables, aucun filtre. */
 function diag(p: Partial<DiagnosticCatalogue> = {}): DiagnosticCatalogue {
-  const base = { recus: 12, vendables: 12, recherche: false, rubrique: false };
-  const fusion = { ...base, ...p };
-  return { ...fusion, visibles: p.visibles ?? fusion.vendables };
+  return { recus: 12, vendables: 12, recherche: false, rubrique: false, ...p };
 }
 
 describe("la cause d'une grille vide", () => {
@@ -136,7 +128,7 @@ describe("le message rendu au caissier", () => {
   });
 });
 
-describe("le périmètre de catalogue, et la cause qu'on ne sait pas nommer", () => {
+describe("la cause qu'on ne sait pas nommer", () => {
   /**
    * ┌──────────────────────────────────────────────────────────────────────────┐
    * │ `d.rubrique` ÉTAIT DÉCLARÉ, COLLECTÉ, ET LU NULLE PART.                 │
@@ -154,61 +146,21 @@ describe("le périmètre de catalogue, et la cause qu'on ne sait pas nommer", ()
     expect(cause).not.toBe("rubrique");
   });
 
-  it("un catalogue vendable hors périmètre se dit « perimetre »", () => {
-    // Le cas réel : sept articles en vente, aucun stocké dans mon dépôt.
-    expect(causeGrilleVide(diag({ recus: 12, vendables: 7, visibles: 0 })))
-      .toBe("perimetre");
+  it("un catalogue vendable ne se dit jamais hors de portée", () => {
+    // Le comptoir montre TOUT le catalogue vendable (décision 4) : aucune
+    // affectation d'entrepôt ne vide plus la grille, et la cause qui le disait
+    // est partie avec le filtre.
+    const causes = [
+      diag({}),
+      diag({ recherche: true }),
+      diag({ rubrique: true }),
+    ].map((d) => causeGrilleVide(d));
+    expect(causes).toEqual(["indetermine", "recherche", "rubrique"]);
   });
 
-  it("le périmètre passe AVANT les filtres : aucun mot ne le lève", () => {
-    // Une cause structurelle d'abord : « essayez un autre mot » serait faux,
-    // il n'y a aucun mot qui ramène un article hors de mon périmètre.
-    expect(
-      causeGrilleVide(diag({ vendables: 7, visibles: 0, recherche: true }))
-    ).toBe("perimetre");
-    expect(
-      causeGrilleVide(diag({ vendables: 7, visibles: 0, rubrique: true }))
-    ).toBe("perimetre");
-  });
-
-  it("mais il passe APRÈS « aucun vendable » : on ne nomme pas deux causes", () => {
-    // Si rien n'est vendable, rien n'est visible non plus. La cause à dire est
-    // le réglage des articles, pas l'affectation d'entrepôt.
-    expect(causeGrilleVide(diag({ recus: 12, vendables: 0, visibles: 0 })))
-      .toBe("aucun-vendable");
-  });
-
-  it("le message du périmètre NOMME l'affectation, et le nombre en vente", () => {
-    const m = messageGrilleVide(diag({ recus: 12, vendables: 7, visibles: 0 }));
-    expect(m.message).toContain("7");
-    expect(m.message).toMatch(/entrepôt/i);
-    expect(m.message).toMatch(/back-office/i);
-  });
-
-  it("le périmètre OFFRE la synchronisation, parce qu'elle y change tout", () => {
-    /*
-     * ┌──────────────────────────────────────────────────────────────────────┐
-     * │ CE TEST AFFIRMAIT L'INVERSE, SOUS LE COMMENTAIRE « ET SURTOUT :      │
-     * │ SYNCHRONISER N'Y CHANGE RIEN ». Il décrivait fidèlement un           │
-     * │ comportement FAUX, ce qui le rendait permanent - la situation que ce │
-     * │ dépôt a déjà payée sur le mois calendaire.                           │
-     * │                                                                      │
-     * │ Le périmètre vient de l'instantané de session, que seule une         │
-     * │ synchronisation réécrit : une fois l'affectation faite au            │
-     * │ back-office, synchroniser est le geste qui l'applique. Et `visibles` │
-     * │ dépend de lignes de `stocks`, qui descendent par le tirage.          │
-     * └──────────────────────────────────────────────────────────────────────┘
-     */
-    const m = messageGrilleVide(diag({ recus: 12, vendables: 7, visibles: 0 }));
-    expect(m.leveParSynchronisation).toBe(true);
-    // Et le message ne dit plus le contraire du bouton qu'il porte.
-    expect(m.message).not.toMatch(/n.y changera rien/i);
-    expect(m.message).toMatch(/synchronisation/i);
-  });
-
-  it("un seul article en vente s'accorde au singulier", () => {
-    const m = messageGrilleVide(diag({ recus: 3, vendables: 1, visibles: 0 }));
-    expect(m.message).toContain("1 article est en vente");
+  it("un seul article reçu s'accorde au singulier", () => {
+    const m = messageGrilleVide(diag({ recus: 1, vendables: 0 }));
+    expect(m.message).toContain("1 article est bien reçu");
     expect(m.message).not.toContain("articles sont");
   });
 
@@ -218,20 +170,19 @@ describe("le périmètre de catalogue, et la cause qu'on ne sait pas nommer", ()
   });
 
   it("un vide inexpliqué se DIT, il ne s'invente pas une cause", () => {
-    const cause = causeGrilleVide(diag({ recus: 12, vendables: 12, visibles: 12 }));
+    const cause = causeGrilleVide(diag({ recus: 12, vendables: 12 }));
     expect(cause).toBe("indetermine");
-    const m = messageGrilleVide(diag({ recus: 12, vendables: 12, visibles: 12 }));
+    const m = messageGrilleVide(diag({ recus: 12, vendables: 12 }));
     // Le seul geste proposé est celui qui ne peut pas nuire.
     expect(m.leveParSynchronisation).toBe(true);
     // Et il n'envoie PAS choisir « Tout », qui est déjà choisi.
     expect(m.message).not.toMatch(/Tout/);
   });
 
-  it("les six causes ont six titres distincts", () => {
+  it("les cinq causes ont cinq titres distincts", () => {
     const titres = [
       diag({ recus: 0, vendables: 0 }),
       diag({ recus: 12, vendables: 0 }),
-      diag({ vendables: 7, visibles: 0 }),
       diag({ recherche: true }),
       diag({ rubrique: true }),
       diag({}),

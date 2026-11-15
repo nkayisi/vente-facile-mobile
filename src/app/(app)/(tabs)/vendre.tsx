@@ -9,18 +9,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
-import { formatDateTimeFr, formatTimeFr } from "@vente-facile/core";
+import { formatDateTimeFr, formatTimeFr, litTousLesEntrepots } from "@vente-facile/core";
 import type { Saisie } from "@vente-facile/core/pos";
 
 import {
-  articleParCodeBarres,
   categoriesVendables,
   chercherArticles,
   diagnostiquerCatalogue,
   type ArticlePos,
 } from "@/features/pos/catalogue";
 import { messageGrilleVide, type DiagnosticCatalogue } from "@/features/pos/etat-catalogue";
-import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
+import { membreDeLaSession } from "@/features/perimetre/entrepots";
+import { accord, pluriel } from "@/data/accord";
 import {
   CLE_DEVISE_AFFICHAGE,
   deviseAffichageValide,
@@ -84,10 +84,18 @@ export default function Comptoir() {
   }, []);
 
   const entrepot = session?.warehouseId ?? null;
-  // ⚠ DEUX PÉRIMÈTRES DISTINCTS, et les confondre serait un défaut : `entrepot`
-  // est celui de la CAISSE, d'où le stock est lu ; celui-ci est celui du
-  // MEMBRE, qui borne ce que le catalogue montre - la règle du back-office.
-  const entrepotsCatalogue = usePerimetreCatalogue();
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ TOUT LE CATALOGUE VENDABLE ; LE STOCK EST CELUI DE LA CAISSE.       │
+  // │                                                                      │
+  // │ Le comptoir bornait sa grille au périmètre du membre : un article du │
+  // │ dépôt d'en face était introuvable, donc impossible à chiffrer. Seul  │
+  // │ un membre qui lit TOUS les entrepôts (propriétaire, case « Consulter │
+  // │ tous ») voit en plus où l'article reste disponible - décision 4.     │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const avecAilleurs = useMemo(
+    () => litTousLesEntrepots(membreDeLaSession(snapshot?.membership)),
+    [snapshot?.membership]
+  );
 
   // ┌──────────────────────────────────────────────────────────────────────┐
   // │ LA DEVISE D'AFFICHAGE, ET CE N'EST PAS LA DEVISE DE FACTURATION.    │
@@ -141,7 +149,7 @@ export default function Comptoir() {
     let annule = false;
 
     minuteur.current = setTimeout(() => {
-      chercherArticles({ warehouseId: entrepot, terme, categoryId: rubrique, entrepotsCatalogue })
+      chercherArticles({ warehouseId: entrepot, terme, categoryId: rubrique, avecAilleurs })
         .then(async (trouves) => {
           if (annule) return;
           setArticles(trouves);
@@ -157,10 +165,7 @@ export default function Comptoir() {
             setDiagnostic(null);
             return;
           }
-          // ⚠ LE PÉRIMÈTRE ENTRE DANS LE COMPTAGE. Sans lui, un catalogue
-          //   fermé par une affectation d'entrepôt rendait `vendables > 0`,
-          //   et la cause « périmètre » était indiagnosticable.
-          const compte = await diagnostiquerCatalogue(entrepotsCatalogue);
+          const compte = await diagnostiquerCatalogue();
           if (annule) return;
           setDiagnostic({
             ...compte,
@@ -177,7 +182,7 @@ export default function Comptoir() {
       annule = true;
       if (minuteur.current) clearTimeout(minuteur.current);
     };
-  }, [terme, rubrique, entrepot, session, entrepotsCatalogue]);
+  }, [terme, rubrique, entrepot, session, avecAilleurs]);
 
   const quantitesAuPanier = useMemo(() => {
     const carte = new Map<string, number>();
@@ -388,9 +393,13 @@ export default function Comptoir() {
             <View className="mb-2 flex-row items-center gap-1.5">
               <Icon name="AlertCircle" size={14} color="destructive" />
               <Text variant="caption" className="flex-1 text-destructive">
-                {ruptures.length === 1
-                  ? "Un article manque en stock : proforma possible, encaissement non."
-                  : `${ruptures.length} articles manquent en stock : proforma possible, encaissement non.`}
+                {/* Stock ou inventaire : la cause est sur le panier, ligne par
+                    ligne. Ici, ce qui compte est le nombre et la sortie. */}
+                {`${pluriel(ruptures.length, "ligne", "lignes")} ${accord(
+                  ruptures.length,
+                  "ne s'encaisse pas",
+                  "ne s'encaissent pas"
+                )} : proforma possible, encaissement non.`}
               </Text>
             </View>
           ) : null}
@@ -529,10 +538,14 @@ function BandeauInventaire({
     <View className="mt-2">
       <Banner
         tone="warning"
-        title={`${bloques.length} article${bloques.length > 1 ? "s" : ""} bloqué${
-          bloques.length > 1 ? "s" : ""
-        } par un inventaire`}
-        message={`${references.join(", ")} : état ${quand}. Synchronisez si le comptage est terminé.`}
+        title={`${pluriel(bloques.length, "article", "articles")} sous inventaire`}
+        // Ils s'ajoutent au panier (proforma, devis), mais ne s'encaissent pas :
+        // le dire ici évite de le découvrir en rendant la monnaie.
+        message={`${references.join(", ")} : ${accord(
+          bloques.length,
+          "il s'ajoute au panier mais ne s'encaisse pas",
+          "ils s'ajoutent au panier mais ne s'encaissent pas"
+        )} tant que le comptage dure. État ${quand} ; synchronisez si le comptage est terminé.`}
         action={{
           // ┌──────────────────────────────────────────────────────────────┐
           // │ ON SYNCHRONISE ICI, ON NE PART PLUS L'ÉCRAN CHERCHER.        │
@@ -553,7 +566,7 @@ function BandeauInventaire({
 }
 
 function estEpuise(article: ArticlePos): boolean {
-  if (!article.track_inventory || article.allow_negative_stock) return false;
+  if (!article.track_inventory) return false;
   // `null` vaut « inconnu », jamais « épuisé » : barrer un article sur une
   // donnée absente ferait refuser des ventes possibles.
   if (article.stock_quantity === null) return false;

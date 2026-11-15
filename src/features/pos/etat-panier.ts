@@ -14,6 +14,7 @@ import {
   maxGlobalDiscount,
   verifierAjout,
   type BasketLine,
+  type Rupture,
   type Saisie,
 } from "@vente-facile/core/pos";
 import { MIN_QUANTITY } from "@vente-facile/core";
@@ -218,7 +219,7 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
       lignes[action.index] = {
         ...courante,
         quantity: verdict.quantity,
-              priceCurrency: action.devise,
+        priceCurrency: action.devise,
         packageQuantity: verdict.packageQuantity,
       };
       return { ...etat, lignes };
@@ -280,18 +281,17 @@ function _reduire(etat: EtatPanier, action: ActionPanier): EtatPanier {
 }
 
 /**
- * Le refus d'une saisie, en français, dans l'ORDRE DU SERVEUR.
+ * Le refus d'une saisie, en français.
  *
- * Deux motifs précèdent le noyau, et il faut qu'ils le précèdent :
- *
- * 1. **Le verrou d'inventaire**, parce que `SaleCreateSerializer.validate`
- *    refuse les produits bloqués AVANT de regarder les quantités. Dire « stock
- *    insuffisant » sur un article sous inventaire enverrait le caissier
- *    chercher au dépôt une marchandise qui est là, mais interdite à la vente.
- * 2. **Le stock INCONNU**, parce que le noyau lit `null` comme zéro pour
- *    composer sa phrase, et écrivait « 0 en stock » sous une carte annonçant
- *    « Stock inconnu ». Le VERDICT reste celui du noyau, et il reste juste :
- *    sans ligne de stock pour cet entrepôt, le serveur refuse aussi.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ RIEN NE FERME PLUS L'AJOUT, PAS MÊME LE VERROU D'INVENTAIRE.            │
+ * │                                                                          │
+ * │ Un article sous inventaire était refusé ici, et sa carte rendue inerte : │
+ * │ le caissier ne pouvait même pas le chiffrer sur une proforma. Le verrou  │
+ * │ ferme désormais l'ENCAISSEMENT, avec le stock (`lignesEnRupture` du      │
+ * │ noyau, le verrou avant la rupture, comme le serveur). Ce qui reste un    │
+ * │ refus d'ajout n'est pas un manque : c'est une saisie vide.               │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
  * Ici plutôt que dans le fournisseur React : c'est une règle, elle s'éprouve
  * sans appareil.
@@ -301,65 +301,88 @@ export function motifDeRefus(
   lignes: LignePanier[],
   saisie: Saisie
 ): string | null {
-  if (article.verrou_inventaire !== null) {
-    return motifDuVerrou(article.name, article.verrou_inventaire);
-  }
-  // LE STOCK N'EST PLUS UN REFUS ICI. Il l'est à l'encaissement, par
-  // `motifsEncaissement`. Ce qui manque se DIT quand même, sans fermer le
-  // bouton : c'est `avertissementDeStock`.
   const verdict = verifierAjout(article, lignes, saisie);
   if (verdict.quantity < MIN_QUANTITY) return verdict.raison;
   return null;
 }
 
 /**
- * Ce que le stock ne couvre pas, dit sans rien fermer.
+ * Ce qui fermera l'encaissement, dit SANS rien fermer, au moment d'ajouter.
  *
  * Le caissier doit savoir qu'il compose un panier qu'il ne pourra pas
  * encaisser - le découvrir au moment de rendre la monnaie serait pire que le
  * refus qu'on vient de retirer. Mais c'est un AVERTISSEMENT : le bouton
  * « Ajouter » reste ouvert, parce que ce panier a vocation à sortir en
  * proforma.
+ *
+ * ⚠ LES PHRASES SONT CELLES DU NOYAU, et dans SON ordre : verrou, puis stock
+ * inconnu, puis rupture. L'avertissement et le motif d'encaissement doivent se
+ * ressembler mot pour mot, sinon le caissier croit à deux problèmes là où il
+ * n'y en a qu'un.
  */
 export function avertissementDeStock(
   article: ArticlePos,
   lignes: LignePanier[],
   saisie: Saisie
 ): string | null {
-  if (article.verrou_inventaire !== null) return null; // déjà un refus
   const verdict = verifierAjout(article, lignes, saisie);
-  if (verdict.ok || verdict.quantity < MIN_QUANTITY) return null;
+  if (verdict.quantity < MIN_QUANTITY) return null;
+  if (article.verrou_inventaire !== null) {
+    return motifDuVerrou(article.name, article.verrou_inventaire);
+  }
+  if (verdict.ok) return null;
 
   // Seul le cas « aucune ligne de stock » est réétiqueté. Un zéro RÉELLEMENT
   // enregistré doit continuer de se lire « 0 en stock » : c'est une
   // information certaine, et la noyer dans « inconnu » ferait chercher une
-  // synchronisation là où il faut réapprovisionner.
-  const inconnu =
-    article.stock_quantity === null &&
-    article.track_inventory &&
-    !article.allow_negative_stock;
-
+  // entrée de stock là où il faut réapprovisionner.
+  const inconnu = article.stock_quantity === null && article.track_inventory;
   return inconnu ? motifStockInconnu(article.name) : verdict.raison;
 }
 
 /**
- * Ce qui ferme l'encaissement, ligne par ligne.
+ * Les verrous d'inventaire qui pèsent sur le panier : article → session.
+ *
+ * Tirés des ARTICLES du panier, tels que le catalogue les a lus, sauf si le
+ * fournisseur passe une carte relue de la base (`verrousVivants`) : celle-ci
+ * fait foi, elle suit un inventaire démarré ou clos APRÈS la mise au panier.
+ */
+export function verrousDuPanier(
+  lignes: LignePanier[],
+  verrousVivants?: ReadonlyMap<string, string> | null
+): Map<string, string> {
+  if (verrousVivants) {
+    const ici = new Set(lignes.map((l) => l.product.id));
+    return new Map([...verrousVivants].filter(([id]) => ici.has(id)));
+  }
+  const carte = new Map<string, string>();
+  for (const l of lignes) {
+    if (l.product.verrou_inventaire !== null) {
+      carte.set(l.product.id, l.product.verrou_inventaire);
+    }
+  }
+  return carte;
+}
+
+/**
+ * Ce qui ferme l'encaissement, ligne par ligne, dans l'ORDRE DU SERVEUR.
  *
  * Vide, le panier s'encaisse. Non vide, il ne s'encaisse pas et l'écran DIT
- * lesquelles, parce qu'un bouton grisé sans motif est un cul-de-sac.
- *
- * Le réétiquetage du stock inconnu est le même qu'à l'avertissement : les deux
- * phrases doivent se ressembler, sinon le caissier croit à deux problèmes là
- * où il n'y en a qu'un.
+ * lesquelles, parce qu'un bouton grisé sans motif est un cul-de-sac. C'est la
+ * règle du noyau (`lignesEnRupture`), partagée avec le comptoir web : deux
+ * comptoirs du même établissement ne ferment pas sur deux règles.
  */
-export function motifsEncaissement(lignes: LignePanier[]): string[] {
-  return lignesEnRupture(lignes).map((rupture) => {
-    const article = lignes[rupture.index]?.product as ArticlePos | undefined;
-    const inconnu =
-      article &&
-      article.stock_quantity === null &&
-      article.track_inventory &&
-      !article.allow_negative_stock;
-    return inconnu ? motifStockInconnu(article.name) : rupture.raison;
-  });
+export function rupturesDuPanier(
+  lignes: LignePanier[],
+  verrousVivants?: ReadonlyMap<string, string> | null
+): Rupture[] {
+  return lignesEnRupture(lignes, { verrous: verrousDuPanier(lignes, verrousVivants) });
+}
+
+/** Les phrases qui ferment « Encaisser », une par ligne en cause. */
+export function motifsEncaissement(
+  lignes: LignePanier[],
+  verrousVivants?: ReadonlyMap<string, string> | null
+): string[] {
+  return rupturesDuPanier(lignes, verrousVivants).map((r) => r.raison);
 }

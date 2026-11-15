@@ -47,7 +47,7 @@ jest.mock("@/db/schema", () => {
 });
 jest.mock("drizzle-orm", () => ({
   and: () => ({}), asc: () => ({}), eq: () => ({}), inArray: () => ({}),
-  isNull: () => ({}), like: () => ({}), or: () => ({}), sql: () => ({}),
+  isNull: () => ({}), like: () => ({}), ne: () => ({}), or: () => ({}), sql: () => ({}),
 }));
 jest.mock("drizzle-orm/sqlite-core", () => ({ alias: () => ({}) }));
 jest.mock("@/sync", () => ({ enAttenteParType: jest.fn(async () => []) }));
@@ -89,34 +89,43 @@ const LIGNE = {
   _reserved: "0.000",
   _packages: "4",
   _loose: "12.000",
-  _allow_negative: false,
 };
 
 const ctx = (patch: Partial<Contexte> = {}): Contexte => ({
-  sansEntrepot: false,
   verrou: new Map(),
   reserve: new Map(),
   ...patch,
 });
 
-describe("le découvert se décide au niveau de l'ENTREPÔT", () => {
-  it("suit le réglage de l'entrepôt, pas celui du produit", () => {
-    // Le serveur lit `warehouse.allow_negative_stock` partout en aval ; son
-    // pré-contrôle de vente documente que lire le champ produit était un bug.
-    expect(versArticle({ ...LIGNE, _allow_negative: true }, ctx()).allow_negative_stock).toBe(true);
-    expect(versArticle({ ...LIGNE, _allow_negative: false }, ctx()).allow_negative_stock).toBe(false);
+describe("le stock négatif n'existe plus", () => {
+  it("l'article ne porte plus aucun réglage de découvert", () => {
+    // Il portait `allow_negative_stock`, vrai dès que la caisse n'avait pas
+    // d'entrepôt : le comptoir encaissait alors sans aucune borne.
+    expect(versArticle(LIGNE, ctx())).not.toHaveProperty("allow_negative_stock");
   });
 
-  it("n'oppose AUCUNE borne quand la caisse n'a pas d'entrepôt", () => {
-    // Le serveur enveloppe tout son pré-contrôle dans un `if warehouse:`.
-    // Poser ici une borne à zéro rendrait invendable le catalogue entier d'une
-    // caisse sans dépôt, configuration que l'écran d'ouverture tolère.
-    const article = versArticle(
-      { ...LIGNE, _allow_negative: null, _quantity: null },
-      ctx({ sansEntrepot: true })
-    );
-    expect(article.allow_negative_stock).toBe(true);
+  it("sans ligne de stock ici, le stock reste INCONNU, jamais ouvert", () => {
+    // C'est le noyau qui fermera l'encaissement, en le disant.
+    const article = versArticle({ ...LIGNE, _quantity: null }, ctx());
     expect(article.stock_quantity).toBeNull();
+    expect(article.track_inventory).toBe(true);
+  });
+});
+
+describe("le stock est la SOMME des lignes de l'article", () => {
+  it("une somme flottante est quantisée avant d'être montrée", () => {
+    // Deux lignes de 0,1 et 0,2 (deux variantes, deux emplacements) sortent de
+    // `sum()` à 0.30000000000000004 : ce nombre s'afficherait sur la carte.
+    const article = versArticle(
+      {
+        ...LIGNE, units_per_package: null, packaging_unit_name: null,
+        selling_mode: "retail_only",
+        _quantity: 0.30000000000000004, _reserved: 0, _packages: 0, _loose: 0.30000000000000004,
+      },
+      ctx()
+    );
+    expect(article.stock_quantity).toBe(0.3);
+    expect(article.stock_loose).toBe(0.3);
   });
 });
 
@@ -238,53 +247,83 @@ describe("le contexte est MÉMORISÉ entre deux lectures", () => {
   });
 
   it("ne relit qu'UNE fois pour plusieurs recherches", async () => {
-    await chercherArticles({ warehouseId: "w1", terme: "c", entrepotsCatalogue: null });
-    await chercherArticles({ warehouseId: "w1", terme: "co", entrepotsCatalogue: null });
-    await chercherArticles({ warehouseId: "w1", terme: "coc", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1", terme: "c" });
+    await chercherArticles({ warehouseId: "w1", terme: "co" });
+    await chercherArticles({ warehouseId: "w1", terme: "coc" });
 
     expect(lireLeVerrou).toHaveBeenCalledTimes(1);
     expect(lireLaReserve).toHaveBeenCalledTimes(1);
   });
 
   it("relit dès que la base bouge, JAMAIS après un simple délai", async () => {
-    await chercherArticles({ warehouseId: "w1", terme: "c", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1", terme: "c" });
     expect(lireLaReserve).toHaveBeenCalledTimes(1);
 
     // Une vente vient d'être mise en file : le stock qu'elle a sorti doit être
     // retenu à la frappe SUIVANTE, pas à l'expiration d'une échéance. Une
     // seconde de retard suffit à reproposer un article déjà parti.
     for (const rappel of mockEcouteurs) rappel({ tableName: "outbox_operations" });
-    await chercherArticles({ warehouseId: "w1", terme: "c", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1", terme: "c" });
 
     expect(lireLaReserve).toHaveBeenCalledTimes(2);
   });
 
   it("relit aussi quand l'INVENTAIRE bouge", async () => {
-    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1" });
     for (const rappel of mockEcouteurs) rappel({ tableName: "inventory_sessions" });
-    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1" });
 
     expect(lireLeVerrou).toHaveBeenCalledTimes(2);
   });
 
   it("ignore les tables dont le contexte ne dépend pas", async () => {
-    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1" });
     // Le catalogue lui-même : un prix qui change se relit par la requête, pas
     // par le contexte. Tout invalider ferait de la mémoire une décoration.
     for (const rappel of mockEcouteurs) rappel({ tableName: "products" });
-    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1" });
 
     expect(lireLeVerrou).toHaveBeenCalledTimes(1);
   });
 
   it("ne sert JAMAIS le contexte d'un autre entrepôt", async () => {
-    await chercherArticles({ warehouseId: "w1", entrepotsCatalogue: null });
-    await chercherArticles({ warehouseId: "w2", entrepotsCatalogue: null });
+    await chercherArticles({ warehouseId: "w1" });
+    await chercherArticles({ warehouseId: "w2" });
 
     // Le verrou comme la réserve portent sur un dépôt : servir celui d'en face
     // retiendrait du stock que personne n'y a vendu, et en libérerait ici.
     expect(lireLeVerrou).toHaveBeenCalledTimes(2);
     expect(lireLeVerrou).toHaveBeenNthCalledWith(1, "w1");
     expect(lireLeVerrou).toHaveBeenNthCalledWith(2, "w2");
+  });
+});
+
+describe("la disponibilité des autres entrepôts", () => {
+  beforeEach(() => {
+    mockResultats.length = 0;
+    oublierLeContexte();
+  });
+
+  it("n'est lue que si on la demande", async () => {
+    mockResultats.push([LIGNE]);
+    const [article] = await chercherArticles({ warehouseId: "w1" });
+    // `null` : non demandée, et rien n'a été lu de plus.
+    expect(article.ailleurs).toBeNull();
+    expect(mockResultats).toHaveLength(0);
+  });
+
+  it("rend, article par article, les seuls entrepôts qui portent encore quelque chose", async () => {
+    mockResultats.push(
+      [LIGNE, { ...LIGNE, id: "p9" }],
+      [
+        { produit: "p1", entrepotId: "w2", entrepot: "Réserve", quantite: 30, reserve: 6 },
+        // Tout est réservé ici : il n'y a rien à proposer au client.
+        { produit: "p1", entrepotId: "w3", entrepot: "Boutique Nord", quantite: 5, reserve: 5 },
+      ]
+    );
+    const [p1, p9] = await chercherArticles({ warehouseId: "w1", avecAilleurs: true });
+    expect(p1.ailleurs).toEqual([{ entrepotId: "w2", entrepot: "Réserve", disponible: 24 }]);
+    // Demandée, et rien ailleurs : une liste VIDE, pas `null`.
+    expect(p9.ailleurs).toEqual([]);
   });
 });

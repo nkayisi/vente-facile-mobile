@@ -24,11 +24,24 @@
  * Ce que la reprise ne peut pas honorer, elle le DIT. Elle ne corrige jamais en
  * silence : un panier qui reviendrait amputé de deux lignes sans un mot est
  * pire qu'un panier refusé.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA REPRISE NE RETIRE PLUS UNE LIGNE AU-DELÀ DU STOCK, NI SOUS VERROU.   │
+ * │                                                                          │
+ * │ Elle les écartait : le caissier retrouvait un panier amputé de ce que le │
+ * │ client avait demandé, alors que ce panier pouvait encore sortir en       │
+ * │ proforma. Comme au comptoir, rien ne ferme plus l'AJOUT : la ligne       │
+ * │ revient entière, et c'est l'ENCAISSEMENT qui se fermera, en nommant la   │
+ * │ ligne. La reprise le dit tout de suite (`nonEncaissables`), avec les     │
+ * │ phrases du noyau. Seul un article sorti du catalogue est encore écarté : │
+ * │ on ne peut ni le chiffrer ni le vendre.                                  │
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
+import { MIN_QUANTITY, roundQuantity } from "@vente-facile/core";
 import { looseQuantityOf, verifierAjout } from "@vente-facile/core/pos";
 
 import type { ArticlePos } from "./catalogue";
-import type { EtatPanier, LignePanier } from "./etat-panier";
+import { motifsEncaissement, type EtatPanier, type LignePanier } from "./etat-panier";
 
 /** Version du contenu sérialisé. Un panier d'une version inconnue est ignoré. */
 const VERSION = 1;
@@ -66,6 +79,11 @@ export interface Reprise {
   etat: EtatPanier;
   /** Lignes écartées, chacune avec son motif, en français. */
   ecartees: string[];
+  /**
+   * Lignes REPRISES qui ne s'encaisseront pas en l'état (stock, inventaire),
+   * avec la phrase du noyau. Le panier reste chiffrable en proforma.
+   */
+  nonEncaissables: string[];
   /** Articles dont le prix a changé depuis la mise en attente. */
   prixChanges: string[];
   /** Le client attaché n'existe plus, ou n'est plus actif. */
@@ -126,15 +144,21 @@ export function analyser(brut: string): ContenuEnAttente | null {
  * Pur, et c'est voulu : la règle de reprise se vérifie sur un tableau
  * d'articles fabriqué à la main, sans base ni appareil.
  *
- * Chaque ligne repasse par `verifierAjout`, exactement comme si le caissier la
- * saisissait à l'instant, et elle est vérifiée CONTRE LES LIGNES DÉJÀ
- * RESTAURÉES : deux lignes du même article ne peuvent pas dépasser ensemble un
- * stock qu'aucune ne dépasse seule.
+ * Chaque ligne repasse par `verifierAjout` pour son ARITHMÉTIQUE (le total
+ * refait au facteur du jour), jamais plus pour un refus de stock. Deux lignes
+ * rangées du même article se FONDENT, comme le réducteur le fait à l'ajout :
+ * le noyau ne compte qu'une ligne par article, et deux lignes tenables seules
+ * passeraient ensemble au-delà du stock sans que rien ne le dise.
  */
 export function restaurerLignes(
   contenu: ContenuEnAttente,
   articles: Map<string, ArticlePos>
-): { lignes: LignePanier[]; ecartees: string[]; prixChanges: string[] } {
+): {
+  lignes: LignePanier[];
+  ecartees: string[];
+  prixChanges: string[];
+  nonEncaissables: string[];
+} {
   const lignes: LignePanier[] = [];
   const ecartees: string[] = [];
   const prixChanges: string[] = [];
@@ -148,11 +172,13 @@ export function restaurerLignes(
       continue;
     }
 
-    const verdict = verifierAjout(article, lignes, {
+    const verdict = verifierAjout(article, [], {
       packages: rangee.packages,
       loose: rangee.loose,
     });
-    if (!verdict.ok) {
+    // Seule une saisie VIDE est écartée : ce n'est pas un manque, c'est une
+    // ligne qui ne désigne aucune quantité.
+    if (verdict.quantity < MIN_QUANTITY) {
       ecartees.push(verdict.raison ?? `${article.name} n'a pas pu être repris.`);
       continue;
     }
@@ -161,8 +187,22 @@ export function restaurerLignes(
     // Le prix RANGÉ est conservé : il a pu être corrigé à la main, et c'est
     // celui qui a été annoncé au client. On signale l'écart, on ne tranche pas
     // à la place du caissier.
-    if (Math.abs(prixCatalogue - rangee.unitPrice) > 0.005) {
+    if (
+      Math.abs(prixCatalogue - rangee.unitPrice) > 0.005 &&
+      !prixChanges.includes(article.name)
+    ) {
       prixChanges.push(article.name);
+    }
+
+    const deja = lignes.findIndex((l) => l.product.id === article.id);
+    if (deja >= 0) {
+      const courante = lignes[deja];
+      lignes[deja] = {
+        ...courante,
+        quantity: roundQuantity(courante.quantity + verdict.quantity),
+        packageQuantity: roundQuantity(courante.packageQuantity + verdict.packageQuantity),
+      };
+      continue;
     }
 
     lignes.push({
@@ -174,7 +214,7 @@ export function restaurerLignes(
     });
   }
 
-  return { lignes, ecartees, prixChanges };
+  return { lignes, ecartees, prixChanges, nonEncaissables: motifsEncaissement(lignes) };
 }
 
 /**

@@ -17,7 +17,6 @@ import { router } from "expo-router";
 
 import { articleParCodeBarres } from "@/features/pos/catalogue";
 import { sessionOuverte } from "@/features/pos/caisse";
-import { usePerimetreCatalogue } from "@/features/perimetre/use-perimetre-catalogue";
 import { usePanier } from "@/features/pos/panier";
 import { Button, Icon, Pressable, Screen, Text } from "@/ui";
 
@@ -33,12 +32,16 @@ const FORMATS = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"] as cons
 const TEMPS_MORT_MS = 1200;
 
 export default function Scan() {
-  // Le scan est borné comme la grille : sans cela, il serait une porte dérobée
-  // dans la règle de catalogue, et c'est le geste le plus rapide du comptoir.
-  const entrepotsCatalogue = usePerimetreCatalogue();
+  // Le scan trouve ce que la grille trouve : TOUT le catalogue vendable. Un
+  // lecteur qui refuserait ce que la recherche montre ferait chercher à la
+  // main l'article qu'on vient de scanner.
   const panier = usePanier();
   const [permission, demanderPermission] = useCameraPermissions();
-  const [message, setMessage] = useState<{ texte: string; ok: boolean } | null>(null);
+  const [message, setMessage] = useState<{
+    texte: string;
+    /** `alerte` : ajouté, mais l'encaissement se fermera - ni vert, ni rouge. */
+    ton: "ok" | "alerte" | "refus";
+  } | null>(null);
   const dernierScan = useRef(0);
   const enCours = useRef(false);
 
@@ -51,39 +54,40 @@ export default function Scan() {
 
       try {
         const session = await sessionOuverte();
-        const article = await articleParCodeBarres(
-          data,
-          session?.warehouseId ?? null,
-          entrepotsCatalogue
-        );
+        const article = await articleParCodeBarres(data, session?.warehouseId ?? null);
 
         if (!article) {
-          setMessage({ texte: `Aucun article pour le code ${data}.`, ok: false });
+          setMessage({ texte: `Aucun article pour le code ${data}.`, ton: "refus" });
           return;
         }
 
         const saisie = { packages: 0, loose: 1 };
         const refus = panier.verifier(article, saisie);
         if (refus) {
-          setMessage({ texte: refus, ok: false });
+          setMessage({ texte: refus, ton: "refus" });
           return;
         }
 
+        // Ce qui fermera l'encaissement se DIT au scan, sans refuser l'ajout :
+        // le caissier qui scanne en série doit l'apprendre maintenant, pas en
+        // rendant la monnaie. Lu AVANT l'ajout, contre le panier d'avant.
+        const alerte = panier.avertir(article, saisie);
         panier.envoyer({
           type: "ajouter",
           article,
           saisie,
           prix: Number(article.selling_price) || 0,
         });
-        setMessage({ texte: `${article.name} ajouté.`, ok: true });
+        setMessage(
+          alerte
+            ? { texte: `${article.name} ajouté. ${alerte}`, ton: "alerte" }
+            : { texte: `${article.name} ajouté.`, ton: "ok" }
+        );
       } finally {
         enCours.current = false;
       }
     },
-    // `entrepotsCatalogue` EST une dépendance : sans elle, le rappel figerait
-    // le périmètre du premier rendu, et un changement d'affectation laisserait
-    // le scan borné sur l'ancien dépôt.
-    [panier, entrepotsCatalogue]
+    [panier]
   );
 
   // Permission encore en cours de lecture : un écran vide plutôt qu'un
@@ -183,7 +187,11 @@ export default function Scan() {
         {message ? (
           <View
             className={`absolute inset-x-4 bottom-4 rounded-xl px-4 py-3 ${
-              message.ok ? "bg-success" : "bg-destructive"
+              message.ton === "ok"
+                ? "bg-success"
+                : message.ton === "alerte"
+                  ? "bg-warning"
+                  : "bg-destructive"
             }`}
           >
             <Text variant="body" className="text-white">

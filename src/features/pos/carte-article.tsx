@@ -38,33 +38,25 @@ export function CarteArticle({
 }: Props) {
   const conditionnement = getPackaging(article);
   // ┌────────────────────────────────────────────────────────────────────────┐
-  // │ LE VERROU REND LA CARTE INERTE. L'ÉPUISEMENT, NON.                    │
+  // │ AUCUNE CARTE N'EST PLUS INERTE, PAS MÊME SOUS INVENTAIRE.             │
   // │                                                                        │
-  // │ Un article sous inventaire est refusé par le serveur AVANT même qu'il  │
-  // │ regarde les quantités, et ce n'est pas un manque que le marchand peut  │
-  // │ résoudre au comptoir : la carte reste morte, et elle porte la          │
-  // │ RÉFÉRENCE de la session pour qu'on sache quoi débloquer.               │
-  // │                                                                        │
-  // │ Un article ÉPUISÉ, lui, s'ajoute désormais au panier. Il garde son     │
-  // │ icône, sa couleur et son libellé - c'est l'information - mais il se    │
-  // │ touche : le panier se chiffre, l'encaissement se ferme, et la          │
-  // │ PROFORMA sort. Une tuile grise sans explication renvoyait le client    │
-  // │ sans rien lui donner ; il repart maintenant avec un devis.             │
+  // │ Un article sous inventaire rendait sa carte morte : le caissier ne     │
+  // │ pouvait même pas le chiffrer sur une proforma. Comme l'article épuisé, │
+  // │ il s'ajoute désormais au panier, et c'est l'ENCAISSEMENT qui se ferme  │
+  // │ (le serveur refuse la vente d'un produit bloqué). La carte garde son   │
+  // │ cadenas et la RÉFÉRENCE de la session : c'est l'information, et le     │
+  // │ caissier doit pouvoir dire au client ce qu'on attend.                  │
   // └────────────────────────────────────────────────────────────────────────┘
   const verrouille = article.verrou_inventaire !== null;
-  const inerte = verrouille;
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={inerte}
       haptic="selection"
-      className={`flex-1 rounded-xl border p-3 ${
-        inerte ? "border-border bg-muted opacity-60" : "border-border bg-card active:bg-muted"
-      }`}
+      className="flex-1 rounded-xl border border-border bg-card p-3 active:bg-muted"
       accessibilityLabel={
         verrouille
-          ? `${article.name}, ${prix}, bloqué par un inventaire en cours`
+          ? `${article.name}, ${prix}, sous inventaire : ne s'encaisse pas`
           : `${article.name}, ${prix}`
       }
     >
@@ -144,7 +136,10 @@ function libelleStock(
   conditionnement: ReturnType<typeof getPackaging>
 ): string {
   if (!article.track_inventory) return "Stock non suivi";
-  if (article.stock_quantity === null) return "Stock inconnu";
+  // Aucune ligne de stock dans l'entrepôt de la caisse : ni zéro, ni inconnu,
+  // l'état vrai. Le catalogue étant entier, c'est le cas ordinaire d'un article
+  // stocké dans un autre dépôt.
+  if (article.stock_quantity === null) return "Aucun stock ici";
 
   const detail = article.stock_loose;
   const scelles = article.stock_packages;

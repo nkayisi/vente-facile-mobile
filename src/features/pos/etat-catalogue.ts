@@ -19,9 +19,9 @@
  * module ne leur invente donc aucun message :
  *
  *   - un INVENTAIRE en cours ne retire rien : les articles verrouillés sont
- *     rendus, grisés, portant la référence de la session, et un bandeau les
- *     annonce au-dessus de la grille. Une grille pleine d'articles inertes
- *     n'est pas une grille vide ;
+ *     rendus, portant la référence de la session, et un bandeau les annonce
+ *     au-dessus de la grille. Ils s'ajoutent même au panier ; c'est
+ *     l'encaissement qui se ferme ;
  *   - une CAISSE SANS ENTREPÔT ne retire rien non plus : les jointures de
  *     stock sont externes, et le stock sort « inconnu » plutôt qu'absent.
  *
@@ -34,17 +34,14 @@ import type { IconName } from "@/ui";
 export interface DiagnosticCatalogue {
   /** Lignes de `products` non supprimées, tous drapeaux confondus. */
   recus: number;
-  /** Celles qui passent le filtre de vendabilité du comptoir. */
-  vendables: number;
   /**
-   * Celles que CE membre peut voir : vendables, ET dans son périmètre.
+   * Celles qui passent le filtre de vendabilité du comptoir.
    *
-   * ⚠ C'est la différence avec `vendables` qui distingue « le catalogue est
-   * fermé par une affectation d'entrepôt » de « c'est la rubrique qui est
-   * vide ». Sans elle, la première se présentait comme la seconde, et l'écran
-   * envoyait choisir « Tout » alors que « Tout » était déjà choisi.
+   * ⚠ Il n'y a plus de compteur de « visibles » : le comptoir montre TOUT le
+   * catalogue vendable (décision 4), donc aucune affectation d'entrepôt ne
+   * peut plus vider la grille. La cause « périmètre » est partie avec lui.
    */
-  visibles: number;
+  vendables: number;
   /** Un terme de recherche est saisi. */
   recherche: boolean;
   /** Une rubrique est sélectionnée. */
@@ -56,11 +53,6 @@ export type CauseGrilleVide =
   | "catalogue-absent"
   /** Des articles sont là, aucun n'est marqué en vente. */
   | "aucun-vendable"
-  /**
-   * Des articles vendables existent, mais AUCUN dans le périmètre de ce
-   * membre - son affectation d'entrepôt les retient tous.
-   */
-  | "perimetre"
   /** Le catalogue est vendable, c'est le terme qui ne trouve rien. */
   | "recherche"
   /** Le catalogue est vendable, c'est la rubrique qui est vide. */
@@ -113,10 +105,6 @@ export interface MessageGrilleVide {
 export function causeGrilleVide(d: DiagnosticCatalogue): CauseGrilleVide {
   if (d.recus === 0) return "catalogue-absent";
   if (d.vendables === 0) return "aucun-vendable";
-  // Le périmètre est une cause STRUCTURELLE : il passe donc avant les filtres,
-  // comme les deux au-dessus. Des articles vendables existent, aucun n'est à
-  // portée de ce membre, et aucun filtre n'y changera rien.
-  if (d.visibles === 0) return "perimetre";
   if (d.recherche) return "recherche";
   // ⚠ ON LIT ENFIN `d.rubrique`. Le champ était déclaré, collecté par l'écran
   //   et lu NULLE PART : la fonction retombait sur `"rubrique"` quel que soit
@@ -158,39 +146,6 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
           "mais aucun n'est marqué en vente. Cela se règle au back-office, sur la fiche de " +
           "l'article : synchroniser n'y changera rien.",
         leveParSynchronisation: false,
-      };
-
-    case "perimetre":
-      /*
-       * ┌──────────────────────────────────────────────────────────────────────┐
-       * │ « SYNCHRONISER N'Y CHANGERA RIEN » ÉTAIT FAUX, ET RETIRAIT LE SEUL  │
-       * │ GESTE QUI APPLIQUE LE CORRECTIF.                                     │
-       * │                                                                      │
-       * │ Le périmètre est lu de l'INSTANTANÉ de session                       │
-       * │ (`snapshot.membership.assigned_warehouses`), que seule une           │
-       * │ synchronisation réécrit (`refreshSnapshot`, en fin de cycle) : une   │
-       * │ fois l'affectation faite au back-office, synchroniser est EXACTEMENT │
-       * │ le geste qui la fait descendre.                                      │
-       * │                                                                      │
-       * │ Et `visibles` passe par `conditionCatalogue`, qui teste l'existence  │
-       * │ d'une ligne de `stocks` : une affectation déjà juste dont les lignes │
-       * │ de stock ne sont pas encore descendues tombe ici elle aussi.         │
-       * │                                                                      │
-       * │ Le message nomme donc les DEUX moitiés - où cela se règle, et ce qui │
-       * │ l'applique - et le bouton revient.                                   │
-       * └──────────────────────────────────────────────────────────────────────┘
-       */
-      // Le NOMBRE compte ici aussi : il prouve que le catalogue est bien
-      // arrivé, donc que ce n'est pas un réglage d'article.
-      return {
-        cause,
-        icone: "PackageX",
-        titre: "Aucun article dans votre périmètre",
-        message:
-          `${d.vendables} ${d.vendables === 1 ? "article est" : "articles sont"} en vente, ` +
-          "mais aucun n'est stocké dans un entrepôt qui vous est confié. L'affectation se " +
-          "règle au back-office, et elle descend à la synchronisation.",
-        leveParSynchronisation: true,
       };
 
     case "recherche":
