@@ -134,7 +134,7 @@ const TABLES_TOUCHEES: Record<string, string[]> = {
                           "cash_movements"],
   "sale_return.reject": ["sale_returns"],
   "quotation.create": ["quotations"],
-  // Convertir crée une VENTE et inscrit une dette : la vente, le stock réservé
+  // Convertir crée une VENTE et inscrit une dette : la vente, le stock sorti
   // et le compte du client changent tous.
   "quotation.convert": ["quotations", "sales", "stocks", "customers",
                         "customer_balances", "customer_transactions"],

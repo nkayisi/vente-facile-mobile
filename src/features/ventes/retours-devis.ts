@@ -118,7 +118,7 @@ export async function creerDevis(saisie: {
  *
  * L'entrepôt est facultatif : sans lui, le serveur retient l'entrepôt principal
  * du périmètre du membre. Le nommer évite qu'un magasinier à plusieurs dépôts
- * réserve du stock ailleurs qu'il ne croit.
+ * fasse sortir la marchandise d'un autre dépôt que celui qu'il croit.
  */
 export async function convertirDevis(
   devisId: string,

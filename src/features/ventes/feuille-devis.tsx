@@ -27,7 +27,7 @@
  *
  * **Un devis N'ENGAGE PAS LE STOCK.** C'est ce qui le distingue d'une vente :
  * on propose un prix, la marchandise reste disponible pour quelqu'un d'autre.
- * La réservation n'a lieu qu'à la conversion, et la feuille le dit - sans quoi
+ * Elle ne sort du stock qu'à la conversion, et la feuille le dit - sans quoi
  * un commerçant croirait avoir mis de côté.
  *
  * **La date de validité est OBLIGATOIRE.** Le serveur refuse un devis qui
@@ -500,7 +500,7 @@ export function FeuilleNouveauDevis({
           <Banner
             tone="info"
             title="Un devis n'engage pas le stock"
-            message="La marchandise reste disponible pour quelqu'un d'autre. Elle ne sera réservée qu'à la conversion en vente."
+            message="La marchandise reste disponible pour quelqu'un d'autre. Elle ne sortira du stock qu'à la conversion en vente."
           />
 
           <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>

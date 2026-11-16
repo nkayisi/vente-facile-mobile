@@ -2,7 +2,7 @@
  * Détail d'un devis, et sa conversion.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ CONVERTIR INSCRIT UNE DETTE, et réserve le stock.                       │
+ * │ CONVERTIR INSCRIT UNE DETTE, et sort la marchandise du stock.           │
  * │                                                                          │
  * │ Un devis converti est une facture émise et non payée, au même titre      │
  * │ qu'une vente à crédit. Quand ce n'était pas le cas, la facture était     │
@@ -308,7 +308,7 @@ export default function DetailDevisEcran() {
       <AlertDialog
         ouvert={confirmation}
         titre="Convertir ce devis en vente ?"
-        message="Une facture est émise et le stock RÉSERVÉ. Le montant est porté au compte du client, comme une vente à crédit : il devra être réglé. Cette opération ne se défait pas."
+        message="Une facture est émise et la marchandise SORT du stock. Le montant est porté au compte du client, comme une vente à crédit : il devra être réglé. Cette opération ne se défait pas."
         confirmer="Convertir"
         annuler="Revenir"
         enCours={envoi}
