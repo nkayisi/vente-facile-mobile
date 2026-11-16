@@ -32,12 +32,12 @@ publication, et ce qu'on envoie aux marchands.
 
 ---
 
-## 1.1.0 · chacun voit d'abord son travail
+## 3.0.0 (`versionCode` 12) · chacun voit d'abord son travail
 
 ### Français (`fr-FR`) · 411 caractères
 
 ```
-Vente Facile 1.1
+Vente Facile 3.0
 
 • Chacun voit d'abord son travail : le caissier ses ventes, le gérant ses entrepôts. Les filtres élargissent.
 • La fidélité devient une cagnotte en argent.
@@ -51,6 +51,8 @@ Vente Facile 1.1
 
 Référence interne, pas du texte de magasin.
 
+- Numérotée 3.0.0 et `versionCode` 12 le 2026-11-16, à la place de la 1.1.0 (`versionCode` 4)
+  compilée le même jour : le versionCode est désormais tenu dans `app.config.ts`, plus par EAS
 - Le défaut de chaque rôle (décision du 2026-11-16) : un caissier ne voit que ses données, un
   gérant ses entrepôts ; « Voir tout dans son entrepôt » et « Consulter tous les entrepôts »
   ouvrent des CHOIX, jamais un défaut élargi

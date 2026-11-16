@@ -88,8 +88,9 @@
     "verifier:natif": "node scripts/verifier-arbre-natif.mjs",
     "verifier:manifeste": "node scripts/verifier-manifeste-android.mjs",
     "eas:preview": "pnpm verifier:natif && pnpm verifier:manifeste && pnpm verifier:signature && eas build --profile preview --platform android",
-    "eas:production": "pnpm verifier:natif && pnpm verifier:manifeste && pnpm verifier:signature && eas build --profile production --platform android",
-    "verifier:signature": "node scripts/verifier-signature-release.mjs"
+    "eas:production": "pnpm verifier:natif && pnpm verifier:manifeste && pnpm verifier:signature && pnpm verifier:version && eas build --profile production --platform android",
+    "verifier:signature": "node scripts/verifier-signature-release.mjs",
+    "verifier:version": "node scripts/verifier-version-code.mjs"
   },
   "private": true,
   "packageManager": "pnpm@10.12.1",

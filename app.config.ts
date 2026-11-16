@@ -84,10 +84,34 @@ const NAME: Record<Profile, string> = {
  */
 const BUNDLE = `com.smizone.app${SUFFIX[profile]}`;
 
+/**
+ * Le numéro technique de la compilation : `versionCode` sur Android,
+ * `buildNumber` sur iOS. Un seul compteur pour les deux plateformes.
+ *
+ * ┌────────────────────────────────────────────────────────────────────────────┐
+ * │ IL EST TENU ICI, À LA MAIN, ET PLUS PAR EAS.                              │
+ * │                                                                            │
+ * │ `eas.json` porte `"appVersionSource": "local"` : EAS lit ce nombre tel     │
+ * │ quel et n'écrit jamais rien. Il n'y a plus d'`autoIncrement`, qui          │
+ * │ voudrait réécrire ce fichier et ne le peut pas (configuration dynamique).  │
+ * │                                                                            │
+ * │ ⚠ IL MONTE À CHAQUE COMPILATION DE PRODUCTION, sans exception. Google      │
+ * │ Play refuse un bundle dont le versionCode a déjà été envoyé, et le refus   │
+ * │ n'arrive qu'à l'envoi, après vingt minutes de compilation.                 │
+ * │ `pnpm eas:production` le vérifie avant de partir                           │
+ * │ (`scripts/verifier-version-code.mjs`) : il compare ce nombre à la          │
+ * │ dernière compilation de `com.smizone.app` connue d'EAS, et refuse s'il    │
+ * │ n'est pas strictement plus grand.                                          │
+ * │                                                                            │
+ * │ Parti de 12 le 2026-11-16 (EAS en était à 4) : on ne redescend jamais.    │
+ * └────────────────────────────────────────────────────────────────────────────┘
+ */
+const VERSION_CODE = 12;
+
 const config: ExpoConfig = {
   name: NAME[profile],
   slug: "vf-marchand",
-  version: "1.1.0",
+  version: "3.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "ventefacile",
@@ -99,6 +123,7 @@ const config: ExpoConfig = {
 
   ios: {
     bundleIdentifier: BUNDLE,
+    buildNumber: String(VERSION_CODE),
     supportsTablet: true,
     infoPlist: {
       // Français : les invites système s'affichent dans la langue de l'app.
@@ -113,6 +138,7 @@ const config: ExpoConfig = {
 
   android: {
     package: BUNDLE,
+    versionCode: VERSION_CODE,
     // `edgeToEdgeEnabled` a disparu de la configuration : depuis le SDK 57,
     // le bord-a-bord est le comportement par defaut d'Android.
     predictiveBackGestureEnabled: false,

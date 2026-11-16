@@ -2880,6 +2880,28 @@ describe("la porte de mise à jour", () => {
     expect(trouve).not.toBeNull();
     expect(trouve?.[1]).toMatch(/^\d+\.\d+\.\d+$/);
   });
+
+  it("le versionCode est tenu localement, et la production vérifie qu'il monte", () => {
+    //: EAS ne tient plus le compteur (`appVersionSource: "local"`) : c'est
+    //: `VERSION_CODE` d'`app.config.ts`, monté à la main. Un oubli ne lève rien
+    //: à la compilation, Play refuse à l'envoi. Ce test garde les trois pièces
+    //: qui rendent l'oubli impossible : la source locale, l'absence
+    //: d'`autoIncrement`, et la vérification AVANT `eas build`.
+    const eas = JSON.parse(readFileSync(resolve(RACINE, "../eas.json"), "utf8"));
+    expect(eas.cli.appVersionSource).toBe("local");
+    expect(JSON.stringify(eas.build)).not.toMatch(/autoIncrement/);
+
+    const config = readFileSync(resolve(RACINE, "../app.config.ts"), "utf8");
+    expect(config).toMatch(/\bconst VERSION_CODE = [1-9]\d*;/);
+    expect(config).toMatch(/\bversionCode: VERSION_CODE,/);
+    expect(config).toMatch(/\bbuildNumber: String\(VERSION_CODE\),/);
+
+    const scripts = JSON.parse(readFileSync(resolve(RACINE, "../package.json"), "utf8")).scripts;
+    const production: string = scripts["eas:production"];
+    expect(scripts["verifier:version"]).toBe("node scripts/verifier-version-code.mjs");
+    expect(production.indexOf("pnpm verifier:version")).toBeGreaterThan(-1);
+    expect(production.indexOf("pnpm verifier:version")).toBeLessThan(production.indexOf("eas build"));
+  });
 });
 
 describe("la liste des devises n'a qu'une seule source", () => {
