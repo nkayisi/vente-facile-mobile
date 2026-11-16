@@ -91,11 +91,20 @@ function lirePermissions(xml) {
   return entrees;
 }
 
-/** Le manifeste de l'etape FINALE de fusion, celui qui part dans l'AAB. */
+/**
+ * Le manifeste de l'etape FINALE de fusion, celui qui part dans l'AAB.
+ *
+ * ⚠ LES VARIANTES RELEASE SEULEMENT. Une compilation de developpement laisse
+ * un manifeste `debug`, ou React Native ajoute `SYSTEM_ALERT_WINDOW` pour son
+ * menu de developpement : le juger refusait a tort un arbre dont la release
+ * bloque cette permission, et un garde-fou qui crie sur du legitime finit
+ * contourne. Aucun manifeste debug ne part au magasin.
+ */
 function manifestesFusionnes() {
   const base = path.join(racine, "android/app/build/intermediates/packaged_manifests");
   if (!existsSync(base)) return [];
   return readdirSync(base)
+    .filter((variante) => /release/i.test(variante))
     .flatMap((variante) => {
       const dossier = path.join(base, variante);
       return readdirSync(dossier).map((tache) =>
@@ -194,7 +203,8 @@ if (!existsSync(source)) {
 const fusionnes = manifestesFusionnes();
 if (fusionnes.length === 0) {
   notes.push(
-    "Aucun manifeste fusionne : la regle de Play n'a pas pu etre eprouvee.\n" +
+    "Aucun manifeste RELEASE fusionne (un manifeste debug ne part pas au magasin) :\n" +
+      "  la regle de Play n'a pas pu etre eprouvee.\n" +
       "  Pour obtenir le controle : cd android && ./gradlew :app:processReleaseManifestForPackage",
   );
 }
