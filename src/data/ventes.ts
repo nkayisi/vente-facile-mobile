@@ -18,6 +18,8 @@ import { depuisQuand, type Periode } from "./periodes";
 import { compteursDeSessions, compteursVides } from "./sessions";
 import { deviseOuPrincipale } from "./devise-principale";
 import { referencesDejaTirees } from "./deja-tirees";
+import { conditionEntrepot } from "@/data/perimetre-sql";
+import { retientEntrepot, type FiltrePerimetre } from "@/features/perimetre/filtre-perimetre";
 
 export type { Periode };
 
@@ -97,7 +99,14 @@ export interface RelevesVentes {
   ventesDuJour: VenteResume[];
 }
 
-export async function relevesVentes(): Promise<RelevesVentes> {
+/**
+ * ⚠ LE PÉRIMÈTRE EST OBLIGATOIRE : c'est le défaut du membre
+ * (`usePerimetreParDefaut`). Sans lui, un caissier qui a « Voir tout dans son
+ * entrepôt » lirait ici les ventes du jour de ses collègues, sur un écran qui
+ * n'a aucun filtre pour le dire. Les ventes du JOURNAL, elles, sont forcément
+ * les siennes, faites dans ses entrepôts : rien à borner.
+ */
+export async function relevesVentes(perimetre: FiltrePerimetre): Promise<RelevesVentes> {
   const { debut, fin } = bornesDuJour();
 
   const lignes = await db
@@ -113,7 +122,13 @@ export async function relevesVentes(): Promise<RelevesVentes> {
     })
     .from(sales)
     .leftJoin(customers, eq(customers.id, sales.customerId))
-    .where(and(gte(sales.saleDate, debut), lt(sales.saleDate, fin)))
+    .where(
+      and(
+        gte(sales.saleDate, debut),
+        lt(sales.saleDate, fin),
+        ...conditionsDuDefaut(perimetre)
+      )
+    )
     .orderBy(desc(sales.saleDate));
 
   // Le nombre de lignes par vente, en UNE requête groupée. Le relire vente par
@@ -349,6 +364,7 @@ export interface FiltresHistorique {
   limite?: number;
   /** L'entrepôt de la vente. `null` : tous ceux du périmètre. */
   entrepot?: string | null;
+  entrepots?: readonly string[] | null;
   /** Le VENDEUR (`sold_by`). `null` : tous. */
   utilisateur?: string | null;
   /**
@@ -461,8 +477,20 @@ function parDevise(
  */
 function conditionsHistorique(f: FiltresHistorique) {
   return [
-    f.entrepot ? eq(sales.warehouseId, f.entrepot) : undefined,
+    // Le défaut garde les ventes anciennes sans entrepôt, comme `SaleViewSet`.
+    conditionEntrepot(sales.warehouseId, f, { inclureSansEntrepot: true }),
     f.utilisateur ? eq(sales.soldById, f.utilisateur) : undefined,
+  ];
+}
+
+/**
+ * Le périmètre d'une lecture de ventes SANS filtre : le défaut du membre.
+ * Mêmes colonnes et même tolérance que l'historique.
+ */
+function conditionsDuDefaut(perimetre: FiltrePerimetre) {
+  return [
+    conditionEntrepot(sales.warehouseId, perimetre, { inclureSansEntrepot: true }),
+    perimetre.utilisateur ? eq(sales.soldById, perimetre.utilisateur) : undefined,
   ];
 }
 
@@ -483,11 +511,8 @@ function retientVenteHistoriqueEnFile(
   f: FiltresHistorique,
   v: { entrepot: string | null }
 ): boolean {
-  const entrepot = v.entrepot ?? null;
-  if (f.entrepot && entrepot !== f.entrepot) {
-    // Un verrou tolère l'inconnu, un choix est exact : voir `FiltresHistorique`.
-    if (entrepot !== null || !f.entrepotInconnuAdmis) return false;
-  }
+  // Un verrou tolère l'inconnu, un choix est exact : voir `FiltresHistorique`.
+  if (!retientEntrepot(v.entrepot, f, Boolean(f.entrepotInconnuAdmis))) return false;
   if (f.utilisateur && f.utilisateur !== (f.moi ?? null)) return false;
   return true;
 }
@@ -718,7 +743,11 @@ export interface ReglementsEnAttente {
  * d'`open_credit_sales` côté serveur. S'en écarter ferait apparaître ici des
  * factures que le serveur refuserait de solder, ou l'inverse.
  */
-export async function reglementsEnAttente(recherche = ""): Promise<ReglementsEnAttente> {
+export async function reglementsEnAttente(
+  recherche: string,
+  /** Le défaut du membre : voir `relevesVentes`. */
+  perimetre: FiltrePerimetre
+): Promise<ReglementsEnAttente> {
   const terme = recherche.trim().toLowerCase();
   const motif = `%${terme}%`;
 
@@ -740,6 +769,7 @@ export async function reglementsEnAttente(recherche = ""): Promise<ReglementsEnA
       and(
         inArray(sales.status, ["pending", "partially_paid"]),
         sql`cast(${sales.amountDue} as real) > 0`,
+        ...conditionsDuDefaut(perimetre),
         terme
           ? or(
               like(sql`lower(${sales.reference})`, motif),

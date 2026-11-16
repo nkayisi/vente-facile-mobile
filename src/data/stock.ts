@@ -13,6 +13,8 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { products, stockLocations, stocks, warehouses } from "@/db/schema";
 import { etatDuRayon } from "@/data/etats-stock";
+import { conditionEntrepot } from "@/data/perimetre-sql";
+import type { PorteeEntrepot } from "@/features/perimetre/filtre-perimetre";
 
 const nb = (v: string | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -35,7 +37,12 @@ export interface RelevesStock {
  * `product.cost_price`. Le back-office a longtemps eu deux formules, une par
  * écran, et le même stock ressortait à deux valeurs.
  */
-export async function relevesStock(): Promise<RelevesStock> {
+/**
+ * ⚠ `perimetre` : le défaut du membre. Sous « Consulter tous les entrepôts »,
+ * la base locale porte TOUS les entrepôts ; le hub n'en montre par défaut que
+ * les siens, comme le serveur.
+ */
+export async function relevesStock(perimetre: PorteeEntrepot = {}): Promise<RelevesStock> {
   const lignes = await db
     .select({
       productId: stocks.productId,
@@ -46,11 +53,13 @@ export async function relevesStock(): Promise<RelevesStock> {
       trackInventory: products.trackInventory,
     })
     .from(stocks)
-    .leftJoin(products, eq(products.id, stocks.productId));
+    .leftJoin(products, eq(products.id, stocks.productId))
+    .where(conditionEntrepot(stocks.warehouseId, perimetre));
 
   const [{ n: entrepots } = { n: 0 }] = await db
     .select({ n: sql<number>`count(*)` })
-    .from(warehouses);
+    .from(warehouses)
+    .where(conditionEntrepot(warehouses.id, perimetre));
 
   const produits = new Set<string>();
   let unites = 0;
@@ -162,8 +171,12 @@ export async function entrepotsSansValorisation(): Promise<EntrepotResume[]> {
   }));
 }
 
-export async function entrepots(): Promise<EntrepotResume[]> {
-  const liste = await db.select().from(warehouses).orderBy(PAR_NOM);
+export async function entrepots(perimetre: PorteeEntrepot = {}): Promise<EntrepotResume[]> {
+  const liste = await db
+    .select()
+    .from(warehouses)
+    .where(conditionEntrepot(warehouses.id, perimetre))
+    .orderBy(PAR_NOM);
   const lignes = await db
     .select({
       warehouseId: stocks.warehouseId,

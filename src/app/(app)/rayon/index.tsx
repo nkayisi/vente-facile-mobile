@@ -85,7 +85,7 @@ export default function Niveaux() {
     () =>
       niveauxDeStock({
         recherche,
-        entrepot: applique.entrepot,
+        entrepot: applique.entrepot, entrepots: applique.entrepots,
         etat,
         limite: 300,
       }),

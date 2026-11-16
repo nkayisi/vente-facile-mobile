@@ -25,6 +25,8 @@ import {
   sales,
   users,
 } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
+import type { FiltrePerimetre } from "@/features/perimetre/filtre-perimetre";
 
 /** « Nelson Kayisi », ou `null` quand l'utilisateur n'est pas descendu. */
 const nomComplet = (
@@ -79,13 +81,25 @@ export interface RetourResume {
 }
 
 export async function listeRetours(
-  f: { recherche?: string; statut?: string | null; limite?: number } = {}
+  f: {
+    recherche?: string;
+    statut?: string | null;
+    limite?: number;
+    /** Le défaut du membre (`usePerimetreParDefaut`) : un caissier, les siens. */
+    perimetre?: FiltrePerimetre;
+  } = {}
 ): Promise<RetourResume[]> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
 
   const conditions = [
     f.statut ? eq(saleReturns.status, f.statut) : undefined,
+    // L'entrepôt d'un retour est celui de sa vente, ventes anciennes sans
+    // entrepôt comprises (`warehouse_include_null`, comme le serveur).
+    f.perimetre
+      ? conditionEntrepot(sales.warehouseId, f.perimetre, { inclureSansEntrepot: true })
+      : undefined,
+    f.perimetre?.utilisateur ? eq(saleReturns.createdById, f.perimetre.utilisateur) : undefined,
     terme
       ? or(
           like(sql`lower(${saleReturns.reference})`, motif),
@@ -246,7 +260,13 @@ export interface DevisResume {
 }
 
 export async function listeDevis(
-  f: { recherche?: string; statut?: string | null; limite?: number } = {}
+  f: {
+    recherche?: string;
+    statut?: string | null;
+    limite?: number;
+    /** Le défaut du membre : un devis n'a qu'un auteur sur le terminal. */
+    perimetre?: FiltrePerimetre;
+  } = {}
 ): Promise<DevisResume[]> {
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const motif = `%${terme}%`;
@@ -254,6 +274,7 @@ export async function listeDevis(
 
   const conditions = [
     f.statut ? eq(quotations.status, f.statut) : undefined,
+    f.perimetre?.utilisateur ? eq(quotations.createdById, f.perimetre.utilisateur) : undefined,
     terme
       ? or(
           like(sql`lower(${quotations.reference})`, motif),

@@ -49,7 +49,7 @@
  * │ plus visibles sans défiler.                                              │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import { formatTimeFr } from "@vente-facile/core";
@@ -78,6 +78,7 @@ import {
   StatStripItem,
   Text,
 } from "@/ui";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 // `outbox_operations` et `print_jobs` en font partie : une vente encaissée
 // hors ligne n'écrit rien dans `sales`, et sans ces deux tables l'écran ne se
@@ -99,7 +100,11 @@ export default function Ventes() {
   const { can } = useSession();
   const money = useMonnaie();
   const [recherche, setRecherche] = useState("");
-  const { donnees: r } = useLecture(relevesVentes, { tables: TABLES });
+  // Le DÉFAUT du membre : ses ventes pour un caissier, ses entrepôts sous la
+  // case « Consulter tous ». Cet écran n'a pas de filtre pour élargir.
+  const perimetre = usePerimetreParDefaut(true);
+  const lireReleves = useCallback(() => relevesVentes(perimetre), [perimetre]);
+  const { donnees: r } = useLecture(lireReleves, { tables: TABLES, deps: [perimetre] });
   const { donnees: session } = useLecture(sessionOuverteResume, { tables: TABLES });
 
   const terme = recherche.trim().toLowerCase();

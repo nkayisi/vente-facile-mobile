@@ -19,7 +19,7 @@
  * l'ancienne fusion ne l'était pas - elle vivait dans `data/`, elle ouvrait
  * SQLite, et elle n'avait aucun test.
  */
-import type { ContexteFile } from "@/features/perimetre/filtre-perimetre";
+import { retientEntrepot, type ContexteFile } from "@/features/perimetre/filtre-perimetre";
 import type { VenteEnAttenteDetaillee } from "@/features/ventes/attente";
 
 const nb = (v: string | number | null | undefined): number => {
@@ -190,7 +190,7 @@ export function statutDeVente(resteAPayer: number): string {
  */
 export function retientVenteEnFile(
   v: { corps: { warehouse?: string } },
-  perimetre: { entrepot: string | null; utilisateur: string | null },
+  perimetre: { entrepot: string | null; utilisateur: string | null; entrepots?: readonly string[] | null },
   file: ContexteFile
 ): boolean {
   const { moi, entrepotInconnuAdmis } = file;
@@ -211,9 +211,7 @@ export function retientVenteEnFile(
   // │ « qu'y a-t-il eu dans le dépôt B ? », et une vente dont on ignore   │
   // │ le dépôt n'y répond pas.                                            │
   // └────────────────────────────────────────────────────────────────────┘
-  if (perimetre.entrepot && entrepot !== perimetre.entrepot) {
-    if (entrepot !== null || !entrepotInconnuAdmis) return false;
-  }
+  if (!retientEntrepot(entrepot, perimetre, entrepotInconnuAdmis)) return false;
   if (perimetre.utilisateur && perimetre.utilisateur !== moi) return false;
   return true;
 }

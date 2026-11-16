@@ -61,7 +61,7 @@ export default function Transferts() {
   const applique = perimetre.applique;
 
   const charger = useCallback(
-    () => listeTransferts({ recherche, statut, entrepot: applique.entrepot, annuaire }),
+    () => listeTransferts({ recherche, statut, entrepot: applique.entrepot, entrepots: applique.entrepots, annuaire }),
     [recherche, statut, applique, annuaire]
   );
   const { donnees, chargement } = useLecture(charger, {

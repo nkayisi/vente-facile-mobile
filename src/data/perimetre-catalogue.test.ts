@@ -53,10 +53,12 @@ describe("les entrepôts qui bornent le catalogue", () => {
     expect(entrepotsDuCatalogue(m("owner", ["wh-1"]))).toBeNull();
   });
 
-  it("« Consulter tous » ouvre le catalogue entier, comme au propriétaire", () => {
-    // La case ouvre la LECTURE de tout, partout : le catalogue en fait partie.
-    expect(entrepotsDuCatalogue(m("manager", ["a"], true))).toBeNull();
-    expect(entrepotsDuCatalogue(m("cashier", ["a"], true))).toBeNull();
+  it("« Consulter tous » voit par défaut le catalogue de SES entrepôts", () => {
+    // Décision du 2026-11-16 : la case ouvre la lecture de tout SUR DEMANDE,
+    // par un filtre. L'onglet Articles n'en a pas : il garde le défaut, comme
+    // le serveur sans `all_warehouses`.
+    expect(entrepotsDuCatalogue(m("manager", ["a"], true))).toEqual(["a"]);
+    expect(entrepotsDuCatalogue(m("cashier", ["a"], true))).toEqual(["a"]);
   });
 
   it("un rôle borné rend SES dépôts", () => {

@@ -60,7 +60,7 @@ export default function Inventaire() {
   const applique = perimetre.applique;
 
   const charger = useCallback(
-    () => listeSessions({ recherche, statut, entrepot: applique.entrepot }),
+    () => listeSessions({ recherche, statut, entrepot: applique.entrepot, entrepots: applique.entrepots }),
     [recherche, statut, applique]
   );
   const { donnees, chargement } = useLecture(charger, {

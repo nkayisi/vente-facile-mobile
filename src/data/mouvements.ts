@@ -26,6 +26,7 @@ import {
   typesFiltres,
 } from "@/data/types-mouvement";
 import { products, stockMovements, units, warehouses } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
 
 export interface MouvementStock {
   id: string;
@@ -47,6 +48,7 @@ export interface FiltresMouvements {
   /** `true` : entrées seules. `false` : sorties seules. `null` : les deux. */
   entree?: boolean | null;
   entrepot?: string | null;
+  entrepots?: readonly string[] | null;
   /** Qui a SAISI le mouvement. `null` : tous. */
   utilisateur?: string | null;
   /** Catégorie du produit. Le SOUS-ARBRE y est inclus, comme côté serveur. */
@@ -108,7 +110,7 @@ function conditionsDe(p: PerimetreMouvements) {
       : types.length === 0
         ? sql`1 = 0`
         : inArray(stockMovements.movementType, types),
-    filtres.entrepot ? eq(stockMovements.warehouseId, filtres.entrepot) : undefined,
+    conditionEntrepot(stockMovements.warehouseId, filtres),
     // L'AUTEUR du mouvement (`created_by` côté serveur, où `StockMovementFilter`
     // le porte déjà). La colonne est nullable : un mouvement sans auteur ne
     // ressort donc sous le nom de personne, ce qui est la vérité.

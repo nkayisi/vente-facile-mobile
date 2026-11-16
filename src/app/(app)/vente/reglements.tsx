@@ -56,6 +56,7 @@ import {
   StatStripItem,
   Text,
 } from "@/ui";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = ["sales", "customers"];
 
@@ -77,9 +78,11 @@ export default function Reglements() {
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<Filtre>("toutes");
 
-  const { donnees } = useLecture(() => reglementsEnAttente(recherche), {
+  // Le DÉFAUT du membre : un caissier n'y voit que ses factures.
+  const perimetre = usePerimetreParDefaut(true);
+  const { donnees } = useLecture(() => reglementsEnAttente(recherche, perimetre), {
     tables: TABLES,
-    deps: [recherche],
+    deps: [recherche, perimetre],
   });
   const { donnees: dejaEnFile } = useLecture(ventesAvecReglementEnAttente, {
     tables: ["outbox_operations"],

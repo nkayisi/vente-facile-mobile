@@ -46,6 +46,7 @@ import { FeuilleFiltresCaisse } from "@/features/caisse/feuille-filtres";
 import {
   contexteFileDe,
   perimetreAffichable,
+  nomDuChoix,
 } from "@/features/perimetre/filtre-perimetre";
 import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { FeuilleMouvement } from "@/features/caisse/feuille-mouvement";
@@ -152,12 +153,8 @@ export default function Caisse() {
         // promettrait de se retirer.
         { ...filtres, ...perimetreAffichable(perimetre) },
         {
-          entrepot: perimetre.entrepots.find(
-            (o) => o.valeur === perimetre.applique.entrepot
-          )?.label,
-          utilisateur: perimetre.utilisateurs.find(
-            (o) => o.valeur === perimetre.applique.utilisateur
-          )?.label,
+          entrepot: nomDuChoix(perimetre, "entrepot"),
+          utilisateur: nomDuChoix(perimetre, "utilisateur"),
         },
         (p) => libellePeriodeFiltre(p)
       ),

@@ -54,6 +54,7 @@ import {
 
 import { FeuilleAjustement } from "@/features/clients/feuille-ajustement";
 import { FeuilleEncaissement } from "@/features/clients/feuille-encaissement";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = [
   "customers",
@@ -81,8 +82,13 @@ export default function FicheClient() {
   const [feuilleEncaissement, setFeuilleEncaissement] = useState(false);
   const [feuilleAjustement, setFeuilleAjustement] = useState(false);
 
-  const charger = useCallback(() => detailClient(id), [id]);
-  const { donnees: c, chargement } = useLecture(charger, { tables: TABLES, deps: [id] });
+  // Le DÉFAUT du membre : un caissier n'y voit que ses ventes.
+  const perimetre = usePerimetreParDefaut(true);
+  const charger = useCallback(() => detailClient(id, perimetre), [id, perimetre]);
+  const { donnees: c, chargement } = useLecture(charger, {
+    tables: TABLES,
+    deps: [id, perimetre],
+  });
   const chargerAttente = useCallback(() => enAttenteSurClient(id), [id]);
   const { donnees: attente } = useLecture(chargerAttente, { tables: JOURNAL, deps: [id] });
 

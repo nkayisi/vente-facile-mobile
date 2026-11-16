@@ -35,24 +35,26 @@
  * fonction serveur dont ce module est le miroir.
  */
 import { and, eq, exists, inArray, or, sql } from "drizzle-orm";
-import { litTousLesEntrepots, type MembrePerimetre } from "@vente-facile/core";
+import type { MembrePerimetre } from "@vente-facile/core";
 
 import { products, stocks } from "@/db/schema";
 
 /**
  * Les entrepôts qui bornent le catalogue, ou `null` pour « aucune restriction ».
  *
- * Miroir de `filter_product_queryset` en LECTURE : `null` est le propriétaire,
- * ET le membre à qui la case « Consulter tous les entrepôts » a été cochée -
- * il lit tout, partout, le catalogue compris. `[]` est un membre borné sans
- * aucun dépôt. Deux situations OPPOSÉES, que les écrire pareil confondrait en
- * ouvrant tout au second.
+ * Miroir de `filter_product_queryset` en LECTURE, à l'étendue PAR DÉFAUT :
+ * `null` est le propriétaire. Le membre à qui la case « Consulter tous les
+ * entrepôts » a été cochée voit, par défaut, le catalogue de SES entrepôts -
+ * l'onglet Articles n'a pas de filtre pour élargir, et le serveur rend le même
+ * défaut (2026-11-16). `[]` est un membre borné sans aucun dépôt. Deux
+ * situations OPPOSÉES, que les écrire pareil confondrait en ouvrant tout au
+ * second.
  *
  * Les entrepôts DÉSACTIVÉS comptent : c'est une lecture, et un article qu'on
  * n'a stocké que là reste consultable.
  */
 export function entrepotsDuCatalogue(membre: MembrePerimetre): string[] | null {
-  if (litTousLesEntrepots(membre)) return null;
+  if (membre.role === "owner") return null;
   return membre.affectes.map((a) => a.id);
 }
 

@@ -48,7 +48,7 @@ export default function Ajustements() {
   const applique = perimetre.applique;
 
   const charger = useCallback(
-    () => listeAjustements({ recherche, statut, entrepot: applique.entrepot }),
+    () => listeAjustements({ recherche, statut, entrepot: applique.entrepot, entrepots: applique.entrepots }),
     [recherche, statut, applique]
   );
   const { donnees, chargement } = useLecture(charger, {

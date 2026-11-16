@@ -379,8 +379,9 @@ export default function TableauDeBord() {
     tables: TABLES_STOCK,
     deps: [applique],
   });
-  const { donnees: lesAlertes } = useLecture(() => alertes(12), {
+  const { donnees: lesAlertes } = useLecture(() => alertes(12, applique), {
     tables: ["stocks", "products", "sales", "customers"],
+    deps: [applique],
   });
   const listeAlertes = lesAlertes ?? [];
 

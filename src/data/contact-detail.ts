@@ -30,6 +30,8 @@ import {
   sales,
   suppliers,
 } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
+import type { FiltrePerimetre } from "@/features/perimetre/filtre-perimetre";
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -129,7 +131,25 @@ export interface DetailClient {
   achatsParDevise: SoldeDevise[];
 }
 
-export async function detailClient(id: string): Promise<DetailClient | null> {
+/** Les ventes que le périmètre laisse voir ; aucun périmètre, aucune borne. */
+function ventesDuPerimetre(perimetre?: FiltrePerimetre) {
+  if (!perimetre) return [];
+  return [
+    conditionEntrepot(sales.warehouseId, perimetre, { inclureSansEntrepot: true }),
+    perimetre.utilisateur ? eq(sales.soldById, perimetre.utilisateur) : undefined,
+  ];
+}
+
+/**
+ * ⚠ `perimetre` : le défaut du membre (`usePerimetreParDefaut`). Les ventes
+ * d'un client sont des ventes : un caissier n'y voit que les siennes, même
+ * sous « Voir tout dans son entrepôt ». Le SOLDE, lui, est celui du client,
+ * tous vendeurs confondus - c'est ce qu'il doit.
+ */
+export async function detailClient(
+  id: string,
+  perimetre?: FiltrePerimetre
+): Promise<DetailClient | null> {
   const [c] = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
   if (!c) return null;
 
@@ -153,7 +173,7 @@ export async function detailClient(id: string): Promise<DetailClient | null> {
         dueDate: sales.dueDate,
       })
       .from(sales)
-      .where(eq(sales.customerId, id))
+      .where(and(eq(sales.customerId, id), ...ventesDuPerimetre(perimetre)))
       .orderBy(desc(sales.saleDate))
       .limit(50),
     db
@@ -279,7 +299,9 @@ export async function detailClient(id: string): Promise<DetailClient | null> {
  */
 export async function facturesOuvertes(
   clientId: string,
-  devise?: string
+  devise?: string,
+  /** Le défaut du membre ; ce qu'il ne voit pas se lit dans `detteNonVisible`. */
+  perimetre?: FiltrePerimetre
 ): Promise<FactureOuverte[]> {
   const maintenant = Date.now();
   const lignes = await db
@@ -298,7 +320,8 @@ export async function facturesOuvertes(
         eq(sales.customerId, clientId),
         inArray(sales.status, ["pending", "partially_paid"]),
         sql`cast(${sales.amountDue} as real) > 0`,
-        devise ? eq(sales.currency, devise) : undefined
+        devise ? eq(sales.currency, devise) : undefined,
+        ...ventesDuPerimetre(perimetre)
       )
     )
     .orderBy(sales.createdAt);

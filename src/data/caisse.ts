@@ -41,7 +41,9 @@ import {
 import { lotEnAttente, type LotEnAttente } from "@/features/sync/attente";
 import {
   FILE_SANS_PERIMETRE,
+  retientEntrepot,
   type ContexteFile,
+  type PorteeEntrepot,
 } from "@/features/perimetre/filtre-perimetre";
 import type { FiltresCaisse, FiltresDepense } from "@/features/caisse/filtres";
 import { type EtatEnvoi } from "@/sync";
@@ -66,6 +68,7 @@ import {
   users,
   warehouses,
 } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -228,8 +231,10 @@ export interface JournalCaisse {
   enFile: LotEnAttente;
 }
 
-/**
- * L'entrepôt d'un mouvement de caisse, par les trois chemins du serveur.
+/*
+ * L'entrepôt d'un mouvement de caisse se DÉRIVE par les trois chemins du
+ * serveur (vente, dépense, session et son comptoir) : `conditionEntrepot`
+ * reçoit les trois colonnes.
  *
  * ⚠ TOUTE REQUÊTE QUI EMPLOIE CETTE CONDITION DOIT PORTER LES TROIS JOINTURES
  * (`sales`, `expenses`, `registerSessions` avec `registers`). Le décompte de
@@ -237,13 +242,6 @@ export interface JournalCaisse {
  * côté seulement fait lever SQLite - ou, pire, rend un décompte qui annonce un
  * autre périmètre que la liste sous laquelle il s'affiche.
  */
-function entrepotDerive(entrepot: string) {
-  return or(
-    eq(sales.warehouseId, entrepot),
-    eq(expenses.warehouseId, entrepot),
-    eq(registers.warehouseId, entrepot)
-  );
-}
 
 /**
  * Le SQL du périmètre, partagé par la liste et son compte.
@@ -252,7 +250,7 @@ function entrepotDerive(entrepot: string) {
  * `is_cancelled=false` sur sa liste. Ils restent visibles dans un rapport de
  * caisse, où l'on vient justement chercher ce qui a été rectifié.
  */
-function conditionsCaisse(f: FiltresCaisse) {
+function conditionsCaisse(f: FiltresCaisse & PorteeEntrepot) {
   const terme = f.recherche.trim().toLowerCase();
   const motif = `%${terme}%`;
   const { debutMs, finMs } = bornesLocales(f.periode);
@@ -272,7 +270,7 @@ function conditionsCaisse(f: FiltresCaisse) {
     // VOLONTAIRE, non. Sinon le même apport apparaîtrait sous chaque dépôt, la
     // somme des dépôts dépasserait le total du tiroir, et rien à l'écran ne
     // l'expliquerait.
-    f.entrepot ? entrepotDerive(f.entrepot) : undefined,
+    conditionEntrepot([sales.warehouseId, expenses.warehouseId, registers.warehouseId], f),
     f.utilisateur ? eq(cashMovements.createdById, f.utilisateur) : undefined,
     debutMs != null ? gte(cashMovements.movementDate, new Date(debutMs)) : undefined,
     finMs != null ? lte(cashMovements.movementDate, new Date(finMs)) : undefined,
@@ -322,7 +320,7 @@ function conditionsCaisse(f: FiltresCaisse) {
  * ce filtre deviendrait faux sans que rien ne le signale.
  */
 function retientEnFile(
-  f: FiltresCaisse,
+  f: FiltresCaisse & PorteeEntrepot,
   m: MouvementEnFile,
   file: ContexteFile
 ): boolean {
@@ -353,7 +351,7 @@ function retientEnFile(
  *             saisir. Voir `ContexteFile`.
  */
 export async function journalCaisse(
-  f: FiltresCaisse,
+  f: FiltresCaisse & PorteeEntrepot,
   limite = 100,
   file: ContexteFile = FILE_SANS_PERIMETRE
 ): Promise<JournalCaisse> {
@@ -382,7 +380,7 @@ export async function journalCaisse(
     db
       .select({ n: sql<number>`count(*)` })
       .from(cashMovements)
-      // ⚠ LES MÊMES JOINTURES QUE LA LISTE. Sans elles, `entrepotDerive` vise
+      // ⚠ LES MÊMES JOINTURES QUE LA LISTE. Sans elles, `conditionEntrepot` vise
       // des tables absentes de cette requête-ci.
       .leftJoin(sales, eq(sales.id, cashMovements.saleId))
       .leftJoin(expenses, eq(expenses.id, cashMovements.expenseId))
@@ -497,7 +495,7 @@ export interface JournalDepenses {
 
 const STATUTS_ENGAGEANTS = ["approved", "paid"];
 
-function conditionsDepense(f: FiltresDepense) {
+function conditionsDepense(f: FiltresDepense & PorteeEntrepot) {
   const terme = f.recherche.trim().toLowerCase();
   const motif = `%${terme}%`;
   const { debutMs, finMs } = bornesLocales(f.periode);
@@ -505,7 +503,7 @@ function conditionsDepense(f: FiltresDepense) {
   const conditions = [
     f.statut ? eq(expenses.status, f.statut) : undefined,
     // La dépense, elle, PORTE son entrepôt : rien à dériver.
-    f.entrepot ? eq(expenses.warehouseId, f.entrepot) : undefined,
+    conditionEntrepot(expenses.warehouseId, f),
     f.utilisateur ? eq(expenses.createdById, f.utilisateur) : undefined,
     f.categorie ? eq(expenses.categoryId, f.categorie) : undefined,
     f.devise ? eq(expenses.currency, f.devise) : undefined,
@@ -524,7 +522,7 @@ function conditionsDepense(f: FiltresDepense) {
 }
 
 function retientDepenseEnFile(
-  f: FiltresDepense,
+  f: FiltresDepense & PorteeEntrepot,
   d: DepenseEnFile,
   file: ContexteFile
 ): boolean {
@@ -537,9 +535,7 @@ function retientDepenseEnFile(
   // le corps de l'opération : quand il est là, on le COMPARE. `null` reste un
   // entrepôt INCONNU, jamais « tous » - et un inconnu suit alors la même règle
   // que partout : toléré sous un verrou, écarté sous un choix délibéré.
-  if (f.entrepot && d.entrepot !== f.entrepot) {
-    if (d.entrepot !== null || !entrepotInconnuAdmis) return false;
-  }
+  if (!retientEntrepot(d.entrepot, f, entrepotInconnuAdmis)) return false;
   // L'auteur est garanti par `session/proprietaire.ts` : voir `retientEnFile`.
   if (f.utilisateur && f.utilisateur !== moi) return false;
   if (f.categorie && d.categorieId !== f.categorie) return false;
@@ -558,7 +554,7 @@ function retientDepenseEnFile(
 
 /** @param file Voir `journalCaisse` : il ne sert qu'aux lignes en file. */
 export async function listeDepenses(
-  f: FiltresDepense,
+  f: FiltresDepense & PorteeEntrepot,
   limite = 100,
   file: ContexteFile = FILE_SANS_PERIMETRE
 ): Promise<JournalDepenses> {

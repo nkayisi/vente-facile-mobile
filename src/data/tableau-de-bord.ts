@@ -43,6 +43,7 @@ import {
   seauxDePeriode,
   type Periode,
 } from "@/features/tableau-de-bord/series";
+import { conditionEntrepot } from "@/data/perimetre-sql";
 
 const nb = (v: string | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -128,7 +129,8 @@ export const LABELS_PERIODE: Record<Periode, { bouton: string; phrase: string }>
  */
 function conditionsDePerimetre(perimetre: FiltrePerimetre) {
   return [
-    perimetre.entrepot ? eq(sales.warehouseId, perimetre.entrepot) : undefined,
+    // Le défaut garde les ventes anciennes sans entrepôt, comme le serveur.
+    conditionEntrepot(sales.warehouseId, perimetre, { inclureSansEntrepot: true }),
     perimetre.utilisateur ? eq(sales.soldById, perimetre.utilisateur) : undefined,
   ].filter(Boolean);
 }
@@ -794,7 +796,7 @@ export async function releveInventaire(
         // Entrepôt SEUL : un stock est un état, pas un acte. `perimetre.utilisateur`
         // est ignoré ici, et l'écran le DIT - vider une carte que le marchand
         // lit ailleurs est pire que de l'expliquer.
-        perimetre.entrepot ? eq(stocks.warehouseId, perimetre.entrepot) : undefined
+        conditionEntrepot(stocks.warehouseId, perimetre)
       )
     );
 

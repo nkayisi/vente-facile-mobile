@@ -101,6 +101,7 @@ export default function Requisitions() {
         recherche,
         statut,
         entrepot: applique.entrepot,
+        entrepots: applique.entrepots,
         limite: pages * PAGE,
       }),
     [recherche, statut, applique, pages]

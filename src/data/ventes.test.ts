@@ -54,6 +54,9 @@ jest.mock("@/features/ventes/attente", () => ({
 
 import { historiqueVentes, joursDeRetard, reglementsEnAttente, relevesVentes } from "./ventes";
 
+/** Le périmètre du propriétaire : aucune borne, la règle éprouvée ici n'en dépend pas. */
+const SANS_FILTRE = { entrepot: null, utilisateur: null };
+
 const AUJOURDHUI = new Date();
 const ce_matin = new Date(
   AUJOURDHUI.getFullYear(), AUJOURDHUI.getMonth(), AUJOURDHUI.getDate(), 8, 30
@@ -89,7 +92,7 @@ describe("relevesVentes", () => {
   it("compte la vente hors ligne DU JOUR", async () => {
     mockAttente.push(enAttente());
 
-    const releves = await relevesVentes();
+    const releves = await relevesVentes(SANS_FILTRE);
     expect(releves.transactions).toBe(1);
     expect(releves.totalParDevise).toEqual([{ devise: "USD", montant: 100 }]);
   });
@@ -98,7 +101,7 @@ describe("relevesVentes", () => {
     mockAttente.push(enAttente({ date: avantHier, total: 900 }));
     mockAttente.push(enAttente({ date: ce_matin, total: 100 }));
 
-    const releves = await relevesVentes();
+    const releves = await relevesVentes(SANS_FILTRE);
     // Une vente d'avant-hier reste en file tant que le réseau n'est pas revenu.
     // Elle n'a pas disparu - le hub la rend dans l'historique - mais elle n'est
     // pas la recette du jour, et le tiroir ne la contient pas non plus.
@@ -110,7 +113,7 @@ describe("relevesVentes", () => {
   it("écarte aussi son RESTANT DÛ des relevés du jour", async () => {
     mockAttente.push(enAttente({ date: avantHier, total: 900, resteAPayer: 900 }));
 
-    const releves = await relevesVentes();
+    const releves = await relevesVentes(SANS_FILTRE);
     expect(releves.aEncaisserParDevise).toEqual([]);
     expect(releves.nbAEncaisser).toBe(0);
   });
@@ -120,7 +123,7 @@ describe("relevesVentes", () => {
     // Un zéro inventé fausserait la journée sans rien signaler.
     mockAttente.push(enAttente({ total: null }));
 
-    const releves = await relevesVentes();
+    const releves = await relevesVentes(SANS_FILTRE);
     expect(releves.transactions).toBe(1);
     expect(releves.totalParDevise).toEqual([]);
   });
@@ -419,7 +422,7 @@ describe("reglementsEnAttente", () => {
       facture({ id: "retard20", reference: "VT-20J", dueDate: jours(-20) }),
     ]);
 
-    const r = await reglementsEnAttente();
+    const r = await reglementsEnAttente("", SANS_FILTRE);
     expect(r.ventes.map((v) => v.reference)).toEqual(["VT-20J", "VT-5J", "VT-RECENTE"]);
     expect(r.enRetard).toBe(2);
   });
@@ -430,7 +433,7 @@ describe("reglementsEnAttente", () => {
     // laquelle relancer.
     mockResultats.push([facture({ id: "s1", dueDate: jours(-3) })]);
 
-    const v = (await reglementsEnAttente()).ventes[0];
+    const v = (await reglementsEnAttente("", SANS_FILTRE)).ventes[0];
     expect(v.joursDeRetard).toBe(3);
     expect(v.echeance).not.toBeNull();
   });
@@ -440,7 +443,7 @@ describe("reglementsEnAttente", () => {
       facture({ id: "s1", dueDate: null, saleDate: jours(-90) }),
     ]);
 
-    const r = await reglementsEnAttente();
+    const r = await reglementsEnAttente("", SANS_FILTRE);
     expect(r.enRetard).toBe(0);
     expect(r.ventes[0].joursDeRetard).toBe(0);
   });
@@ -451,7 +454,7 @@ describe("reglementsEnAttente", () => {
       facture({ id: "s2", currency: "CDF", amountDue: "2800" }),
     ]);
 
-    expect((await reglementsEnAttente()).duParDevise).toEqual([
+    expect((await reglementsEnAttente("", SANS_FILTRE)).duParDevise).toEqual([
       { devise: "CDF", montant: 2800 },
       { devise: "USD", montant: 10 },
     ]);

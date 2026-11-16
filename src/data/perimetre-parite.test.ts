@@ -41,30 +41,52 @@ function corpsDe(fichier: string, nomDeFonction: string): string {
   return fin === -1 ? suite : suite.slice(0, fin);
 }
 
+/**
+ * Une clé du périmètre, telle que chaque côté l'écrit.
+ *
+ * ⚠ L'ENTREPÔT NE S'ÉCRIT PLUS `f.entrepot` CÔTÉ SQL : un choix précis et le
+ * DÉFAUT d'un membre « Consulter tous » (ses entrepôts) passent par
+ * `conditionEntrepot(..., f)` (`data/perimetre-sql.ts`), et le jumeau par
+ * `retientEntrepot(..., f, ...)` ou, quand la ligne en file ne porte aucun
+ * entrepôt dérivable (mouvement de caisse), par `f.entrepot` lui-même.
+ */
+interface Cle {
+  nom: string;
+  sql: RegExp;
+  jumeau: RegExp;
+}
+
+const ENTREPOT: Cle = {
+  nom: "entrepot",
+  sql: /conditionEntrepot\([^;]*\bf\b/,
+  jumeau: /retientEntrepot\([^;]*\bf\b|\bf\.entrepot\b/,
+};
+const UTILISATEUR: Cle = { nom: "utilisateur", sql: /\bf\.utilisateur\b/, jumeau: /\bf\.utilisateur\b/ };
+
 /** Les couples à tenir en phase, et les clés qui doivent figurer des deux côtés. */
 const COUPLES: {
   fichier: string;
   sql: string;
   jumeau: string;
-  cles: string[];
+  cles: Cle[];
 }[] = [
   {
     fichier: "src/data/caisse.ts",
     sql: "conditionsCaisse",
     jumeau: "retientEnFile",
-    cles: ["f.entrepot", "f.utilisateur"],
+    cles: [ENTREPOT, UTILISATEUR],
   },
   {
     fichier: "src/data/caisse.ts",
     sql: "conditionsDepense",
     jumeau: "retientDepenseEnFile",
-    cles: ["f.entrepot", "f.utilisateur"],
+    cles: [ENTREPOT, UTILISATEUR],
   },
   {
     fichier: "src/data/ventes.ts",
     sql: "conditionsHistorique",
     jumeau: "retientVenteHistoriqueEnFile",
-    cles: ["f.entrepot", "f.utilisateur"],
+    cles: [ENTREPOT, UTILISATEUR],
   },
 ];
 
@@ -81,10 +103,10 @@ describe("le SQL et son jumeau portent le même périmètre", () => {
       const corpsSql = corpsDe(fichier, sql);
       const corpsJumeau = corpsDe(fichier, jumeau);
       for (const cle of cles) {
-        expect(corpsSql).toContain(cle);
+        expect(corpsSql).toMatch(cle.sql);
         // Le jumeau doit la porter AUSSI. S'il ne la porte pas, une ligne
         // encore en file échappe au filtre que la liste applique.
-        expect(corpsJumeau).toContain(cle);
+        expect(corpsJumeau).toMatch(cle.jumeau);
       }
     }
   );
@@ -109,7 +131,7 @@ describe("le SQL et son jumeau portent le même périmètre", () => {
       const corps = corpsDe(fichier, jumeau);
       for (const cle of cles) {
         const rejetEnBloc = new RegExp(
-          `if\\s*\\(\\s*${cle.replace(".", "\\.")}\\s*\\)\\s*return\\s+false`
+          `if\\s*\\(\\s*f\\.${cle.nom}\\s*\\)\\s*return\\s+false`
         );
         expect(corps).not.toMatch(rejetEnBloc);
       }
@@ -128,5 +150,8 @@ describe("le SQL et son jumeau portent le même périmètre", () => {
     // Une clé qui n'existe nulle part doit faire échouer l'assertion : c'est
     // la preuve que `toContain` regarde bien le corps et non une chaîne vide.
     expect(() => expect(corpsSql).toContain("f.cleQuiNExistePas")).toThrow();
+    // Et l'entrepôt se reconnaît bien sous sa forme partagée.
+    expect(corpsSql).toMatch(ENTREPOT.sql);
+    expect("conditionEntrepot(sales.warehouseId, autre)").not.toMatch(ENTREPOT.sql);
   });
 });

@@ -18,6 +18,7 @@ import { useSession } from "@/session/provider";
 
 import {
   offreDePerimetre,
+  PERIMETRE_VIDE,
   type FiltrePerimetre,
   type MembrePerimetre,
   type OffrePerimetre,
@@ -70,4 +71,22 @@ export function usePerimetre(
       }),
     [membre, snapshot?.user.id, tous, equipe, choix, avecAuteur]
   );
+}
+
+/**
+ * Le périmètre d'un écran SANS filtre : le défaut du membre, rien de plus.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ « PARTOUT », Y COMPRIS LÀ OÙ IL N'Y A RIEN À CHOISIR (2026-11-16).      │
+ * │                                                                          │
+ * │ La base locale porte ce que le membre a le DROIT de lire, donc les       │
+ * │ ventes de ses collègues sous « Voir tout dans son entrepôt » et les      │
+ * │ autres entrepôts sous « Consulter tous ». Un écran qui les lirait sans   │
+ * │ périmètre - le hub des ventes, les règlements en attente, la fiche d'un  │
+ * │ client - montrerait au caissier ce que la règle ne lui montre que sur    │
+ * │ filtre. Ces écrans lisent donc ceci.                                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export function usePerimetreParDefaut(avecAuteur: boolean): FiltrePerimetre {
+  return usePerimetre(PERIMETRE_VIDE, avecAuteur).applique;
 }

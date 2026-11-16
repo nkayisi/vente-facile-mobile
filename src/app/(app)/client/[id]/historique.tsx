@@ -42,6 +42,7 @@ import {
   Segmented,
   Text,
 } from "@/ui";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 type Onglet = "mouvements" | "cagnotte" | "rapport";
 
@@ -55,10 +56,11 @@ export default function HistoriqueClient() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [onglet, setOnglet] = useState<Onglet>("mouvements");
 
-  const lireClient = useCallback(() => detailClient(id), [id]);
+  const perimetre = usePerimetreParDefaut(true);
+  const lireClient = useCallback(() => detailClient(id, perimetre), [id, perimetre]);
   const { donnees: c } = useLecture(lireClient, {
     tables: ["customers", "customer_balances", "customer_transactions", "sales"],
-    deps: [id],
+    deps: [id, perimetre],
   });
 
   const lireCagnotte = useCallback(() => mouvementsCagnotte(id), [id]);

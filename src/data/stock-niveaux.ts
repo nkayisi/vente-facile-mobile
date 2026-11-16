@@ -38,6 +38,7 @@ import {
 } from "@/data/etats-stock";
 import { db } from "@/db/client";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -148,6 +149,7 @@ export interface LigneNiveau {
 export interface FiltresNiveaux {
   recherche?: string;
   entrepot?: string | null;
+  entrepots?: readonly string[] | null;
   categorie?: string | null;
   /**
    * Plusieurs catégories, SOUS-ARBRES déjà résolus par l'appelant.
@@ -297,7 +299,7 @@ export async function niveauxDeStock(
   const conditions = [
     // Par le catalogue, l'entrepôt est dans la JOINTURE : le mettre ici
     // écarterait précisément les articles qui n'y ont pas encore de ligne.
-    f.entrepot && !parCatalogue ? eq(stocks.warehouseId, f.entrepot) : undefined,
+    !parCatalogue ? conditionEntrepot(stocks.warehouseId, f) : undefined,
     ...(parCatalogue
       ? [
           eq(products.isActive, true),

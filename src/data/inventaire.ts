@@ -32,6 +32,7 @@ import {
   units,
   warehouses,
 } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -77,6 +78,7 @@ export async function listeSessions(
      *  filtre pas un comptage sur qui l'a ouvert - c'est le RAYON qu'on
      *  inventorie, pas une journée de travail. */
     entrepot?: string | null;
+    entrepots?: readonly string[] | null;
     limite?: number;
   } = {}
 ): Promise<{ elements: SessionResume[]; total: number }> {
@@ -85,7 +87,7 @@ export async function listeSessions(
 
   const conditions = [
     f.statut ? eq(inventorySessions.status, f.statut) : undefined,
-    f.entrepot ? eq(inventorySessions.warehouseId, f.entrepot) : undefined,
+    conditionEntrepot(inventorySessions.warehouseId, f),
     terme
       ? or(
           like(sql`lower(${inventorySessions.reference})`, motif),

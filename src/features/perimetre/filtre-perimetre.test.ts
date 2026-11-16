@@ -46,6 +46,21 @@ function m(
   };
 }
 
+/** Ce qu'une lecture reçoit, sans élargissement explicite. */
+function app(
+  entrepot: string | null,
+  utilisateur: string | null,
+  extra: { entrepots?: string[] | null; tousEntrepots?: boolean; tousUtilisateurs?: boolean } = {}
+) {
+  return {
+    entrepot,
+    utilisateur,
+    entrepots: extra.entrepots ?? null,
+    tousEntrepots: extra.tousEntrepots ?? false,
+    tousUtilisateurs: extra.tousUtilisateurs ?? false,
+  };
+}
+
 function offre(patch: Partial<EntreeDePerimetre> = {}) {
   return offreDePerimetre({
     membre: m("owner"),
@@ -77,7 +92,7 @@ describe("offreDePerimetre", () => {
     // saisi hors ligne n'a ni vente, ni dépense, ni session tant que la
     // poussée ne l'a pas rattaché, et il disparaissait de son propre Livre de
     // caisse jusqu'à la synchronisation suivante.
-    expect(o.applique).toEqual({ entrepot: null, utilisateur: "u-cai" });
+    expect(o.applique).toEqual(app(null, "u-cai"));
   });
 
   it("un caissier GARDE son dépôt là où la donnée n'a pas d'auteur", () => {
@@ -91,7 +106,7 @@ describe("offreDePerimetre", () => {
       moi: "u-cai",
       avecAuteur: false,
     });
-    expect(o.applique).toEqual({ entrepot: A, utilisateur: null });
+    expect(o.applique).toEqual(app(A, null));
     // Et le motif dit la vérité : ces données n'ont jamais eu d'auteur, pour
     // personne - ce n'est pas un droit qu'on lui refuse.
     expect(o.utilisateurVerrouille).toBe("sans-auteur");
@@ -170,7 +185,7 @@ describe("offreDePerimetre", () => {
       choix: { entrepot: A, utilisateur: "u-cai" },
     });
     expect(o.utilisateurVerrouille).toBe("sans-auteur");
-    expect(o.applique).toEqual({ entrepot: A, utilisateur: null });
+    expect(o.applique).toEqual(app(A, null));
   });
 
   it("un rôle borné à un seul dépôt l'applique sans le faire choisir", () => {
@@ -213,9 +228,15 @@ describe("la case « Consulter tous » et la permission « Voir tout »", () => 
       moi: "u-cai",
     });
     expect(o.utilisateurVerrouille).toBeNull();
-    expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-cai");
+    const ids = o.utilisateurs.map((x) => x.valeur);
+    // « Tous les utilisateurs » en tête : c'est le seul moyen d'élargir.
+    expect(ids[0]).toBe("*");
+    expect(ids).toContain("u-ger");
+    // Lui-même n'est pas proposé : « Moi uniquement » est déjà le défaut.
+    expect(ids).not.toContain("u-cai");
+    expect(o.libelleDefautUtilisateur).toBe("Moi uniquement");
     // Mais jamais au-delà de ses entrepôts.
-    expect(o.utilisateurs.map((x) => x.valeur)).not.toContain("u-cbi");
+    expect(ids).not.toContain("u-cbi");
   });
 
   it("« Consulter tous » ouvre la LECTURE de tous les entrepôts et de tous les auteurs", () => {
@@ -224,9 +245,17 @@ describe("la case « Consulter tous » et la permission « Voir tout »", () => 
       moi: "u-cai",
     });
     expect(o.entrepotVerrouille).toBeNull();
-    expect(o.entrepots.map((x) => x.valeur)).toEqual([A, B]);
+    expect(o.entrepots.map((x) => x.valeur)).toEqual(["*", A, B]);
     expect(o.utilisateurVerrouille).toBeNull();
-    expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-cbi");
+    // ⚠ Par DÉFAUT, ses seules données dans ses entrepôts : les collègues du
+    // dépôt B ne se proposent qu'une fois l'entrepôt élargi.
+    expect(o.utilisateurs.map((x) => x.valeur)).not.toContain("u-cbi");
+    const tous = offre({
+      membre: m("cashier", [A], { consulteTout: true }),
+      moi: "u-cai",
+      choix: { entrepot: "*", utilisateur: null },
+    });
+    expect(tous.utilisateurs.map((x) => x.valeur)).toContain("u-cbi");
   });
 
   it("« Consulter tous » propose les collègues d'un dépôt pas encore descendu", () => {
@@ -238,6 +267,7 @@ describe("la case « Consulter tous » et la permission « Voir tout »", () => 
       membre: m("manager", [A], { consulteTout: true }),
       moi: "u-ger",
       tousLesEntrepots: [depots[0]],
+      choix: { entrepot: "*", utilisateur: null },
     });
     expect(o.utilisateurs.map((x) => x.valeur)).toContain("u-cbi");
   });
@@ -255,7 +285,7 @@ describe("la case « Consulter tous » et la permission « Voir tout »", () => 
     // dépôt les cacherait. Le filtre reste fermé, et il le dit.
     const o = offre({ membre: m("cashier", [A]), moi: "u-cai" });
     expect(o.entrepotVerrouille).toBe("un-seul-entrepot");
-    expect(o.applique).toEqual({ entrepot: null, utilisateur: "u-cai" });
+    expect(o.applique).toEqual(app(null, "u-cai"));
   });
 });
 
@@ -385,16 +415,29 @@ describe("ce que l'écran affiche (décision du 2026-11-15)", () => {
     expect(champs(o)).toEqual({ entrepot: true, utilisateur: true, bouton: true });
   });
 
-  it("un gérant de deux dépôts sans case n'a pas le champ entrepôt, ni de choix fantôme", () => {
-    // Un choix resté dans l'état de l'écran deviendrait un filtre INVISIBLE,
-    // que le gérant n'aurait aucun moyen de retirer.
+  it("un gérant de deux dépôts choisit l'un des SIENS, jamais « Tous »", () => {
+    // Décision du 2026-11-16 : il garde le filtre, limité à ses entrepôts.
     const o = offre({
       membre: m("manager", [A, B]),
       moi: "u-ger",
       choix: { entrepot: B, utilisateur: null },
     });
+    expect(champs(o)).toEqual({ entrepot: true, utilisateur: true, bouton: true });
+    expect(o.entrepots.map((x) => x.valeur)).toEqual([A, B]);
+    expect(o.libelleDefautEntrepot).toBe("Mes entrepôts");
+    expect(o.applique.entrepot).toBe(B);
+    expect(resumeDuPerimetre(o).map((p) => p.label)).toEqual(["Dépôt B"]);
+  });
+
+  it("un gérant d'UN seul dépôt n'a pas le champ entrepôt, ni de choix fantôme", () => {
+    // Un choix resté dans l'état de l'écran deviendrait un filtre INVISIBLE,
+    // que le gérant n'aurait aucun moyen de retirer.
+    const o = offre({
+      membre: m("manager", [A]),
+      moi: "u-ger",
+      choix: { entrepot: B, utilisateur: null },
+    });
     expect(champs(o)).toEqual({ entrepot: false, utilisateur: true, bouton: true });
-    expect(o.applique.entrepot).toBeNull();
     expect(resumeDuPerimetre(o)).toEqual([]);
   });
 
@@ -405,3 +448,88 @@ describe("ce que l'écran affiche (décision du 2026-11-15)", () => {
     expect(afficheFiltresDePerimetre(caissier)).toBe(false);
   });
 });
+
+describe("le défaut, et l'élargissement explicite (décision du 2026-11-16)", () => {
+  it("le propriétaire voit tout l'établissement sans rien choisir", () => {
+    const o = offre();
+    expect(o.applique).toEqual(app(null, null));
+    expect(o.libelleDefautEntrepot).toBe("Tous les entrepôts");
+    // « Tous » serait une seconde façon de dire le défaut.
+    expect(o.entrepots.map((x) => x.valeur)).not.toContain("*");
+    expect(o.utilisateurs.map((x) => x.valeur)).not.toContain("*");
+  });
+
+  it("un gérant voit par défaut tout le travail de SES entrepôts", () => {
+    const o = offre({ membre: m("manager", [A, B]), moi: "u-ger" });
+    // Sa base locale ne contient que ses entrepôts : aucune borne à poser.
+    expect(o.applique).toEqual(app(null, null));
+    expect(o.libelleDefautUtilisateur).toBe("Tous les utilisateurs");
+  });
+
+  it("un caissier ne voit que ses données, partout, sans rien choisir", () => {
+    for (const membre of [
+      m("cashier", [A]),
+      m("cashier", [A], { voitCollegues: true }),
+      m("cashier", [A], { consulteTout: true }),
+    ]) {
+      expect(offre({ membre, moi: "u-cai" }).applique.utilisateur).toBe("u-cai");
+    }
+  });
+
+  it("un caissier qui a une case élargit par « Tous les utilisateurs »", () => {
+    const o = offre({
+      membre: m("cashier", [A], { voitCollegues: true }),
+      moi: "u-cai",
+      choix: { entrepot: null, utilisateur: "*" },
+    });
+    expect(o.applique).toEqual(app(A, null, { tousUtilisateurs: true }));
+    expect(nombreDeFiltresPerimetre(o)).toBe(1);
+    expect(resumeDuPerimetre(o).map((p) => p.label)).toEqual(["Tous les utilisateurs"]);
+  });
+
+  it("un caissier sans case ne peut rien élargir, même en le demandant", () => {
+    const o = offre({
+      membre: m("cashier", [A]),
+      moi: "u-cai",
+      choix: { entrepot: "*", utilisateur: "*" },
+    });
+    expect(o.applique).toEqual(app(null, "u-cai"));
+  });
+
+  it("« Consulter tous » : par défaut SES entrepôts, « Tous les entrepôts » sur demande", () => {
+    const membre = m("manager", [A], { consulteTout: true });
+    const parDefaut = offre({ membre, moi: "u-ger" });
+    expect(parDefaut.applique).toEqual(app(null, null, { entrepots: [A] }));
+    expect(parDefaut.libelleDefautEntrepot).toBe("Mes entrepôts");
+
+    const tous = offre({ membre, moi: "u-ger", choix: { entrepot: "*", utilisateur: null } });
+    expect(tous.applique).toEqual(app(null, null, { tousEntrepots: true }));
+    expect(resumeDuPerimetre(tous).map((p) => p.label)).toEqual(["Tous les entrepôts"]);
+
+    // Et un dépôt précis hors des siens se lit aussi.
+    const enFace = offre({ membre, moi: "u-ger", choix: { entrepot: B, utilisateur: null } });
+    expect(enFace.applique.entrepot).toBe(B);
+  });
+
+  it("un gérant sans case ne se voit jamais proposer « Tous les entrepôts »", () => {
+    const o = offre({
+      membre: m("manager", [A, B]),
+      moi: "u-ger",
+      choix: { entrepot: "*", utilisateur: null },
+    });
+    expect(o.entrepots.map((x) => x.valeur)).not.toContain("*");
+    expect(o.applique).toEqual(app(null, null));
+  });
+
+  it("un collègue choisi qui ne relève pas de l'entrepôt retenu est écarté", () => {
+    const o = offre({
+      membre: m("manager", [A], { consulteTout: true }),
+      moi: "u-ger",
+      choix: { entrepot: null, utilisateur: "u-cbi" },
+    });
+    // Sous le défaut « Mes entrepôts », le caissier du dépôt B ne se lit pas.
+    expect(o.applique.utilisateur).toBeNull();
+    expect(o.choisi.utilisateur).toBeNull();
+  });
+});
+

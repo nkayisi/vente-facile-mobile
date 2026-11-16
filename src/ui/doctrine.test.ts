@@ -2625,11 +2625,18 @@ describe("un filtre à choix unique offre toujours de le retirer", () => {
   //: c'est ce qui dispense ce garde-fou de toute liste d'exceptions.
   const PHRASE = /^Tou(?:s|tes) /;
 
-  /** Les feuilles qui posent un choix unique de filtre. */
+  /**
+   * Les feuilles qui posent un choix unique de filtre : une phrase « Tous … »
+   * hissée, ou un défaut NOMMÉ venu de l'offre de périmètre (« Mes
+   * entrepôts », « Moi uniquement » : décision du 2026-11-16).
+   */
   function feuillesDeFiltres(): string[] {
     return fichiers(join(RACINE, "features")).filter((f) => {
       const code = sansCommentaires(readFileSync(f, "utf8"));
-      return code.includes("setChoix({") && /=\s*"Tou(?:s|tes) /.test(code);
+      return (
+        code.includes("setChoix({") &&
+        (/=\s*"Tou(?:s|tes) /.test(code) || /=\s*offre\.libelleDefaut\w+;/.test(code))
+      );
     });
   }
 
@@ -2646,9 +2653,9 @@ describe("un filtre à choix unique offre toujours de le retirer", () => {
       //: La phrase est hissée en constante parce qu'elle sert deux fois : la
       //: ligne qu'on touche doit lire EXACTEMENT ce que lisait le déclencheur
       //: fermé, sinon on ne sait pas qu'on revient au point de départ.
-      for (const m of code.matchAll(/const (\w+) = "([^"]+)";/g)) {
-        const [, nom, valeur] = m;
-        if (!PHRASE.test(valeur)) continue;
+      for (const m of code.matchAll(/const (\w+) = (?:"([^"]+)"|(offre\.libelleDefaut\w+));/g)) {
+        const [, nom, valeur, defaut] = m;
+        if (!defaut && !PHRASE.test(valeur)) continue;
         if (!new RegExp(`libelle=\\{[^}]*\\b${nom}\\b`).test(code)) {
           fautifs.push(`${relative(RACINE, f)} : ${nom} ne sert à aucun déclencheur`);
         }

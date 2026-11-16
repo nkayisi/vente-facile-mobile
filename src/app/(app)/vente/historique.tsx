@@ -182,7 +182,7 @@ export default function Historique() {
         // Le périmètre APPLIQUÉ, jamais le choix brut : c'est ce qui borne un
         // caissier à ses propres ventes, alors que le tirage lui descend
         // celles de ses collègues du même dépôt.
-        entrepot: applique.entrepot,
+        entrepot: applique.entrepot, entrepots: applique.entrepots,
         utilisateur: applique.utilisateur,
         moi,
         // Sous un VERROU, une vente dont on ignore le dépôt reste à l'écran :

@@ -35,10 +35,13 @@ import {
   AppBar, Badge, Chip, ChipRow, DataList, DataRow, Fab, Screen, SearchInput,
   Mesure,
 } from "@/ui";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = ["quotations", "quotation_items", "customers"];
 
 export default function Devis() {
+  // Le DÉFAUT du membre : un caissier n'y voit que les siens.
+  const perimetre = usePerimetreParDefaut(true);
   const money = useMonnaie();
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
@@ -46,24 +49,24 @@ export default function Devis() {
   const [creation, setCreation] = useState(false);
 
   const charger = useCallback(
-    () => listeDevis({ recherche, statut }),
-    [recherche, statut]
+    () => listeDevis({ recherche, statut, perimetre }),
+    [recherche, statut, perimetre]
   );
   const { donnees, chargement, recharger } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, statut],
+    deps: [recherche, statut, perimetre],
   });
 
   // Le décompte des puces ignore le filtre de STATUT et suit la recherche :
   // c'est ce qui rend « Converti (3) » lisible pendant qu'on regarde les
   // brouillons.
   const chargerTous = useCallback(
-    () => listeDevis({ recherche, statut: null }),
-    [recherche]
+    () => listeDevis({ recherche, statut: null, perimetre }),
+    [recherche, perimetre]
   );
   const { donnees: tous } = useLecture(chargerTous, {
     tables: TABLES,
-    deps: [recherche],
+    deps: [recherche, perimetre],
   });
   const { donnees: attente } = useLecture(enAttenteRetoursDevis, {
     tables: ["outbox_operations"],

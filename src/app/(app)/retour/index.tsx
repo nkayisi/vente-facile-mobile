@@ -22,21 +22,24 @@ import {
   AppBar, Badge, Banner, Chip, ChipRow, DataList, DataRow, Screen,
   SearchInput, Mesure,
 } from "@/ui";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = ["sale_returns", "sale_return_items", "sales"];
 
 export default function Retours() {
+  // Le DÉFAUT du membre : un caissier n'y voit que les siens.
+  const perimetre = usePerimetreParDefaut(true);
   const money = useMonnaie();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
 
   const charger = useCallback(
-    () => listeRetours({ recherche, statut }),
-    [recherche, statut]
+    () => listeRetours({ recherche, statut, perimetre }),
+    [recherche, statut, perimetre]
   );
   const { donnees, chargement, recharger } = useLecture(charger, {
     tables: TABLES,
-    deps: [recherche, statut],
+    deps: [recherche, statut, perimetre],
   });
 
   // Le décompte des puces ignore le filtre de STATUT et suit la recherche :
@@ -45,12 +48,12 @@ export default function Retours() {
   // et une puce à zéro se lit « il n'y en a pas », pas « vous ne les
   // regardez pas ».
   const chargerTous = useCallback(
-    () => listeRetours({ recherche, statut: null }),
-    [recherche]
+    () => listeRetours({ recherche, statut: null, perimetre }),
+    [recherche, perimetre]
   );
   const { donnees: tous } = useLecture(chargerTous, {
     tables: TABLES,
-    deps: [recherche],
+    deps: [recherche, perimetre],
   });
   const { donnees: attente } = useLecture(enAttenteRetoursDevis, {
     tables: ["outbox_operations"],

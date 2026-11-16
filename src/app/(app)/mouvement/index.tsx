@@ -66,7 +66,9 @@ import { journalMouvements } from "@/data/mouvements";
 import { libellePeriodeFiltre } from "@/data/periode-filtre";
 import { useEnLigne } from "@/data/reseau";
 import { avertissementDeMouvementsEnFile } from "@/features/export/en-file";
-import { perimetreAffichable } from "@/features/perimetre/filtre-perimetre";
+import { perimetreAffichable,
+  nomDuChoix,
+} from "@/features/perimetre/filtre-perimetre";
 import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { FeuilleFormat } from "@/features/export/feuille-format";
 import {
@@ -169,7 +171,7 @@ export default function Mouvements() {
         // qu'un rôle borné ne peut pas lire au-delà de ses dépôts, même avec un
         // état d'écran resté d'une session précédente ou d'un rôle changé
         // au back-office pendant qu'il travaillait.
-        entrepot: applique.entrepot,
+        entrepot: applique.entrepot, entrepots: applique.entrepots,
         utilisateur: applique.utilisateur,
         categorie: filtres.categorie,
         periode: filtres.periode,
@@ -195,12 +197,8 @@ export default function Mouvements() {
       })),
     [cats]
   );
-  const nomEntrepot = perimetre.entrepots.find(
-    (o) => o.valeur === perimetre.applique.entrepot
-  )?.label;
-  const nomUtilisateur = perimetre.utilisateurs.find(
-    (o) => o.valeur === perimetre.applique.utilisateur
-  )?.label;
+  const nomEntrepot = nomDuChoix(perimetre, "entrepot");
+  const nomUtilisateur = nomDuChoix(perimetre, "utilisateur");
   const nomCategorie = (cats ?? []).find((c) => c.id === filtres.categorie)?.nom;
   const puces = useMemo(
     () =>

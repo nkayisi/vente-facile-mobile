@@ -32,6 +32,7 @@ import {
   units,
   warehouses,
 } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
 
 // ┌──────────────────────────────────────────────────────────────────────────┐
 // │ DEUX ALIAS SUR `units`, ET IL EN FAUT DEUX.                              │
@@ -131,6 +132,7 @@ export async function listeTransferts(
      * `warehouse_path`, et celui du `StockTransferFilter` du serveur.
      */
     entrepot?: string | null;
+    entrepots?: readonly string[] | null;
     limite?: number;
     /** L'annuaire de la session, pour nommer les dépôts hors de mon périmètre. */
     annuaire?: AnnuaireEntrepots;
@@ -140,12 +142,10 @@ export async function listeTransferts(
   const motif = `%${terme}%`;
   const conditions = [
     f.statut ? eq(stockTransfers.status, f.statut) : undefined,
-    f.entrepot
-      ? or(
-          eq(stockTransfers.sourceWarehouseId, f.entrepot),
-          eq(stockTransfers.destinationWarehouseId, f.entrepot)
-        )
-      : undefined,
+    conditionEntrepot(
+      [stockTransfers.sourceWarehouseId, stockTransfers.destinationWarehouseId],
+      f
+    ),
     terme ? like(sql`lower(${stockTransfers.reference})`, motif) : undefined,
   ].filter(Boolean);
   const filtre = conditions.length > 0 ? and(...conditions) : undefined;
@@ -329,6 +329,7 @@ export async function listeAjustements(
     recherche?: string;
     statut?: string | null;
     entrepot?: string | null;
+    entrepots?: readonly string[] | null;
     limite?: number;
   } = {}
 ): Promise<{ elements: AjustementResume[]; total: number }> {
@@ -337,7 +338,7 @@ export async function listeAjustements(
 
   const conditions = [
     f.statut ? eq(stockAdjustments.status, f.statut) : undefined,
-    f.entrepot ? eq(stockAdjustments.warehouseId, f.entrepot) : undefined,
+    conditionEntrepot(stockAdjustments.warehouseId, f),
     terme
       ? or(
           like(sql`lower(${stockAdjustments.reference})`, motif),

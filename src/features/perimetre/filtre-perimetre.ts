@@ -26,11 +26,19 @@
  * appareil.
  */
 import {
+  CHOIX_TOUS,
+  LIBELLE_TOUS_ENTREPOTS,
+  LIBELLE_TOUS_UTILISATEURS,
   LIBELLES_VERROU_PERIMETRE,
   afficheFiltreEntrepot,
   afficheFiltreUtilisateur,
+  defautDuPerimetre,
   estBorneParAuteur,
+  libelleDefautEntrepot,
+  libelleDefautUtilisateur,
   litTousLesEntrepots,
+  proposeTousLesEntrepots,
+  proposeTousLesUtilisateurs,
   verrouEntrepot,
   type MotifVerrouPerimetre,
 } from "@vente-facile/core";
@@ -43,10 +51,28 @@ import {
   type RoleMembre,
 } from "./entrepots";
 
-/** Les deux filtres que tous les écrans partagent. PLAT, jamais imbriqué. */
+export { CHOIX_TOUS };
+
+/**
+ * Les deux filtres que tous les écrans partagent. PLAT, jamais imbriqué.
+ *
+ * Dans le CHOIX d'un écran, `null` est le défaut, `CHOIX_TOUS` le choix
+ * explicite « Tous », un identifiant un choix précis. Dans le périmètre
+ * APPLIQUÉ, les trois champs optionnels portent ce qu'une lecture doit savoir
+ * de plus :
+ *
+ * - `entrepots` : l'ensemble d'entrepôts du DÉFAUT, quand il borne sans être un
+ *   choix (la case « Consulter tous » par défaut : ses seuls entrepôts) ;
+ * - `tousEntrepots` / `tousUtilisateurs` : le choix « Tous », pour que les
+ *   documents et les rapports demandent au serveur d'élargir, son défaut
+ *   n'étant pas « tous ».
+ */
 export interface FiltrePerimetre {
   entrepot: string | null;
   utilisateur: string | null;
+  entrepots?: readonly string[] | null;
+  tousEntrepots?: boolean;
+  tousUtilisateurs?: boolean;
 }
 
 export const PERIMETRE_VIDE: FiltrePerimetre = { entrepot: null, utilisateur: null };
@@ -80,7 +106,9 @@ export interface OptionPerimetre {
 }
 
 export interface OffrePerimetre {
+  /** Les choix d'entrepôt, « Tous les entrepôts » en tête quand il est proposé. */
   entrepots: OptionPerimetre[];
+  /** Les choix d'utilisateur, « Tous les utilisateurs » en tête quand il est proposé. */
   utilisateurs: OptionPerimetre[];
   /**
    * Le champ s'AFFICHE-t-il ? Distinct du verrou : un verrou dit ce qui borne
@@ -88,8 +116,16 @@ export interface OffrePerimetre {
    */
   champEntrepot: boolean;
   champUtilisateur: boolean;
+  /** Ce que le champ annonce quand rien n'est choisi : le défaut, nommé. */
+  libelleDefautEntrepot: string;
+  libelleDefautUtilisateur: string;
   entrepotVerrouille: MotifVerrou | null;
   utilisateurVerrouille: MotifVerrou | null;
+  /**
+   * Le choix EXPLICITE retenu, validé : un identifiant, `CHOIX_TOUS`, ou `null`
+   * (le défaut). C'est lui qu'on montre en puce et qu'on compte.
+   */
+  choisi: { entrepot: string | null; utilisateur: string | null };
   /** Le périmètre CONTRAINT : la seule chose qu'une lecture a le droit de lire. */
   applique: FiltrePerimetre;
 }
@@ -112,6 +148,22 @@ export interface EntreeDePerimetre {
  * Ce qu'un écran propose, ce qu'il verrouille, et ce qu'il applique réellement.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE QU'ON PEUT LIRE N'EST PAS CE QU'ON VOIT PAR DÉFAUT (2026-11-16).     │
+ * │                                                                          │
+ * │ La base locale porte tout ce que le membre a le DROIT de lire : le       │
+ * │ tirage descend les ventes des collègues sous « Voir tout dans son        │
+ * │ entrepôt », les autres entrepôts sous « Consulter tous ». C'est ce qui   │
+ * │ permet aux filtres d'élargir hors ligne. Mais SANS filtre, l'écran        │
+ * │ montre le DÉFAUT (`defautDuPerimetre` du noyau) :                        │
+ * │                                                                          │
+ * │ - le caissier, ses seules données, quelles que soient ses cases ;       │
+ * │ - le gérant et le magasinier, toutes les données de leurs entrepôts ;   │
+ * │ - le propriétaire, tout.                                                 │
+ * │                                                                          │
+ * │ Élargir est un CHOIX : un collègue, un autre entrepôt, ou « Tous ».      │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ UN FILTRE EST DE LECTURE : LES ENTREPÔTS DÉSACTIVÉS Y RESTENT.          │
  * │                                                                          │
  * │ Ils disparaissaient des filtres, même pour le propriétaire : un dépôt    │
@@ -120,60 +172,75 @@ export interface EntreeDePerimetre {
  * │ est fermée, pas le passé.                                                │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
- * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ L'AUTEUR SUIT LA PERMISSION, PAS LE RÔLE « CAISSIER ».                  │
- * │                                                                          │
- * │ Le caissier était verrouillé sur lui-même par son rôle, si bien que la   │
- * │ case « Voir tout » que le gérant venait de cocher ne changeait rien à    │
- * │ son terminal. C'est `estBorneParAuteur` du noyau qui tranche : faux avec │
- * │ `sales.view_all`, faux en lecture sous « Consulter tous ».               │
- * └──────────────────────────────────────────────────────────────────────────┘
+ * ⚠ MASQUER N'EST PAS LEVER : `applique` garde ses verrous et son défaut. Et un
+ * choix resté dans l'état d'un écran n'est plus appliqué quand son champ est
+ * masqué : il deviendrait un filtre invisible, impossible à retirer.
  */
 export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
-  // ┌──────────────────────────────────────────────────────────────────────┐
-  // │ ON NE MONTRE QUE CE QU'ON PEUT CHOISIR (décision du 2026-11-15).     │
-  // │                                                                      │
-  // │ Le champ Entrepôt ne paraît qu'au propriétaire et sous « Consulter   │
-  // │ tous les entrepôts » ; le champ Utilisateur qu'avec « Voir tout dans │
-  // │ son entrepôt » (ou ce qui l'implique), et seulement sur une donnée   │
-  // │ qui a un auteur. Sans aucun des deux, l'écran ne propose plus de     │
-  // │ filtre de périmètre du tout. Règle du noyau, la même qu'au           │
-  // │ back-office.                                                         │
-  // │                                                                      │
-  // │ ⚠ MASQUER N'EST PAS LEVER : `applique` garde ses verrous. Et un      │
-  // │ choix d'entrepôt resté dans l'état d'un écran n'est plus appliqué    │
-  // │ quand son champ est masqué : il deviendrait un filtre invisible,     │
-  // │ que le marchand n'aurait aucun moyen de retirer.                     │
-  // └──────────────────────────────────────────────────────────────────────┘
+  const defaut = defautDuPerimetre(e.membre);
   const champEntrepot = afficheFiltreEntrepot(e.membre);
   const champUtilisateur = e.avecAuteur && afficheFiltreUtilisateur(e.membre);
 
   const lisibles = entrepotsLisiblesDuMembre(e.membre, e.tousLesEntrepots);
-  const options: OptionPerimetre[] = lisibles.map((d) => ({
-    valeur: d.id,
-    label: libelleEntrepot(d),
-  }));
-  const permis = new Set(options.map((o) => o.valeur));
+  const offreTousEntrepots = champEntrepot && proposeTousLesEntrepots(e.membre);
+  const entrepots: OptionPerimetre[] = [
+    ...(offreTousEntrepots ? [{ valeur: CHOIX_TOUS, label: LIBELLE_TOUS_ENTREPOTS }] : []),
+    ...lisibles.map((d) => ({ valeur: d.id, label: libelleEntrepot(d) })),
+  ];
+  const permis = new Set(lisibles.map((d) => d.id));
 
-  // ── L'ENTREPÔT. Le verrou vient du paquet, partagé avec le back-office :
-  //
-  // - un rôle borné SANS affectation rend « aucun-entrepot ». Le serveur ne lui
-  //   rend plus rien (`.none()` partout, tirage compris) : on le DIT plutôt que
-  //   de laisser croire à une organisation vide ;
-  // - choisir entre une seule chose n'est pas un choix, d'où
-  //   « un-seul-entrepot » ;
-  // - le PROPRIÉTAIRE et la case « Consulter tous » ne sont jamais fermés.
+  // ── Le verrou d'entrepôt vient du paquet, partagé avec le back-office :
+  // « un-seul-entrepot » impose son unique dépôt là où rien ne borne déjà par
+  // l'auteur ; « aucun-entrepot » le DIT ; le propriétaire et la case « Consulter
+  // tous » ne sont jamais fermés.
   const entrepotVerrouille: MotifVerrou | null = verrouEntrepot(
     e.membre,
     lisibles.length,
     "lecture"
   );
-  const entrepotDemande =
-    champEntrepot && e.choix.entrepot && permis.has(e.choix.entrepot)
-      ? e.choix.entrepot
-      : null;
 
-  const borneParAuteur = e.avecAuteur && estBorneParAuteur(e.membre, "lecture");
+  // ── Le choix d'entrepôt, validé. Un champ masqué ne choisit rien.
+  const choixE = champEntrepot ? e.choix.entrepot : null;
+  const tousEntrepots = choixE === CHOIX_TOUS && offreTousEntrepots;
+  const entrepotDemande =
+    choixE && choixE !== CHOIX_TOUS && permis.has(choixE) ? choixE : null;
+
+  // ── L'utilisateur : le DROIT d'abord, puis le choix, puis le défaut.
+  const borneDroit = e.avecAuteur && estBorneParAuteur(e.membre, "lecture");
+  const offreTousUtilisateurs = champUtilisateur && proposeTousLesUtilisateurs(e.membre);
+  const choixU = champUtilisateur && !borneDroit ? e.choix.utilisateur : null;
+  const tousUtilisateurs = choixU === CHOIX_TOUS && offreTousUtilisateurs;
+  // Un identifiant ne vaut que s'il désigne quelqu'un que la liste PROPOSE,
+  // c'est-à-dire dans l'entrepôt choisi : sinon c'est un choix périmé, ou un
+  // filtre fantôme (un membre du dépôt B retenu sous « Dépôt A » vide la liste
+  // sans que la puce le montre). On revient alors au défaut.
+  // ── Les membres proposés suivent l'entrepôt RETENU : un dépôt choisi, sinon
+  // « Tous les entrepôts », sinon le défaut du membre (ses entrepôts pour la
+  // case « Consulter tous », son périmètre pour les autres). Proposer un
+  // collègue du dépôt B sous le défaut « Mes entrepôts » donnerait une liste
+  // vide : le serveur garde son défaut tant que l'entrepôt n'est pas élargi.
+  const bornesMembres: Set<string> | null = entrepotDemande
+    ? new Set([entrepotDemande])
+    : tousEntrepots
+      ? null
+      : defaut.entrepots !== null
+        ? new Set(defaut.entrepots)
+        : litTousLesEntrepots(e.membre)
+          ? null
+          : permis;
+  const visables =
+    e.equipe === undefined
+      ? []
+      : membresProposables(e, bornesMembres).map((m) => m.userId);
+  const utilisateurDemande =
+    choixU && choixU !== CHOIX_TOUS && visables.includes(choixU) ? choixU : null;
+
+  let utilisateurApplique: string | null = null;
+  if (!e.avecAuteur) utilisateurApplique = null;
+  else if (borneDroit) utilisateurApplique = e.moi;
+  else if (utilisateurDemande) utilisateurApplique = utilisateurDemande;
+  else if (tousUtilisateurs) utilisateurApplique = null;
+  else utilisateurApplique = defaut.auteurBorne ? e.moi : null;
 
   // ┌──────────────────────────────────────────────────────────────────────┐
   // │ UN MEMBRE BORNÉ PAR AUTEUR VOIT AUSSI SES LIGNES SANS ENTREPÔT.      │
@@ -182,76 +249,71 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
   // │ dans ses entrepôts, PLUS celles qui n'en ont aucun - un mouvement de │
   // │ caisse poussé après la clôture du tiroir n'obtient jamais de         │
   // │ session, et un mouvement saisi hors ligne n'en a pas encore. Lui     │
-  // │ imposer son dépôt unique sur une donnée qui a un auteur les lui      │
-  // │ cacherait sur le seul écran où il les cherche, et il les             │
-  // │ ressaisirait. La base locale est déjà bornée par le tirage à ses     │
-  // │ entrepôts et à ses lignes : l'auteur suffit.                         │
+  // │ imposer un entrepôt sur une donnée qui a un auteur les lui cacherait │
+  // │ sur le seul écran où il les cherche, et il les ressaisirait.         │
   // │                                                                      │
-  // │ Sur une donnée SANS auteur (stock, transferts), son entrepôt est au  │
+  // │ Sur une donnée SANS auteur (stock, transferts), l'entrepôt est au    │
   // │ contraire la seule borne, et il s'applique.                          │
   // └──────────────────────────────────────────────────────────────────────┘
-  const entrepotApplique =
-    entrepotVerrouille === "un-seul-entrepot" && !borneParAuteur
-      ? options[0].valeur
-      : entrepotDemande;
+  const borneParAuteur = e.avecAuteur && utilisateurApplique !== null && utilisateurApplique === e.moi && !utilisateurDemande;
 
-  // ── L'UTILISATEUR.
+  let entrepotApplique: string | null = entrepotDemande;
+  let entrepotsApplique: string[] | null = null;
+  if (!entrepotDemande && !tousEntrepots && !borneParAuteur) {
+    if (entrepotVerrouille === "un-seul-entrepot") {
+      entrepotApplique = lisibles[0]?.id ?? null;
+    } else if (defaut.entrepots !== null) {
+      // La case « Consulter tous » : par défaut, ses seuls entrepôts.
+      entrepotsApplique = defaut.entrepots;
+    }
+  }
+
+  // ── Les choix d'utilisateur proposés, selon l'entrepôt retenu.
+  let utilisateurVerrouille: MotifVerrou | null = null;
+  let utilisateurs: OptionPerimetre[] = [];
   if (!e.avecAuteur) {
-    return {
-      entrepots: options,
-      utilisateurs: [],
-      champEntrepot,
-      champUtilisateur,
-      entrepotVerrouille,
-      // ⚠ Une donnée sans auteur le dit, plutôt que d'annoncer « vous ne
-      // voyez que vos propres données » sur un niveau de stock qui n'a
-      // jamais eu d'auteur, pour personne.
-      utilisateurVerrouille: "sans-auteur",
-      applique: { entrepot: entrepotApplique, utilisateur: null },
-    };
+    // ⚠ Une donnée sans auteur le dit, plutôt que d'annoncer « vous ne voyez
+    // que vos propres données » sur un niveau de stock qui n'a jamais eu
+    // d'auteur, pour personne.
+    utilisateurVerrouille = "sans-auteur";
+  } else if (borneDroit) {
+    utilisateurVerrouille = "propres-donnees";
+  } else if (e.equipe === undefined) {
+    utilisateurVerrouille = "equipe-inconnue";
+  } else {
+    const membres = membresProposables(e, bornesMembres);
+    utilisateurs = [
+      ...(offreTousUtilisateurs
+        ? [{ valeur: CHOIX_TOUS, label: LIBELLE_TOUS_UTILISATEURS }]
+        : []),
+      ...membres
+        // Le défaut d'un caissier EST « moi » : se proposer soi-même ferait
+        // une seconde façon de dire « Moi uniquement ».
+        .filter((m) => !(defaut.auteurBorne && m.userId === e.moi))
+        .map((m) => ({ valeur: m.userId, label: m.nom })),
+    ];
   }
-  if (borneParAuteur) {
-    return {
-      entrepots: options,
-      utilisateurs: [],
-      champEntrepot,
-      champUtilisateur,
-      entrepotVerrouille,
-      utilisateurVerrouille: "propres-donnees",
-      applique: { entrepot: entrepotApplique, utilisateur: e.moi },
-    };
-  }
-  if (e.equipe === undefined) {
-    return {
-      entrepots: options,
-      utilisateurs: [],
-      champEntrepot,
-      champUtilisateur,
-      entrepotVerrouille,
-      utilisateurVerrouille: "equipe-inconnue",
-      applique: { entrepot: entrepotApplique, utilisateur: null },
-    };
-  }
-
-  const membres = membresProposables(e, entrepotApplique, permis);
-  const utilisateurs: OptionPerimetre[] = membres.map((m) => ({
-    valeur: m.userId,
-    label: m.nom,
-  }));
-  const connus = new Set(utilisateurs.map((o) => o.valeur));
-  const utilisateurApplique =
-    e.choix.utilisateur && connus.has(e.choix.utilisateur)
-      ? e.choix.utilisateur
-      : null;
 
   return {
-    entrepots: options,
+    entrepots,
     utilisateurs,
     champEntrepot,
     champUtilisateur,
+    libelleDefautEntrepot: libelleDefautEntrepot(e.membre),
+    libelleDefautUtilisateur: libelleDefautUtilisateur(e.membre),
     entrepotVerrouille,
-    utilisateurVerrouille: null,
-    applique: { entrepot: entrepotApplique, utilisateur: utilisateurApplique },
+    utilisateurVerrouille,
+    choisi: {
+      entrepot: entrepotDemande ?? (tousEntrepots ? CHOIX_TOUS : null),
+      utilisateur: utilisateurDemande ?? (tousUtilisateurs ? CHOIX_TOUS : null),
+    },
+    applique: {
+      entrepot: entrepotApplique,
+      utilisateur: utilisateurApplique,
+      entrepots: entrepotsApplique,
+      tousEntrepots,
+      tousUtilisateurs,
+    },
   };
 }
 
@@ -268,20 +330,17 @@ export function offreDePerimetre(e: EntreeDePerimetre): OffrePerimetre {
  */
 function membresProposables(
   e: EntreeDePerimetre,
-  entrepotApplique: string | null,
-  permis: Set<string>
+  /** Les entrepôts dont on propose les membres ; `null` : tous. */
+  bornes: Set<string> | null
 ): MembrePerimetre[] {
   const equipe = e.equipe ?? [];
   return equipe.filter((m) => {
     if (m.userId === e.moi) return true;
+    // Le propriétaire n'a AUCUNE affectation : c'est son rôle qui lui donne
+    // tout, et l'intersection le ferait disparaître de toutes les listes.
     if (m.role === "owner") return true;
-    if (entrepotApplique) return m.entrepots.includes(entrepotApplique);
-    // Sans entrepôt choisi, un rôle borné ne propose que les membres avec qui
-    // il partage au moins un dépôt : sans cette borne, un gérant lirait
-    // l'activité d'une boutique qu'il ne dirige pas. Le propriétaire et la
-    // case « Consulter tous » lisent tout le monde.
-    if (litTousLesEntrepots(e.membre)) return true;
-    return m.entrepots.some((id) => permis.has(id));
+    if (bornes === null) return true;
+    return m.entrepots.some((id) => bornes.has(id));
   });
 }
 
@@ -336,10 +395,39 @@ export function contexteFileDe(o: OffrePerimetre, moi: string | null): ContexteF
  * │                                                                          │
  * │ Sous un CHOIX délibéré, la question est « qu'y a-t-il eu dans le dépôt   │
  * │ B ? » : une ligne dont on ignore le dépôt n'y répond pas.                │
+ * │                                                                          │
+ * │ Le DÉFAUT d'un membre (« Mes entrepôts » sous la case « Consulter        │
+ * │ tous ») est, comme un verrou, un périmètre qu'il n'a pas posé : il       │
+ * │ tolère l'inconnu.                                                        │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 export function entrepotInconnuAdmis(o: OffrePerimetre): boolean {
-  return o.entrepotVerrouille !== null;
+  return o.choisi.entrepot === null || o.choisi.entrepot === CHOIX_TOUS;
+}
+
+/** Ce qu'une lecture sait de l'entrepôt qu'on regarde. */
+export interface PorteeEntrepot {
+  entrepot?: string | null;
+  entrepots?: readonly string[] | null;
+}
+
+/**
+ * Une ligne ENCORE DANS LE JOURNAL passe-t-elle le périmètre d'entrepôt ?
+ *
+ * Le pendant de `conditionEntrepot` (`data/perimetre-sql.ts`) pour les lignes
+ * qu'aucune table ne porte encore. Un CHOIX est exact (l'inconnu ne passe que
+ * si `inconnuAdmis`) ; le DÉFAUT « mes entrepôts » tolère l'inconnu, la ligne
+ * ne pouvant venir que de ce terminal, donc de ce membre.
+ */
+export function retientEntrepot(
+  entrepot: string | null | undefined,
+  f: PorteeEntrepot,
+  inconnuAdmis: boolean
+): boolean {
+  const e = entrepot ?? null;
+  if (f.entrepot) return e === f.entrepot || (e === null && inconnuAdmis);
+  if (f.entrepots) return e === null || f.entrepots.includes(e);
+  return true;
 }
 
 /**
@@ -361,23 +449,32 @@ export function afficheFiltresDePerimetre(o: OffrePerimetre): boolean {
  */
 export function nombreDeFiltresPerimetre(o: OffrePerimetre): number {
   let n = 0;
-  if (!o.entrepotVerrouille && o.applique.entrepot) n += 1;
-  if (!o.utilisateurVerrouille && o.applique.utilisateur) n += 1;
+  if (o.choisi.entrepot) n += 1;
+  if (o.choisi.utilisateur) n += 1;
   return n;
 }
 
 /**
- * Le périmètre tel qu'il doit APPARAÎTRE, verrous exclus.
+ * Le périmètre tel qu'il doit APPARAÎTRE : les seuls choix EXPLICITES.
  *
- * Un caissier porte deux contraintes qu'il n'a pas posées : les rendre en puces
- * retirables lui promettrait de pouvoir les retirer, et l'appui ne ferait rien.
- * Un écran affiche donc ceci, et lit `applique` pour ses données.
+ * Un caissier porte des contraintes qu'il n'a pas posées (son verrou, son
+ * défaut) : les rendre en puces retirables lui promettrait de pouvoir les
+ * retirer, et l'appui ne ferait rien. Un écran affiche donc ceci, et lit
+ * `applique` pour ses données. « Tous » est un choix : il a sa puce, et la
+ * retirer ramène au défaut.
  */
 export function perimetreAffichable(o: OffrePerimetre): FiltrePerimetre {
-  return {
-    entrepot: o.entrepotVerrouille ? null : o.applique.entrepot,
-    utilisateur: o.utilisateurVerrouille ? null : o.applique.utilisateur,
-  };
+  return { entrepot: o.choisi.entrepot, utilisateur: o.choisi.utilisateur };
+}
+
+/** Le nom d'un choix, tel que la liste le propose. Jamais l'identifiant. */
+export function nomDuChoix(
+  o: OffrePerimetre,
+  cle: "entrepot" | "utilisateur"
+): string | undefined {
+  const valeur = o.choisi[cle];
+  const options = cle === "entrepot" ? o.entrepots : o.utilisateurs;
+  return valeur ? options.find((x) => x.valeur === valeur)?.label : undefined;
 }
 
 /** Une puce retirable par filtre de périmètre réellement posé. */
@@ -385,15 +482,16 @@ export function resumeDuPerimetre(
   o: OffrePerimetre
 ): { cle: "entrepot" | "utilisateur"; label: string }[] {
   const puces: { cle: "entrepot" | "utilisateur"; label: string }[] = [];
-  if (!o.entrepotVerrouille && o.applique.entrepot) {
-    const nom = o.entrepots.find((x) => x.valeur === o.applique.entrepot)?.label;
-    // Un nom manquant s'écrit « inconnu » et JAMAIS l'identifiant : un UUID
-    // dans une puce n'est pas un nom, c'est du bruit.
-    puces.push({ cle: "entrepot", label: nom || "Entrepôt inconnu" });
+  // Un nom manquant s'écrit « inconnu » et JAMAIS l'identifiant : un UUID
+  // dans une puce n'est pas un nom, c'est du bruit.
+  if (o.choisi.entrepot) {
+    puces.push({ cle: "entrepot", label: nomDuChoix(o, "entrepot") || "Entrepôt inconnu" });
   }
-  if (!o.utilisateurVerrouille && o.applique.utilisateur) {
-    const nom = o.utilisateurs.find((x) => x.valeur === o.applique.utilisateur)?.label;
-    puces.push({ cle: "utilisateur", label: nom || "Utilisateur inconnu" });
+  if (o.choisi.utilisateur) {
+    puces.push({
+      cle: "utilisateur",
+      label: nomDuChoix(o, "utilisateur") || "Utilisateur inconnu",
+    });
   }
   return puces;
 }
@@ -415,12 +513,20 @@ export function sansLeFiltrePerimetre(
  * Deux noms voudraient dire une table de correspondance par écran, donc un
  * écran qui en manquera.
  */
-export function parametresDePerimetre(
-  f: FiltrePerimetre
-): { warehouse?: string; user?: string } {
+export function parametresDePerimetre(f: FiltrePerimetre): {
+  warehouse?: string;
+  user?: string;
+  all_warehouses?: string;
+  all_users?: string;
+} {
   return {
     warehouse: f.entrepot ?? undefined,
     user: f.utilisateur ?? undefined,
+    // « Tous » se DEMANDE au serveur : son défaut n'est pas « tous » (un
+    // caissier n'y voit que ses données, la case « Consulter tous » que ses
+    // entrepôts), et ne rien envoyer y retomberait.
+    all_warehouses: f.tousEntrepots ? "1" : undefined,
+    all_users: f.tousUtilisateurs ? "1" : undefined,
   };
 }
 

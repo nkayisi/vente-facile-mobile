@@ -38,7 +38,8 @@ import {
   StatStripItem,
   Text,
 } from "@/ui";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = ["stocks", "products", "warehouses"];
 
@@ -46,8 +47,12 @@ export default function Stock() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [feuilleMouvement, setFeuilleMouvement] = useState(false);
-  const { donnees: r } = useLecture(relevesStock, { tables: TABLES });
-  const { donnees: liste } = useLecture(entrepots, { tables: TABLES });
+  // Le DÉFAUT du membre : ses entrepôts, même sous « Consulter tous ».
+  const perimetre = usePerimetreParDefaut(false);
+  const lireReleves = useCallback(() => relevesStock(perimetre), [perimetre]);
+  const lireEntrepots = useCallback(() => entrepots(perimetre), [perimetre]);
+  const { donnees: r } = useLecture(lireReleves, { tables: TABLES, deps: [perimetre] });
+  const { donnees: liste } = useLecture(lireEntrepots, { tables: TABLES, deps: [perimetre] });
 
   const filtres = (liste ?? []).filter((w) =>
     `${w.nom} ${w.code}`.toLowerCase().includes(recherche.trim().toLowerCase())

@@ -8,7 +8,8 @@
  * │ de l'utilisateur : un caissier sans case n'a rien à choisir, et un       │
  * │ composant de filtre qui ne lui propose rien ne lui apprend rien.         │
  * │                                                                          │
- * │ - Entrepôt : le propriétaire, et « Consulter tous les entrepôts ».       │
+ * │ - Entrepôt : le propriétaire, « Consulter tous les entrepôts », et le     │
+ * │   membre de PLUSIEURS entrepôts, limité aux siens (2026-11-16).         │
  * │ - Utilisateur : « Voir tout dans son entrepôt » (ou ce qui l'implique),  │
  * │   et seulement sur une donnée qui a un auteur.                           │
  * │                                                                          │
@@ -28,6 +29,7 @@ import { DeclencheurSelect, FormField, type DemandeChoix } from "@/ui";
 
 import {
   libelleDuVerrou,
+  nomDuChoix,
   type FiltrePerimetre,
   type OffrePerimetre,
 } from "./filtre-perimetre";
@@ -46,8 +48,8 @@ import {
    │ d'utilisateurs pas encore reçue) : `disabled` ferme alors le déclencheur, │
    │ donc la sentinelle « Tous » est hors d'atteinte.                         │
    └──────────────────────────────────────────────────────────────────────────┘ */
-const TOUS_ENTREPOTS = "Tous les entrepôts";
-const TOUS_UTILISATEURS = "Tous les utilisateurs";
+// Le libellé du champ vide est le DÉFAUT du membre, nommé (« Mes entrepôts »,
+// « Moi uniquement »…), et il vient de l'offre : c'est le noyau qui le décide.
 
 export function ChampsPerimetre({
   offre,
@@ -60,12 +62,12 @@ export function ChampsPerimetre({
   onChanger: (f: FiltrePerimetre) => void;
   setChoix: (d: DemandeChoix | null) => void;
 }) {
-  const nomEntrepot = offre.entrepots.find(
-    (o) => o.valeur === offre.applique.entrepot
-  )?.label;
-  const nomUtilisateur = offre.utilisateurs.find(
-    (o) => o.valeur === offre.applique.utilisateur
-  )?.label;
+  // Le CHOIX, pas l'appliqué : un défaut n'est pas un choix, et « Tous » en
+  // est un, qui doit se lire sur le déclencheur.
+  const nomEntrepot = nomDuChoix(offre, "entrepot");
+  const nomUtilisateur = nomDuChoix(offre, "utilisateur");
+  const DEFAUT_ENTREPOT = offre.libelleDefautEntrepot;
+  const DEFAUT_UTILISATEUR = offre.libelleDefautUtilisateur;
 
   return (
     <>
@@ -79,7 +81,7 @@ export function ChampsPerimetre({
           }
         >
           <DeclencheurSelect
-            libelle={nomEntrepot ?? TOUS_ENTREPOTS}
+            libelle={nomEntrepot ?? DEFAUT_ENTREPOT}
             actif={Boolean(nomEntrepot) && !offre.entrepotVerrouille}
             disabled={Boolean(offre.entrepotVerrouille)}
             accessibilityLabel="Entrepôt"
@@ -87,9 +89,9 @@ export function ChampsPerimetre({
               setChoix({
                 titre: "Entrepôt",
                 options: offre.entrepots,
-                valeur: valeur.entrepot,
+                valeur: offre.choisi.entrepot,
                 onChoisir: (v) => onChanger({ ...valeur, entrepot: v }),
-                libelleVide: TOUS_ENTREPOTS,
+                libelleVide: DEFAUT_ENTREPOT,
                 messageVide:
                   "Aucun entrepôt n'est encore descendu sur ce terminal.",
               })
@@ -108,7 +110,7 @@ export function ChampsPerimetre({
           }
         >
           <DeclencheurSelect
-            libelle={nomUtilisateur ?? TOUS_UTILISATEURS}
+            libelle={nomUtilisateur ?? DEFAUT_UTILISATEUR}
             actif={Boolean(nomUtilisateur) && !offre.utilisateurVerrouille}
             disabled={Boolean(offre.utilisateurVerrouille)}
             accessibilityLabel="Utilisateur"
@@ -116,9 +118,9 @@ export function ChampsPerimetre({
               setChoix({
                 titre: "Utilisateur",
                 options: offre.utilisateurs,
-                valeur: valeur.utilisateur,
+                valeur: offre.choisi.utilisateur,
                 onChoisir: (v) => onChanger({ ...valeur, utilisateur: v }),
-                libelleVide: TOUS_UTILISATEURS,
+                libelleVide: DEFAUT_UTILISATEUR,
                 messageVide: "Aucun utilisateur à proposer.",
               })
             }

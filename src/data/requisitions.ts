@@ -31,6 +31,8 @@ import {
   type LigneProposee,
 } from "@/features/stock/proposition-requisition";
 import { enAttenteParType, type EtatEnvoi } from "@/sync/outbox";
+import { conditionEntrepot } from "@/data/perimetre-sql";
+import { retientEntrepot } from "@/features/perimetre/filtre-perimetre";
 
 /** Le statut, et son libellé - ceux du serveur, jamais inventés. */
 export const STATUT_REQUISITION: Record<string, string> = {
@@ -121,6 +123,7 @@ const UNITE = sql<string | null>`(select ${units.name} from ${units} where ${uni
 export async function listeRequisitions(
   f: {
     entrepot?: string | null;
+    entrepots?: readonly string[] | null;
     statut?: string | null;
     recherche?: string;
     /**
@@ -141,7 +144,7 @@ export async function listeRequisitions(
   const terme = (f.recherche ?? "").trim().toLowerCase();
   const conditions = [
     or(eq(requisitions.isDeleted, false), sql`${requisitions.isDeleted} is null`),
-    f.entrepot ? eq(requisitions.warehouseId, f.entrepot) : undefined,
+    conditionEntrepot(requisitions.warehouseId, f),
     f.statut ? eq(requisitions.status, f.statut) : undefined,
     terme
       ? or(
@@ -216,7 +219,7 @@ export async function listeRequisitions(
     const corps = op.payload;
     const reference = String(corps.reference ?? "");
     if (reference && vues.has(reference)) continue;
-    if (f.entrepot && corps.warehouse !== f.entrepot) continue;
+    if (!retientEntrepot((corps.warehouse as string | undefined) ?? null, f, false)) continue;
     if (f.statut && f.statut !== "draft") continue;
     const items = Array.isArray(corps.items) ? corps.items : [];
     enAttente.push({

@@ -52,6 +52,7 @@ import {
   Text,
   useToast,
 } from "@/ui";
+import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 export function FeuilleEncaissement({
   ouvert,
@@ -89,13 +90,16 @@ export function FeuilleEncaissement({
   const verrou = useRef(false);
 
   const { donnees: moyens } = useLecture(moyensDePaiement, { tables: ["payment_methods"] });
+  // Le DÉFAUT du membre : ce qu'il ne voit pas est annoncé à part
+  // (`detteNonVisible`), le serveur imputant sur toutes les factures.
+  const perimetre = usePerimetreParDefaut(true);
   const chargerFactures = useCallback(
-    () => facturesOuvertes(client.id, deviseImputation),
-    [client.id, deviseImputation]
+    () => facturesOuvertes(client.id, deviseImputation, perimetre),
+    [client.id, deviseImputation, perimetre]
   );
   const { donnees: factures } = useLecture(chargerFactures, {
     tables: ["sales"],
-    deps: [client.id, deviseImputation],
+    deps: [client.id, deviseImputation, perimetre],
   });
 
   useEffect(() => {

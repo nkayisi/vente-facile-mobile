@@ -26,6 +26,8 @@ import {
   stocks,
   units,
 } from "@/db/schema";
+import { conditionEntrepot } from "@/data/perimetre-sql";
+import type { FiltrePerimetre } from "@/features/perimetre/filtre-perimetre";
 
 const nb = (v: string | number | null | undefined): number => {
   const n = Number(v ?? 0);
@@ -50,7 +52,16 @@ export interface Alerte {
  * seuil de réassort ou en dessous. `facture_due` reprend celui de
  * `check_customer_payment_due` : échéance dépassée, facture encore due.
  */
-export async function alertes(limite = 12): Promise<Alerte[]> {
+/**
+ * ⚠ `perimetre` : celui du tableau de bord (son défaut ou son filtre). Une
+ * alerte est une donnée comme une autre : un caissier ne lit pas les retards
+ * de paiement des factures de ses collègues, un membre « Consulter tous » ne
+ * lit par défaut que les ruptures de ses entrepôts.
+ */
+export async function alertes(
+  limite = 12,
+  perimetre: FiltrePerimetre = { entrepot: null, utilisateur: null }
+): Promise<Alerte[]> {
   const uniteDetail = alias(units, "unite_detail");
   const uniteContenant = alias(units, "unite_contenant");
 
@@ -72,7 +83,9 @@ export async function alertes(limite = 12): Promise<Alerte[]> {
     .innerJoin(products, eq(products.id, stocks.productId))
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
-    .where(eq(products.trackInventory, true));
+    .where(
+      and(eq(products.trackInventory, true), conditionEntrepot(stocks.warehouseId, perimetre))
+    );
 
   const sorties: Alerte[] = [];
 
@@ -128,6 +141,8 @@ export async function alertes(limite = 12): Promise<Alerte[]> {
       and(
         inArray(sales.status, ["pending", "partially_paid"]),
         sql`cast(${sales.amountDue} as real) > 0`,
+        conditionEntrepot(sales.warehouseId, perimetre, { inclureSansEntrepot: true }),
+        perimetre.utilisateur ? eq(sales.soldById, perimetre.utilisateur) : undefined,
         lt(sales.dueDate, maintenant)
       )
     )
