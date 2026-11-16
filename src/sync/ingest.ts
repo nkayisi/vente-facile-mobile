@@ -6,7 +6,9 @@
  * endroits à corriger quand le serveur ajoute un champ.
  */
 import { connection } from "@/db/client";
+import { colonnesTirees } from "@/db/tables";
 
+import { colonnesEcrites } from "./colonnes";
 import { coerce } from "./coerce";
 import type { ChildSpec, ColumnSpec } from "./types";
 
@@ -21,6 +23,13 @@ const MAX_BOUND_PARAMS = 800;
 
 function chunkSize(columnCount: number): number {
   return Math.max(1, Math.floor(MAX_BOUND_PARAMS / Math.max(1, columnCount)));
+}
+
+/** La carte des colonnes locales, calculée une fois : le schéma ne bouge pas. */
+let carte: Map<string, Set<string>> | null = null;
+function colonnesConnues(): Map<string, Set<string>> {
+  if (!carte) carte = colonnesTirees();
+  return carte;
 }
 
 /**
@@ -38,6 +47,8 @@ export async function upsertRows(
 ): Promise<void> {
   if (rows.length === 0) return;
 
+  // Seules les colonnes que le schéma local déclare : voir `sync/colonnes.ts`.
+  columns = colonnesEcrites(table, columns, colonnesConnues());
   const names = columns.map((c) => c.name);
   const quoted = names.map((n) => `"${n}"`).join(", ");
   const size = chunkSize(names.length);

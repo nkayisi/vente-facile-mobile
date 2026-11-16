@@ -9,7 +9,7 @@
  * silence, jusqu'au premier écran qui affiche une valeur absente.
  *
  * Contrat de tirage : version 1
- * 40 tables, 589 colonnes.
+ * 40 tables, 587 colonnes.
  */
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -196,7 +196,6 @@ export const warehouses = sqliteTable("warehouses", {
   managerId: text("manager_id"),
   isDefault: integer("is_default", { mode: "boolean" }).notNull(),
   isActive: integer("is_active", { mode: "boolean" }).notNull(),
-  allowNegativeStock: integer("allow_negative_stock", { mode: "boolean" }).notNull(),
 });
 
 export type WarehousesRow =
@@ -259,7 +258,6 @@ export const products = sqliteTable("products", {
   taxRate: text("tax_rate").notNull(),
   isTaxable: integer("is_taxable", { mode: "boolean" }).notNull(),
   trackInventory: integer("track_inventory", { mode: "boolean" }).notNull(),
-  allowNegativeStock: integer("allow_negative_stock", { mode: "boolean" }).notNull(),
   hasExpiryDate: integer("has_expiry_date", { mode: "boolean" }).notNull(),
   minStockLevel: text("min_stock_level").notNull(),
   maxStockLevel: text("max_stock_level"),

@@ -23,7 +23,7 @@
  * déclarent que des tables et n'ouvrent aucune base. `@/db/client`, lui, ouvre
  * SQLite au chargement ; il n'a rien à faire ici.
  */
-import { getTableName, is } from "drizzle-orm";
+import { getTableColumns, getTableName, is } from "drizzle-orm";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 
 import * as locales from "./schema/local";
@@ -52,3 +52,23 @@ export function tablesTirees(): string[] {
 export function tablesLocales(): string[] {
   return nomsDesTables(locales);
 }
+
+/**
+ * Les colonnes SQL que le schéma LOCAL déclare pour chaque table tirée.
+ *
+ * C'est ce que l'ingestion a le droit d'écrire : une colonne que le manifeste du
+ * serveur nomme encore, mais que ce terminal a retirée de son schéma, est
+ * ignorée au lieu de faire échouer l'insertion (voir `sync/colonnes.ts`).
+ */
+export function colonnesTirees(): Map<string, Set<string>> {
+  const carte = new Map<string, Set<string>>();
+  for (const v of Object.values(tirees)) {
+    if (!is(v, SQLiteTable)) continue;
+    carte.set(
+      getTableName(v),
+      new Set(Object.values(getTableColumns(v)).map((c) => c.name))
+    );
+  }
+  return carte;
+}
+

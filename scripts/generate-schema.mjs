@@ -188,17 +188,42 @@ function table(name, columns, extra = []) {
   ].join("\n");
 }
 
+/**
+ * Colonnes que le serveur nomme ENCORE et que ce terminal a RETIRÉES.
+ *
+ * ⚠ Une colonne se retire en deux temps (voir `src/sync/colonnes.ts`) : le
+ * terminal d'abord, qui l'ignore à l'ingestion ; le serveur ensuite, une fois
+ * tout le parc sur une version qui l'ignore. Tant que le manifeste la nomme,
+ * régénérer le schéma la ferait revenir : on la retire ICI, et on retire
+ * l'entrée le jour où le serveur l'a retirée lui-même.
+ */
+const RETIREES = {
+  // Lot E10 : le stock négatif n'existe plus, la colonne ne décide plus rien.
+  warehouses: ["allow_negative_stock"],
+  products: ["allow_negative_stock"],
+};
+
+function sansRetirees(nom, colonnes) {
+  const retirees = new Set(RETIREES[nom] ?? []);
+  for (const c of retirees) {
+    if (!colonnes.some((x) => x.name === c)) {
+      console.warn(`  ${nom}.${c} : le serveur ne la nomme plus - retirez-la de RETIREES.`);
+    }
+  }
+  return colonnes.filter((c) => !retirees.has(c.name));
+}
+
 const blocs = [];
 for (const t of manifest.tables) {
-  blocs.push(table(t.name, t.columns));
+  blocs.push(table(t.name, sansRetirees(t.name, t.columns)));
   for (const child of t.children) {
     // Les enfants sont remplacés en bloc avec leur parent : ils portent la clé
     // du parent, indexée, parce que c'est par elle qu'on les efface.
-    blocs.push(table(child.table, child.columns));
+    blocs.push(table(child.table, sansRetirees(child.table, child.columns)));
   }
 }
 
-const total = manifest.tables.reduce((n, t) => n + t.columns.length, 0);
+const total = manifest.tables.reduce((n, t) => n + sansRetirees(t.name, t.columns).length, 0);
 
 const entete = `/**
  * Tables tirées du serveur. FICHIER ENGENDRÉ, ne pas modifier à la main.
