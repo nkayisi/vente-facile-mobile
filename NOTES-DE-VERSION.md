@@ -32,6 +32,39 @@ publication, et ce qu'on envoie aux marchands.
 
 ---
 
+## 1.1.0 · chacun voit d'abord son travail
+
+### Français (`fr-FR`) · 411 caractères
+
+```
+Vente Facile 1.1
+
+• Chacun voit d'abord son travail : le caissier ses ventes, le gérant ses entrepôts. Les filtres élargissent.
+• La fidélité devient une cagnotte en argent.
+• Approvisionnez plusieurs articles en une fois.
+• Créez un client depuis l'encaissement, même sans réseau.
+• Le stock ne passe plus sous zéro : l'encaissement nomme les articles en cause.
+• Le menu et la barre du bas suivent vos droits.
+```
+
+### Ce que porte cette version
+
+Référence interne, pas du texte de magasin.
+
+- Le défaut de chaque rôle (décision du 2026-11-16) : un caissier ne voit que ses données, un
+  gérant ses entrepôts ; « Voir tout dans son entrepôt » et « Consulter tous les entrepôts »
+  ouvrent des CHOIX, jamais un défaut élargi
+- Entrepôts : lire n'est plus agir, annuaire, plus de stock négatif (lots E1 à E8)
+- Fidélité en argent, approvisionnement de masse, historique client (2026-11-08 et 09)
+- Client créé à l'encaissement, barre et tiroir selon les droits (2026-11-14)
+- Ingestion tolérante : `allow_negative_stock` retirée du terminal (E10a)
+- ⚠ **Le serveur doit être déployé AVANT la publication** : ce binaire lit
+  `perimetre_version`, l'annuaire et le défaut des listes, absents d'un serveur antérieur.
+- ⚠ **La version minimale ne se relève qu'APRÈS la diffusion** (`/admin/application`) ; puis
+  E10b (retrait serveur de `allow_negative_stock`).
+
+---
+
 ## 1.0.0 (`versionCode` 1) · première publication
 
 ### Français (`fr-FR`) · 435 caractères
