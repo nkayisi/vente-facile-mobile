@@ -22,9 +22,8 @@ import { resolve } from "path";
 import {
   STATUT_DEPENSE,
   TYPE_MOUVEMENT_CAISSE,
-  decisionsPossibles,
+  TRANSITION_DEPENSE,
   libelleTypeCaisse,
-  transitionsPossibles,
 } from "./types-caisse";
 
 const MODELS = resolve(__dirname, "../../../../backend/apps/cashbook/models.py");
@@ -98,46 +97,15 @@ describe("statuts de dépense", () => {
   });
 });
 
-describe("transitions d'une dépense", () => {
-  // Miroir des cinq gardes de `ExpenseViewSet`. Proposer une transition que le
-  // serveur refusera l'envoie en quarantaine, loin de l'écran qui l'a offerte.
-  it.each([
-    ["draft", ["submit", "pay", "cancel"]],
-    ["pending", ["approve", "reject", "pay", "cancel"]],
-    ["approved", ["pay", "cancel"]],
-    ["rejected", ["pay", "cancel"]],
-    ["paid", ["cancel"]],
-    ["cancelled", []],
-  ])("depuis %s", (statut, attendu) => {
-    expect(transitionsPossibles(statut as string).sort()).toEqual(
-      (attendu as string[]).sort()
-    );
+describe("droits des gestes d'une dépense", () => {
+  // Les gestes eux-mêmes sont éprouvés dans `gestes-depense.test.ts`. Ici, le
+  // droit que chacun demande : un code faux ne lève rien, il fait disparaître
+  // le bouton, et personne ne cherche un défaut là où il n'y a pas d'erreur.
+  it("le caissier PAIE par `cashbook.pay_expense`, pas par le droit d'approuver", () => {
+    expect(TRANSITION_DEPENSE.pay.permission).toBe("cashbook.pay_expense");
   });
 
-  it("n'offre jamais rien sur une dépense annulée", () => {
-    // Le serveur répond 400 « Cette dépense est déjà annulée » sur les cinq.
-    expect(transitionsPossibles("cancelled")).toEqual([]);
-  });
-});
-
-describe("décisions sur une dépense encore en file", () => {
-  it("n'en ouvre AUCUNE, quel que soit le statut", () => {
-    // `_transition_depense` cherche la pièce par `_objet_de_lorg` : sur un
-    // identifiant que le serveur n'a pas encore vu, il refuse - verdict
-    // `rejected`, donc quarantaine, découverte des jours plus tard sur un
-    // autre écran. Offrir « Approuver » ici, c'est offrir un bouton qui
-    // fabrique un refus que le marchand n'a pas provoqué.
-    for (const statut of ["draft", "pending", "approved", "paid"]) {
-      expect(decisionsPossibles(statut, true)).toEqual([]);
-    }
-  });
-
-  it("les rend toutes dès que le serveur connaît la pièce", () => {
-    expect(decisionsPossibles("draft", false)).toEqual(
-      transitionsPossibles("draft")
-    );
-    expect(decisionsPossibles("pending", false)).toEqual(
-      transitionsPossibles("pending")
-    );
+  it("payer directement vaut une approbation", () => {
+    expect(TRANSITION_DEPENSE.pay_direct.permission).toBe("cashbook.approve_expense");
   });
 });

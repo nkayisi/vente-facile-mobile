@@ -24,14 +24,19 @@ export interface EntreeMenu {
   /** Glyphe lucide EXACT du back-office. */
   icon: IconName;
   href: string;
-  /** `null` = visible par tous, comme « Tableau de bord » sur le web. */
+  /**
+   * La permission de la PAGE, celle que le back-office lit dans
+   * `lib/navigation/regles-de-route.ts`. `null` = visible par tous.
+   */
   permission: string | null;
   /** Lot du plan qui câblera les fonctions. `null` = livré. */
   lot: number | null;
 }
 
 export const MENU: readonly EntreeMenu[] = [
-  { cle: "index",        label: "Tableau de bord",         icon: "LayoutDashboard", href: "/",             permission: null,             lot: 9    },
+  // `dashboard.view` est porté par les quatre rôles : l'accueil reste visible
+  // de tous, mais la règle est celle du back-office, pas une exception.
+  { cle: "index",        label: "Tableau de bord",         icon: "LayoutDashboard", href: "/",             permission: "dashboard.view", lot: 9    },
   { cle: "ventes",       label: "Ventes",                  icon: "ShoppingCart",    href: "/ventes",       permission: "sales.view",     lot: 6    },
   { cle: "articles",     label: "Produits",                icon: "Package",         href: "/articles",     permission: "products.view",  lot: 8    },
   { cle: "stock",        label: "Stock",                   icon: "Boxes",           href: "/stock",        permission: "stock.view",     lot: 7    },
@@ -40,7 +45,10 @@ export const MENU: readonly EntreeMenu[] = [
   { cle: "rapports",     label: "Rapports & statistiques", icon: "BarChart3",       href: "/rapports",     permission: "reports.view",   lot: 10   },
   { cle: "contacts",     label: "Clients & fournisseurs",  icon: "Users",           href: "/contacts",     permission: "customers.view", lot: 6    },
   { cle: "utilisateurs", label: "Utilisateurs",            icon: "UserCog",         href: "/utilisateurs", permission: "users.view",     lot: 10   },
-  { cle: "abonnement",   label: "Abonnement",              icon: "Crown",           href: "/abonnement",   permission: "settings.view",  lot: 11   },
+  // `subscription.view`, au seul propriétaire : sous `settings.view`, le gérant
+  // voyait l'entrée et ses règlements lui répondaient 403. Le back-office a
+  // corrigé le même défaut le 2026-11-20.
+  { cle: "abonnement",   label: "Abonnement",              icon: "Crown",           href: "/abonnement",   permission: "subscription.view", lot: 11 },
   { cle: "parametres",   label: "Paramètres",              icon: "Settings",        href: "/parametres",   permission: "settings.view",  lot: null },
 ] as const;
 

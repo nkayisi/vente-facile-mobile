@@ -39,7 +39,17 @@ import {
   Input, Screen, Spinner, Text, useToast,
 } from "@/ui";
 
-const TABLES = ["register_sessions", "registers", "warehouses", "sales", "payments", "cash_movements"];
+// `outbox_operations` : un paiement de dépense en file vide déjà le tiroir, et
+// l'attendu doit le compter dès qu'il est mis en file.
+const TABLES = [
+  "register_sessions",
+  "registers",
+  "warehouses",
+  "sales",
+  "payments",
+  "cash_movements",
+  "outbox_operations",
+];
 
 export default function ClotureCaisse() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -51,8 +61,9 @@ export default function ClotureCaisse() {
   const [notes, setNotes] = useState("");
   const [envoi, setEnvoi] = useState(false);
 
-  const charger = useCallback(() => sessionACloturer(id), [id]);
-  const { donnees: s, chargement } = useLecture(charger, { tables: TABLES, deps: [id] });
+  const moi = snapshot?.user.id ?? null;
+  const charger = useCallback(() => sessionACloturer(id, moi), [id, moi]);
+  const { donnees: s, chargement } = useLecture(charger, { tables: TABLES, deps: [id, moi] });
   const { donnees: attente } = useLecture(enAttenteCaisse, {
     tables: ["outbox_operations"],
   });

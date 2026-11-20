@@ -97,6 +97,20 @@ export function dateDepuisJourISO(iso: string | null | undefined): Date | null {
 }
 
 /**
+ * Une colonne DATE tirée, rendue comme le JOUR qu'elle désigne.
+ *
+ * ⚠ Le tirage range une date du serveur (« 2026-11-20 ») en minuit UTC
+ * (`sync/coerce.ts`). Lue en heure locale, elle devient « 20 nov., 01:00 » à
+ * Kinshasa, une heure qui ne veut rien dire, et la VEILLE à l'ouest de
+ * Greenwich. On reprend les composantes UTC pour en faire un minuit LOCAL, la
+ * forme que `dateDepuisJourISO` rend aussi.
+ */
+export function jourDepuisMinuitUTC(d: Date | null | undefined): Date | null {
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/**
  * Fraîcheur d'un horodatage, en clair.
  *
  * Écrite en double : l'écran Synchronisation en avait une copie privée, et le

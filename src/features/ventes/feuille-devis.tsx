@@ -42,6 +42,9 @@ import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
 import { chercherArticles } from "@/features/pos/catalogue";
+import { garderBrouillon } from "@/features/brouillons/brouillon-feuille";
+import { CreationDepuisRecherche } from "@/features/inventaire/creation-depuis-recherche";
+import { usePropositionCreation } from "@/features/inventaire/use-proposition-creation";
 import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import { chercherClients } from "@/features/pos/donnees";
 import { creerDevis, type LigneDevisSaisie } from "@/features/ventes/retours-devis";
@@ -78,22 +81,38 @@ type LigneSaisie = LigneDevisSaisie & { nom: string };
  * │ se voyait déjà pas.                                                      │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
+/** La clé du brouillon : la feuille se rouvre telle quelle après une création. */
+export const BROUILLON_DEVIS = "devis";
+
+/** Ce que la feuille garde le temps d'aller créer un article. */
+export interface BrouillonDevis {
+  client: { id: string; nom: string } | null;
+  validite: string;
+  notes: string;
+  lignes: LigneSaisie[];
+  entrepot: string | null;
+}
+
 export function FeuilleNouveauDevis({
   onFermer,
   onCree,
+  brouillon = null,
 }: {
   onFermer: () => void;
   /** Le devis vient d'entrer au journal : à l'appelant d'ouvrir sa fiche. */
   onCree: (id: string) => void;
+  /** La saisie d'avant une création d'article, à reprendre telle quelle. */
+  brouillon?: BrouillonDevis | null;
 }) {
   const money = useMonnaie();
   const toast = useToast();
+  const proposer = usePropositionCreation();
 
   const [panneau, setPanneau] = useState<Panneau>("devis");
-  const [client, setClient] = useState<{ id: string; nom: string } | null>(null);
-  const [validite, setValidite] = useState(dansNJours(30));
-  const [notes, setNotes] = useState("");
-  const [lignes, setLignes] = useState<LigneSaisie[]>([]);
+  const [client, setClient] = useState<{ id: string; nom: string } | null>(brouillon?.client ?? null);
+  const [validite, setValidite] = useState(brouillon?.validite ?? dansNJours(30));
+  const [notes, setNotes] = useState(brouillon?.notes ?? "");
+  const [lignes, setLignes] = useState<LigneSaisie[]>(brouillon?.lignes ?? []);
   const [envoi, setEnvoi] = useState(false);
 
   const [recherche, setRecherche] = useState("");
@@ -115,8 +134,20 @@ export function FeuilleNouveauDevis({
   // │ qu'à la conversion.                                                  │
   // └──────────────────────────────────────────────────────────────────────┘
   const { actionnables, parDefaut } = useEntrepotsDuMembre();
-  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(null);
+  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(brouillon?.entrepot ?? null);
   const entrepot = entrepotChoisi ?? parDefaut;
+
+  /** Créer un article : la feuille garde sa saisie, se ferme, et se rouvrira. */
+  const avantCreation = () => {
+    garderBrouillon<BrouillonDevis>(BROUILLON_DEVIS, {
+      client,
+      validite,
+      notes,
+      lignes,
+      entrepot: entrepotChoisi,
+    });
+    onFermer();
+  };
   const nomEntrepot = actionnables.find((e) => e.id === entrepot)?.nom ?? null;
 
   const chargerClients = useCallback(
@@ -330,11 +361,13 @@ export function FeuilleNouveauDevis({
               placeholder="Rechercher un produit..."
             />
             {(articles ?? []).length === 0 ? (
-              <Text variant="caption">
-                {recherche
-                  ? "Aucun article ne correspond."
-                  : "Cherchez un article par son nom ou son code."}
-              </Text>
+              recherche.trim() ? (
+                <CreationDepuisRecherche
+                  creation={proposer(recherche, { avant: avantCreation })}
+                />
+              ) : (
+                <Text variant="caption">Cherchez un article par son nom ou son code.</Text>
+              )
             ) : (
               <View>
                 {(articles ?? []).slice(0, 8).map((a) => (

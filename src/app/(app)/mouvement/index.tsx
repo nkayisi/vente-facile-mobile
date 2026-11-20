@@ -55,6 +55,7 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { useCallback, useMemo, useState } from "react";
+import { useFocusEffect } from "expo-router";
 import { View } from "react-native";
 import { formatNumberFr } from "@vente-facile/core";
 
@@ -80,8 +81,17 @@ import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { FeuilleApprovisionnement, type PresentationAppro, type SourceEntrees }
   from "@/features/stock/feuille-approvisionnement";
 import { FeuilleFiltresMouvements } from "@/features/stock/feuille-filtres-mouvements";
-import { FeuilleApproMasse } from "@/features/stock/feuille-appro-masse";
-import { FeuilleNouveauMouvement } from "@/features/stock/feuille-mouvement";
+import {
+  BROUILLON_APPRO,
+  FeuilleApproMasse,
+  type BrouillonAppro,
+} from "@/features/stock/feuille-appro-masse";
+import {
+  BROUILLON_MOUVEMENT,
+  FeuilleNouveauMouvement,
+  type BrouillonMouvement,
+} from "@/features/stock/feuille-mouvement";
+import { oublierBrouillon, reprendreBrouillon } from "@/features/brouillons/brouillon-feuille";
 import {
   FILTRES_VIDES,
   aDesFiltres,
@@ -122,6 +132,41 @@ export default function Mouvements() {
   const [feuille, setFeuille] = useState<
     null | "saisie" | "masse" | "filtres" | "format" | "approvisionnement"
   >(null);
+
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LES DEUX FEUILLES DE SAISIE SE ROUVRENT SUR LEUR BROUILLON.          │
+  // │                                                                      │
+  // │ Créer un article depuis l'une d'elles la ferme le temps de la        │
+  // │ création ; au retour sur cet écran, elle se rouvre avec ce qu'elle   │
+  // │ portait. Une ouverture par un bouton oublie tout brouillon.          │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const [brouillonSaisie, setBrouillonSaisie] = useState<BrouillonMouvement | null>(null);
+  const [brouillonMasse, setBrouillonMasse] = useState<BrouillonAppro | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const saisie = reprendreBrouillon<BrouillonMouvement>(BROUILLON_MOUVEMENT);
+      if (saisie) {
+        setBrouillonSaisie(saisie);
+        setFeuille("saisie");
+        return;
+      }
+      const masse = reprendreBrouillon<BrouillonAppro>(BROUILLON_APPRO);
+      if (masse) {
+        setBrouillonMasse(masse);
+        setFeuille("masse");
+      }
+    }, [])
+  );
+  const ouvrirSaisie = () => {
+    oublierBrouillon(BROUILLON_MOUVEMENT);
+    setBrouillonSaisie(null);
+    setFeuille("saisie");
+  };
+  const ouvrirMasse = () => {
+    oublierBrouillon(BROUILLON_APPRO);
+    setBrouillonMasse(null);
+    setFeuille("masse");
+  };
   const [envoiExport, setEnvoiExport] = useState(false);
   const [source, setSource] = useState<SourceEntrees>("all");
   const [presentation, setPresentation] = useState<PresentationAppro>("product");
@@ -353,7 +398,7 @@ export default function Mouvements() {
                   name="Boxes"
                   label="Approvisionner en masse"
                   variant="ghost"
-                  onPress={() => setFeuille("masse")}
+                  onPress={ouvrirMasse}
                 />
               ) : null}
               <IconButton
@@ -509,7 +554,7 @@ export default function Mouvements() {
                 onPress: () => changerFiltres(FILTRES_VIDES),
               }
             : peutSaisir
-              ? { label: "Nouveau mouvement", onPress: () => setFeuille("saisie") }
+              ? { label: "Nouveau mouvement", onPress: ouvrirSaisie }
               : undefined,
         }}
         // ┌────────────────────────────────────────────────────────────────┐
@@ -582,7 +627,7 @@ export default function Mouvements() {
           action secondaire, et deux ronds sans libellé ne se distingueraient
           pas l'un de l'autre. */}
       {peutSaisir ? (
-        <Fab icon="Plus" label="Nouveau mouvement" onPress={() => setFeuille("saisie")} />
+        <Fab icon="Plus" label="Nouveau mouvement" onPress={ouvrirSaisie} />
       ) : null}
 
       {/* Rendue CONDITIONNELLEMENT, jamais avec un booléen : chaque ouverture
@@ -592,6 +637,7 @@ export default function Mouvements() {
           par article. Le second n'est pas remplacé par le premier. */}
       {feuille === "masse" ? (
         <FeuilleApproMasse
+          brouillon={brouillonMasse}
           onFermer={() => setFeuille(null)}
           // Rien à ouvrir : la livraison entre au JOURNAL, et la table tirée ne
           // bougera qu'au prochain tirage. Le décompte « en attente » du cadran
@@ -602,6 +648,7 @@ export default function Mouvements() {
 
       {feuille === "saisie" ? (
         <FeuilleNouveauMouvement
+          brouillon={brouillonSaisie}
           onFermer={() => setFeuille(null)}
           // Rien à ouvrir : un mouvement n'a pas de fiche, et il entre au
           // JOURNAL - la table tirée ne bougera qu'au prochain tirage. Le

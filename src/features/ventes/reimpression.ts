@@ -91,7 +91,7 @@ export async function imprimerTicketVente(
   vente: DetailVente,
   snapshot: SessionSnapshot | null
 ): Promise<string> {
-  const range = await documentParNumero(vente.reference);
+  const range = await documentParNumero(vente.reference, "sale");
   if (range) return imprimerDocument(range.id);
 
   const { transport } = await enregistrerEtImprimer({

@@ -31,6 +31,7 @@ import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { bornesLocales } from "./periode-filtre";
+import { jourDepuisMinuitUTC } from "./dates";
 import { deviseOuPrincipale, devisePrincipale } from "./devise-principale";
 import {
   depensesEnFile,
@@ -613,7 +614,7 @@ export async function listeDepenses(
     montant: nb(e.amount),
     devise: deviseOuPrincipale(e.currency),
     statut: e.status,
-    date: e.expenseDate ?? null,
+    date: jourDepuisMinuitUTC(e.expenseDate),
   }));
 
   const dejaTirees = new Set(tirees.map((t) => t.id));
@@ -701,11 +702,14 @@ export interface SessionACloturer {
  * rattachées à la session. Une devise = une ligne, jamais une somme.
  */
 export async function sessionACloturer(
-  sessionId: string
+  sessionId: string,
+  /** Le compte de ce terminal : ses sorties en file ne vont qu'à SA session. */
+  moi: string | null = null
 ): Promise<SessionACloturer | null> {
   const [s] = await db
     .select({
       id: registerSessions.id,
+      ouvertePar: registerSessions.openedById,
       openedAt: registerSessions.openedAt,
       openingBalance: registerSessions.openingBalance,
       caisse: registers.name,
@@ -777,6 +781,23 @@ export async function sessionACloturer(
     sorties.set(d, (sorties.get(d) ?? 0) + nb(m.amount));
   }
 
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ UNE DÉPENSE PAYÉE HORS LIGNE A DÉJÀ VIDÉ LE TIROIR.                  │
+  // │                                                                      │
+  // │ Le serveur la rattachera à la caisse ouverte de celui qui paie, donc  │
+  // │ à SA session. Sans elle, l'attendu dépasserait le tiroir de son       │
+  // │ montant, et le caissier compterait un manquant qui n'existe pas. On  │
+  // │ ne la compte que sur la session de ce terminal : celle d'un collègue │
+  // │ ne la recevra pas.                                                   │
+  // └──────────────────────────────────────────────────────────────────────┘
+  if (moi != null && s.ouvertePar === moi) {
+    for (const m of await mouvementsEnFile()) {
+      if (m.direction !== "out" || m.type !== "expense") continue;
+      const d = deviseOuPrincipale(m.devise);
+      sorties.set(d, (sorties.get(d) ?? 0) + m.montant);
+    }
+  }
+
   // Le fonds PAR DEVISE, tiré avec la session depuis le lot L13. Voir
   // `fondsParDevise` : sans ces lignes, le scalaire va à la devise PRINCIPALE,
   // et non plus à la devise du premier règlement de la session.
@@ -838,8 +859,47 @@ export interface DetailDepense {
   notes: string;
   date: Date | null;
   payeeLe: Date | null;
+  /** Qui l'a saisie : on n'approuve jamais sa propre dépense, et un caissier ne paie que la sienne. */
+  auteur: string | null;
+  /** Le moyen de paiement déjà noté, proposé d'office au paiement. */
+  methodeId: string | null;
+  /**
+   * Une sortie de caisse VIVANTE existe déjà pour cette dépense.
+   *
+   * C'est le cas d'une dépense approuvée avant que la sortie ne passe au
+   * paiement : le serveur ne la sortira pas deux fois, le solde local non plus.
+   */
+  sortieFaite: boolean;
+  /**
+   * Qui l'a demandée, qui l'a approuvée, qui l'a payée : ce que la demande et
+   * le reçu de dépense nomment. `null` quand le compte n'est pas descendu sur
+   * ce terminal (la table `users` est bornée par appartenance).
+   */
+  demandeur: string | null;
+  approbateur: string | null;
+  /**
+   * La sortie d'argent vivante : son auteur est le PAYEUR, sa date l'instant
+   * du paiement, sa session la caisse dont les billets sont sortis. Tous
+   * `null` tant que la dépense n'est pas payée, ou hors tiroir pour la caisse.
+   */
+  payeur: string | null;
+  paiementLe: Date | null;
+  caisse: string | null;
   /** `undefined` : la pièce est descendue du serveur. */
   envoi?: EtatEnvoi;
+}
+
+/** Le nom affichable des comptes, en UNE requête pour tous les identifiants. */
+async function nomsDesComptes(ids: (string | null)[]): Promise<Map<string, string>> {
+  const voulus = [...new Set(ids.filter((x): x is string => Boolean(x)))];
+  if (voulus.length === 0) return new Map();
+  const lignes = await db
+    .select({ id: users.id, prenom: users.firstName, nom: users.lastName, email: users.email })
+    .from(users)
+    .where(inArray(users.id, voulus));
+  return new Map(
+    lignes.map((u) => [u.id, `${u.prenom} ${u.nom}`.trim() || u.email])
+  );
 }
 
 export async function detailDepense(id: string): Promise<DetailDepense | null> {
@@ -869,6 +929,19 @@ export async function detailDepense(id: string): Promise<DetailDepense | null> {
   if (!d) return ficheEnFile(id);
 
   const e = d.depense;
+  const [sortie] = await db
+    .select({
+      id: cashMovements.id,
+      auteur: cashMovements.createdById,
+      le: cashMovements.movementDate,
+      caisse: registers.name,
+    })
+    .from(cashMovements)
+    .leftJoin(registerSessions, eq(registerSessions.id, cashMovements.sessionId))
+    .leftJoin(registers, eq(registers.id, registerSessions.registerId))
+    .where(and(eq(cashMovements.expenseId, e.id), eq(cashMovements.isCancelled, false)))
+    .limit(1);
+  const noms = await nomsDesComptes([e.createdById, e.approvedById, sortie?.auteur ?? null]);
   return {
     id: e.id,
     reference: e.reference,
@@ -882,8 +955,16 @@ export async function detailDepense(id: string): Promise<DetailDepense | null> {
     moyen: d.moyen ?? null,
     reference_paiement: e.paymentReference?.trim() || null,
     notes: e.notes ?? "",
-    date: e.expenseDate ?? null,
-    payeeLe: e.paidDate ?? null,
+    date: jourDepuisMinuitUTC(e.expenseDate),
+    payeeLe: jourDepuisMinuitUTC(e.paidDate),
+    auteur: e.createdById ?? null,
+    methodeId: e.paymentMethodId ?? null,
+    sortieFaite: Boolean(sortie),
+    demandeur: (e.createdById && noms.get(e.createdById)) || null,
+    approbateur: (e.approvedById && noms.get(e.approvedById)) || null,
+    payeur: (sortie?.auteur && noms.get(sortie.auteur)) || null,
+    paiementLe: sortie?.le ?? null,
+    caisse: sortie?.caisse ?? null,
   };
 }
 
@@ -927,6 +1008,18 @@ async function ficheEnFile(id: string): Promise<DetailDepense | null> {
     notes: enFile.notes ?? "",
     date: enFile.date,
     payeeLe: null,
+    // Une dépense en file n'accepte aucune décision : son auteur ne décide de
+    // rien ici, et `null` ne fabrique aucun droit.
+    auteur: null,
+    methodeId: enFile.methode,
+    sortieFaite: false,
+    // Saisie ici même : le demandeur est l'utilisateur du terminal, que la
+    // demande imprimée nomme déjà ; la fiche n'a pas à le deviner.
+    demandeur: null,
+    approbateur: null,
+    payeur: null,
+    paiementLe: null,
+    caisse: null,
     envoi: enFile.envoi,
   };
 }

@@ -32,7 +32,7 @@ import { router } from "expo-router";
 import * as Crypto from "expo-crypto";
 
 import { formatNumberFr } from "@vente-facile/core";
-import { buildSalePayload, loyaltyDiscount } from "@vente-facile/core/pos";
+import { buildSalePayload, loyaltyDiscount, tendersIn } from "@vente-facile/core/pos";
 
 import { lireNombre, type LectureNombre } from "@/data/nombres";
 import { jourISO } from "@/data/dates";
@@ -918,7 +918,12 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
           ) : null}
 
           <View className="gap-2 rounded-xl bg-muted p-3">
-            <Ligne libelle="Total payé" valeur={argent(totaux.payeFacture)} />
+            {/* Dans la devise ENCAISSÉE : le caissier compte des francs, et
+                « 739,13 $ » pour 1 700 000 FC remis ne lui disait rien. */}
+            <Ligne
+              libelle="Total payé"
+              valeur={argent(tendersIn(etat.reglements, devises, deviseRecue), deviseRecue)}
+            />
 
             {mode === "credit" && manque > 0 ? (
               <>
@@ -1327,6 +1332,25 @@ function repereDeConversion(
     deviseRecue,
     deviseFacture,
   );
-  const taux = devises.convertMoney(1, deviseRecue, deviseFacture);
-  return `= ${argent(converti, deviseFacture)} · 1 ${deviseRecue} = ${argent(taux, deviseFacture)}`;
+  return `= ${argent(converti, deviseFacture)} · ${libelleDuTaux(deviseRecue, deviseFacture, devises, argent)}`;
+}
+
+/**
+ * Le taux, dit dans le sens où une unité vaut au moins une unité de l'autre.
+ *
+ * ⚠ « 1 CDF = 0 $ » sortait d'un franc converti en dollars puis arrondi au
+ * centime : un repère qui ne dit rien. On écrit « 1 $ = 2 300 FC », dans le
+ * sens où le nombre se lit, quelle que soit la devise reçue.
+ */
+function libelleDuTaux(
+  deviseRecue: string,
+  deviseFacture: string,
+  devises: { convertMoney: (m: number, de: string, vers: string) => number },
+  argent: (m: number, code?: string) => string,
+): string {
+  const [forte, faible] =
+    devises.convertMoney(1, deviseRecue, deviseFacture) >= 1
+      ? [deviseRecue, deviseFacture]
+      : [deviseFacture, deviseRecue];
+  return `1 ${forte} = ${argent(devises.convertMoney(1, forte, faible), faible)}`;
 }

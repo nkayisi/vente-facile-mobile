@@ -6,8 +6,8 @@
  * │                                                                          │
  * │ Un MOUVEMENT en file a déjà bougé le tiroir : les billets y sont, il     │
  * │ compte dans le solde. Une DÉPENSE en file n'a rien bougé : le serveur    │
- * │ l'enregistre en brouillon et seuls `approve` / `pay` créent la sortie de │
- * │ caisse. Les traiter pareil ferait soit un solde qui ignore de l'argent   │
+ * │ l'enregistre en brouillon et seul `pay` crée la sortie de caisse.        │
+ * │ Les traiter pareil ferait soit un solde qui ignore de l'argent           │
  * │ réel, soit un solde qui a déjà dépensé ce qui est encore là.             │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
@@ -191,5 +191,38 @@ describe("le corps d'une dépense en file porte tout ce que sa fiche montre", ()
       },
     ]);
     expect((await depensesEnFile())[0].reference).toBeNull();
+  });
+});
+
+describe("un paiement de dépense en file", () => {
+  it("en espèces, il a déjà vidé le tiroir : il compte comme une sortie", async () => {
+    mockJournal.set("expense.pay", [
+      {
+        id: "op-p",
+        payload: {
+          expense: "dep-1",
+          sortie_tiroir: { amount: "2000", currency: "CDF", description: "Dépense: Carburant" },
+        },
+        occurredAt: LE_2_SEPTEMBRE,
+        envoi: "en_attente",
+      },
+    ]);
+    const m = await mouvementsEnFile();
+    expect(m).toEqual([
+      expect.objectContaining({ direction: "out", type: "expense", montant: 2000, devise: "CDF" }),
+    ]);
+    expect(mockOptionsVues.get("expense.pay")).toEqual({ avecBloquees: true });
+  });
+
+  it("hors espèces, ou déjà sorti à l'approbation, il ne touche pas au tiroir", async () => {
+    mockJournal.set("expense.pay", [
+      {
+        id: "op-p",
+        payload: { expense: "dep-1", payment_method: "pm-mpesa" },
+        occurredAt: LE_2_SEPTEMBRE,
+        envoi: "en_attente",
+      },
+    ]);
+    expect(await mouvementsEnFile()).toEqual([]);
   });
 });

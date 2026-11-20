@@ -26,6 +26,10 @@ import { FeuilleImportArticles } from "@/features/inventaire/feuille-import";
 import { VignetteArticle } from "@/ui";
 import { useSession } from "@/session/provider";
 import {
+  phraseDejaEnFile,
+  usePropositionCreation,
+} from "@/features/inventaire/use-proposition-creation";
+import {
   Badge,
   Button,
   DataList,
@@ -61,6 +65,8 @@ export default function Articles() {
   const { donnees: compteurs } = useLecture(compteursRubriques, { tables: TABLES });
 
   const articles = donnees?.elements ?? [];
+  const proposer = usePropositionCreation();
+  const creation = recherche.trim() ? proposer(recherche) : null;
   const total = donnees?.total ?? 0;
 
   const enTete = (
@@ -171,8 +177,13 @@ export default function Articles() {
           icon: "Package",
           titre: recherche ? "Aucun produit trouvé" : "Aucun produit",
           message: recherche
-            ? "Aucun produit ne correspond à vos critères de recherche."
+            ? (creation?.dejaEnFile
+              ? phraseDejaEnFile(creation.dejaEnFile)
+              : "Aucun produit ne correspond à vos critères de recherche.")
             : "Commencez par ajouter votre premier produit.",
+          // Une recherche vide propose de créer ce qu'on vient de chercher,
+          // pré-rempli : le vendeur ne retape rien.
+          action: creation?.action ?? undefined,
         }}
       />
 

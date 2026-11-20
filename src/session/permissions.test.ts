@@ -50,7 +50,7 @@ const SRC = resolve(__dirname, "..");
 const CODES_SERVEUR = new Set([
   "cashbook.approve_expense", "cashbook.cancel_movement", "cashbook.create_expense",
   "cashbook.create_movement", "cashbook.delete_expense", "cashbook.delete_movement",
-  "cashbook.manage_categories", "cashbook.view", "cashbook.view_reports",
+  "cashbook.manage_categories", "cashbook.pay_expense", "cashbook.view", "cashbook.view_reports",
   "categories.create", "categories.delete", "categories.edit", "categories.view",
   "customers.create", "customers.delete", "customers.edit", "customers.view",
   "dashboard.view",

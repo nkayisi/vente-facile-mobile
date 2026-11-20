@@ -90,6 +90,13 @@ export interface MessageGrilleVide {
    * └────────────────────────────────────────────────────────────────────────┘
    */
   leveParSynchronisation: boolean;
+  /**
+   * Proposer de CRÉER l'article cherché ? Seulement quand c'est le TERME qui
+   * vide la grille : sur un catalogue absent ou sans article en vente, créer
+   * ne réglerait rien, et l'article existe peut-être déjà au serveur.
+   * Structurel, comme `leveParSynchronisation`, pour la même raison.
+   */
+  proposeCreation: boolean;
 }
 
 /**
@@ -132,6 +139,7 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
         titre: "Catalogue vide",
         message: "Synchronisez pour recevoir le catalogue de votre organisation.",
         leveParSynchronisation: true,
+        proposeCreation: false,
       };
 
     case "aucun-vendable":
@@ -146,6 +154,7 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
           "mais aucun n'est marqué en vente. Cela se règle au back-office, sur la fiche de " +
           "l'article : synchroniser n'y changera rien.",
         leveParSynchronisation: false,
+        proposeCreation: false,
       };
 
     case "recherche":
@@ -153,8 +162,9 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
         cause,
         icone: "Package",
         titre: "Aucun article trouvé",
-        message: "Essayez un autre mot, ou scannez le code-barres.",
+        message: "Essayez un autre mot, scannez le code-barres, ou créez l'article.",
         leveParSynchronisation: false,
+        proposeCreation: true,
       };
 
     case "rubrique":
@@ -164,6 +174,7 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
         titre: "Aucun article dans cette rubrique",
         message: "Choisissez « Tout » pour revoir le catalogue entier.",
         leveParSynchronisation: false,
+        proposeCreation: false,
       };
 
     case "indetermine":
@@ -178,6 +189,7 @@ export function messageGrilleVide(d: DiagnosticCatalogue): MessageGrilleVide {
           "Aucun filtre n'est actif. Synchronisez, et si la grille reste vide, " +
           "signalez-le : le catalogue est arrivé mais rien ne s'affiche.",
         leveParSynchronisation: true,
+        proposeCreation: false,
       };
   }
 }

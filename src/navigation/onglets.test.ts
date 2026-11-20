@@ -21,16 +21,18 @@ import {
  * éprouvée est celle de la permission, et un rôle n'est qu'un jeu de droits.
  */
 const DROITS: Record<string, string[]> = {
-  cashier: ["sales.view", "sales.create", "products.view", "customers.view", "cashbook.view"],
-  stock_keeper: ["products.view", "stock.view", "inventory.view", "customers.view", "cashbook.view"],
+  cashier: ["dashboard.view", "sales.view", "sales.create", "products.view", "customers.view", "cashbook.view"],
+  stock_keeper: ["dashboard.view", "products.view", "stock.view", "inventory.view", "customers.view", "cashbook.view"],
   manager: [
-    "sales.view", "sales.create", "products.view", "stock.view", "inventory.view",
+    "dashboard.view", "sales.view", "sales.create", "products.view", "stock.view", "inventory.view",
     "cashbook.view", "reports.view", "customers.view", "users.view", "settings.view",
   ],
 };
 const peutEtre = (role: string) => (permission: string) => DROITS[role].includes(permission);
 const AUCUN = () => false;
 const TOUT = () => true;
+/** Le seul droit que les quatre rôles partagent : celui de l'accueil. */
+const ACCUEIL_SEUL = (p: string) => p === "dashboard.view";
 
 const noms = (peut: (p: string) => boolean) => ongletsDuMembre(peut).map((o) => o.nom);
 
@@ -92,7 +94,7 @@ describe("barre d'onglets", () => {
 
   it("n'invente pas d'onglet quand le membre n'a rien d'autre à ouvrir", () => {
     // Moins de cinq onglets plutôt qu'un onglet qui ne s'ouvrirait pas.
-    expect(noms(AUCUN)).toEqual(["index"]);
+    expect(noms(ACCUEIL_SEUL)).toEqual(["index"]);
   });
 
   it("suit la PERMISSION, pas le rôle : un droit accordé rend sa place à l'onglet de base", () => {
@@ -207,8 +209,11 @@ describe("tiroir latéral", () => {
     }
   });
 
-  it("laisse « Tableau de bord » visible sans aucun droit, comme le web", () => {
-    expect(entreesDuMenu(AUCUN).map((e) => e.cle)).toEqual(["index"]);
+  it("garde « Tableau de bord » sous `dashboard.view`, comme le web", () => {
+    // Les quatre rôles le portent : l'accueil reste ouvert à tous, mais par la
+    // règle de route du back-office, sans exception propre au terminal.
+    expect(entreesDuMenu(ACCUEIL_SEUL).map((e) => e.cle)).toEqual(["index"]);
+    expect(entreesDuMenu(AUCUN)).toEqual([]);
   });
 
   it("refuse une clé de section inconnue plutôt que de l'ouvrir à tous", () => {

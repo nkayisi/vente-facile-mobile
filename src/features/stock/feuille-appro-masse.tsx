@@ -40,6 +40,9 @@ import { sousArbre } from "@/data/categories-arbre";
 import { niveauxDeStock, type LigneNiveau } from "@/data/stock-niveaux";
 import { TYPE_MOUVEMENT_STOCK, typesSaisissables } from "@/data/types-mouvement";
 import { creerLivraison, type SaisieMouvement } from "@/features/stock/actes";
+import { garderBrouillon } from "@/features/brouillons/brouillon-feuille";
+import { CreationDepuisRecherche } from "@/features/inventaire/creation-depuis-recherche";
+import { usePropositionCreation } from "@/features/inventaire/use-proposition-creation";
 import { BlocCanal } from "@/features/stock/bloc-canal";
 import {
   bornerFeuille,
@@ -64,6 +67,7 @@ import {
   Input,
   ListeChoix,
   ListeChoixMultiple,
+  SearchInput,
   Sheet,
   Text,
   useToast,
@@ -113,30 +117,50 @@ const lu = (s: string): number | null => {
   return r.ok ? r.valeur : null;
 };
 
+/** La clé du brouillon : la feuille se rouvre telle quelle après une création. */
+export const BROUILLON_APPRO = "appro-masse";
+
+/** Ce que la feuille garde le temps d'aller créer un article. */
+export interface BrouillonAppro {
+  entrepot: string | null;
+  type: string;
+  portee: PorteeAppro;
+  categories: string[];
+  articlesChoisis: string[];
+  recherche: string;
+  notes: string;
+  saisies: Record<string, Saisie>;
+  feuille: { lignes: LigneNiveau[]; tronquee: boolean; limite: number } | null;
+}
+
 export function FeuilleApproMasse({
   onFermer,
   onCree,
+  brouillon = null,
 }: {
   onFermer: () => void;
   /** La livraison est au journal. La table tirée ne bougera qu'au tirage. */
   onCree: () => void;
+  /** La saisie d'avant une création d'article, à reprendre telle quelle. */
+  brouillon?: BrouillonAppro | null;
 }) {
   const toast = useToast();
   const money = useMonnaie();
   const { can } = useSession();
+  const proposer = usePropositionCreation();
   // Le report des prix sur la FICHE est un droit distinct de celui de saisir
   // une entrée : c'est la même garde qu'au back-office.
   const peutRetarifer = can("products.edit");
 
-  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(null);
+  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(brouillon?.entrepot ?? null);
   // Le défaut est `purchase` : une livraison de masse vient du marché.
-  const [type, setType] = useState("purchase");
-  const [portee, setPortee] = useState<PorteeAppro>("bas");
-  const [categories, setCategories] = useState<string[]>([]);
-  const [articlesChoisis, setArticlesChoisis] = useState<string[]>([]);
-  const [recherche, setRecherche] = useState("");
-  const [notes, setNotes] = useState("");
-  const [saisies, setSaisies] = useState<Record<string, Saisie>>({});
+  const [type, setType] = useState(brouillon?.type ?? "purchase");
+  const [portee, setPortee] = useState<PorteeAppro>(brouillon?.portee ?? "bas");
+  const [categories, setCategories] = useState<string[]>(brouillon?.categories ?? []);
+  const [articlesChoisis, setArticlesChoisis] = useState<string[]>(brouillon?.articlesChoisis ?? []);
+  const [recherche, setRecherche] = useState(brouillon?.recherche ?? "");
+  const [notes, setNotes] = useState(brouillon?.notes ?? "");
+  const [saisies, setSaisies] = useState<Record<string, Saisie>>(brouillon?.saisies ?? {});
   const [prepare, setPrepare] = useState(false);
   const [envoi, setEnvoi] = useState(false);
 
@@ -181,7 +205,7 @@ export function FeuilleApproMasse({
     lignes: LigneNiveau[];
     tronquee: boolean;
     limite: number;
-  } | null>(null);
+  } | null>(brouillon?.feuille ?? null);
 
   const preparer = useCallback(async () => {
     if (!entrepot) return;
@@ -367,6 +391,22 @@ export function FeuilleApproMasse({
     }
   };
 
+  /** Créer un article : la feuille garde sa saisie, se ferme, et se rouvrira. */
+  const avantCreation = () => {
+    garderBrouillon<BrouillonAppro>(BROUILLON_APPRO, {
+      entrepot: entrepotChoisi,
+      type,
+      portee,
+      categories,
+      articlesChoisis,
+      recherche,
+      notes,
+      saisies,
+      feuille,
+    });
+    onFermer();
+  };
+
   const reculer = () => {
     if (choix) return setChoix(null);
     if (panneauMultiple) return setPanneauMultiple(null);
@@ -475,20 +515,35 @@ export function FeuilleApproMasse({
           messageVide="Aucune catégorie n'est encore descendue sur ce terminal."
         />
       ) : panneauMultiple === "articles" ? (
-        <ListeChoixMultiple
-          options={(lesArticles ?? []).map((a) => ({
-            valeur: a.produitId,
-            label: a.produit,
-            detail: a.quantiteAffichee,
-          }))}
-          valeurs={articlesChoisis}
-          onBasculer={(v) =>
-            setArticlesChoisis((liste) =>
-              liste.includes(v) ? liste.filter((x) => x !== v) : [...liste, v]
-            )
-          }
-          messageVide="Aucun article dans ce dépôt."
-        />
+        <View className="gap-3">
+          {/* Le même filtre que le formulaire : on cherche l'article ici, là où
+              on le choisit, et une recherche vide propose de le créer. */}
+          <SearchInput
+            valeur={recherche}
+            onChange={setRecherche}
+            placeholder="Nom, code ou code-barres..."
+          />
+          {(lesArticles ?? []).length === 0 && recherche.trim() ? (
+            <CreationDepuisRecherche
+              creation={proposer(recherche, { avant: avantCreation })}
+            />
+          ) : (
+            <ListeChoixMultiple
+              options={(lesArticles ?? []).map((a) => ({
+                valeur: a.produitId,
+                label: a.produit,
+                detail: a.quantiteAffichee,
+              }))}
+              valeurs={articlesChoisis}
+              onBasculer={(v) =>
+                setArticlesChoisis((liste) =>
+                  liste.includes(v) ? liste.filter((x) => x !== v) : [...liste, v]
+                )
+              }
+              messageVide="Aucun article dans ce dépôt."
+            />
+          )}
+        </View>
       ) : feuille ? (
         <>
           {feuille.tronquee ? (

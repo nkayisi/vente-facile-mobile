@@ -59,6 +59,9 @@ import {
   typesSaisissables,
 } from "@/data/types-mouvement";
 import { creerMouvement } from "@/features/stock/actes";
+import { garderBrouillon } from "@/features/brouillons/brouillon-feuille";
+import { CreationDepuisRecherche } from "@/features/inventaire/creation-depuis-recherche";
+import { usePropositionCreation } from "@/features/inventaire/use-proposition-creation";
 import { BlocCanal } from "@/features/stock/bloc-canal";
 import {
   apercuDuCoutMelange,
@@ -128,33 +131,57 @@ function prefill(brut: string | null): string {
  * est un montage, donc un état vierge, sans effet de remise à zéro à tenir en
  * phase avec les champs qu'on ajoutera.
  */
+/** La clé du brouillon : la feuille se rouvre telle quelle après une création. */
+export const BROUILLON_MOUVEMENT = "mouvement";
+
+/** Ce que la feuille garde le temps d'aller créer un article. */
+export interface BrouillonMouvement {
+  entrepot: string | null;
+  type: string;
+  article: ArticlePourMouvement | null;
+  contenants: string;
+  vrac: string;
+  coutDetail: string;
+  coutContenant: string;
+  prixDetail: string;
+  prixGros: string;
+  reporterLesPrix: boolean;
+  emplacement: string | null;
+  peremption: string;
+  notes: string;
+}
+
 export function FeuilleNouveauMouvement({
   onFermer,
   onCree,
+  brouillon = null,
 }: {
   onFermer: () => void;
   /** Le mouvement est entré au journal. La table tirée ne bougera qu'au tirage. */
   onCree: () => void;
+  /** La saisie d'avant une création d'article, à reprendre telle quelle. */
+  brouillon?: BrouillonMouvement | null;
 }) {
   const toast = useToast();
   const money = useMonnaie();
   const { can } = useSession();
+  const proposer = usePropositionCreation();
 
-  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(null);
+  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(brouillon?.entrepot ?? null);
   // Le défaut du back-office est `initial` : le premier mouvement d'un rayon
   // est presque toujours son stock de départ.
-  const [type, setType] = useState<string>("initial");
-  const [article, setArticle] = useState<ArticlePourMouvement | null>(null);
-  const [contenants, setContenants] = useState("");
-  const [vrac, setVrac] = useState("");
-  const [coutDetail, setCoutDetail] = useState("");
-  const [coutContenant, setCoutContenant] = useState("");
-  const [prixDetail, setPrixDetail] = useState("");
-  const [prixGros, setPrixGros] = useState("");
-  const [reporterLesPrix, setReporterLesPrix] = useState(false);
-  const [emplacement, setEmplacement] = useState<string | null>(null);
-  const [peremption, setPeremption] = useState("");
-  const [notes, setNotes] = useState("");
+  const [type, setType] = useState<string>(brouillon?.type ?? "initial");
+  const [article, setArticle] = useState<ArticlePourMouvement | null>(brouillon?.article ?? null);
+  const [contenants, setContenants] = useState(brouillon?.contenants ?? "");
+  const [vrac, setVrac] = useState(brouillon?.vrac ?? "");
+  const [coutDetail, setCoutDetail] = useState(brouillon?.coutDetail ?? "");
+  const [coutContenant, setCoutContenant] = useState(brouillon?.coutContenant ?? "");
+  const [prixDetail, setPrixDetail] = useState(brouillon?.prixDetail ?? "");
+  const [prixGros, setPrixGros] = useState(brouillon?.prixGros ?? "");
+  const [reporterLesPrix, setReporterLesPrix] = useState(brouillon?.reporterLesPrix ?? false);
+  const [emplacement, setEmplacement] = useState<string | null>(brouillon?.emplacement ?? null);
+  const [peremption, setPeremption] = useState(brouillon?.peremption ?? "");
+  const [notes, setNotes] = useState(brouillon?.notes ?? "");
   const [envoi, setEnvoi] = useState(false);
   const [erreurs, setErreurs] = useState<{
     contenants?: string;
@@ -281,6 +308,26 @@ export function FeuilleNouveauMouvement({
     }
   };
 
+  /** Créer un article : la feuille garde sa saisie, se ferme, et se rouvrira. */
+  const avantCreation = () => {
+    garderBrouillon<BrouillonMouvement>(BROUILLON_MOUVEMENT, {
+      entrepot: entrepotChoisi,
+      type,
+      article,
+      contenants,
+      vrac,
+      coutDetail,
+      coutContenant,
+      prixDetail,
+      prixGros,
+      reporterLesPrix,
+      emplacement,
+      peremption,
+      notes,
+    });
+    onFermer();
+  };
+
   /** Le voile et le bouton retour reculent d'un panneau, puis ferment. */
   const reculer = () => {
     if (choix) return setChoix(null);
@@ -321,11 +368,15 @@ export function FeuilleNouveauMouvement({
             placeholder="Rechercher un produit..."
           />
           {(articles ?? []).length === 0 ? (
-            <Text variant="caption">
-              {recherche
-                ? "Aucun article ne correspond."
-                : "Cherchez un article par son nom, son code ou son code-barres."}
-            </Text>
+            recherche.trim() ? (
+              <CreationDepuisRecherche
+                creation={proposer(recherche, { avant: avantCreation })}
+              />
+            ) : (
+              <Text variant="caption">
+                Cherchez un article par son nom, son code ou son code-barres.
+              </Text>
+            )
           ) : (
             <View>
               {(articles ?? []).map((a) => (

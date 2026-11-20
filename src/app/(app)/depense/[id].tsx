@@ -31,7 +31,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { formatDateTimeFr } from "@vente-facile/core";
+import { formatDateFr, formatDateTimeFr } from "@vente-facile/core";
 
 import { detailDepense } from "@/data/caisse";
 import { useMonnaie } from "@/data/devises";
@@ -39,20 +39,56 @@ import { useLecture } from "@/data/live";
 import {
   STATUT_DEPENSE,
   TRANSITION_DEPENSE,
-  decisionsPossibles,
   type TransitionDepense,
 } from "@/data/types-caisse";
+import {
+  acteDuGeste,
+  decisionsPossibles,
+  motifPaiementImpossible,
+} from "@/data/gestes-depense";
 import { enAttenteCaisse, transitionDepense } from "@/features/caisse/actes";
+import { sessionOuverte } from "@/features/pos/caisse";
+import { moyensDePaiement } from "@/features/pos/donnees";
 import { chromeDeLaSession } from "@/features/pos/ticket";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
-import { documentParNumero, enregistrerEtImprimer, imprimerDocument } from "@/printing/jobs";
+import {
+  demandeDeDepense,
+  papierDeLaFiche,
+  recuAuPaiement,
+  recuDepuisLaFiche,
+} from "@/features/caisse/papiers-depense";
+import {
+  enregistrerEtImprimer,
+  imprimerDemandeDeDepense,
+  imprimerDocument,
+  recuDeDepenseRange,
+} from "@/printing/jobs";
 import { useSession } from "@/session/provider";
 import {
-  AppBar, Badge, Button, Card, CardHeader, EmptyState, FormField, Icon, Input,
+  AppBar, Badge, Button, Card, CardHeader, Chip, ChipRow, EmptyState, FormField, Icon, Input,
   Screen, Sheet, Spinner, StatValue, Text, useToast,
 } from "@/ui";
 
-const TABLES = ["expenses", "expense_categories", "payment_methods", "outbox_operations"];
+const TABLES = [
+  "expenses",
+  "expense_categories",
+  "payment_methods",
+  "cash_movements",
+  "outbox_operations",
+];
+
+/** Ce qui sert à payer : les moyens, et la caisse ouverte de celui qui paie. */
+async function chargerPaiement() {
+  const [moyens, session] = await Promise.all([moyensDePaiement(), sessionOuverte()]);
+  return {
+    // Ni crédit ni points : on ne règle pas une dépense « à crédit ».
+    moyens: moyens.filter((m) => m.methodType !== "credit"),
+    caisseOuverte: session != null,
+    // Imprimée sur le reçu d'un paiement en espèces : c'est d'elle que les
+    // billets sortent.
+    caisse: session?.registerName ?? null,
+  };
+}
 
 function Paire({ label, valeur }: { label: string; valeur: string }) {
   return (
@@ -67,6 +103,16 @@ function Paire({ label, valeur }: { label: string; valeur: string }) {
   );
 }
 
+/**
+ * Le paiement a son instant réel (la sortie d'argent) ; à défaut, le JOUR de
+ * paiement de la fiche, sans heure inventée. `null` quand la dépense n'est pas payée.
+ */
+function payeeLeLisible(d: { paiementLe: Date | null; payeeLe: Date | null }): string | null {
+  if (d.paiementLe) return formatDateTimeFr(d.paiementLe);
+  if (d.payeeLe) return formatDateFr(d.payeeLe);
+  return null;
+}
+
 export default function DetailDepense() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const money = useMonnaie();
@@ -76,22 +122,57 @@ export default function DetailDepense() {
   const [decision, setDecision] = useState<TransitionDepense | null>(null);
   const [motif, setMotif] = useState("");
   const [envoi, setEnvoi] = useState(false);
+  /** Le moyen choisi pour payer ; `undefined` tant qu'aucun choix n'est fait. */
+  const [moyenChoisi, setMoyenChoisi] = useState<string | null | undefined>(undefined);
+  const [referencePaiement, setReferencePaiement] = useState("");
 
   const charger = useCallback(() => detailDepense(id), [id]);
   const { donnees: d, chargement } = useLecture(charger, { tables: TABLES, deps: [id] });
+  const payeeLe = d ? payeeLeLisible(d) : null;
   const { donnees: attente } = useLecture(enAttenteCaisse, {
     tables: ["outbox_operations"],
   });
   const transitionEnFile = attente?.transitions.get(id);
 
+  const { donnees: paiement } = useLecture(chargerPaiement, {
+    tables: ["payment_methods", "register_sessions", "outbox_operations"],
+  });
+
+  // Le reçu rangé AU PAIEMENT, s'il existe : c'est lui qu'on réimprime, et
+  // c'est lui qui dit qu'un paiement encore en file a déjà eu son papier.
+  const reference = d?.reference ?? null;
+  const chargerRecu = useCallback(
+    () => (reference ? recuDeDepenseRange(reference) : Promise.resolve(null)),
+    [reference]
+  );
+  const { donnees: recuRange } = useLecture(chargerRecu, {
+    tables: ["print_jobs"],
+    deps: [reference],
+  });
+
+  /**
+   * Les droits de celui qui regarde, lus comme le serveur les lit : on
+   * n'approuve jamais sa propre dépense (sauf le propriétaire), et un caissier
+   * ne paie que la sienne. Voir `gestes-depense.ts`.
+   */
+  const moi = snapshot?.user.id ?? null;
+  const proprietaire = snapshot?.membership?.role === "owner";
   const possibles = useMemo(
     () =>
       d
-        ? decisionsPossibles(d.statut, Boolean(d.envoi)).filter((t) =>
-            can(TRANSITION_DEPENSE[t].permission)
+        ? decisionsPossibles(
+            { status: d.statut, created_by: d.auteur },
+            {
+              peutCreer: can("cashbook.create_expense"),
+              peutApprouver: can("cashbook.approve_expense"),
+              peutPayer: can("cashbook.pay_expense"),
+              proprietaire,
+              moi,
+            },
+            Boolean(d.envoi)
           )
         : [],
-    [d?.statut, d?.envoi, can]
+    [d?.statut, d?.auteur, d?.envoi, can, proprietaire, moi]
   );
 
   if (chargement && !d) {
@@ -121,52 +202,129 @@ export default function DetailDepense() {
 
   const s = STATUT_DEPENSE[d.statut];
 
+  const papier = papierDeLaFiche(d.statut, Boolean(recuRange));
+
+  /**
+   * Réimprime le papier de la dépense : le reçu une fois payée, la demande
+   * avant. La demande se régénère (elle n'est pas rangée) ; le reçu ressort
+   * celui rangé au paiement, ou se refait depuis la sortie d'argent quand elle
+   * a été payée ailleurs. Le numéro ne change jamais : c'est celui de la
+   * dépense.
+   */
   const imprimer = async () => {
-    if (impression) return;
+    if (impression || !papier) return;
     setImpression(true);
+    const chrome = chromeDeLaSession(snapshot);
     try {
-      // La référence de la dépense EST son numéro de document : elle vient du
-      // serveur et ne change pas. En fabriquer un second ici donnerait deux
-      // numéros pour une seule sortie de caisse.
-      const range = await documentParNumero(d.reference);
-      if (range) {
-        await imprimerDocument(range.id);
-      } else {
-        await enregistrerEtImprimer({
-          kind: "expense",
-          documentNumber: d.reference,
-          label: d.description || d.reference,
-          donnees: {
+      if (papier === "recu") {
+        if (recuRange) {
+          await imprimerDocument(recuRange.id);
+        } else {
+          await enregistrerEtImprimer({
             kind: "expense",
-            number: d.reference,
-            date: formatDateTimeFr(d.date ?? new Date()),
-            chrome: chromeDeLaSession(snapshot),
-            cashierName: snapshot?.user.full_name,
-            category: d.categorie ?? undefined,
-            payee: d.beneficiaire ?? undefined,
-            paymentMethod: d.moyen ?? undefined,
-            amount: d.montant,
-            currency: d.devise,
-            description: d.description || undefined,
-          },
-        });
+            documentNumber: d.reference,
+            label: d.description || d.reference,
+            donnees: { ...recuDepuisLaFiche(d, chrome), auPaiement: true },
+            // Payée ailleurs : son reçu est déjà sorti là-bas.
+            dejaImprime: true,
+          });
+        }
+        toast.succes("Reçu de dépense envoyé à l'imprimante.");
+      } else {
+        await imprimerDemandeDeDepense(
+          demandeDeDepense({
+            reference: d.reference,
+            chrome,
+            // Une dépense encore en file a été saisie ICI.
+            demandeur: d.demandeur ?? (d.envoi ? snapshot?.user.full_name : null),
+            categorie: d.categorie,
+            beneficiaire: d.beneficiaire,
+            montant: d.montant,
+            devise: d.devise,
+            description: d.description,
+            le: d.date ?? new Date(),
+            jour: Boolean(d.date),
+            duplicata: true,
+          })
+        );
+        toast.succes("Demande de dépense envoyée à l'imprimante.");
       }
-      toast.succes("Reçu de dépense envoyé à l'imprimante.");
     } catch (e) {
-      toast.erreur(e instanceof Error ? e.message : "Le reçu n'a pas pu être imprimé.");
+      toast.erreur(e instanceof Error ? e.message : "Le document n'a pas pu être imprimé.");
     } finally {
       setImpression(false);
     }
   };
 
+  const payer = decision === "pay" || decision === "pay_direct";
+  // Le moyen proposé d'office : celui déjà noté sur la dépense, sinon les
+  // espèces - le cas ordinaire d'une petite dépense réglée au comptoir.
+  const moyenParDefaut =
+    paiement?.moyens.find((m) => m.id === d.methodeId)?.id ??
+    paiement?.moyens.find((m) => m.methodType === "cash")?.id ??
+    null;
+  const moyenId = moyenChoisi === undefined ? moyenParDefaut : moyenChoisi;
+  const moyen = paiement?.moyens.find((m) => m.id === moyenId) ?? null;
+  const enEspeces = moyen == null || moyen.methodType === "cash";
+  const paiementImpossible = payer
+    ? motifPaiementImpossible(moyen, Boolean(paiement?.caisseOuverte))
+    : null;
+
   const decider = async () => {
-    if (!decision || envoi) return;
+    if (!decision || envoi || paiementImpossible) return;
     setEnvoi(true);
     try {
-      await transitionDepense(`expense.${decision}`, d.id, motif);
-      toast.succes(
-        `${TRANSITION_DEPENSE[decision].label} : l'opération partira à la prochaine synchronisation.`
+      await transitionDepense(
+        acteDuGeste(decision),
+        d.id,
+        motif,
+        payer
+          ? {
+              methode: moyenId,
+              reference: enEspeces ? undefined : referencePaiement,
+              // Les billets quittent le tiroir : en espèces, et seulement si
+              // l'approbation ne les a pas déjà sortis.
+              sortie:
+                enEspeces && !d.sortieFaite
+                  ? { montant: d.montant, devise: d.devise, description: `Dépense: ${d.description}` }
+                  : null,
+            }
+          : undefined
       );
+      // ┌──────────────────────────────────────────────────────────────────┐
+      // │ LE REÇU SORT AU PAIEMENT, HORS LIGNE COMPRIS.                    │
+      // │                                                                  │
+      // │ C'est maintenant que les billets quittent le tiroir et que le    │
+      // │ bénéficiaire peut signer. Il nomme le PAYEUR (l'utilisateur du   │
+      // │ terminal), l'heure du geste et la caisse, et se range marqué au  │
+      // │ paiement. Un échec d'impression ne défait pas le paiement.       │
+      // └──────────────────────────────────────────────────────────────────┘
+      let suite = "l'opération partira à la prochaine synchronisation.";
+      if (payer) {
+        try {
+          await enregistrerEtImprimer({
+            kind: "expense",
+            documentNumber: d.reference,
+            label: d.description || d.reference,
+            donnees: recuAuPaiement({
+              depense: d,
+              chrome: chromeDeLaSession(snapshot),
+              payeur: snapshot?.user.full_name,
+              caisse: enEspeces ? paiement?.caisse : null,
+              moyen: moyen?.name,
+              referencePaiement: enEspeces ? null : referencePaiement.trim(),
+              // Payer directement vaut approbation : le payeur approuve.
+              approbateur: decision === "pay_direct" ? snapshot?.user.full_name : d.approbateur,
+              le: new Date(),
+            }),
+          });
+          suite = "reçu envoyé à l'imprimante ; l'opération partira à la prochaine synchronisation.";
+        } catch {
+          suite =
+            "le reçu n'a pas pu être imprimé, réimprimez-le d'ici ; l'opération partira à la prochaine synchronisation.";
+        }
+      }
+      toast.succes(`${TRANSITION_DEPENSE[decision].label} : ${suite}`);
       setDecision(null);
       setMotif("");
     } catch (e) {
@@ -205,6 +363,8 @@ export default function DetailDepense() {
                     disabled={Boolean(transitionEnFile)}
                     onPress={() => {
                       setMotif("");
+                      setMoyenChoisi(undefined);
+                      setReferencePaiement("");
                       setDecision(t);
                     }}
                   >
@@ -231,7 +391,7 @@ export default function DetailDepense() {
           <BandeauEnvoi
             envoi={d.envoi}
             titre="Cette dépense attend son envoi"
-            consequence="Les décisions seront possibles une fois le serveur informé. Le reçu, lui, porte déjà son numéro définitif."
+            consequence="Les décisions seront possibles une fois le serveur informé. La demande porte déjà son numéro définitif, que le reçu reprendra au paiement."
           />
         ) : transitionEnFile ? (
           <BandeauEnvoi
@@ -248,15 +408,17 @@ export default function DetailDepense() {
           <StatValue value={money.money(d.montant, d.devise)} tone="destructive" />
         </Card>
 
-        <Button
-          variant="outline"
-          fullWidth
-          leftIcon="Printer"
-          loading={impression}
-          onPress={() => void imprimer()}
-        >
-          Imprimer le reçu
-        </Button>
+        {papier ? (
+          <Button
+            variant="outline"
+            fullWidth
+            leftIcon="Printer"
+            loading={impression}
+            onPress={() => void imprimer()}
+          >
+            {papier === "recu" ? "Imprimer le reçu" : "Imprimer la demande"}
+          </Button>
+        ) : null}
 
         <Card>
           <CardHeader title="Détail" />
@@ -268,10 +430,10 @@ export default function DetailDepense() {
             {d.reference_paiement ? (
               <Paire label="Référence du paiement" valeur={d.reference_paiement} />
             ) : null}
-            <Paire label="Date" valeur={d.date ? formatDateTimeFr(d.date) : "-"} />
-            {d.payeeLe ? (
-              <Paire label="Payée le" valeur={formatDateTimeFr(d.payeeLe)} />
-            ) : null}
+            {/* `date` et `payeeLe` sont des JOURS : une heure y serait inventée.
+                Le paiement a son instant réel, celui de la sortie d'argent. */}
+            <Paire label="Date" valeur={d.date ? formatDateFr(d.date) : "-"} />
+            {payeeLe ? <Paire label="Payée le" valeur={payeeLe} /> : null}
           </View>
           {d.notes ? (
             <View className="mt-3">
@@ -293,7 +455,11 @@ export default function DetailDepense() {
                 ? "Le serveur ne connaît pas encore cette dépense. Synchronisez pour pouvoir la soumettre, l'approuver ou la payer."
                 : d.statut === "cancelled"
                   ? "Cette dépense est annulée : plus aucune décision n'est possible."
-                  : "Aucune décision ne vous est ouverte sur cette dépense. L'approbation et le paiement demandent le droit « approuver une dépense »."}
+                  : d.statut === "rejected"
+                    ? "Cette dépense est rejetée : elle ne se paie pas. Créez-en une nouvelle si elle est due."
+                    : d.statut === "pending" && d.auteur === moi && !proprietaire
+                      ? "Votre dépense attend l'approbation du propriétaire ou d'un autre gérant. Vous pourrez la payer une fois approuvée."
+                      : "Aucune décision ne vous est ouverte sur cette dépense. Approuver demande le droit « approuver une dépense » ; payer la dépense d'un autre aussi."}
             </Text>
           </View>
         ) : null}
@@ -315,6 +481,38 @@ export default function DetailDepense() {
                 <Input value={motif} onChangeText={setMotif} autoFocus />
               </FormField>
             ) : null}
+            {payer ? (
+              <View className="gap-2">
+                <Text variant="label">Moyen de paiement</Text>
+                <ChipRow>
+                  {(paiement?.moyens ?? []).map((m) => (
+                    <Chip
+                      key={m.id}
+                      label={m.name}
+                      actif={m.id === moyenId}
+                      onPress={() => setMoyenChoisi(m.id)}
+                    />
+                  ))}
+                </ChipRow>
+                {!enEspeces ? (
+                  <FormField label="Référence (facultatif)">
+                    <Input
+                      value={referencePaiement}
+                      onChangeText={setReferencePaiement}
+                      placeholder="N° de transaction"
+                    />
+                  </FormField>
+                ) : null}
+                {/* Le refus se dit AVANT l'envoi : le serveur refuserait un
+                    paiement en espèces sans caisse ouverte, et la quarantaine
+                    se découvrirait loin d'ici. */}
+                {paiementImpossible ? (
+                  <Text variant="caption" className="text-destructive">
+                    {paiementImpossible}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <Button variant="outline" fullWidth onPress={() => setDecision(null)}>
@@ -331,6 +529,7 @@ export default function DetailDepense() {
                     decision === "reject" ? "primary" : "destructive"
                   }
                   loading={envoi}
+                  disabled={Boolean(paiementImpossible)}
                   onPress={() => void decider()}
                 >
                   {TRANSITION_DEPENSE[decision].label}
@@ -349,10 +548,12 @@ const PHRASES: Record<TransitionDepense, string> = {
   submit:
     "La dépense passe en attente d'approbation. Rien ne sort encore du tiroir.",
   approve:
-    "L'argent SORT de la caisse : un mouvement de sortie est créé dans la devise de la dépense.",
+    "La dépense est approuvée. Rien ne sort encore du tiroir : l'argent sort quand elle est payée, de la caisse de celui qui paie.",
   reject:
-    "La dépense est refusée. Ni le tiroir ni le stock ne bougent, et elle reste consultable.",
-  pay: "La dépense est marquée payée, et approuvée au passage si elle ne l'était pas. L'argent sort alors de la caisse.",
+    "La dépense est refusée. Ni le tiroir ni le stock ne bougent, et elle reste consultable. Elle ne pourra pas être payée.",
+  pay: "La dépense est payée. En espèces, l'argent sort de VOTRE caisse, qui doit être ouverte, et figurera dans votre clôture.",
+  pay_direct:
+    "La dépense est approuvée et payée du même geste. En espèces, l'argent sort de VOTRE caisse, qui doit être ouverte.",
   cancel:
     "La dépense est annulée et sa sortie de caisse CONTREPASSÉE : l'argent revient au tiroir. Les deux écritures restent au rapport de caisse.",
 };

@@ -5,7 +5,7 @@
  * serveur arrive en quarantaine, c'est-à-dire le lendemain, sur un autre écran,
  * alors que le marchand a sa fiche sous les yeux maintenant.
  */
-import { lireChamp, refusDeSaisie, saisiePrete } from "./saisie-article";
+import { lireChamp, refusDeSaisie, saisiePrete, skuDepuis } from "./saisie-article";
 import type { SaisieBrute } from "./saisie-article";
 
 const detail: SaisieBrute = {
@@ -125,5 +125,16 @@ describe("saisiePrete", () => {
   it("ferme le bouton tant qu'un refus subsiste", () => {
     expect(saisiePrete({ ...gros, parContenant: "1" })).toBe(false);
     expect(saisiePrete(gros)).toBe(true);
+  });
+});
+
+describe("le SKU proposé depuis le nom", () => {
+  it("prend six lettres sans accent ni espace, puis quatre chiffres", () => {
+    expect(skuDepuis("Savon Omo 1 kg", 1763600001234)).toBe("SAVONO-1234");
+    expect(skuDepuis("Café moulu", 1763600009876)).toBe("CAFEMO-9876");
+  });
+
+  it("ne propose rien pour un nom sans lettre ni chiffre", () => {
+    expect(skuDepuis("  -- ", 1)).toBe("");
   });
 });

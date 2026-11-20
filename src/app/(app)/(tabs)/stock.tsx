@@ -20,7 +20,12 @@ import { formatPrice, formatQuantity } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
 import { entrepots, relevesStock } from "@/data/stock";
-import { FeuilleNouveauMouvement } from "@/features/stock/feuille-mouvement";
+import {
+  BROUILLON_MOUVEMENT,
+  FeuilleNouveauMouvement,
+  type BrouillonMouvement,
+} from "@/features/stock/feuille-mouvement";
+import { useFeuilleAvecBrouillon } from "@/features/brouillons/use-feuille-avec-brouillon";
 import { useSession } from "@/session/provider";
 import {
   ActionTile,
@@ -46,7 +51,8 @@ const TABLES = ["stocks", "products", "warehouses"];
 export default function Stock() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
-  const [feuilleMouvement, setFeuilleMouvement] = useState(false);
+  // La feuille se rouvre sur son brouillon au retour d'une création d'article.
+  const feuilleMouvement = useFeuilleAvecBrouillon<BrouillonMouvement>(BROUILLON_MOUVEMENT);
   // Le DÉFAUT du membre : ses entrepôts, même sous « Consulter tous ».
   const perimetre = usePerimetreParDefaut(false);
   const lireReleves = useCallback(() => relevesStock(perimetre), [perimetre]);
@@ -71,7 +77,7 @@ export default function Stock() {
               variant="outline"
               size="sm"
               leftIcon="Activity"
-              onPress={() => setFeuilleMouvement(true)}
+              onPress={feuilleMouvement.ouvrir}
             >
               Entrée de stock
             </Button>
@@ -248,10 +254,11 @@ export default function Stock() {
           concentrateur, plutôt que de pousser un écran : c'est un raccourci,
           et on revient forcément ici. Rendue conditionnellement, donc vierge à
           chaque ouverture - voir la docstring de la feuille. */}
-      {feuilleMouvement ? (
+      {feuilleMouvement.ouverte ? (
         <FeuilleNouveauMouvement
-          onFermer={() => setFeuilleMouvement(false)}
-          onCree={() => setFeuilleMouvement(false)}
+          brouillon={feuilleMouvement.brouillon}
+          onFermer={feuilleMouvement.fermer}
+          onCree={feuilleMouvement.fermer}
         />
       ) : null}
     </Screen>

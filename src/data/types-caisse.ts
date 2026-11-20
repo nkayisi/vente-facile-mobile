@@ -34,6 +34,7 @@
  *   sed -n '/class MovementType/,/^$/p' backend/apps/cashbook/models.py
  */
 import type { IconName } from "@/ui";
+import type { GesteDepense } from "./gestes-depense";
 
 /**
  * Les douze types, avec le libellé du serveur et le SENS que la caisse leur
@@ -89,57 +90,21 @@ export const STATUT_DEPENSE: Record<
 };
 
 /**
- * Les transitions qu'une dépense accepte, dans son statut courant.
- *
- * Miroir EXACT des cinq gardes de `ExpenseViewSet` : `submit` n'accepte que
- * `draft`, `approve` et `reject` que `pending`, `pay` tout sauf `paid` et
- * `cancelled`, `cancel` tout sauf `cancelled`. Proposer un bouton que le
- * serveur refusera enverrait l'acte en quarantaine, découverte des jours plus
- * tard sur un autre écran - c'est ce que le lot 4 a refermé au comptoir.
+ * Les gestes possibles sur une dépense : voir `gestes-depense.ts`, module pur
+ * éprouvé sur les mêmes cas que le back-office. L'auteur y compte - on
+ * n'approuve jamais sa propre dépense, et un caissier ne paie que la sienne.
  */
-export type TransitionDepense = "submit" | "approve" | "reject" | "pay" | "cancel";
+export type TransitionDepense = GesteDepense;
 
-export function transitionsPossibles(statut: string): TransitionDepense[] {
-  const t: TransitionDepense[] = [];
-  if (statut === "draft") t.push("submit");
-  if (statut === "pending") t.push("approve", "reject");
-  if (statut !== "paid" && statut !== "cancelled") t.push("pay");
-  if (statut !== "cancelled") t.push("cancel");
-  return t;
-}
-
-/**
- * Les décisions réellement ouvertes, une fois l'état d'envoi pris en compte.
- *
- * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ UNE DÉPENSE QUE LE SERVEUR IGNORE N'ACCEPTE AUCUNE DÉCISION.            │
- * │                                                                          │
- * │ `_transition_depense` cherche la pièce par `_objet_de_lorg` : sur un     │
- * │ identifiant qu'il n'a pas encore vu, le serveur refuse - verdict         │
- * │ `rejected`, donc quarantaine, découverte des jours plus tard sur un      │
- * │ autre écran. Offrir « Approuver » sur une dépense en file, c'est offrir  │
- * │ un bouton qui fabrique un refus que le marchand n'a pas provoqué.        │
- * │                                                                          │
- * │ L'IMPRESSION, elle, reste ouverte : le numéro est celui du terminal, il  │
- * │ est définitif, et c'est justement le moment où le bénéficiaire est       │
- * │ devant le comptoir.                                                      │
- * └──────────────────────────────────────────────────────────────────────────┘
- */
-export function decisionsPossibles(
-  statut: string,
-  enFile: boolean
-): TransitionDepense[] {
-  return enFile ? [] : transitionsPossibles(statut);
-}
-
-/** Ce que chaque transition demande comme droit, et ce qu'elle dit à l'écran. */
+/** Ce que chaque geste demande comme droit, et ce qu'il dit à l'écran. */
 export const TRANSITION_DEPENSE: Record<
   TransitionDepense,
   { label: string; permission: string; destructif: boolean; icone: IconName }
 > = {
-  // ⚠ `submit` relève de `cashbook.create_expense`, PAS de `.approve_expense` :
-  // c'est l'auteur qui soumet sa propre dépense. Les quatre autres sont des
-  // décisions, et le serveur les garde toutes derrière `cashbook.approve_expense`.
+  // ⚠ `submit` relève de `cashbook.create_expense` : c'est l'auteur qui soumet
+  // sa propre dépense. `pay` relève de `cashbook.pay_expense`, que le caissier
+  // a : il paie SA dépense une fois approuvée, et l'argent sort de SA caisse.
+  // Approuver, rejeter, payer directement et annuler sont des décisions.
   submit: {
     label: "Soumettre",
     permission: "cashbook.create_expense",
@@ -159,6 +124,12 @@ export const TRANSITION_DEPENSE: Record<
     icone: "XCircle",
   },
   pay: {
+    label: "Payer",
+    permission: "cashbook.pay_expense",
+    destructif: false,
+    icone: "CreditCard",
+  },
+  pay_direct: {
     label: "Payer directement",
     permission: "cashbook.approve_expense",
     destructif: false,

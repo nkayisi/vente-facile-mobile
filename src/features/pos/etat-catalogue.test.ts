@@ -189,4 +189,25 @@ describe("la cause qu'on ne sait pas nommer", () => {
     ].map((d) => messageGrilleVide(d).titre);
     expect(new Set(titres).size).toBe(titres.length);
   });
+
+  /**
+   * Créer n'est proposé que là où c'est le TERME qui vide la grille. Sur un
+   * catalogue absent, l'article existe peut-être déjà au serveur : proposer de
+   * le créer en ferait naître le doublon.
+   */
+  it("seule une recherche sans résultat propose de créer l'article", () => {
+    const proposent = [
+      diag({ recus: 0, vendables: 0, recherche: true }),
+      diag({ recus: 12, vendables: 0, recherche: true }),
+      diag({ recherche: true }),
+      diag({ rubrique: true }),
+      diag({ recherche: false, rubrique: false }),
+    ]
+      .map(messageGrilleVide)
+      .filter((m) => m.proposeCreation)
+      .map((m) => m.cause);
+
+    expect(proposent).toEqual(["recherche"]);
+  });
 });
+

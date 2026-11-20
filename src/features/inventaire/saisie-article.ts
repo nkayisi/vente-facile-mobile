@@ -107,3 +107,22 @@ export function saisiePrete(s: SaisieBrute): boolean {
   if (s.nom.trim().length === 0 || s.sku.trim().length === 0) return false;
   return Object.values(refusDeSaisie(s)).every((r) => r === undefined);
 }
+
+/**
+ * Un SKU proposé depuis le nom : six lettres ou chiffres, puis quatre chiffres
+ * de l'horloge. La même forme que le bouton « Auto » du back-office, pour
+ * qu'un article créé au comptoir ne se distingue pas d'un autre.
+ *
+ * ⚠ Ce n'est qu'une PROPOSITION : le marchand la corrige, et le serveur juge
+ *   l'unicité. L'instant est injecté pour que la règle s'éprouve.
+ */
+export function skuDepuis(nom: string, instant: number = Date.now()): string {
+  const racine = nom
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 6);
+  if (!racine) return "";
+  return `${racine}-${String(instant).slice(-4)}`;
+}

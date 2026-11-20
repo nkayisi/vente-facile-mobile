@@ -7,8 +7,19 @@
  * Casier, « 3 » sur Bouteille, et obtient « 2 casiers + 3 bouteilles » sans
  * jamais multiplier de tête. Un sélecteur exclusif l'obligerait à saisir 27.
  *
- * Rien n'est prérempli. Un « 1 » d'avance se fait effacer plus souvent qu'il ne
- * sert, et surtout il se fait valider par inadvertance.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ ON PROPOSE 1, ET LA PREMIÈRE TOUCHE LE REMPLACE.                        │
+ * │                                                                          │
+ * │ Le champ partait vide, de peur qu'un 1 d'avance se valide par            │
+ * │ inadvertance. Il ne fait du tort que s'il fermerait l'encaissement :     │
+ * │ dans ce cas seul, rien n'est proposé et le motif s'affiche d'emblée.     │
+ * │ Ailleurs, « Ajouter » ajoute 1 d'un appui. La règle est celle du noyau  │
+ * │ (`quantiteInitiale`), que le back-office applique aussi.                 │
+ * │                                                                          │
+ * │ ⚠ L'accumulateur AJOUTE chaque touche à la valeur : sans le drapeau      │
+ * │ `remplacer`, taper 2 sur le 1 proposé donnait « 12 », et 2 sur une ligne │
+ * │ rouverte à 3 donnait « 32 ».                                             │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
  * Le composant ne calcule aucune quantité qui partirait telle quelle : il
  * remonte la saisie brute (`packages`, `loose`), exactement ce que
@@ -30,7 +41,13 @@ import {
   pluralizeUnit,
   toBaseQuantity,
 } from "@vente-facile/core";
-import type { Saisie } from "@vente-facile/core/pos";
+import {
+  basculerCanal,
+  quantiteInitiale,
+  saisieDeQuantite,
+  type EtatQuantite,
+  type Saisie,
+} from "@vente-facile/core/pos";
 
 import { lireNombre } from "@/data/nombres";
 import { Button, Divider, Icon, Pressable, Text, useMargesSysteme } from "@/ui";
@@ -134,16 +151,43 @@ export function SelecteurQuantite({
   const [borne, setBorne] = useState<string | null>(null);
   const [devise, setDevise] = useState<string | undefined>(undefined);
   const [remiseChoisie, setRemiseChoisie] = useState(0);
+  /** La quantité affichée vient de nous ; elle suit le canal tant qu'on n'y touche pas. */
+  const [proposee, setProposee] = useState(false);
+  /** Pourquoi rien n'est proposé : ce que 1 ouvrirait comme motif de fermer l'encaissement. */
+  const [motifVide, setMotifVide] = useState<string | null>(null);
+  /** La prochaine touche REMPLACE la valeur au lieu de s'y ajouter. */
+  const [remplacer, setRemplacer] = useState(false);
+
+  /** Le motif qu'un « 1 » dans ce canal ouvrirait : refus, verrou, stock. */
+  const alerteSiUn = (c: Canal): string | null => {
+    const un: Saisie = { packages: c === "package" ? 1 : 0, loose: c === "retail" ? 1 : 0 };
+    return verifier?.(un) ?? avertir?.(un) ?? null;
+  };
+
+  const appliquer = (e: EtatQuantite) => {
+    setCanal(e.canal);
+    setContenants(saisieDeQuantite(e.packages));
+    setDetail(saisieDeQuantite(e.loose));
+    setProposee(e.proposee);
+    setMotifVide(e.motifVide);
+    setRemplacer(true);
+  };
 
   // Réinitialisation à chaque ouverture : un reliquat de la saisie précédente
   // se fait valider sans être relu.
   useEffect(() => {
     if (!visible) return;
-    setContenants(initiale?.packages ? String(initiale.packages) : "");
-    setDetail(initiale?.loose ? String(initiale.loose) : "");
     // Un article vendu uniquement en gros ouvre sur son canal, sinon le premier
-    // chiffre frappé partirait au détail, qui lui est interdit.
-    setCanal(conditionnement?.packageOnly ? "package" : "retail");
+    // chiffre frappé partirait au détail, qui lui est interdit ; une ligne
+    // rouverte, sur le canal qu'elle emploie.
+    appliquer(
+      quantiteInitiale({
+        packaging: conditionnement,
+        initiale:
+          initiale && (initiale.packages > 0 || initiale.loose > 0) ? initiale : null,
+        alerteSiUn,
+      })
+    );
     setBorne(null);
     setDevise(deviseInitiale);
     setRemiseChoisie(remise?.initiale ?? 0);
@@ -174,19 +218,38 @@ export function SelecteurQuantite({
   if (!article) return null;
 
   const valeurCourante = canal === "package" ? contenants : detail;
+  /** La saisie devient celle du caissier : proposition, motif et remplacement tombent. */
   const poser = (v: string) => {
     setBorne(null);
+    setProposee(false);
+    setMotifVide(null);
+    setRemplacer(false);
     return canal === "package" ? setContenants(v) : setDetail(v);
   };
 
-  /** Accumulateur : chaque touche ajoute un chiffre, comme une caisse. */
+  /**
+   * Accumulateur : chaque touche ajoute un chiffre, comme une caisse - sauf la
+   * première après l'ouverture ou une bascule de canal, qui remplace la valeur.
+   */
   const frapper = (touche: string) => {
-    const r = frapperTouche(valeurCourante, touche);
+    const r = frapperTouche(remplacer ? "" : valeurCourante, touche);
     if (r.ok) return poser(r.valeur);
     if (r.motif) setBorne(r.motif);
   };
-  const effacer = () => poser(valeurCourante.slice(0, -1));
+  const effacer = () => poser(remplacer ? "" : valeurCourante.slice(0, -1));
   const raccourci = (n: number) => poser(String(n));
+  const choisirCanal = (c: Canal) => {
+    if (c === canal) return;
+    // ⚠ Une proposition intacte SUIT le canal : « 1 bouteille » proposée ne
+    // doit pas rester sous les « 2 casiers » tapés ensuite.
+    appliquer(
+      basculerCanal(
+        { canal, packages: saisie.packages, loose: saisie.loose, proposee, motifVide },
+        c,
+        alerteSiUn
+      )
+    );
+  };
 
   // `toBaseQuantity` du noyau, qui quantise : l'arithmétique écrite à la main
   // ici sortait `2 * 24 + 0,3` à `48.300000000000004`, et ce nombre s'affichait.
@@ -205,6 +268,8 @@ export function SelecteurQuantite({
   // L'avertissement ne paraît que s'il n'y a pas déjà un refus : deux encadrés
   // rouges pour un seul article feraient croire à deux problèmes.
   const alerte = rien || refus ? null : (avertir?.(saisie) ?? null);
+  // Rien n'est proposé : on dit pourquoi avant la moindre frappe.
+  const motifAffiche = rien && !refus ? motifVide : null;
 
   const motDetail = conditionnement?.retailWord ?? article.unit_name ?? "unité";
   const motContenant = conditionnement?.packageWord ?? "contenant";
@@ -259,14 +324,14 @@ export function SelecteurQuantite({
                 actif={canal === "package"}
                 titre={pluralizeUnit(motContenant, saisie.packages || 2)}
                 valeur={contenants}
-                onPress={() => setCanal("package")}
+                onPress={() => choisirCanal("package")}
               />
               {!conditionnement.packageOnly ? (
                 <Onglet
                   actif={canal === "retail"}
                   titre={pluralizeUnit(motDetail, saisie.loose || 2)}
                   valeur={detail}
-                  onPress={() => setCanal("retail")}
+                  onPress={() => choisirCanal("retail")}
                 />
               ) : null}
             </View>
@@ -345,6 +410,21 @@ export function SelecteurQuantite({
               <Text variant="bodySmall" className="flex-1 text-destructive">
                 {refus}
               </Text>
+            </View>
+          ) : null}
+
+          {motifAffiche ? (
+            <View className="mx-5 mt-3 flex-row items-start gap-2 rounded-xl bg-warning/10 px-4 py-3">
+              <Icon name="AlertTriangle" size={18} color="warning" />
+              <View className="flex-1">
+                <Text variant="bodySmall" className="text-warning">
+                  {motifAffiche}
+                </Text>
+                <Text variant="caption" className="mt-0.5 text-muted-foreground">
+                  {"Rien n'est proposé : tapez une quantité pour l'ajouter quand même, "}
+                  {"la vente ne pourra pas être encaissée."}
+                </Text>
+              </View>
             </View>
           ) : null}
 

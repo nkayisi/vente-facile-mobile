@@ -523,14 +523,25 @@ export async function articleParCodeBarres(
   // Le même catalogue que la grille : tout ce qui est vendable. Un scan qui
   // trouverait moins que la recherche ferait chercher à la main ce que le
   // lecteur vient de refuser.
-  const [lignes, ctx] = await Promise.all([
+  //
+  // ⚠ LE CODE-BARRES D'ABORD, LE SKU ENSUITE, comme `search-barcode/` du
+  // serveur : un QR imprimé par le marchand porte souvent le SKU, et les deux
+  // surfaces doivent trouver le MÊME article pour le même code.
+  const lu = code.trim();
+  if (!lu) return null;
+  const [parCode, ctx] = await Promise.all([
     base(warehouseId)
-      .where(and(vendable(), eq(products.barcode, code.trim())))
+      .where(and(vendable(), eq(products.barcode, lu)))
       .groupBy(products.id)
       .limit(1),
     contexteDe(warehouseId),
   ]);
-  return lignes[0] ? versArticle(lignes[0], ctx) : null;
+  if (parCode[0]) return versArticle(parCode[0], ctx);
+  const parSku = await base(warehouseId)
+    .where(and(vendable(), eq(products.sku, lu)))
+    .groupBy(products.id)
+    .limit(1);
+  return parSku[0] ? versArticle(parSku[0], ctx) : null;
 }
 
 /**

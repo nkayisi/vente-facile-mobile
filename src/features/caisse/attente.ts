@@ -19,7 +19,8 @@
  * │ UNE DÉPENSE EN FILE NE BOUGE PAS LE TIROIR, ET C'EST MESURÉ.            │
  * │                                                                          │
  * │ `create_expense` enregistre en BROUILLON et ne crée aucun mouvement :    │
- * │ seuls `approve` et `pay` appellent `_create_cash_movement_for_expense`.  │
+ * │ seul `pay` appelle `create_cash_movement_for_expense` - l'approbation    │
+ * │ ne sort plus rien, l'argent sort au paiement, de la caisse du payeur.    │
  * │ La compter dans le solde ferait sortir de la caisse un argent qui y est  │
  * │ encore. Elle est donc LISTÉE avec sa pastille d'envoi, et exclue de tout │
  * │ relevé de solde.                                                         │
@@ -31,6 +32,8 @@
  * bien réelle pendant des jours. La quarantaine, elle, n'y entre jamais : le
  * serveur a refusé, et le caissier a repris son argent.
  */
+import { dateDepuisJourISO } from "@/data/dates";
+import { deviseOuPrincipale } from "@/data/devise-principale";
 import { enAttenteParType, type EtatEnvoi } from "@/sync";
 
 /** Le corps d'un `cash_movement.create`, tel que `actes.ts` le met en file. */
@@ -100,6 +103,10 @@ const nombre = (v: string | undefined): number => {
  * rangerait au mauvais jour dans un cadran borné à aujourd'hui.
  */
 function date(brut: string | undefined, repli: Date | null): Date | null {
+  // Un JOUR (« 2026-11-20 ») se lit en minuit LOCAL : `new Date` le lirait en
+  // UTC, donc « 01:00 » à Kinshasa et la veille à l'ouest de Greenwich.
+  const jour = /^\d{4}-\d{2}-\d{2}$/.test(brut ?? "") ? dateDepuisJourISO(brut) : null;
+  if (jour) return jour;
   if (brut) {
     const d = new Date(brut);
     if (!Number.isNaN(d.getTime())) return d;
@@ -107,11 +114,42 @@ function date(brut: string | undefined, repli: Date | null): Date | null {
   return repli ?? null;
 }
 
+/**
+ * Le corps d'un `expense.pay`, tel que `actes.ts::transitionDepense` le met en
+ * file. `sortie_tiroir` n'est posé que si les billets quittent la caisse :
+ * paiement en espèces, et aucune sortie déjà faite à l'approbation.
+ */
+interface CorpsPaiementDepense {
+  expense: string;
+  sortie_tiroir?: { amount: string; currency: string; description: string };
+}
+
 export async function mouvementsEnFile(): Promise<MouvementEnFile[]> {
-  const ops = await enAttenteParType<CorpsMouvement>("cash_movement.create", {
-    avecBloquees: true,
-  });
-  return ops.map((o) => ({
+  const [ops, paiements] = await Promise.all([
+    enAttenteParType<CorpsMouvement>("cash_movement.create", { avecBloquees: true }),
+    // ┌──────────────────────────────────────────────────────────────────┐
+    // │ UNE DÉPENSE PAYÉE EN ESPÈCES A VIDÉ LE TIROIR, MÊME EN FILE.     │
+    // │                                                                  │
+    // │ L'argent sort au PAIEMENT, du tiroir de celui qui paie : le       │
+    // │ caissier vient de remettre les billets. Taire le paiement tant    │
+    // │ qu'il n'est pas parti laisserait un solde qui ne correspond plus  │
+    // │ à aucune liasse.                                                  │
+    // └──────────────────────────────────────────────────────────────────┘
+    enAttenteParType<CorpsPaiementDepense>("expense.pay", { avecBloquees: true }),
+  ]);
+  const sorties: MouvementEnFile[] = paiements
+    .filter((o) => o.payload.sortie_tiroir)
+    .map((o) => ({
+      id: `paiement-${o.payload.expense}`,
+      direction: "out" as const,
+      type: "expense",
+      description: o.payload.sortie_tiroir?.description ?? "",
+      montant: nombre(o.payload.sortie_tiroir?.amount),
+      devise: deviseOuPrincipale(o.payload.sortie_tiroir?.currency),
+      date: o.occurredAt ?? null,
+      envoi: o.envoi,
+    }));
+  return [...sorties, ...ops.map((o): MouvementEnFile => ({
     id: o.payload.id,
     // Le SENS vient du corps, jamais du signe du montant : le montant est
     // toujours positif, c'est l'acte qui porte la direction.
@@ -122,7 +160,7 @@ export async function mouvementsEnFile(): Promise<MouvementEnFile[]> {
     devise: o.payload.currency,
     date: date(o.payload.movement_date, o.occurredAt),
     envoi: o.envoi,
-  }));
+  }))];
 }
 
 export async function depensesEnFile(): Promise<DepenseEnFile[]> {

@@ -41,6 +41,7 @@ import {
   lireChamp,
   refusDeSaisie,
   saisiePrete,
+  skuDepuis,
 } from "@/features/inventaire/saisie-article";
 import {
   creationsReferentielEnAttente,
@@ -72,8 +73,29 @@ import {
  * une saisie.
  */
 export default function EcranArticle() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
-  if (!id) return <FormulaireArticle />;
+  const { id, nom, codeBarres, retour } = useLocalSearchParams<{
+    id?: string;
+    nom?: string;
+    codeBarres?: string;
+    retour?: string;
+  }>();
+  if (!id) {
+    // ┌────────────────────────────────────────────────────────────────────┐
+    // │ UNE RECHERCHE SANS RÉSULTAT OUVRE CET ÉCRAN PRÉ-REMPLI.            │
+    // │                                                                    │
+    // │ `nom` ou `codeBarres` : ce que le vendeur a déjà cherché ou scanné, │
+    // │ pour qu'il ne retape rien. `retour` : l'écran a été ouvert depuis  │
+    // │ un autre (le comptoir, une feuille), à qui il rend la main une fois │
+    // │ l'article créé. Pas d'ajout au panier : le vendeur revient le      │
+    // │ chercher, et le comptoir relit prix et stock comme pour tout autre. │
+    // └────────────────────────────────────────────────────────────────────┘
+    return (
+      <FormulaireArticle
+        prerempli={{ nom: nom ?? "", codeBarres: codeBarres ?? "" }}
+        rendreLaMain={retour === "1"}
+      />
+    );
+  }
   return <ModificationArticle id={id} />;
 }
 
@@ -121,19 +143,31 @@ function FormulaireArticle({
   initial,
   creationEnFile = null,
   envoiModification,
+  prerempli,
+  rendreLaMain = false,
 }: {
   fiche?: string;
   initial?: ValeursArticle;
   creationEnFile?: string | null;
   envoiModification?: EtatEnvoi;
+  /** Ce qu'une recherche vide a déjà donné (création seulement). */
+  prerempli?: { nom: string; codeBarres: string };
+  /** Rendre la main à l'écran d'origine au lieu d'ouvrir la fiche. */
+  rendreLaMain?: boolean;
 } = {}) {
   const toast = useToast();
   const money = useMonnaie();
   const enModification = !!fiche;
 
-  const [nom, setNom] = useState(initial?.nom ?? "");
-  const [sku, setSku] = useState(initial?.sku ?? "");
-  const [codeBarres, setCodeBarres] = useState(initial?.codeBarres ?? "");
+  const [nom, setNom] = useState(initial?.nom ?? prerempli?.nom ?? "");
+  // Un nom pré-rempli propose son SKU : sans lui le bouton resterait fermé
+  // sur un champ que le vendeur n'a aucune raison de connaître.
+  const [sku, setSku] = useState(
+    initial?.sku ?? (prerempli?.nom ? skuDepuis(prerempli.nom) : "")
+  );
+  const [codeBarres, setCodeBarres] = useState(
+    initial?.codeBarres ?? prerempli?.codeBarres ?? ""
+  );
   const [categorie, setCategorie] = useState<string | null>(initial?.categorie ?? null);
   const [marque, setMarque] = useState<string | null>(initial?.marque ?? null);
   const [unite, setUnite] = useState<string | null>(initial?.unite ?? null);
@@ -285,6 +319,14 @@ function FormulaireArticle({
       // ne transporte pas. Un échec ici ne perd PAS l'article, qui est en file.
       if (photo) await rangerPhoto(id, photo);
 
+      if (rendreLaMain) {
+        // ⚠ PAS la fiche : un article encore en file y serait « introuvable »
+        //   tant qu'il n'est pas redescendu. On rend la main à l'écran qui a
+        //   ouvert la création ; le vendeur y retrouve l'article dès l'envoi.
+        toast.succes("Article créé. Recherchez-le dès son envoi pour l'ajouter.");
+        router.back();
+        return;
+      }
       toast.succes(
         photo
           ? "Article créé. Il partira, photo comprise, à la prochaine synchronisation."
@@ -326,10 +368,24 @@ function FormulaireArticle({
               onChangeText={setSku}
               placeholder="EAU-50"
               autoCapitalize="characters"
+              trailing={
+                !enModification && nom.trim() ? (
+                  <Button variant="ghost" size="sm" onPress={() => setSku(skuDepuis(nom))}>
+                    Auto
+                  </Button>
+                ) : undefined
+              }
             />
           </FormField>
+          {/* Clavier ALPHANUMÉRIQUE : un Code 128 ou un QR n'est pas numérique,
+              et un pavé chiffré interdisait de saisir ce qu'on vient de scanner. */}
           <FormField label="Code-barres">
-            <Input value={codeBarres} onChangeText={setCodeBarres} keyboardType="numeric" />
+            <Input
+              value={codeBarres}
+              onChangeText={setCodeBarres}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
           </FormField>
           <FormField label="Catégorie">
             <ChampSelect

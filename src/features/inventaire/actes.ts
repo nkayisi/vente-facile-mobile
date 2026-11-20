@@ -583,11 +583,11 @@ export async function modificationsReferentielEnAttente(): Promise<
 
 /** Ce que le catalogue attend d'envoyer, par genre. */
 export async function catalogueEnAttente(): Promise<{
-  articles: { id: string; nom: string; sku: string }[];
+  articles: { id: string; nom: string; sku: string; codeBarres: string | null }[];
   referentiels: LotEnAttente;
 }> {
   const [articles, ...lots] = await Promise.all([
-    enAttenteParType<{ id: string; name: string; sku: string }>("product.create", {
+    enAttenteParType<{ id: string; name: string; sku: string; barcode?: string }>("product.create", {
       avecBloquees: true,
     }),
     ...GENRE_PAR_ACTE.flatMap(([, creation, modification]) =>
@@ -601,6 +601,7 @@ export async function catalogueEnAttente(): Promise<{
       id: o.payload.id,
       nom: o.payload.name,
       sku: o.payload.sku,
+      codeBarres: o.payload.barcode ?? null,
     })),
     referentiels: lotEnAttente(lots.flat()),
   };

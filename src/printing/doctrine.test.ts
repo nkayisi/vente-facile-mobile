@@ -220,6 +220,25 @@ describe("le logo atteint bien le document", () => {
     expect(corps.slice(0, fin)).not.toMatch(/await/);
   });
 
+  it("à défaut du logo de l'établissement, c'est celui de Vente Facile", () => {
+    const corps = ticket.slice(ticket.indexOf("export function chromeDeLaSession"));
+    const fin = corps.indexOf("\n}");
+    expect(corps.slice(0, fin)).toMatch(/logoCourant\(\)\s*\?\?\s*LOGO_PLATEFORME/);
+  });
+
+  it("le logo de la plateforme est une constante PURE, engendrée", () => {
+    // Il est importé par `ticket.ts`, que `ticket.test.ts` charge : un import de
+    // la base ou de React y casserait deux suites, comme `logo-courant.ts` l'a
+    // déjà fait.
+    const constante = readFileSync(join(SRC, "printing/logo-plateforme.ts"), "utf8");
+    const imports = [...constante.matchAll(/^\s*import[^;]*from\s+"([^"]+)"/gm)].map(
+      (m) => m[1]
+    );
+    expect(imports).toEqual(["@vente-facile/core/receipt"]);
+    expect(constante).toContain("FICHIER ENGENDRÉ");
+    expect(constante).toMatch(/dataUrl:\s*\n?\s*"data:image\/png;base64,/);
+  });
+
   it("l'état du logo reste PUR, et c'est une leçon payée", () => {
     // Première écriture : le hook vivait dans `logo-courant.ts`, donc ce
     // module importait `@/session/provider`, qui tire `@/db/client`, qui OUVRE

@@ -10,9 +10,9 @@ import { ActivityIndicator, FlatList, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
 import { formatDateTimeFr, formatTimeFr, litTousLesEntrepots } from "@vente-facile/core";
-import type { Saisie } from "@vente-facile/core/pos";
 
 import {
+  articleParCodeBarres,
   categoriesVendables,
   chercherArticles,
   diagnostiquerCatalogue,
@@ -37,7 +37,11 @@ import { arreteA } from "@/features/pos/verrou-inventaire";
 import { ouvrirSession, sessionOuverte, caissesDisponibles, type CaissePos, type SessionCaisse } from "@/features/pos/caisse";
 import { CarteArticle } from "@/features/pos/carte-article";
 import { FeuilleEncaissement } from "@/features/pos/feuille-encaissement";
-import { SelecteurQuantite } from "@/features/pos/selecteur-quantite";
+import { SelecteurDuComptoir } from "@/features/pos/selecteur-du-comptoir";
+import {
+  phraseDejaEnFile,
+  usePropositionCreation,
+} from "@/features/inventaire/use-proposition-creation";
 import { usePanier } from "@/features/pos/panier";
 import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
@@ -84,6 +88,23 @@ export default function Comptoir() {
   }, []);
 
   const entrepot = session?.warehouseId ?? null;
+
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ UN CODE EXACT VALIDÉ DANS LA RECHERCHE OUVRE LA SAISIE DE QUANTITÉ.  │
+  // │                                                                      │
+  // │ Les terminaux à lecteur intégré « tapent » le code puis valident :   │
+  // │ sans ce chemin, le scan y aboutissait à une grille filtrée d'un seul │
+  // │ article, qu'il fallait encore toucher. Un terme qui n'est pas un     │
+  // │ code exact ne fait rien de plus que la recherche.                    │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const validerTerme = async () => {
+    const code = terme.trim();
+    if (!code) return;
+    const article = await articleParCodeBarres(code, entrepot);
+    if (!article) return;
+    setTerme("");
+    setChoisi(article);
+  };
   // ┌──────────────────────────────────────────────────────────────────────┐
   // │ TOUT LE CATALOGUE VENDABLE ; LE STOCK EST CELUI DE LA CAISSE.       │
   // │                                                                      │
@@ -266,6 +287,7 @@ export default function Comptoir() {
           leading={<Icon name="Search" size={18} color="mutedForeground" />}
           autoCorrect={false}
           returnKeyType="search"
+          onSubmitEditing={() => void validerTerme()}
         />
       </View>
 
@@ -347,7 +369,7 @@ export default function Comptoir() {
           <ActivityIndicator />
         </View>
       ) : articles.length === 0 ? (
-        <GrilleVide diagnostic={diagnostic} />
+        <GrilleVide diagnostic={diagnostic} terme={terme} />
       ) : (
         <FlatList
           data={articles}
@@ -429,35 +451,8 @@ export default function Comptoir() {
         <FeuilleEncaissement onFermer={() => setEncaissement(false)} />
       ) : null}
 
-      <SelecteurQuantite
-        article={choisi}
-        visible={!!choisi}
-        onFermer={() => setChoisi(null)}
-        scellesDisponibles={choisi?.stock_packages}
-        vracDisponible={choisi?.stock_loose}
-        // La même liste que l'affichage converti : ce sont les devises de
-        // l'établissement, et annoncer dans une monnaie qu'il ne tient pas
-        // n'aurait aucun taux à appliquer.
-        devises={devisesPossibles}
-        deviseFacture={money.primaryCode}
-        // Le motif du refus s'AFFICHE, et le bouton se ferme. Il était calculé
-        // puis jeté : l'appui restait sans effet et sans explication.
-        verifier={(saisie: Saisie) => (choisi ? panier.verifier(choisi, saisie) : null)}
-        avertir={(saisie: Saisie) => (choisi ? panier.avertir(choisi, saisie) : null)}
-        onValider={(saisie: Saisie, devise?: string) => {
-          if (!choisi) return;
-          const refus = panier.verifier(choisi, saisie);
-          if (refus) return;
-          panier.envoyer({
-            type: "ajouter",
-            article: choisi,
-            saisie,
-            prix: Number(choisi.selling_price) || 0,
-            devise,
-          });
-          setChoisi(null);
-        }}
-      />
+      {/* Le même sélecteur que l'écran de scan, câblé une seule fois. */}
+      <SelecteurDuComptoir article={choisi} onFermer={() => setChoisi(null)} />
     </Screen>
   );
 }
@@ -485,8 +480,15 @@ export default function Comptoir() {
  * module pur qui le décide, jamais la prose - le message d'« aucun article en
  * vente » parle lui aussi de synchronisation, pour dire qu'elle est inutile.
  */
-function GrilleVide({ diagnostic }: { diagnostic: DiagnosticCatalogue | null }) {
+function GrilleVide({
+  diagnostic,
+  terme,
+}: {
+  diagnostic: DiagnosticCatalogue | null;
+  terme: string;
+}) {
   const { enCours, lancer } = useSynchronisation();
+  const proposer = usePropositionCreation();
 
   // Pas encore mesuré : on n'affirme aucune cause. Le cas ne dure qu'un
   // aller-retour, et inventer une explication en attendant est précisément ce
@@ -495,20 +497,24 @@ function GrilleVide({ diagnostic }: { diagnostic: DiagnosticCatalogue | null }) 
     return <EmptyState icon="Package" title="Aucun article à afficher" />;
   }
 
-  const { icone, titre, message, leveParSynchronisation } = messageGrilleVide(diagnostic);
+  const { icone, titre, message, leveParSynchronisation, proposeCreation } =
+    messageGrilleVide(diagnostic);
+  // Le panier survit à la création : `PanierProvider` vit dans le layout du
+  // groupe, pas dans cet écran, et la pile garde le comptoir monté.
+  const creation = proposeCreation ? proposer(terme) : null;
 
   return (
     <EmptyState
       icon={icone}
       title={titre}
-      message={message}
+      message={creation?.dejaEnFile ? phraseDejaEnFile(creation.dejaEnFile) : message}
       action={
         leveParSynchronisation
           ? {
               label: enCours ? "Synchronisation…" : "Synchroniser",
               onPress: () => void lancer("bandeau"),
             }
-          : undefined
+          : (creation?.action ?? undefined)
       }
     />
   );

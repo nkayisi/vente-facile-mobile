@@ -547,3 +547,34 @@ describe("La monnaie rendue garde la devise des billets rendus", () => {
     expect(t.changeCurrency).toBeUndefined();
   });
 });
+
+describe("Le logo du reçu", () => {
+  // `chromeDeLaSession` lit l'état du logo sans attendre : on le pose à la main.
+  const { chromeDeLaSession } = jest.requireActual("./ticket") as typeof import("./ticket");
+  const { poserLogo, oublierLeLogo } = jest.requireActual(
+    "@/printing/logo-courant"
+  ) as typeof import("@/printing/logo-courant");
+  const { LOGO_PLATEFORME } = jest.requireActual(
+    "@/printing/logo-plateforme"
+  ) as typeof import("@/printing/logo-plateforme");
+
+  afterEach(() => oublierLeLogo());
+
+  it("sans logo d'établissement, le reçu porte celui de Vente Facile", () => {
+    oublierLeLogo();
+    expect(chromeDeLaSession(null).org.logo).toBe(LOGO_PLATEFORME);
+  });
+
+  it("le logo de l'établissement, une fois chargé, prime", () => {
+    const logo = { dataUrl: "data:image/png;base64,AAA", format: "PNG" as const, aspectRatio: 1 };
+    poserLogo("/media/logo.png", logo);
+    expect(chromeDeLaSession(null).org.logo).toBe(logo);
+  });
+
+  it("le logo de la plateforme est un PNG au rapport mesuré", () => {
+    expect(LOGO_PLATEFORME.format).toBe("PNG");
+    expect(LOGO_PLATEFORME.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
+    expect(LOGO_PLATEFORME.aspectRatio).toBeGreaterThan(0.5);
+    expect(LOGO_PLATEFORME.aspectRatio).toBeLessThan(1);
+  });
+});

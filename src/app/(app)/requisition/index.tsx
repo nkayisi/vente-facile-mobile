@@ -38,7 +38,12 @@ import {
   type FiltrePerimetre,
 } from "@/features/perimetre/filtre-perimetre";
 import { usePerimetre } from "@/features/perimetre/use-perimetre";
-import { FeuilleNouvelleRequisition } from "@/features/stock/feuille-requisition";
+import {
+  BROUILLON_REQUISITION,
+  FeuilleNouvelleRequisition,
+  type BrouillonRequisition,
+} from "@/features/stock/feuille-requisition";
+import { useFeuilleAvecBrouillon } from "@/features/brouillons/use-feuille-avec-brouillon";
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, BoutonFiltres, Chip, ChipRow, DataList, DataRow, Fab,
@@ -66,7 +71,8 @@ export default function Requisitions() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
-  const [feuille, setFeuille] = useState(false);
+  // La feuille se rouvre sur son brouillon au retour d'une création d'article.
+  const feuille = useFeuilleAvecBrouillon<BrouillonRequisition>(BROUILLON_REQUISITION);
 
   // ENTREPÔT SEUL : une réquisition a bien un auteur côté serveur, mais le
   // filtre « Utilisateur » ne borne aucune lecture ici - `requisitions` n'a
@@ -226,17 +232,18 @@ export default function Requisitions() {
         }}
       />
       {can("requisitions.create") ? (
-        <Fab icon="Plus" label="Nouvelle réquisition" onPress={() => setFeuille(true)} />
+        <Fab icon="Plus" label="Nouvelle réquisition" onPress={feuille.ouvrir} />
       ) : null}
 
       {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
           formulaire vierge, sans remise à zéro à tenir en phase avec les champs
           qu'on ajoutera. */}
-      {feuille ? (
+      {feuille.ouverte ? (
         <FeuilleNouvelleRequisition
-          onFermer={() => setFeuille(false)}
+          brouillon={feuille.brouillon}
+          onFermer={feuille.fermer}
           onCree={(id) => {
-            setFeuille(false);
+            feuille.fermer();
             router.push(`/requisition/${id}`);
           }}
         />

@@ -19,15 +19,52 @@ import { resolve } from "node:path";
 import { MENU } from "./menu";
 
 const SIDEBAR = resolve(__dirname, "../../../../frontend/components/layout/sidebar.tsx");
+const REGLES = resolve(__dirname, "../../../../frontend/lib/navigation/regles-de-route.ts");
 
 interface EntreeWeb {
   label: string;
   icon: string;
-  permission: string | null;
+  /** Ce que la PAGE exige ; un tableau quand l'une de plusieurs suffit. */
+  permission: string | string[] | null;
+}
+
+interface RegleWeb {
+  prefix: string;
+  permission: string | string[];
+}
+
+/**
+ * Les règles de route du back-office : `prefix` → permission.
+ *
+ * ⚠ LE MENU WEB NE PORTE PLUS SA PERMISSION (2026-11-20) : il demande à cette
+ * table ce que la page ouvre. Ce test lisait `permission:` dans les entrées du
+ * menu, et ne trouvait plus RIEN - zéro entrée, donc aucune comparaison.
+ */
+function lireRegles(source: string): RegleWeb[] {
+  const debut = source.indexOf("const DASHBOARD_ROUTE_RULES");
+  if (debut === -1) throw new Error("`DASHBOARD_ROUTE_RULES` introuvable");
+  const bloc = source.slice(debut, source.indexOf("\n];", debut));
+  const regles: RegleWeb[] = [];
+  for (const m of bloc.matchAll(/\{\s*prefix:\s*"([^"]+)"([^}]*)\}/g)) {
+    const seule = m[2].match(/permission:\s*"([^"]+)"/)?.[1];
+    const plusieurs = m[2].match(/anyPermissions:\s*\[([^\]]*)\]/)?.[1];
+    const liste = plusieurs ? [...plusieurs.matchAll(/"([^"]+)"/g)].map((x) => x[1]) : null;
+    if (seule) regles.push({ prefix: m[1], permission: seule });
+    else if (liste) regles.push({ prefix: m[1], permission: liste });
+  }
+  return regles;
+}
+
+/** La règle du plus long préfixe, comme `regleDeRoute` du back-office. */
+function permissionDeLaPage(href: string, regles: RegleWeb[]): string | string[] | null {
+  const r = [...regles]
+    .sort((a, b) => b.prefix.length - a.prefix.length)
+    .find((x) => href.startsWith(x.prefix));
+  return r ? r.permission : null;
 }
 
 /** Extrait les objets du tableau `menuItems` de la barre latérale. */
-function lireSidebar(source: string): EntreeWeb[] {
+function lireSidebar(source: string, regles: RegleWeb[]): EntreeWeb[] {
   const debut = source.indexOf("const menuItems = [");
   if (debut === -1) throw new Error("`menuItems` introuvable dans sidebar.tsx");
   const fin = source.indexOf("\n];", debut);
@@ -38,9 +75,9 @@ function lireSidebar(source: string): EntreeWeb[] {
   for (const b of blocs) {
     const label = b.match(/label:\s*"([^"]+)"/)?.[1];
     const icon = b.match(/icon:\s*([A-Za-z0-9]+)/)?.[1];
-    const perm = b.match(/permission:\s*(null|"([^"]+)")/);
-    if (!label || !icon || !perm) continue;
-    entrees.push({ label, icon, permission: perm[1] === "null" ? null : perm[2] });
+    const href = b.match(/href:\s*"([^"]+)"/)?.[1];
+    if (!label || !icon || !href) continue;
+    entrees.push({ label, icon, permission: permissionDeLaPage(href, regles) });
   }
   return entrees;
 }
@@ -81,7 +118,10 @@ describe("parité du menu avec le back-office", () => {
     return;
   }
 
-  const webBrut = lireSidebar(readFileSync(SIDEBAR, "utf8"));
+  const webBrut = lireSidebar(
+    readFileSync(SIDEBAR, "utf8"),
+    lireRegles(readFileSync(REGLES, "utf8"))
+  );
   const web = webBrut.filter((e) => !(e.label in SECTIONS_WEB_SEULES));
 
   it("porte les mêmes entrées, dans le même ordre", () => {
@@ -116,6 +156,13 @@ describe("parité du menu avec le back-office", () => {
   });
 
   it("garde les mêmes permissions", () => {
-    expect(MENU.map((e) => e.permission)).toEqual(web.map((e) => e.permission));
+    // Une page ouverte par « l'une de plusieurs » permissions (les contacts)
+    // est à parité si le terminal en garde l'une.
+    const ecarts = MENU.map((e, i) => {
+      const w = web[i]?.permission ?? null;
+      const ok = Array.isArray(w) ? e.permission !== null && w.includes(e.permission) : e.permission === w;
+      return ok ? null : `${e.label} : terminal ${e.permission ?? "aucune"}, back-office ${JSON.stringify(w)}`;
+    }).filter(Boolean);
+    expect(ecarts).toEqual([]);
   });
 });

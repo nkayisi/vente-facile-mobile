@@ -22,6 +22,7 @@ import {
   loyaltyDiscount,
   maxGlobalDiscount,
   maxUsableCredit,
+  monnaieARendre,
   tendersIn,
   saleCurrencyTotals,
   totauxParDevise,
@@ -357,10 +358,16 @@ export function PanierProvider({ children }: { children: ReactNode }) {
       factureBrute,
       payeFacture,
       restantFacture: Math.max(0, devises.round(-excedent, deviseFacture)),
-      monnaie:
-        excedent > MONEY_EPS
-          ? devises.convertMoney(excedent, deviseFacture, deviseMonnaie)
-          : 0,
+      // Depuis les billets remis, un seul arrondi : la règle du serveur. Le
+      // surplus en devise de facture, arrondi au centime puis reconverti,
+      // rendait 377 499 FC sur 575 $ réglés 1 700 000 FC.
+      monnaie: monnaieARendre({
+        tenders: etat.reglements,
+        total: totalFacture,
+        invoiceCurrency: deviseFacture,
+        changeCurrency: deviseMonnaie,
+        currencies: devises,
+      }),
       cagnotte,
       cagnotteMax: maxUsableCredit(brut.total, cagnotte, programme),
       detteEnAttente: dettePrimaire,

@@ -34,17 +34,17 @@
  * ferait diverger le comptage du soir.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ LE REÇU SORT AU COMPTOIR, SOUS UN NUMÉRO DÉFINITIF.                     │
+ * │ LA DEMANDE SORT AU COMPTOIR, SOUS UN NUMÉRO DÉFINITIF.                  │
  * │                                                                          │
- * │ Le back-office imprime aussitôt, avec la référence que le serveur vient  │
- * │ de rendre. Hors ligne il n'y a pas de serveur : le terminal alloue donc  │
- * │ son numéro dans une série dense par appareil, et le serveur le reprend.  │
- * │ C'est le seul moyen de remettre une pièce signable à quelqu'un qui       │
- * │ repart tout de suite.                                                    │
+ * │ Aucun argent ne sort à la saisie : la dépense naît en brouillon, et     │
+ * │ c'est le PAIEMENT qui sort les billets et imprime le reçu (depuis la    │
+ * │ fiche). Ce qui sort ici est une demande, qui le dit sur le papier.       │
+ * │ Hors ligne il n'y a pas de serveur : le terminal alloue son numéro dans │
+ * │ une série dense par appareil, et le serveur le reprend. La demande et le │
+ * │ reçu qui suivra portent ce même numéro.                                  │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { useMemo, useState } from "react";
-import { formatDateTimeFr } from "@vente-facile/core";
 
 import { categoriesDepense, toutesCategoriesCaisse } from "@/data/caisse";
 import { jourISO } from "@/data/dates";
@@ -63,7 +63,8 @@ import { libelleDuVerrou } from "@/features/perimetre/filtre-perimetre";
 import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import { moyensDePaiement } from "@/features/pos/donnees";
 import { chromeDeLaSession } from "@/features/pos/ticket";
-import { enregistrerEtImprimer } from "@/printing/jobs";
+import { demandeDeDepense } from "@/features/caisse/papiers-depense";
+import { imprimerDemandeDeDepense } from "@/printing/jobs";
 import { useSession } from "@/session/provider";
 import {
   Banner, Button, ChampDate, ChampMontant, Chip, ChipRow, DeclencheurSelect,
@@ -183,34 +184,29 @@ export function FeuilleNouvelleDepense({
       // ┌──────────────────────────────────────────────────────────────────┐
       // │ ON IMPRIME APRÈS L'ENREGISTREMENT, comme le back-office.         │
       // │                                                                  │
-      // │ C'est le moment où l'argent sort du tiroir, et où le bénéficiaire│
-      // │ est encore devant le comptoir pour signer. Un échec d'impression │
-      // │ ne défait PAS la dépense : elle est enregistrée, et sa fiche     │
-      // │ porte un bouton de réimpression sous le même numéro.             │
+      // │ La DEMANDE, pas le reçu : rien n'est encore sorti du tiroir. Elle│
+      // │ ne se range pas (doctrine de la proforma : elle ne prouve aucune │
+      // │ sortie), et se réimprime depuis la fiche. Un échec d'impression  │
+      // │ ne défait PAS la dépense.                                        │
       // └──────────────────────────────────────────────────────────────────┘
       try {
-        await enregistrerEtImprimer({
-          kind: "expense",
-          documentNumber: reference,
-          label: description.trim() || reference,
-          donnees: {
-            kind: "expense",
-            number: reference,
-            date: formatDateTimeFr(new Date()),
+        await imprimerDemandeDeDepense(
+          demandeDeDepense({
+            reference,
             chrome: chromeDeLaSession(snapshot),
-            cashierName: snapshot?.user.full_name,
-            category: (categories ?? []).find((c) => c.id === categorie)?.nom,
-            payee: beneficiaire.trim() || undefined,
-            paymentMethod: (moyens ?? []).find((m) => m.id === methode)?.name,
-            amount: somme,
-            currency: devise,
-            description: description.trim() || undefined,
-          },
-        });
-        toast.succes(`Dépense ${reference} enregistrée. Reçu envoyé à l'imprimante.`);
+            demandeur: snapshot?.user.full_name,
+            categorie: (categories ?? []).find((c) => c.id === categorie)?.nom,
+            beneficiaire: beneficiaire.trim(),
+            montant: somme,
+            devise,
+            description: description.trim(),
+            le: new Date(),
+          })
+        );
+        toast.succes(`Dépense ${reference} enregistrée. Demande envoyée à l'imprimante.`);
       } catch {
         toast.succes(
-          `Dépense ${reference} enregistrée. Le reçu n'a pas pu être imprimé : réessayez depuis sa fiche.`
+          `Dépense ${reference} enregistrée. La demande n'a pas pu être imprimée : réessayez depuis sa fiche.`
         );
       }
       onCree(id, reference);
@@ -403,10 +399,11 @@ export function FeuilleNouvelleDepense({
       </FormField>
 
       <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
-        Enregistrer et imprimer le reçu
+        Enregistrer et imprimer la demande
       </Button>
       <Text variant="caption">
-        Cette dépense sort de la caisse : elle entrera dans le rapport de caisse
+        La dépense part en brouillon. L&apos;argent sortira de la caisse au paiement,
+        contre le reçu de dépense : c&apos;est lui qui entre dans le rapport de caisse
         et dans le solde attendu à la clôture.
       </Text>
     </Sheet>

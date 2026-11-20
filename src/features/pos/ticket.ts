@@ -36,6 +36,7 @@ import { dateCourteFr, dateDepuisJourISO } from "@/data/dates";
 
 import type { EtatPanier, LignePanier } from "./etat-panier";
 import { logoCourant } from "@/printing/logo-courant";
+import { LOGO_PLATEFORME } from "@/printing/logo-plateforme";
 
 /**
  * « 2 casiers + 3 bouteilles », ce que le client emporte réellement.
@@ -83,8 +84,12 @@ export function chromeDeLaSession(snapshot: SessionSnapshot | null): ReceiptChro
     org: {
       // Le logo est chargé au démarrage et lu sans attente : le rendre
       // asynchrone ici ferait attendre le premier ticket devant un client.
-      // `null` tant qu'il n'y en a pas, et le bloc disparaît.
-      logo: logoCourant() ?? undefined,
+      //
+      // UN REÇU PORTE TOUJOURS UN LOGO : celui de l'établissement s'il est
+      // chargé, sinon celui de Vente Facile - que le marchand n'en ait pas, ou
+      // que le sien n'ait pas pu descendre (terminal démarré sans réseau). Le
+      // back-office applique la même règle, avec le même dessin.
+      logo: logoCourant() ?? LOGO_PLATEFORME,
       name: org?.name ?? "Vente Facile",
       address: org?.address,
       city: org?.city,

@@ -196,6 +196,16 @@ export async function cloturerSession(
   notes: string
 ): Promise<string> {
   const id = Crypto.randomUUID();
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LA CLÔTURE ATTEND LES PAIEMENTS DE DÉPENSE ENCORE EN FILE.           │
+  // │                                                                      │
+  // │ Un paiement en espèces se rattache, au rejeu, à la caisse OUVERTE de │
+  // │ celui qui paie. Rejoué après la clôture, il ne trouverait plus de    │
+  // │ caisse et partirait en quarantaine, l'argent étant pourtant sorti -  │
+  // │ et le Z, déjà imprimé, ne le compterait pas. Les paiements en file   │
+  // │ partent donc AVANT la clôture.                                       │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const paiements = await enAttenteParType<{ expense: string }>("expense.pay");
   await enqueue(id, "register_session.close", {
     id,
     session: sessionId,
@@ -207,7 +217,7 @@ export async function cloturerSession(
       amount: String(c.montant),
     })),
     notes,
-  });
+  }, { dependsOn: paiements.map((o) => o.id) });
   return id;
 }
 
@@ -233,6 +243,20 @@ export type ActeDepense =
   | "expense.pay"
   | "expense.cancel";
 
+/** Ce que porte un paiement de dépense, au-delà de la dépense elle-même. */
+export interface PaiementDepense {
+  /** Le moyen de paiement choisi, `null` pour des espèces sans moyen noté. */
+  methode: string | null;
+  reference?: string;
+  /**
+   * La sortie de tiroir que ce paiement fait, ou `null` s'il n'en fait pas :
+   * hors espèces, ou quand l'approbation l'a déjà faite (dépense approuvée
+   * avant que la sortie ne passe au paiement). Elle entre au solde local et à
+   * l'attendu de la clôture tant que l'acte est en file.
+   */
+  sortie: { montant: number; devise: string; description: string } | null;
+}
+
 /**
  * Une transition de dépense.
  *
@@ -241,13 +265,26 @@ export type ActeDepense =
 export async function transitionDepense(
   acte: ActeDepense,
   depenseId: string,
-  motif = ""
+  motif = "",
+  paiement?: PaiementDepense
 ): Promise<string> {
   const id = Crypto.randomUUID();
   await enqueue(id, acte, {
     id,
     expense: depenseId,
     ...(motif.trim() ? { reason: motif.trim() } : {}),
+    ...(paiement?.methode ? { payment_method: paiement.methode } : {}),
+    ...(paiement?.reference?.trim() ? { payment_reference: paiement.reference.trim() } : {}),
+    // Ignorée par le serveur : le terminal la relit pour son propre tiroir.
+    ...(paiement?.sortie
+      ? {
+          sortie_tiroir: {
+            amount: String(paiement.sortie.montant),
+            currency: paiement.sortie.devise,
+            description: paiement.sortie.description,
+          },
+        }
+      : {}),
   });
   return id;
 }

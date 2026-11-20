@@ -23,28 +23,40 @@ import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { formatNumberFr } from "@vente-facile/core";
 
+import { chercherArticlesPourTransfert } from "@/data/articles";
 import { useLecture } from "@/data/live";
 import { lireNombre } from "@/data/nombres";
 import { lignesProposees, type LigneProposee } from "@/data/requisitions";
-import { creerRequisition, type LigneSaisie } from "@/features/stock/actes-requisition";
+import { garderBrouillon } from "@/features/brouillons/brouillon-feuille";
+import { CreationDepuisRecherche } from "@/features/inventaire/creation-depuis-recherche";
+import { usePropositionCreation } from "@/features/inventaire/use-proposition-creation";
+import { creerRequisition } from "@/features/stock/actes-requisition";
+import {
+  composerBordereau,
+  filtrerAffichage,
+  ligneAjoutee,
+  lignesRetenues,
+  nombreDeRefus,
+  type LigneRequise,
+} from "@/features/stock/bordereau-requisition";
+import { afficherPartage } from "@/features/stock/lignes-conditionnees";
 import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import { useSession } from "@/session/provider";
 import {
-  Banner, Button, Checkbox, DeclencheurSelect, Divider, EmptyState, FormField,
-  Input, ListeChoix, SearchInput, Sheet, Spinner, Text, useToast,
+  Banner, Button, Checkbox, DataRow, DeclencheurSelect, Divider, EmptyState, FormField,
+  IconButton, Input, ListeChoix, SearchInput, Sheet, Spinner, Text, useToast,
   type DemandeChoix,
 } from "@/ui";
 
-/** Une ligne du bordereau, telle qu'elle se relit sur le formulaire. */
-interface LigneRequise extends LigneSaisie {
-  nom: string;
-  sku: string | null;
-  unite: string | null;
-  stockAffiche: string;
-  seuil: number;
-  /** La saisie BRUTE : le champ garde ce qui est tapé, pas ce qu'on en déduit. */
-  saisie: string;
-  retenue: boolean;
+/** La clé du brouillon : la feuille se rouvre telle quelle après une création. */
+export const BROUILLON_REQUISITION = "requisition";
+
+/** Ce que la feuille garde le temps d'aller créer un article. */
+export interface BrouillonRequisition {
+  entrepot: string | null;
+  notes: string;
+  rupturesSeules: boolean;
+  lignes: LigneRequise[];
 }
 
 /** Ce que `lireNombre` refuse, dit dans les mots de cet écran. */
@@ -64,10 +76,13 @@ function lire(saisie: string): { valeur: number | null; erreur?: string } {
 export function FeuilleNouvelleRequisition({
   onFermer,
   onCree,
+  brouillon = null,
 }: {
   onFermer: () => void;
   /** La réquisition est au journal : à l'appelant d'ouvrir sa fiche. */
   onCree: (id: string) => void;
+  /** La saisie d'avant une création d'article, à reprendre telle quelle. */
+  brouillon?: BrouillonRequisition | null;
 }) {
   const toast = useToast();
   const { snapshot } = useSession();
@@ -76,13 +91,18 @@ export function FeuilleNouvelleRequisition({
   // tous ») ou désactivé ferait revenir la demande en quarantaine.
   const { actionnables: accessibles, parDefaut } = useEntrepotsDuMembre();
 
-  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
+  const [entrepotChoisi, setEntrepotChoisi] = useState<string | null>(brouillon?.entrepot ?? null);
+  const [notes, setNotes] = useState(brouillon?.notes ?? "");
   const [recherche, setRecherche] = useState("");
-  const [rupturesSeules, setRupturesSeules] = useState(false);
-  const [lignes, setLignes] = useState<LigneRequise[]>([]);
+  const [rupturesSeules, setRupturesSeules] = useState(brouillon?.rupturesSeules ?? false);
+  const [lignes, setLignes] = useState<LigneRequise[]>(brouillon?.lignes ?? []);
   const [choix, setChoix] = useState<DemandeChoix | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  // Le panneau « Ajouter un article », dans la MÊME feuille : `Sheet` est un
+  // `Modal`, on n'en empile pas un second.
+  const [ajout, setAjout] = useState(false);
+  const [termeAjout, setTermeAjout] = useState("");
+  const proposer = usePropositionCreation();
 
   /**
    * Le défaut se DÉRIVE, il ne se pose pas dans un effet - motif de
@@ -93,16 +113,30 @@ export function FeuilleNouvelleRequisition({
    */
   const entrepot = entrepotChoisi ?? parDefaut;
 
+  // La proposition se lit ENTIÈRE : la recherche ne filtre que l'affichage.
   const chargerProposition = useCallback(
     () =>
       entrepot
-        ? lignesProposees(entrepot, { rupturesSeules, recherche })
+        ? lignesProposees(entrepot, { rupturesSeules })
         : Promise.resolve([] as LigneProposee[]),
-    [entrepot, rupturesSeules, recherche]
+    [entrepot, rupturesSeules]
   );
   const { donnees: proposition, chargement } = useLecture(chargerProposition, {
     tables: ["stocks", "products"],
-    deps: [entrepot, rupturesSeules, recherche],
+    deps: [entrepot, rupturesSeules],
+  });
+
+  // Le catalogue n'est lu QUE pendant que le panneau d'ajout est ouvert.
+  const chargerCatalogue = useCallback(
+    () =>
+      ajout && entrepot
+        ? chercherArticlesPourTransfert(entrepot, termeAjout, 30)
+        : Promise.resolve([]),
+    [ajout, entrepot, termeAjout]
+  );
+  const { donnees: trouves } = useLecture(chargerCatalogue, {
+    tables: ["products", "stocks"],
+    deps: [ajout, entrepot, termeAjout],
   });
 
   /**
@@ -117,24 +151,11 @@ export function FeuilleNouvelleRequisition({
    * │ ARTICLE, et c'est la saisie qui gagne.                               │
    * └──────────────────────────────────────────────────────────────────────┘
    */
-  const bordereau = useMemo<LigneRequise[]>(() => {
-    const saisies = new Map(lignes.map((l) => [l.produit, l]));
-    return (proposition ?? []).map((p) => {
-      const deja = saisies.get(p.produitId);
-      if (deja) return deja;
-      return {
-        produit: p.produitId,
-        nom: p.produit,
-        sku: p.sku,
-        unite: p.unite,
-        stockAffiche: p.stockAffiche,
-        seuil: p.seuil,
-        quantite: p.suggere,
-        saisie: String(p.suggere),
-        retenue: true,
-      };
-    });
-  }, [proposition, lignes]);
+  const bordereau = useMemo(
+    () => composerBordereau(proposition ?? [], lignes),
+    [proposition, lignes]
+  );
+  const affichees = filtrerAffichage(bordereau, recherche);
 
   const modifier = useCallback((produitId: string, patch: Partial<LigneRequise>) => {
     setLignes((avant) => {
@@ -145,10 +166,26 @@ export function FeuilleNouvelleRequisition({
     });
   }, [bordereau]);
 
-  const retenues = bordereau.filter((l) => l.retenue && l.quantite > 0);
+  const retirer = useCallback((produitId: string) => {
+    setLignes((avant) => avant.filter((l) => !(l.ajoutee && l.produit === produitId)));
+  }, []);
+
+  const retenues = lignesRetenues(bordereau);
+  const refus = nombreDeRefus(bordereau);
+
+  /** Créer un article : la feuille garde sa saisie, se ferme, et se rouvrira. */
+  const avantCreation = useCallback(() => {
+    garderBrouillon<BrouillonRequisition>(BROUILLON_REQUISITION, {
+      entrepot,
+      notes,
+      rupturesSeules,
+      lignes,
+    });
+    onFermer();
+  }, [entrepot, notes, rupturesSeules, lignes, onFermer]);
 
   const enregistrer = useCallback(async () => {
-    if (!entrepot || retenues.length === 0) return;
+    if (!entrepot || retenues.length === 0 || refus > 0) return;
     setEnvoi(true);
     try {
       const { id, reference } = await creerRequisition({
@@ -169,7 +206,7 @@ export function FeuilleNouvelleRequisition({
     } finally {
       setEnvoi(false);
     }
-  }, [entrepot, retenues, notes, snapshot, toast, onCree]);
+  }, [entrepot, retenues, refus, notes, snapshot, toast, onCree]);
 
   if (choix) {
     return (
@@ -188,6 +225,74 @@ export function FeuilleNouvelleRequisition({
     );
   }
 
+  if (ajout) {
+    const fermerAjout = () => {
+      setAjout(false);
+      setTermeAjout("");
+    };
+    return (
+      <Sheet ouvert titre="Ajouter un article" onFermer={fermerAjout} retour={fermerAjout}>
+        <View className="gap-3">
+          <SearchInput
+            valeur={termeAjout}
+            onChange={setTermeAjout}
+            placeholder="Nom, code ou code-barres..."
+          />
+          {(trouves ?? []).length === 0 ? (
+            termeAjout.trim() ? (
+              <CreationDepuisRecherche
+                creation={proposer(termeAjout, { avant: avantCreation })}
+              />
+            ) : (
+              <Text variant="caption">
+                Un article qui n&apos;est pas sous son seuil, ou jamais reçu dans ce dépôt.
+              </Text>
+            )
+          ) : (
+            <View>
+              {(trouves ?? []).map((a) => {
+                const deja = bordereau.some((l) => l.produit === a.id);
+                return (
+                  <DataRow
+                    key={a.id}
+                    principal={a.nom}
+                    secondaire={deja ? "Déjà dans la demande" : a.sku}
+                    chevron={false}
+                    valeur={
+                      <Text variant="caption" numeric>
+                        {/* `null` n'est PAS zéro : aucun rayon ici. */}
+                        {a.rayon ? afficherPartage(a.conditionnement, a.rayon) : "Aucun stock ici"}
+                      </Text>
+                    }
+                    onPress={() => {
+                      // Un article déjà au bordereau n'y entre pas deux fois :
+                      // le serveur refuserait la demande entière.
+                      if (!deja) {
+                        setLignes((avant) => [
+                          ...avant,
+                          ligneAjoutee({
+                            produit: a.id,
+                            nom: a.nom,
+                            sku: a.sku,
+                            unite: a.conditionnement?.retailWord ?? null,
+                            stockAffiche: a.rayon
+                              ? afficherPartage(a.conditionnement, a.rayon)
+                              : "aucun stock ici",
+                          }),
+                        ]);
+                      }
+                      fermerAjout();
+                    }}
+                  />
+                );
+              })}
+            </View>
+          )}
+        </View>
+      </Sheet>
+    );
+  }
+
   return (
     <Sheet
       ouvert
@@ -196,7 +301,9 @@ export function FeuilleNouvelleRequisition({
       pied={
         <View className="gap-2">
           <Text variant="caption" className="text-muted-foreground">
-            {retenues.length === 0
+            {refus > 0
+              ? `${refus} ${refus > 1 ? "quantités ne se lisent pas" : "quantité ne se lit pas"} : corrigez-${refus > 1 ? "les" : "la"} avant d'enregistrer.`
+              : retenues.length === 0
               ? "Cochez au moins un article à demander."
               : `${retenues.length} ${retenues.length > 1 ? "articles" : "article"} à demander`}
           </Text>
@@ -204,7 +311,7 @@ export function FeuilleNouvelleRequisition({
             fullWidth
             size="lg"
             onPress={() => void enregistrer()}
-            disabled={retenues.length === 0 || !entrepot || envoi}
+            disabled={retenues.length === 0 || refus > 0 || !entrepot || envoi}
           >
             {envoi ? "Enregistrement…" : "Enregistrer la demande"}
           </Button>
@@ -266,24 +373,32 @@ export function FeuilleNouvelleRequisition({
           accessibilityHint="Ce qu'on emporte au marché quand on n'a pas le temps de tout racheter."
         />
 
+        {/* Un article hors des suggestions : stock suffisant, ou jamais reçu
+            dans ce dépôt. Le serveur l'accepte, la feuille le permet. */}
+        {entrepot ? (
+          <Button variant="outline" leftIcon="Plus" onPress={() => setAjout(true)}>
+            Ajouter un article
+          </Button>
+        ) : null}
+
         <Divider />
 
         {chargement && bordereau.length === 0 ? (
           <View className="items-center py-8">
             <Spinner />
           </View>
-        ) : bordereau.length === 0 ? (
+        ) : affichees.length === 0 ? (
           <EmptyState
             variante="carte"
-            title="Rien ne manque"
+            title={recherche ? "Aucune ligne ne correspond" : "Rien ne manque"}
             message={
               recherche
-                ? "Aucun article sous son seuil ne correspond à votre recherche."
-                : "Aucun article n'est sous son point de réapprovisionnement dans ce dépôt."
+                ? "La recherche ne filtre que l'affichage : les lignes cochées partent quand même."
+                : "Aucun article n'est sous son point de réapprovisionnement dans ce dépôt. Ajoutez-en un ci-dessus."
             }
           />
         ) : (
-          bordereau.map((l, i) => (
+          affichees.map((l, i) => (
             <View key={l.produit}>
               {i > 0 ? <Divider /> : null}
               <View className="gap-2 py-3">
@@ -302,9 +417,19 @@ export function FeuilleNouvelleRequisition({
                         et c'est ce que le document imprimera. Le taire ferait
                         cocher à l'aveugle. */}
                     <Text variant="caption" className="text-muted-foreground">
-                      {`En rayon ${l.stockAffiche} · seuil ${formatNumberFr(l.seuil, 0)}`}
+                      {l.seuil == null
+                        ? `En rayon ${l.stockAffiche} · ajouté à la main`
+                        : `En rayon ${l.stockAffiche} · seuil ${formatNumberFr(l.seuil, 0)}`}
                     </Text>
                   </View>
+                  {l.ajoutee ? (
+                    <IconButton
+                      name="X"
+                      variant="ghost"
+                      label={`Retirer ${l.nom}`}
+                      onPress={() => retirer(l.produit)}
+                    />
+                  ) : null}
                 </View>
                 {l.retenue ? (
                   <View className="pl-8">

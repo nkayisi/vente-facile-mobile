@@ -698,7 +698,7 @@ function VenteEnFile({ vente }: { vente: VenteEnAttente }) {
   const reimprimer = async () => {
     setImpression(true);
     try {
-      const doc = await documentParNumero(vente.reference);
+      const doc = await documentParNumero(vente.reference, "sale");
       if (!doc) {
         // Sans document rangé, il n'y a rien à réimprimer et rien à
         // reconstruire : le corps de l'opération ne porte pas les totaux.

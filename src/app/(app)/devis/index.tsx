@@ -29,7 +29,12 @@ import {
   creationsEnAttente,
   enAttenteRetoursDevis,
 } from "@/features/ventes/retours-devis";
-import { FeuilleNouveauDevis } from "@/features/ventes/feuille-devis";
+import {
+  BROUILLON_DEVIS,
+  FeuilleNouveauDevis,
+  type BrouillonDevis,
+} from "@/features/ventes/feuille-devis";
+import { useFeuilleAvecBrouillon } from "@/features/brouillons/use-feuille-avec-brouillon";
 import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Chip, ChipRow, DataList, DataRow, Fab, Screen, SearchInput,
@@ -46,7 +51,8 @@ export default function Devis() {
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
-  const [creation, setCreation] = useState(false);
+  // La feuille se rouvre sur son brouillon au retour d'une création d'article.
+  const creation = useFeuilleAvecBrouillon<BrouillonDevis>(BROUILLON_DEVIS);
 
   const charger = useCallback(
     () => listeDevis({ recherche, statut, perimetre }),
@@ -179,17 +185,18 @@ export default function Devis() {
         }}
       />
       {can("sales.create") ? (
-        <Fab icon="Plus" label="Nouveau" onPress={() => setCreation(true)} />
+        <Fab icon="Plus" label="Nouveau" onPress={creation.ouvrir} />
       ) : null}
 
       {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
           formulaire vierge, sans effet de remise à zéro à tenir en phase avec
           les champs. Voir `features/ventes/feuille-devis.tsx`. */}
-      {creation ? (
+      {creation.ouverte ? (
         <FeuilleNouveauDevis
-          onFermer={() => setCreation(false)}
+          brouillon={creation.brouillon}
+          onFermer={creation.fermer}
           onCree={(id) => {
-            setCreation(false);
+            creation.fermer();
             router.push(`/devis/${id}`);
           }}
         />

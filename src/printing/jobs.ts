@@ -13,16 +13,18 @@
  * application cassait en fabriquant un numéro à chaque rendu.
  */
 import * as Crypto from "expo-crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import {
   buildCashSessionReceipt,
   buildExpenseReceipt,
+  buildExpenseRequest,
   buildPaymentReceipt,
   buildSaleReceipt,
   type Block,
   type CashSessionReceiptData,
   type ExpenseReceiptData,
+  type ExpenseRequestData,
   type PaymentReceiptData,
   type SaleReceiptData,
 } from "@vente-facile/core/receipt";
@@ -46,11 +48,23 @@ export interface DocumentImprimable {
   transport: string | null;
 }
 
+/**
+ * Le reçu de dépense rangé AU PAIEMENT.
+ *
+ * ⚠ LE MARQUEUR EST NÉCESSAIRE. Jusqu'au 2026-11-20, le reçu sortait à la
+ * CRÉATION de la dépense, et ces lignes sont encore dans `print_jobs` des
+ * terminaux en service, sous le même numéro et le même genre. Les réimprimer
+ * pour une dépense payée remettrait la pièce d'une sortie qui n'avait pas eu
+ * lieu, sans payeur ni heure de paiement.
+ */
+export type RecuDeDepensePayee = ExpenseReceiptData & { auPaiement: true };
+
 type DonneesDocument =
   | SaleReceiptData
   | PaymentReceiptData
   | CashSessionReceiptData
-  | ExpenseReceiptData;
+  | ExpenseReceiptData
+  | RecuDeDepensePayee;
 
 /**
  * Reconstruit les blocs depuis les données rangées.
@@ -131,22 +145,7 @@ export async function enregistrerDocument(options: {
   return id;
 }
 
-/**
- * Le document déjà rangé sous ce numéro, s'il existe.
- *
- * Un numéro de document est définitif et unique : le retrouver évite de ranger
- * une seconde copie du même ticket, dont le compteur de duplicata repartirait
- * de zéro.
- */
-export async function documentParNumero(
-  documentNumber: string
-): Promise<DocumentImprimable | null> {
-  const [l] = await db
-    .select()
-    .from(printJobs)
-    .where(eq(printJobs.documentNumber, documentNumber))
-    .limit(1);
-  if (!l) return null;
+function enDocument(l: typeof printJobs.$inferSelect): DocumentImprimable {
   return {
     id: l.id,
     kind: l.kind as GenreDocument,
@@ -157,6 +156,49 @@ export async function documentParNumero(
     printCount: l.printCount,
     transport: l.transport,
   };
+}
+
+/**
+ * Le document de ce GENRE déjà rangé sous ce numéro, le plus récent.
+ *
+ * Un numéro de document est définitif : le retrouver évite de ranger une
+ * seconde copie du même ticket, dont le compteur de duplicata repartirait de
+ * zéro. ⚠ Le genre fait partie de la clé : la demande et le reçu d'une même
+ * dépense portent le même numéro.
+ */
+export async function documentParNumero(
+  documentNumber: string,
+  kind: GenreDocument
+): Promise<DocumentImprimable | null> {
+  const [l] = await db
+    .select()
+    .from(printJobs)
+    .where(and(eq(printJobs.documentNumber, documentNumber), eq(printJobs.kind, kind)))
+    .orderBy(desc(printJobs.createdAt))
+    .limit(1);
+  return l ? enDocument(l) : null;
+}
+
+/**
+ * Le reçu rangé au PAIEMENT de cette dépense, s'il existe.
+ *
+ * Un reçu rangé à la création (version antérieure) est ignoré : voir
+ * `RecuDeDepensePayee`.
+ */
+export async function recuDeDepenseRange(reference: string): Promise<DocumentImprimable | null> {
+  const lignes = await db
+    .select()
+    .from(printJobs)
+    .where(and(eq(printJobs.documentNumber, reference), eq(printJobs.kind, "expense")))
+    .orderBy(desc(printJobs.createdAt));
+  const l = lignes.find((x) => {
+    try {
+      return (JSON.parse(x.data) as { auPaiement?: unknown }).auPaiement === true;
+    } catch {
+      return false;
+    }
+  });
+  return l ? enDocument(l) : null;
 }
 
 /**
@@ -252,4 +294,18 @@ export async function derniersDocuments(limite = 50): Promise<DocumentImprimable
  */
 export async function imprimerProforma(donnees: SaleReceiptData): Promise<void> {
   await imprimer(buildSaleReceipt(donnees), { nom: donnees.number });
+}
+
+/**
+ * Imprime la DEMANDE d'une dépense, sans la ranger.
+ *
+ * Même doctrine que la proforma : elle ne prouve aucune sortie d'argent, et la
+ * ranger la ferait entrer dans la liste des documents à valeur probante. Elle
+ * se réimprime en se régénérant depuis la fiche de la dépense.
+ */
+export async function imprimerDemandeDeDepense(donnees: ExpenseRequestData): Promise<void> {
+  // Le reçu porte le MÊME numéro : sous le même nom de fichier, la demande et
+  // le reçu arrivaient indiscernables chez le destinataire, et le second
+  // écrasait le premier dans le cache. Le back-office les distingue aussi.
+  await imprimer(buildExpenseRequest(donnees), { nom: `Demande ${donnees.number}` });
 }

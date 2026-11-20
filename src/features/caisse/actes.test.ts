@@ -7,15 +7,18 @@
  * numéro tant que le serveur ne l'avait pas vue.
  */
 const mockFile = new Map<string, unknown>();
+const mockOptions = new Map<string, { dependsOn?: string[] } | undefined>();
+const mockEnFile = new Map<string, { id: string; payload: unknown }[]>();
 let mockNumero = 0;
 
 jest.mock("expo-crypto", () => ({ randomUUID: () => "uuid-neuf" }));
 jest.mock("@/sync", () => ({
-  enqueue: (id: string, kind: string, payload: unknown) => {
+  enqueue: (id: string, kind: string, payload: unknown, options?: { dependsOn?: string[] }) => {
     mockFile.set(kind, payload);
+    mockOptions.set(kind, options);
     return Promise.resolve(id);
   },
-  enAttenteParType: () => Promise.resolve([]),
+  enAttenteParType: (kind: string) => Promise.resolve(mockEnFile.get(kind) ?? []),
 }));
 jest.mock("@/features/pos/numerotation", () => ({
   PREFIXE: { depense: "DEP" },
@@ -27,7 +30,7 @@ jest.mock("@/features/pos/numerotation", () => ({
   },
 }));
 
-import { creerDepense, creerMouvementCaisse } from "./actes";
+import { cloturerSession, creerDepense, creerMouvementCaisse, transitionDepense } from "./actes";
 
 const BASE = {
   categorie: "cat-1",
@@ -40,6 +43,8 @@ const BASE = {
 
 beforeEach(() => {
   mockFile.clear();
+  mockOptions.clear();
+  mockEnFile.clear();
   mockNumero = 0;
 });
 
@@ -130,5 +135,54 @@ describe("un mouvement de caisse", () => {
     // que rien n'imprime, et qui trouerait celle des dépenses.
     await creerMouvementCaisse(MOUVEMENT);
     expect(mockNumero).toBe(0);
+  });
+});
+
+describe("payer une dépense", () => {
+  it("le paiement porte son moyen, et la sortie de tiroir quand il y en a une", async () => {
+    await transitionDepense("expense.pay", "dep-1", "", {
+      methode: "pm-cash",
+      sortie: { montant: 2000, devise: "CDF", description: "Dépense: Carburant" },
+    });
+    expect(mockFile.get("expense.pay")).toEqual({
+      id: "uuid-neuf",
+      expense: "dep-1",
+      payment_method: "pm-cash",
+      sortie_tiroir: { amount: "2000", currency: "CDF", description: "Dépense: Carburant" },
+    });
+  });
+
+  it("hors espèces, aucune sortie de tiroir ne voyage", async () => {
+    await transitionDepense("expense.pay", "dep-1", "", {
+      methode: "pm-mpesa",
+      reference: " TX-42 ",
+      sortie: null,
+    });
+    expect(mockFile.get("expense.pay")).toEqual({
+      id: "uuid-neuf",
+      expense: "dep-1",
+      payment_method: "pm-mpesa",
+      payment_reference: "TX-42",
+    });
+  });
+});
+
+describe("la clôture attend les paiements de dépense en file", () => {
+  it("dépend de chaque paiement encore en file", async () => {
+    // Rejoué après la clôture, un paiement en espèces ne trouverait plus de
+    // caisse ouverte et partirait en quarantaine, l'argent étant sorti.
+    mockEnFile.set("expense.pay", [
+      { id: "op-paiement-1", payload: { expense: "dep-1" } },
+      { id: "op-paiement-2", payload: { expense: "dep-2" } },
+    ]);
+    await cloturerSession("session-1", [{ devise: "CDF", montant: 48000 }], "");
+    expect(mockOptions.get("register_session.close")).toEqual({
+      dependsOn: ["op-paiement-1", "op-paiement-2"],
+    });
+  });
+
+  it("sans paiement en file, la clôture ne dépend de rien", async () => {
+    await cloturerSession("session-1", [{ devise: "CDF", montant: 48000 }], "");
+    expect(mockOptions.get("register_session.close")).toEqual({ dependsOn: [] });
   });
 });
