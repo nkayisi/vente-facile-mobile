@@ -6,6 +6,8 @@
  * mettre sur liste noire. Le rafraîchissement suivant échouait, et
  * l'utilisateur était éjecté environ toutes les heures, réseau parfait compris.
  */
+import * as SecureStore from "expo-secure-store";
+
 import {
   clearSession,
   clearTokens,
@@ -59,7 +61,6 @@ describe("instantané", () => {
   });
 
   it("rend null plutôt que d'échouer sur un contenu illisible", async () => {
-    const SecureStore = require("expo-secure-store");
     await SecureStore.setItemAsync("vf.session_snapshot", "{ceci n'est pas du JSON");
     expect(await readSnapshot()).toBeNull();
   });
@@ -77,4 +78,45 @@ describe("déconnexion", () => {
     expect(await readDeviceToken()).toBeNull();
     expect(await readSnapshot()).toBeNull();
   });
+});
+
+describe("Keystore en panne (carte Rockchip rk3568)", () => {
+  // La doublure d'origine (jest.setup.js) range dans une carte en mémoire : on
+  // la remet en place, sinon les suites suivantes écriraient dans le vide.
+  const ecritureOrigine = (SecureStore.setItemAsync as jest.Mock).getMockImplementation();
+
+  afterEach(async () => {
+    (SecureStore.setItemAsync as jest.Mock).mockImplementation(ecritureOrigine);
+    await clearSession();
+  });
+
+  it("la connexion aboutit, et la session se relit", async () => {
+    (SecureStore.setItemAsync as jest.Mock).mockImplementation(async () => {
+      throw new Error(
+        "Call to function 'ExpoSecureStore.setValueWithKeyAsync' has been rejected. Keystore operation failed"
+      );
+    });
+
+    await writeTokens({ access: "A1", refresh: "R1" });
+    await writeDeviceToken("D1");
+
+    expect(await readTokens()).toEqual({ access: "A1", refresh: "R1" });
+    expect(await readDeviceToken()).toBe("D1");
+  });
+
+  it("la déconnexion efface aussi ce que le repli détient", async () => {
+    (SecureStore.setItemAsync as jest.Mock).mockImplementation(async () => {
+      throw new Error("Keystore operation failed");
+    });
+    await writeTokens({ access: "A1", refresh: "R1" });
+
+    await clearSession();
+
+    expect(await readTokens()).toBeNull();
+  });
+});
+
+it("après une panne, le Keystore resservi reprend la main à la connexion suivante", async () => {
+  await writeTokens({ access: "A9", refresh: "R9" });
+  expect(await SecureStore.getItemAsync("vf.access_token")).toBe("A9");
 });

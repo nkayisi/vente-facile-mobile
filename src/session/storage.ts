@@ -4,11 +4,19 @@
  * `expo-secure-store` s'appuie sur le Keystore Android et le Trousseau iOS :
  * les jetons ne sont jamais posés dans la base locale, qui n'est pas chiffrée.
  *
+ * ⚠ QUAND LE KEYSTORE REFUSE, LE SECRET PASSE AU REPLI : un fichier du stockage
+ * privé de l'application (`rangement.ts`, `repli-fichier.ts`). Certains
+ * terminaux Rockchip ont un Keymaster qui plante, et refuser la connexion à
+ * ces terminaux ne protège rien : ils ne vendent plus, c'est tout.
+ *
  * Ce qui N'EST PAS ici : le point de reprise de synchronisation, les
  * préférences, le thème. Ce sont des données courantes, écrites souvent, et le
  * Keystore est lent. Elles vivent dans `local_settings`.
  */
 import * as SecureStore from "expo-secure-store";
+
+import { creerRangement, type Coffre } from "./rangement";
+import { repliFichier } from "./repli-fichier";
 
 const KEYS = {
   access: "vf.access_token",
@@ -42,27 +50,38 @@ export async function purgerClesHeritees(): Promise<void> {
   await Promise.all(CLES_HERITEES.map(remove));
 }
 
-async function read(key: string): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(key);
-  } catch {
-    // Un Keystore momentanément indisponible (appareil qui se déverrouille)
-    // ne doit pas ressembler à une session absente : l'appelant distingue
-    // `null` de l'échec par le contexte, et on ne détruit jamais sur cette voie.
-    return null;
-  }
+const keystore: Coffre = {
+  lire: (cle) => SecureStore.getItemAsync(cle),
+  ecrire: (cle, valeur) => SecureStore.setItemAsync(cle, valeur),
+  effacer: (cle) => SecureStore.deleteItemAsync(cle),
+};
+
+const rangement = creerRangement({
+  sur: keystore,
+  repli: repliFichier,
+  signalerBascule: (erreur) => {
+    if (__DEV__) {
+      console.warn(
+        "[session] Keystore indisponible : les secrets passent au stockage privé de l'application.",
+        erreur
+      );
+    }
+  },
+});
+
+/** Ne lève jamais : un secret illisible vaut `null`, et on ne détruit rien sur cette voie. */
+function read(key: string): Promise<string | null> {
+  return rangement.lire(key);
 }
 
-async function write(key: string, value: string): Promise<void> {
-  await SecureStore.setItemAsync(key, value);
+/** Lève une PHRASE quand ni le Keystore ni le repli n'ont pu écrire. */
+function write(key: string, value: string): Promise<void> {
+  return rangement.ecrire(key, value);
 }
 
-async function remove(key: string): Promise<void> {
-  try {
-    await SecureStore.deleteItemAsync(key);
-  } catch {
-    // Rien à faire : la clé n'existait pas.
-  }
+/** Silencieuse : la clé n'existait peut-être pas. */
+function remove(key: string): Promise<void> {
+  return rangement.effacer(key);
 }
 
 // ------------------------------------------------------------------- jetons
@@ -149,4 +168,7 @@ export async function clearSession(): Promise<void> {
     // effacer tant qu'un parc peut encore en porter.
     purgerClesHeritees(),
   ]);
+  // APRÈS les effacements : plus rien ne vit dans le repli, et la connexion
+  // suivante retentera le Keystore (voir `rangement.ts`, règle 3).
+  await rangement.reinitialiser();
 }
