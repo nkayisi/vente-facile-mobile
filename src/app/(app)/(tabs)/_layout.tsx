@@ -1,5 +1,5 @@
 /**
- * La coquille : tiroir, barre du haut, barre d'onglets.
+ * La coquille : barre du haut, barre d'onglets.
  *
  * Disposition reprise du back-office en rendu étroit :
  *
@@ -17,9 +17,22 @@
  * sections, dans le même ordre, avec les mêmes libellés et les mêmes glyphes,
  * et comme sur le web seulement celles que le rôle peut ouvrir.
  *
- * `TiroirProvider` enveloppe `Tabs` et non l'inverse : c'est ce qui fait que le
- * voile du menu couvre AUSSI la barre d'onglets, comme sur le web où la barre
- * latérale passe par-dessus toute la page.
+ * Le tiroir (`TiroirProvider`) vit un cran plus haut, dans `(app)/_layout.tsx` :
+ * il couvre la barre d'onglets ET le rail d'une tablette, qui reste à l'écran
+ * sur les fiches de pile.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ SUR UNE TABLETTE, LA BARRE D'ONGLETS N'EST PAS RENDUE.                  │
+ * │                                                                          │
+ * │ La barre latérale ou le rail portent la navigation (`barre-laterale.tsx`)│
+ * │ et une seconde navigation en bas de l'écran ne ferait que répéter la     │
+ * │ première. La scène prend alors la marge du bas elle-même : c'était la    │
+ * │ barre d'onglets qui la portait, et les écrans d'onglet passent           │
+ * │ `edges={[]}`. Le bord garde un seul propriétaire, quelle que soit la     │
+ * │ forme. Les `Tabs.Screen` restent tous déclarés, dans le même ordre :     │
+ * │ seul l'affichage de la barre change, jamais la liste des écrans (la      │
+ * │ réordonner barre montée fait planter Fabric, voir `onglets.ts`).         │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
  * `Tabs` vient d'`expo-router`, qui VENDORISE react-navigation depuis le SDK
  * 57. Ne pas installer `@react-navigation/bottom-tabs` : deux copies de
@@ -30,11 +43,12 @@ import { Tabs, router } from "expo-router";
 import { IndicateurSync } from "@/features/sync/indicateur";
 import { styleBarreOnglets } from "@/navigation/metriques";
 import { ecransDeLaBarre } from "@/navigation/onglets";
-import { TiroirProvider, useTiroir } from "@/navigation/tiroir";
+import { useTiroir } from "@/navigation/tiroir";
 import { useSession } from "@/session/provider";
 import {
   IconBrute,
   TopBar,
+  useDisposition,
   useMargesSysteme,
   useTheme,
 } from "@/ui";
@@ -49,6 +63,8 @@ function Coquille() {
   // reprend sa formule avec la marge corrigée.
   const { bas } = useMargesSysteme();
   const { ouvrir } = useTiroir();
+  const { navigation } = useDisposition();
+  const avecBarre = navigation === "barre";
   const { snapshot, can } = useSession();
   // Cinq boutons, choisis selon les droits. ⚠ L'ORDRE des écrans, lui, ne
   // bouge jamais : le réordonner barre montée fait planter Fabric. Voir
@@ -57,6 +73,7 @@ function Coquille() {
 
   return (
     <Tabs
+      tabBar={avecBarre ? undefined : () => null}
       screenOptions={{
         headerShown: true,
         header: () => (
@@ -76,7 +93,7 @@ function Coquille() {
                 <IndicateurSync />
               </>
             }
-            onMenu={ouvrir}
+            onMenu={avecBarre ? ouvrir : undefined}
             onAvatar={() => router.push("/profil")}
           />
         ),
@@ -88,6 +105,9 @@ function Coquille() {
           ...styleBarreOnglets(bas),
         },
         tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11 },
+        sceneStyle: avecBarre
+          ? undefined
+          : { paddingBottom: bas, backgroundColor: colors.background },
       }}
     >
       {ecrans.map((e) => (
@@ -110,9 +130,5 @@ function Coquille() {
 }
 
 export default function TabsLayout() {
-  return (
-    <TiroirProvider>
-      <Coquille />
-    </TiroirProvider>
-  );
+  return <Coquille />;
 }

@@ -13,10 +13,10 @@
  * chemins : le mobile écrit `/ventes` là où le web écrit `/dashboard/sales`, et
  * c'est assumé (une URL est invisible sur un téléphone).
  */
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-import { MENU } from "./menu";
+import { MENU, SECTION_COMPTOIR, sectionDeLaRoute } from "./menu";
 
 const SIDEBAR = resolve(__dirname, "../../../../frontend/components/layout/sidebar.tsx");
 const REGLES = resolve(__dirname, "../../../../frontend/lib/navigation/regles-de-route.ts");
@@ -164,5 +164,82 @@ describe("parité du menu avec le back-office", () => {
       return ok ? null : `${e.label} : terminal ${e.permission ?? "aucune"}, back-office ${JSON.stringify(w)}`;
     }).filter(Boolean);
     expect(ecarts).toEqual([]);
+  });
+});
+
+describe("la section d'une route", () => {
+  /**
+   * ⚠ ON BALAIE `src/app/`, PAS UNE LISTE. Une route ajoutée demain qui
+   * n'entrerait dans aucune section n'allumerait rien dans la barre latérale :
+   * le marchand ne saurait plus où il est. Elle doit donc soit entrer dans la
+   * table de `sectionDeLaRoute`, soit être déclarée ici, avec son motif.
+   */
+  const HORS_SECTION: Record<string, string> = {
+    profil: "le compte, ouvert par l'avatar, pas une section",
+    appareil: "le bloc « Cet appareil », propre au terminal",
+    "ma-journee": "la lecture de son propre travail, hors des sections",
+    notifications: "ouvertes par la cloche, d'où qu'on soit",
+  };
+
+  const APP = resolve(__dirname, "../app/(app)");
+
+  function segments(dir: string): string[] {
+    const sortie: string[] = [];
+    for (const nom of readdirSync(dir)) {
+      const chemin = join(dir, nom);
+      if (nom.startsWith("(") && statSync(chemin).isDirectory()) {
+        sortie.push(...segments(chemin));
+      } else if (!nom.startsWith("_")) {
+        sortie.push(nom.replace(/\.tsx?$/, ""));
+      }
+    }
+    return sortie;
+  }
+
+  const premiers = [...new Set(segments(APP))];
+
+  it("le balayage mord : il trouve les routes", () => {
+    expect(premiers.length).toBeGreaterThan(30);
+    expect(premiers).toContain("vente");
+    expect(premiers).toContain("caisses");
+  });
+
+  it("chaque route appartient à une section du menu, ou est déclarée hors section", () => {
+    const cles = new Set([...MENU.map((e) => e.cle), SECTION_COMPTOIR]);
+    const orphelines = premiers
+      .filter((s) => s !== "index")
+      .filter((s) => !(s in HORS_SECTION))
+      .filter((s) => {
+        const section = sectionDeLaRoute(`/${s}`);
+        return section === null || !cles.has(section);
+      });
+    expect(orphelines).toEqual([]);
+  });
+
+  it("chaque entrée du menu allume sa propre section", () => {
+    for (const e of MENU) expect(sectionDeLaRoute(e.href)).toBe(e.cle);
+  });
+
+  it("une fiche allume la section d'où on l'ouvre", () => {
+    expect(sectionDeLaRoute("/vente/abc")).toBe("ventes");
+    expect(sectionDeLaRoute("/client/abc/historique")).toBe("contacts");
+    expect(sectionDeLaRoute("/rayon/abc")).toBe("stock");
+    expect(sectionDeLaRoute("/parametres/devises")).toBe("parametres");
+    expect(sectionDeLaRoute("/(app)/(tabs)/stock")).toBe("stock");
+  });
+
+  it("ne confond pas le parc de caisses avec le livre de caisse", () => {
+    // Un préfixe de chaîne aurait allumé « Livre de caisse » sur `/caisses`.
+    expect(sectionDeLaRoute("/caisses")).toBe("ventes");
+    expect(sectionDeLaRoute("/caisse")).toBe("caisse");
+    expect(sectionDeLaRoute("/caisse/rapports")).toBe("caisse");
+  });
+
+  it("range le comptoir à part, et n'allume rien hors section", () => {
+    expect(sectionDeLaRoute("/vendre")).toBe(SECTION_COMPTOIR);
+    expect(sectionDeLaRoute("/pos/panier")).toBe(SECTION_COMPTOIR);
+    expect(sectionDeLaRoute("/profil")).toBeNull();
+    expect(sectionDeLaRoute("/")).toBe("index");
+    expect(sectionDeLaRoute(null)).toBeNull();
   });
 });

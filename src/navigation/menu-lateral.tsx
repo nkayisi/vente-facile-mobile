@@ -5,11 +5,16 @@
  * « Vente » puis « Facile » en orange, et la croix de fermeture),
  * l'établissement, les sections, et l'avatar du compte en pied.
  *
- * **L'entrée active est en plein orange avec un chevron**, comme sur le web, et
- * elle se calcule comme lui : parmi les entrées dont le chemin est un préfixe
- * du chemin courant, on retient LA PLUS LONGUE. Sans cette règle,
- * `/stock/niveaux` allumerait « Tableau de bord », dont le chemin `/` est
- * préfixe de tout.
+ * **L'entrée active est en plein orange avec un chevron**, comme sur le web.
+ * Elle se lit par `sectionDeLaRoute` (`menu.ts`), qui range aussi les fiches :
+ * sur une tablette la barre reste à l'écran pendant qu'on lit une vente, et
+ * « Ventes » doit rester allumé sous `/vente/…`.
+ *
+ * **Deux formes, un seul contenu.** Sur un téléphone, ce menu est le tiroir
+ * du hamburger. Sur un grand écran, il est la barre latérale FIXE
+ * (`permanent`) : la croix devient le bouton qui la replie en rail, et le
+ * comptoir y paraît en tête, puisque la barre d'onglets - où il vit sur un
+ * téléphone - n'est plus rendue.
  *
  * **Seules les sections que le rôle peut ouvrir sont listées**, comme sur le
  * web. Elles étaient grisées, avec une pastille « Réservé au gérant » : un
@@ -17,7 +22,7 @@
  * `entreesDuMenu`.
  */
 import { ScrollView, View } from "react-native";
-import { router, usePathname } from "expo-router";
+import { usePathname } from "expo-router";
 import { ROLE_LABELS } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
@@ -35,25 +40,27 @@ import {
   Pressable,
   Text,
   useMargesSysteme,
+  useRepliNavigation,
 } from "@/ui";
 import { HIT } from "@/ui/tokens";
+import { allerA } from "./aller";
 import { fermerPuis } from "./fermeture";
-import { entreesDuMenu, type EntreeMenu } from "./menu";
+import { SECTION_COMPTOIR, entreesDuMenu, sectionDeLaRoute } from "./menu";
+import { PERMISSION_DU_COMPTOIR } from "./onglets";
 
-/** Entrée active : le préfixe le PLUS LONG qui corresponde, comme sur le web. */
-function cleActive(chemin: string, entrees: EntreeMenu[]): string | null {
-  const candidates = entrees.filter(
-    (e) => chemin === e.href || (e.href !== "/" && chemin.startsWith(`${e.href}/`))
-  );
-  if (candidates.length === 0) return chemin === "/" ? "index" : null;
-  return candidates.reduce((a, b) => (b.href.length > a.href.length ? b : a)).cle;
-}
-
-export function MenuLateral({ onFermer }: { onFermer: () => void }) {
+export function MenuLateral({
+  onFermer,
+  permanent = false,
+}: {
+  onFermer: () => void;
+  /** La barre latérale fixe d'un grand écran, et non le tiroir. */
+  permanent?: boolean;
+}) {
   const marges = useMargesSysteme();
   const chemin = usePathname();
   const { snapshot, can } = useSession();
   const { demander } = useDeconnexion();
+  const { basculer } = useRepliNavigation();
   const { donnees: etab } = useLecture(etablissement, { tables: ["organizations"] });
   // Le journal se relit dès qu'il change : une opération refusée pendant que le
   // tiroir est ouvert fait paraître sa pastille sans rouvrir le menu.
@@ -61,11 +68,14 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
   const pastille = journal ? pastilleOperations(journal) : null;
 
   const entrees = entreesDuMenu(can);
-  const active = cleActive(chemin, entrees);
+  const active = sectionDeLaRoute(chemin);
   const role = snapshot?.membership?.role ?? null;
 
-  /** Ferme le tiroir, puis va quelque part. Voir `fermeture.ts`. */
-  const aller = (href: string) => fermerPuis(onFermer, () => router.push(href as never));
+  /**
+   * Ferme le tiroir, puis va quelque part : une section se REJOINT, une
+   * destination de pile se pousse. Voir `fermeture.ts` et `aller.ts`.
+   */
+  const aller = (href: string) => fermerPuis(onFermer, () => allerA(href, chemin));
 
   return (
     <View className="flex-1 bg-card" style={{ paddingTop: marges.haut }}>
@@ -81,15 +91,29 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
             Vente<Text className="text-xl text-primary">Facile</Text>
           </Text>
         </View>
-        <Pressable
-          onPress={fermerPuis(onFermer)}
-          accessibilityRole="button"
-          accessibilityLabel="Fermer le menu"
-          className="items-center justify-center rounded-lg"
-          style={{ width: HIT.min, height: HIT.min }}
-        >
-          <Icon name="X" size={20} color="mutedForeground" />
-        </Pressable>
+        {permanent ? (
+          // La barre fixe ne se FERME pas, elle se replie en rail ; le choix
+          // est retenu d'une session à l'autre (`navigation.repliee`).
+          <Pressable
+            onPress={fermerPuis(onFermer, basculer)}
+            accessibilityRole="button"
+            accessibilityLabel="Replier le menu"
+            className="items-center justify-center rounded-lg"
+            style={{ width: HIT.min, height: HIT.min }}
+          >
+            <Icon name="PanelLeftClose" size={20} color="mutedForeground" />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={fermerPuis(onFermer)}
+            accessibilityRole="button"
+            accessibilityLabel="Fermer le menu"
+            className="items-center justify-center rounded-lg"
+            style={{ width: HIT.min, height: HIT.min }}
+          >
+            <Icon name="X" size={20} color="mutedForeground" />
+          </Pressable>
+        )}
       </View>
 
       {/* 2. Établissement. */}
@@ -109,6 +133,32 @@ export function MenuLateral({ onFermer }: { onFermer: () => void }) {
 
       {/* 3. Les sections que le rôle peut ouvrir. */}
       <ScrollView className="flex-1" contentContainerStyle={{ paddingVertical: 12 }}>
+        {/*
+          Le comptoir, en tête de la barre FIXE seulement. Sur un téléphone il
+          vit au centre de la barre d'onglets ; un grand écran ne rend pas
+          cette barre, et sans cette entrée on n'atteindrait la vente qu'en
+          passant par le hub Ventes. C'est un BOUTON, et non une ligne du
+          menu : `MENU` est le miroir exact du back-office, et le geste le
+          plus fréquent de la journée mérite d'être distingué d'une section.
+        */}
+        {permanent && can(PERMISSION_DU_COMPTOIR) ? (
+          <View className="px-3 pb-2">
+            <Pressable
+              onPress={aller("/vendre")}
+              haptic="selection"
+              accessibilityRole="link"
+              accessibilityState={{ selected: active === SECTION_COMPTOIR }}
+              accessibilityLabel="Point de vente"
+              className="flex-row items-center justify-center gap-2 rounded-lg bg-primary px-4"
+              style={{ minHeight: HIT.min }}
+            >
+              <Icon name="ShoppingCart" size={18} color="primaryForeground" />
+              <Text variant="label" className="text-primary-foreground">
+                Vendre
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
         {entrees.map((e) => {
           const estActive = e.cle === active;
           return (

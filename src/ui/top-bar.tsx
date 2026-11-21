@@ -61,7 +61,12 @@ export function TopBar({
    * `ui/bascule-theme.tsx`.
    */
   right?: React.ReactNode;
-  onMenu: () => void;
+  /**
+   * Le hamburger. ABSENT sur une tablette : la barre latérale ou le rail
+   * portent le menu, et un second bouton qui ouvre la même chose ferait
+   * chercher la différence.
+   */
+  onMenu?: () => void;
   onAvatar?: () => void;
 }) {
   const marges = useMargesSysteme();
@@ -70,16 +75,23 @@ export function TopBar({
       className="flex-row items-center justify-between border-b border-border bg-card px-2"
       style={{ paddingTop: marges.haut }}
     >
-      <Pressable
-        onPress={onMenu}
-        haptic="selection"
-        accessibilityRole="button"
-        accessibilityLabel="Ouvrir le menu"
-        className="items-center justify-center rounded-lg"
-        style={{ width: HIT.min, height: HIT.min }}
-      >
-        <Icon name="Menu" size={24} />
-      </Pressable>
+      {onMenu ? (
+        <Pressable
+          onPress={onMenu}
+          haptic="selection"
+          accessibilityRole="button"
+          accessibilityLabel="Ouvrir le menu"
+          className="items-center justify-center rounded-lg"
+          style={{ width: HIT.min, height: HIT.min }}
+        >
+          <Icon name="Menu" size={24} />
+        </Pressable>
+      ) : (
+        // `justify-between` sur un seul enfant le collerait à GAUCHE : la
+        // place du hamburger reste réservée, vide, et les cibles de droite
+        // gardent leur position.
+        <View style={{ height: HIT.min }} />
+      )}
 
       <View className="flex-row items-center">
         {/* ⚠ `right` EST LA PORTE DES PIÈCES DE FEATURE. La cloche de

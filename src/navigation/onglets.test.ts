@@ -11,6 +11,9 @@ import {
   PERMISSION_DU_COMPTOIR,
   REMPLACANTS,
   ecransDeLaBarre,
+  estUneRouteDOnglet,
+  gestePourSection,
+  ongletDeLaSection,
   ongletsDuMembre,
 } from "./onglets";
 
@@ -219,5 +222,56 @@ describe("tiroir latéral", () => {
   it("refuse une clé de section inconnue plutôt que de l'ouvrir à tous", () => {
     // `null` veut dire « ouvert à tous » : une faute de frappe ne doit pas y mener.
     expect(() => permissionDeLaSection("stok")).toThrow("stok");
+  });
+});
+
+describe("le rail d'une tablette", () => {
+  it("donne une étiquette courte à CHAQUE section du menu", () => {
+    // Le rail liste toutes les sections que le rôle peut ouvrir : une section
+    // sans étiquette courte lèverait au rendu, sur la tablette d'un gérant.
+    for (const e of MENU) expect(ongletDeLaSection(e.cle).label.length).toBeGreaterThan(0);
+  });
+
+  it("garde le glyphe de la barre du bas, reçu compris pour les ventes", () => {
+    expect(ongletDeLaSection("ventes").icon).toBe("Receipt");
+    expect(ongletDeLaSection("utilisateurs").label).toBe("Équipe");
+  });
+});
+
+describe("une route d'onglet", () => {
+  it("reconnaît les écrans sous la barre d'onglets", () => {
+    expect(estUneRouteDOnglet("/")).toBe(true);
+    expect(estUneRouteDOnglet("/stock")).toBe(true);
+    expect(estUneRouteDOnglet("/vendre")).toBe(true);
+    expect(estUneRouteDOnglet("/profil")).toBe(true);
+    expect(estUneRouteDOnglet("/parametres/devises")).toBe(true);
+  });
+
+  it("écarte les fiches poussées par la pile", () => {
+    expect(estUneRouteDOnglet("/vente/abc")).toBe(false);
+    expect(estUneRouteDOnglet("/pos/panier")).toBe(false);
+    expect(estUneRouteDOnglet("/appareil/operations")).toBe(false);
+    // Les groupes ne comptent pas : `/(app)/ma-journee` est une fiche de pile.
+    expect(estUneRouteDOnglet("/(app)/ma-journee")).toBe(false);
+    expect(estUneRouteDOnglet("/(app)/(tabs)/stock")).toBe(true);
+    expect(estUneRouteDOnglet(null)).toBe(false);
+  });
+});
+
+describe("le geste vers une section", () => {
+  /**
+   * ⚠ `dismissTo` DEPUIS UN ONGLET NE FAIT RIEN : il produit un `POP_TO` que
+   * le routeur d'onglets ignore. Vu sur l'émulateur, appui sans effet ni
+   * erreur. Et `push` depuis une fiche empilerait une seconde coquille.
+   */
+  it("saute d'onglet depuis un onglet", () => {
+    expect(gestePourSection("/")).toBe("navigate");
+    expect(gestePourSection("/parametres/devises")).toBe("navigate");
+  });
+
+  it("dépile depuis une fiche, ou quand on ne sait pas où l'on est", () => {
+    expect(gestePourSection("/vente/abc")).toBe("dismissTo");
+    expect(gestePourSection("/pos/panier")).toBe("dismissTo");
+    expect(gestePourSection(null)).toBe("dismissTo");
   });
 });

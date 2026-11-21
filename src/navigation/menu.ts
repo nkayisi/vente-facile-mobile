@@ -94,3 +94,76 @@ export function permissionDeLaSection(cle: string): string | null {
   if (!entree) throw new Error(`Section du menu inconnue : « ${cle} »`);
   return entree.permission;
 }
+
+/**
+ * La section du menu à laquelle appartient une route, pour allumer la bonne
+ * entrée de la barre latérale, du rail et du tiroir.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE TABLE DE SEGMENTS, JAMAIS UN PRÉFIXE DE CHAÎNE.                     │
+ * │                                                                          │
+ * │ L'ancienne règle comparait les chemins par `startsWith` : juste tant     │
+ * │ que chaque section ne vivait que sous son propre chemin. Une fiche de    │
+ * │ vente vit sous `/vente/…`, pas sous `/ventes`, et sur une tablette la    │
+ * │ barre latérale reste à l'écran pendant qu'on la lit : elle n'allumait    │
+ * │ plus rien, et le marchand ne savait plus où il était. Et `/caisses` (le  │
+ * │ parc de caisses, rangé sous Ventes comme au back-office) commence par    │
+ * │ `/caisse` (le livre de caisse) : un préfixe aurait allumé la mauvaise    │
+ * │ section. On lit donc le PREMIER SEGMENT, et on le cherche ici.           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Chaque route vit sous la section d'où on l'ouvre : une fiche de vente sous
+ * Ventes, une fiche client et les créances aussi (le hub Ventes y mène), un
+ * rayon sous Stock. ⚠ Une route ajoutée demain doit entrer ici ou dans la
+ * liste des routes hors section de `menu.test.ts`, qui balaie `src/app/`.
+ *
+ * `vendre` n'est pas une section du menu : c'est le comptoir, que la barre
+ * latérale et le rail portent à part.
+ */
+const SECTION_PAR_SEGMENT: Readonly<Record<string, string>> = {
+  ventes: "ventes",
+  vente: "ventes",
+  devis: "ventes",
+  retour: "ventes",
+  caisses: "ventes",
+  cloture: "ventes",
+  creances: "ventes",
+  articles: "articles",
+  article: "articles",
+  referentiel: "articles",
+  stock: "stock",
+  rayon: "stock",
+  mouvement: "stock",
+  transfert: "stock",
+  ajustement: "stock",
+  entrepot: "stock",
+  requisition: "stock",
+  inventaire: "inventaire",
+  comptage: "inventaire",
+  caisse: "caisse",
+  depense: "caisse",
+  rapports: "rapports",
+  "rapport-entrepots": "rapports",
+  contacts: "contacts",
+  client: "contacts",
+  fournisseur: "contacts",
+  utilisateurs: "utilisateurs",
+  abonnement: "abonnement",
+  parametres: "parametres",
+  vendre: "vendre",
+  pos: "vendre",
+};
+
+/** La clé du comptoir, qui n'est pas une entrée de `MENU`. */
+export const SECTION_COMPTOIR = "vendre";
+
+export function sectionDeLaRoute(chemin: string | null | undefined): string | null {
+  if (!chemin) return null;
+  // Les groupes (`(app)`, `(tabs)`) ne sont pas des segments d'URL.
+  const segment = chemin
+    .split("?")[0]
+    .split("/")
+    .filter((s) => s && !(s.startsWith("(") && s.endsWith(")")))[0];
+  if (!segment) return "index";
+  return SECTION_PAR_SEGMENT[segment] ?? null;
+}

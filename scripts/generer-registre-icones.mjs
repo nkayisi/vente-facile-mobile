@@ -41,6 +41,10 @@ const DEMANDES = [
   "Store", "ChevronRight", "ChevronLeft", "ChevronDown", "ChevronUp", "ArrowRight",
   "ArrowLeft", "X", "Plus", "Menu", "MoreVertical", "MoreHorizontal", "Check",
   "Search", "Filter",
+  // La barre laterale d'une tablette : la replier en rail, et la deplier. Le
+  // back-office n'a pas ce geste (sa barre est fixe des `lg:`) ; on prend le
+  // glyphe lucide du panneau plutot qu'une fleche, qui se lirait comme un retour.
+  "PanelLeftClose", "PanelLeftOpen",
   // Etats, retours, gardes.
   "CheckCircle2", "AlertTriangle", "AlertCircle", "Info", "Lock", "ShieldAlert",
   // `ShieldCheck` vient de `components/marketing/capability-grid.tsx`, dont la

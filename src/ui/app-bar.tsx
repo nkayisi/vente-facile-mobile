@@ -12,10 +12,19 @@
  * Le glyphe de retour est `ArrowLeft`, celui que le back-office pose dans un
  * bouton fantôme : un bouton de retour qui ne se ressemble pas d'une surface à
  * l'autre est exactement ce que ce lot corrige.
+ *
+ * **Sur une tablette, la barre se fond dans la page.** Sur un téléphone c'est
+ * un bandeau de carte, bord à bord. Sur un grand écran elle vit dans la colonne
+ * centrée de l'écran (`Screen`, gabarit) : un bandeau blanc de 760 points posé
+ * au milieu du fond gris s'y lisait comme une carte de plus, sans rien à
+ * contenir. Elle devient alors l'en-tête de la page - flèche, titre, actions
+ * sur le fond -, exactement comme le titre d'un écran d'onglet sous la barre
+ * du haut, et comme l'en-tête d'une page du back-office.
  */
 import { View } from "react-native";
 import { router } from "expo-router";
 
+import { useDisposition } from "./disposition";
 import { HIT } from "./tokens";
 import { Icon } from "./icon";
 import { Pressable } from "./pressable";
@@ -34,8 +43,16 @@ export function AppBar({
   onBack?: () => void;
   back?: boolean;
 }) {
+  const { classe } = useDisposition();
+  const bandeau = classe === "compact";
   return (
-    <View className="flex-row items-center gap-1 border-b border-border bg-card px-2 py-2">
+    <View
+      className={
+        bandeau
+          ? "flex-row items-center gap-1 border-b border-border bg-card px-2 py-2"
+          : "flex-row items-center gap-1 px-2 pb-1 pt-3"
+      }
+    >
       {back ? (
         <Pressable
           onPress={onBack ?? (() => router.back())}

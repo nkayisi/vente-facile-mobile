@@ -188,3 +188,45 @@ export function ecransDeLaBarre(peut: (permission: string) => boolean): EcranDeL
     return onglet ? { ...r, icon: onglet.icon, bouton: onglet.label } : { ...r, bouton: null };
   });
 }
+
+/**
+ * L'étiquette courte et le glyphe d'une section, ceux de la barre d'onglets.
+ *
+ * Le rail d'une tablette les reprend tels quels : c'est la même place réduite
+ * (quatre-vingts points de large), et un marchand qui tourne sa tablette doit
+ * lire « Équipe » au même glyphe sur la barre du bas et sur le rail. « Ventes »
+ * y garde donc son reçu, pour ne pas se confondre avec le chariot du comptoir.
+ */
+export function ongletDeLaSection(cle: string): Onglet {
+  const o = [...ONGLETS, ...REMPLACANTS].find((x) => x.nom === cle);
+  if (!o) throw new Error(`Section sans onglet : « ${cle} »`);
+  return o;
+}
+
+/**
+ * Une route du groupe `(tabs)`, c'est-à-dire un écran sous lequel la barre
+ * d'onglets est rendue.
+ *
+ * Sert au geste de balayage du tiroir : il n'ouvre le menu QUE sur un onglet,
+ * comme avant que le tiroir ne monte d'un cran pour couvrir aussi le rail.
+ * Sur une fiche poussée, le bord gauche reste au retour du système.
+ */
+export function estUneRouteDOnglet(chemin: string | null | undefined): boolean {
+  if (!chemin) return false;
+  // Les groupes (`(app)`, `(tabs)`) ne sont pas des segments d'URL.
+  const segment = chemin
+    .split("?")[0]
+    .split("/")
+    .filter((s) => s && !(s.startsWith("(") && s.endsWith(")")))[0];
+  if (!segment) return true;
+  return segment !== "index" && (ORDRE_DE_LA_BARRE.includes(segment) || segment === "profil");
+}
+
+/**
+ * Le geste qui mène à une section, depuis la route `depuis` : un saut d'onglet
+ * depuis un onglet, un dépilement depuis une fiche. PUR, pour être éprouvé sans
+ * navigateur ; `aller.ts` l'applique, et dit pourquoi ces deux gestes-là.
+ */
+export function gestePourSection(depuis: string | null | undefined): "navigate" | "dismissTo" {
+  return estUneRouteDOnglet(depuis) ? "navigate" : "dismissTo";
+}

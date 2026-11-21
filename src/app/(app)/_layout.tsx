@@ -8,6 +8,8 @@ import { GardeMiseAJour } from "@/features/mise-a-jour/garde";
 import { GardeSuspension } from "@/features/suspension/garde";
 import { PanierProvider } from "@/features/pos/panier";
 import { SynchronisationProvider } from "@/features/sync/provider";
+import { CoquilleAdaptative } from "@/navigation/barre-laterale";
+import { TiroirProvider } from "@/navigation/tiroir";
 import { EcranErreur } from "@/ui/ecran-erreur";
 import { ToastProvider } from "@/ui";
 
@@ -108,11 +110,23 @@ export default function AppLayout() {
           <GardeMiseAJour>
             <GardeSuspension>
               <GardeAbonnement>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" />
-                  <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
-                  <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
-                </Stack>
+                {/*
+                  La coquille d'un grand écran (barre latérale ou rail) et le
+                  tiroir sont SOUS les gardes : leurs voiles couvrent aussi la
+                  navigation, et on ne quitte pas un établissement suspendu par
+                  le menu. Ils enveloppent la PILE entière, et non les seuls
+                  onglets : sur une tablette, la navigation reste à l'écran
+                  pendant qu'on lit une fiche poussée.
+                */}
+                <TiroirProvider>
+                  <CoquilleAdaptative>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(tabs)" />
+                      <Stack.Screen name="pos" options={{ animation: "slide_from_right" }} />
+                      <Stack.Screen name="appareil" options={{ animation: "slide_from_right" }} />
+                    </Stack>
+                  </CoquilleAdaptative>
+                </TiroirProvider>
               </GardeAbonnement>
             </GardeSuspension>
           </GardeMiseAJour>
