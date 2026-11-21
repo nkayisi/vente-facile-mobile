@@ -54,7 +54,7 @@ export default function ChooseOrganization() {
   };
 
   return (
-    <Screen scroll centre>
+    <Screen scroll centre gabarit="etroit">
       <View className="mb-6">
         <Text variant="h2">Quel établissement ?</Text>
         <Text variant="muted">

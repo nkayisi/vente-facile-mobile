@@ -31,8 +31,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 
+import { accord } from "@/data/accord";
 import { dateDepuisJourISO, jourISO } from "@/data/dates";
-import { formatDateFr } from "@vente-facile/core";
+import { formatDateFr, formatQuantity } from "@vente-facile/core";
 import { useMonnaie } from "@/data/devises";
 import {
   GROUPEMENTS,
@@ -333,7 +334,7 @@ export default function Rapports() {
   const membreChoisi = membres.find((m) => m.userId === utilisateur);
 
   return (
-    <Screen
+    <Screen gabarit="large"
       edges={[]}
       padded={false}
       scroll
@@ -712,7 +713,9 @@ function RelevesGlobauxVue({
           label="Panier moyen"
           valeur={m(r.panierMoyen)}
           icone="ShoppingCart"
-          detail={`${r.articlesVendus} articles vendus`}
+          // Une quantité au poids porte des décimales : à la française, et
+          // accordée (« 1,5 article », le pluriel commence à deux).
+          detail={`${formatQuantity(r.articlesVendus)} ${accord(r.articlesVendus, "article vendu", "articles vendus")}`}
         />
         <CarteReleveGlobal
           label="Solde caisse"

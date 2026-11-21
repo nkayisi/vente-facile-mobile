@@ -62,6 +62,7 @@ import {
 import { TuilesModeVente } from "@/features/inventaire/tuile-mode-vente";
 import {
   AppBar, Banner, Button, Card, CardHeader, ChampSelect, EmptyState, FormField, Input,
+  RangeeChamps,
   Screen, Spinner, Switch, Text, useToast,
 } from "@/ui";
 
@@ -362,51 +363,55 @@ function FormulaireArticle({
           <FormField label="Nom du produit" required>
             <Input value={nom} onChangeText={setNom} placeholder="Eau 50cl" autoFocus={!enModification} />
           </FormField>
-          <FormField label="Code SKU" required hint="Unique dans l'établissement.">
-            <Input
-              value={sku}
-              onChangeText={setSku}
-              placeholder="EAU-50"
-              autoCapitalize="characters"
-              trailing={
-                !enModification && nom.trim() ? (
-                  <Button variant="ghost" size="sm" onPress={() => setSku(skuDepuis(nom))}>
-                    Auto
-                  </Button>
-                ) : undefined
-              }
-            />
-          </FormField>
-          {/* Clavier ALPHANUMÉRIQUE : un Code 128 ou un QR n'est pas numérique,
-              et un pavé chiffré interdisait de saisir ce qu'on vient de scanner. */}
-          <FormField label="Code-barres">
-            <Input
-              value={codeBarres}
-              onChangeText={setCodeBarres}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </FormField>
-          <FormField label="Catégorie">
-            <ChampSelect
-              valeur={categorie}
-              onChange={setCategorie}
-              options={optCats}
-              titre="Catégorie"
-              libelleVide="Aucune catégorie"
-              messageVide={MESSAGE_VIDE.categories}
-            />
-          </FormField>
-          <FormField label="Marque">
-            <ChampSelect
-              valeur={marque}
-              onChange={setMarque}
-              options={optMarques}
-              titre="Marque"
-              libelleVide="Aucune marque"
-              messageVide={MESSAGE_VIDE.marques}
-            />
-          </FormField>
+          <RangeeChamps>
+            <FormField label="Code SKU" required hint="Unique dans l'établissement.">
+              <Input
+                value={sku}
+                onChangeText={setSku}
+                placeholder="EAU-50"
+                autoCapitalize="characters"
+                trailing={
+                  !enModification && nom.trim() ? (
+                    <Button variant="ghost" size="sm" onPress={() => setSku(skuDepuis(nom))}>
+                      Auto
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </FormField>
+            {/* Clavier ALPHANUMÉRIQUE : un Code 128 ou un QR n'est pas numérique,
+                et un pavé chiffré interdisait de saisir ce qu'on vient de scanner. */}
+            <FormField label="Code-barres">
+              <Input
+                value={codeBarres}
+                onChangeText={setCodeBarres}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </FormField>
+          </RangeeChamps>
+          <RangeeChamps>
+            <FormField label="Catégorie">
+              <ChampSelect
+                valeur={categorie}
+                onChange={setCategorie}
+                options={optCats}
+                titre="Catégorie"
+                libelleVide="Aucune catégorie"
+                messageVide={MESSAGE_VIDE.categories}
+              />
+            </FormField>
+            <FormField label="Marque">
+              <ChampSelect
+                valeur={marque}
+                onChange={setMarque}
+                options={optMarques}
+                titre="Marque"
+                libelleVide="Aucune marque"
+                messageVide={MESSAGE_VIDE.marques}
+              />
+            </FormField>
+          </RangeeChamps>
         </Card>
 
         {/* --- Vente et prix -------------------------------------------- */}
@@ -468,36 +473,38 @@ function FormulaireArticle({
             {/* « par X », jamais « d'un X » ni « d'une X » : le GENRE d'un nom
                 d'unité n'est pas dérivable sans lexique, et le nom vient du
                 marchand. « par » est invariable et ne s'élide pas. */}
-            <FormField label={`Prix d'achat par ${motDetail}`}>
-              <Input
-                value={prixAchat}
-                onChangeText={setPrixAchat}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                invalid={achat.refus != null}
-              />
-            </FormField>
-            <FormField
-              label={`Prix de vente par ${motDetail}`}
-              required
-              hint={
-                margeDetail
-                  ? `Marge sur prix de vente : ${formatFixedFr(margeDetail.rate, 1)} %`
-                  : undefined
-              }
-              error={
-                refus.prixVente ??
-                (margeDetail?.isNonPositive ? "Vous vendez à perte." : undefined)
-              }
-            >
-              <Input
-                value={prixVente}
-                onChangeText={setPrixVente}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                invalid={!!refus.prixVente || !!margeDetail?.isNonPositive}
-              />
-            </FormField>
+            <RangeeChamps>
+              <FormField label={`Prix d'achat par ${motDetail}`}>
+                <Input
+                  value={prixAchat}
+                  onChangeText={setPrixAchat}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  invalid={achat.refus != null}
+                />
+              </FormField>
+              <FormField
+                label={`Prix de vente par ${motDetail}`}
+                required
+                hint={
+                  margeDetail
+                    ? `Marge sur prix de vente : ${formatFixedFr(margeDetail.rate, 1)} %`
+                    : undefined
+                }
+                error={
+                  refus.prixVente ??
+                  (margeDetail?.isNonPositive ? "Vous vendez à perte." : undefined)
+                }
+              >
+                <Input
+                  value={prixVente}
+                  onChangeText={setPrixVente}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  invalid={!!refus.prixVente || !!margeDetail?.isNonPositive}
+                />
+              </FormField>
+            </RangeeChamps>
           </Card>
         ) : null}
 
@@ -509,36 +516,38 @@ function FormulaireArticle({
                 1 {motContenant} = {facteur.valeur} {plurielDetail}
               </Text>
             ) : null}
-            <FormField label={`Prix d'achat par ${motContenant}`}>
-              <Input
-                value={prixAchatGros}
-                onChangeText={setPrixAchatGros}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                invalid={achatGros.refus != null}
-              />
-            </FormField>
-            <FormField
-              label={`Prix de vente par ${motContenant}`}
-              required
-              hint={
-                margeGros
-                  ? `Marge sur prix de vente : ${formatFixedFr(margeGros.rate, 1)} %`
-                  : undefined
-              }
-              error={
-                refus.prixVenteGros ??
-                (margeGros?.isNonPositive ? "Vous vendez à perte." : undefined)
-              }
-            >
-              <Input
-                value={prixVenteGros}
-                onChangeText={setPrixVenteGros}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                invalid={!!refus.prixVenteGros || !!margeGros?.isNonPositive}
-              />
-            </FormField>
+            <RangeeChamps>
+              <FormField label={`Prix d'achat par ${motContenant}`}>
+                <Input
+                  value={prixAchatGros}
+                  onChangeText={setPrixAchatGros}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  invalid={achatGros.refus != null}
+                />
+              </FormField>
+              <FormField
+                label={`Prix de vente par ${motContenant}`}
+                required
+                hint={
+                  margeGros
+                    ? `Marge sur prix de vente : ${formatFixedFr(margeGros.rate, 1)} %`
+                    : undefined
+                }
+                error={
+                  refus.prixVenteGros ??
+                  (margeGros?.isNonPositive ? "Vous vendez à perte." : undefined)
+                }
+              >
+                <Input
+                  value={prixVenteGros}
+                  onChangeText={setPrixVenteGros}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  invalid={!!refus.prixVenteGros || !!margeGros?.isNonPositive}
+                />
+              </FormField>
+            </RangeeChamps>
             {venteGros.valeur && facteur.valeur && facteur.valeur > 1 ? (
               <Text variant="caption">
                 {/* « achetée » s'accorderait avec un nom dont on ignore le genre. */}

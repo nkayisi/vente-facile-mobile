@@ -70,7 +70,7 @@ export default function Login() {
   };
 
   return (
-    <Screen scroll centre>
+    <Screen scroll centre gabarit="etroit">
       {/* Le mot-symbole est DANS le logo, et le titre le répète : à cette
           taille il n'y est qu'une texture de quelques points, illisible, et
           c'est déjà le parti pris du tiroir. Retirer le titre emporterait la

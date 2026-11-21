@@ -150,7 +150,7 @@ export default function MaJourneeEcran() {
   }, [charger, enLigne]);
 
   return (
-    <Screen scroll padded={false} onRefresh={() => void charger("rafraichir")} refreshing={rafraichissement}>
+    <Screen gabarit="large" scroll padded={false} onRefresh={() => void charger("rafraichir")} refreshing={rafraichissement}>
       <AppBar
         title="Ma journée"
         // Le NOM, parce que l'écran ne peut rendre que le sien : l'endpoint

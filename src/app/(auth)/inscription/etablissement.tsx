@@ -188,7 +188,7 @@ export default function Etablissement() {
 
   if (aEnroler) {
     return (
-      <Screen scroll centre>
+      <Screen scroll centre gabarit="etroit">
         <View className="gap-4">
           <Banner
             tone="success"
@@ -207,7 +207,7 @@ export default function Etablissement() {
   }
 
   return (
-    <Screen scroll centre>
+    <Screen scroll centre gabarit="etroit">
       <View className="mb-6">
         <Stepper etapes={["Vos informations", "Votre établissement"]} courante={1} />
       </View>

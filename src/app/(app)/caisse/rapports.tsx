@@ -171,7 +171,7 @@ export default function RapportsCaisse() {
       : undefined;
 
   return (
-    <Screen scroll padded={false}>
+    <Screen gabarit="large" scroll padded={false}>
       <AppBar
         title="Rapports de caisse"
         subtitle={libelle}

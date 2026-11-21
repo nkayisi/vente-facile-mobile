@@ -90,7 +90,7 @@ export default function Unlock() {
     // une marge de tête décale le bloc SOUS l'axe au lieu de l'espacer, et
     // c'est la première chose qu'on remet par réflexe - un garde-fou de
     // doctrine la refuse.
-    <Screen centre>
+    <Screen centre gabarit="etroit">
       <View className="gap-8">
         <View className="items-center">
           <Text variant="h3">{snapshot?.organization.name ?? "Vente Facile"}</Text>

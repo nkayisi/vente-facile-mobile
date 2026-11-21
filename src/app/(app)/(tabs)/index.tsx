@@ -83,6 +83,7 @@ import {
   CardHeader,
   Chip,
   ChipRow,
+  Colonnes,
   Divider,
   DonutChart,
   EmptyState,
@@ -408,7 +409,7 @@ export default function TableauDeBord() {
   const totalMoyens = (g?.paiements ?? []).reduce((s, p) => s + p.montant, 0);
 
   return (
-    <Screen scroll edges={[]}>
+    <Screen scroll edges={[]} gabarit="large">
       <PageHeader
         title="Tableau de bord"
         subtitle={`${snapshot?.organization.name ?? ""} • ${LABELS_PERIODE[periode].phrase}`}
@@ -538,164 +539,164 @@ export default function TableauDeBord() {
       </Grille>
 
       <View className="mt-5">
-        <Card>
-          <CardHeader
-            title="Évolution des ventes"
-            subtitle={`Facturé, en ${principale} • ${LABELS_PERIODE[periode].phrase.toLowerCase()}`}
-            right={<Icon name="BarChart3" size={18} color="mutedForeground" />}
-          />
-          {/* ┌────────────────────────────────────────────────────────────┐
-              │ UNE SÉRIE ENTIÈREMENT NULLE SE DIT, ELLE NE SE DESSINE PAS.│
-              │                                                            │
-              │ Les seaux vides sont conservés - c'est la règle, et elle   │
-              │ vaut DANS une période qui a vendu. Mais une période entière│
-              │ à zéro tracée en trait plein annonce « 0 FC » en tête et se│
-              │ lit comme un effondrement, alors qu'il n'y a simplement    │
-              │ rien eu à facturer.                                        │
-              └────────────────────────────────────────────────────────────┘ */}
-          {g && g.totalVendu > 0 ? (
-            <AreaChart
-              // Remonter le composant remet la lecture à zéro : une valeur
-              // touchée sur les trente derniers jours n'a plus aucun sens une
-              // fois la période changée.
-              key={periode}
-              points={g.evolution}
-              formater={enPrincipale}
-              resume={{ label: "Total de la période", valeur: g.totalVendu }}
-            />
-          ) : (
-            <EmptyState
-              variante="carte"
-              title="Aucune vente"
-              message="Rien n'a été facturé sur cette période."
-            />
-          )}
-        </Card>
-      </View>
-
-      <View className="mt-5">
-        <Card>
-          <CardHeader
-            title="Encaissements par devise"
-            subtitle={`Converti en ${principale}`}
-            right={<Icon name="Banknote" size={18} color="mutedForeground" />}
-          />
-          {tranches.length > 0 ? (
-            <>
-              <DonutChart
-                key={periode}
-                tranches={tranches}
-                formater={enPrincipale}
-                legendeTotal="Total encaissé"
-              />
-
-              {/* ┌──────────────────────────────────────────────────────────┐
-                  │ LES MOYENS DE PAIEMENT PASSENT EN SECOND PLAN.          │
-                  │                                                          │
-                  │ Ils occupaient l'anneau ; sur un écran tout entier       │
-                  │ converti, la question première est devenue « en quelle   │
-                  │ monnaie l'argent est entré ». Même contenu, sans couleur │
-                  │ de série ni légende à croiser : un filet et un montant.  │
-                  └──────────────────────────────────────────────────────────┘ */}
-              {(g?.paiements.length ?? 0) > 0 ? (
-                <View className="mt-5 gap-3 border-t border-border pt-4">
-                  <Text variant="caption">Par moyen de paiement</Text>
-                  {g!.paiements.map((m) => (
-                    <View key={m.nom} className="gap-1.5">
-                      <View className="flex-row items-baseline justify-between gap-3">
-                        {/* `min-w-0` avec `flex-1`, comme partout ailleurs :
-                            sans lui, un libellé long ne se rétrécit pas et
-                            pousse le montant hors de l'écran au lieu de se
-                            faire tronquer. */}
-                        <View className="min-w-0 flex-1">
-                          <Text numberOfLines={1}>{m.nom}</Text>
-                        </View>
-                        <Text numeric className="font-sans-medium">
-                          {enPrincipale(m.montant)}
-                        </Text>
-                      </View>
-                      <ProgressBar valeur={m.montant} max={totalMoyens} />
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-            </>
-          ) : (
-            <EmptyState
-              variante="carte"
-              title="Aucun encaissement"
-              message="Rien n'a été réglé sur cette période."
-            />
-          )}
-        </Card>
-      </View>
-
-      <View className="mt-5">
-        <Card className="overflow-hidden p-0">
-          <View className="p-4 pb-0">
+        {/* Deux par deux sur un grand écran, dans le MÊME ordre que sur un
+            téléphone : on réarrange, on ne réécrit pas. */}
+        <Colonnes ecart={20}>
+          <Card>
             <CardHeader
-              title="Produits les plus vendus"
-              subtitle="Les cinq premiers de la période"
-              right={<Icon name="Package" size={18} color="mutedForeground" />}
+              title="Évolution des ventes"
+              subtitle={`Facturé, en ${principale} • ${LABELS_PERIODE[periode].phrase.toLowerCase()}`}
+              right={<Icon name="BarChart3" size={18} color="mutedForeground" />}
             />
-          </View>
-          {produits && produits.length > 0 ? (
-            produits.slice(0, 5).map((p, i) => (
-              <View key={p.id}>
-                {i > 0 ? <Divider /> : null}
-                <LigneProduit produit={p} rang={i + 1} money={enPrincipale} />
-              </View>
-            ))
-          ) : (
-            // Cette carte est en `p-0` parce que ses RANGÉES sont pleine
-            // largeur, filets compris. L'état vide, lui, n'en est pas une :
-            // sans ce rembourrage, il se poserait 16 points plus haut que
-            // celui des deux cartes voisines, et trois cartes vides à la
-            // suite ne se termineraient pas à la même hauteur.
-            <View className="pb-4">
+            {/* ┌────────────────────────────────────────────────────────────┐
+                │ UNE SÉRIE ENTIÈREMENT NULLE SE DIT, ELLE NE SE DESSINE PAS.│
+                │                                                            │
+                │ Les seaux vides sont conservés - c'est la règle, et elle   │
+                │ vaut DANS une période qui a vendu. Mais une période entière│
+                │ à zéro tracée en trait plein annonce « 0 FC » en tête et se│
+                │ lit comme un effondrement, alors qu'il n'y a simplement    │
+                │ rien eu à facturer.                                        │
+                └────────────────────────────────────────────────────────────┘ */}
+            {g && g.totalVendu > 0 ? (
+              <AreaChart
+                // Remonter le composant remet la lecture à zéro : une valeur
+                // touchée sur les trente derniers jours n'a plus aucun sens une
+                // fois la période changée.
+                key={periode}
+                points={g.evolution}
+                formater={enPrincipale}
+                resume={{ label: "Total de la période", valeur: g.totalVendu }}
+              />
+            ) : (
               <EmptyState
                 variante="carte"
-                title="Aucun produit vendu"
-                message="Aucune ligne de vente sur cette période."
+                title="Aucune vente"
+                message="Rien n'a été facturé sur cette période."
               />
-            </View>
-          )}
-        </Card>
+            )}
+          </Card>
+          <Card>
+            <CardHeader
+              title="Encaissements par devise"
+              subtitle={`Converti en ${principale}`}
+              right={<Icon name="Banknote" size={18} color="mutedForeground" />}
+            />
+            {tranches.length > 0 ? (
+              <>
+                <DonutChart
+                  key={periode}
+                  tranches={tranches}
+                  formater={enPrincipale}
+                  legendeTotal="Total encaissé"
+                />
+
+                {/* ┌──────────────────────────────────────────────────────────┐
+                    │ LES MOYENS DE PAIEMENT PASSENT EN SECOND PLAN.          │
+                    │                                                          │
+                    │ Ils occupaient l'anneau ; sur un écran tout entier       │
+                    │ converti, la question première est devenue « en quelle   │
+                    │ monnaie l'argent est entré ». Même contenu, sans couleur │
+                    │ de série ni légende à croiser : un filet et un montant.  │
+                    └──────────────────────────────────────────────────────────┘ */}
+                {(g?.paiements.length ?? 0) > 0 ? (
+                  <View className="mt-5 gap-3 border-t border-border pt-4">
+                    <Text variant="caption">Par moyen de paiement</Text>
+                    {g!.paiements.map((m) => (
+                      <View key={m.nom} className="gap-1.5">
+                        <View className="flex-row items-baseline justify-between gap-3">
+                          {/* `min-w-0` avec `flex-1`, comme partout ailleurs :
+                              sans lui, un libellé long ne se rétrécit pas et
+                              pousse le montant hors de l'écran au lieu de se
+                              faire tronquer. */}
+                          <View className="min-w-0 flex-1">
+                            <Text numberOfLines={1}>{m.nom}</Text>
+                          </View>
+                          <Text numeric className="font-sans-medium">
+                            {enPrincipale(m.montant)}
+                          </Text>
+                        </View>
+                        <ProgressBar valeur={m.montant} max={totalMoyens} />
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <EmptyState
+                variante="carte"
+                title="Aucun encaissement"
+                message="Rien n'a été réglé sur cette période."
+              />
+            )}
+          </Card>
+        </Colonnes>
       </View>
 
       <View className="mt-5">
-        <Card>
-          <CardHeader title="Alertes inventaire" subtitle="État du stock" />
-          <View className="gap-3">
-            <TuileInventaire
-              icon="AlertTriangle"
-              jeton="warning"
-              fond="bg-warning/10"
-              titre="Stock bas"
-              detail="Produits à réapprovisionner"
-              valeur={
-                <Text variant="h4" numeric className="text-warning">
-                  {formatNumber(inventaire?.stockBas ?? 0)}
-                </Text>
-              }
-              // Un chiffre d'alerte qui ne mène nulle part ne sert à rien : la
-              // liste s'ouvre DÉJÀ filtrée sur les rayons concernés.
-              onPress={() => router.push("/rayon?etat=alerte")}
-            />
-            <TuileInventaire
-              icon="Package"
-              jeton="chart2"
-              fond="bg-chart-2/10"
-              titre="Valeur du stock"
-              detail="Au coût moyen, sinon au prix d'achat"
-              valeur={
-                <Text variant="bodySmall" numeric className="font-sans-bold text-foreground">
-                  {money.money(inventaire?.valeurStock ?? 0, money.primaryCode)}
-                </Text>
-              }
-            />
-          </View>
-        </Card>
+        <Colonnes ecart={20}>
+          <Card className="overflow-hidden p-0">
+            <View className="p-4 pb-0">
+              <CardHeader
+                title="Produits les plus vendus"
+                subtitle="Les cinq premiers de la période"
+                right={<Icon name="Package" size={18} color="mutedForeground" />}
+              />
+            </View>
+            {produits && produits.length > 0 ? (
+              produits.slice(0, 5).map((p, i) => (
+                <View key={p.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <LigneProduit produit={p} rang={i + 1} money={enPrincipale} />
+                </View>
+              ))
+            ) : (
+              // Cette carte est en `p-0` parce que ses RANGÉES sont pleine
+              // largeur, filets compris. L'état vide, lui, n'en est pas une :
+              // sans ce rembourrage, il se poserait 16 points plus haut que
+              // celui des deux cartes voisines, et trois cartes vides à la
+              // suite ne se termineraient pas à la même hauteur.
+              <View className="pb-4">
+                <EmptyState
+                  variante="carte"
+                  title="Aucun produit vendu"
+                  message="Aucune ligne de vente sur cette période."
+                />
+              </View>
+            )}
+          </Card>
+          <Card>
+            <CardHeader title="Alertes inventaire" subtitle="État du stock" />
+            <View className="gap-3">
+              <TuileInventaire
+                icon="AlertTriangle"
+                jeton="warning"
+                fond="bg-warning/10"
+                titre="Stock bas"
+                detail="Produits à réapprovisionner"
+                valeur={
+                  <Text variant="h4" numeric className="text-warning">
+                    {formatNumber(inventaire?.stockBas ?? 0)}
+                  </Text>
+                }
+                // Un chiffre d'alerte qui ne mène nulle part ne sert à rien : la
+                // liste s'ouvre DÉJÀ filtrée sur les rayons concernés.
+                onPress={() => router.push("/rayon?etat=alerte")}
+              />
+              <TuileInventaire
+                icon="Package"
+                jeton="chart2"
+                fond="bg-chart-2/10"
+                titre="Valeur du stock"
+                detail="Au coût moyen, sinon au prix d'achat"
+                valeur={
+                  <Text variant="bodySmall" numeric className="font-sans-bold text-foreground">
+                    {money.money(inventaire?.valeurStock ?? 0, money.primaryCode)}
+                  </Text>
+                }
+              />
+            </View>
+          </Card>
+        </Colonnes>
       </View>
 
       {/* Les alertes actionnables : elles n'existent pas au back-office, et

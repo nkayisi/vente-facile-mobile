@@ -36,7 +36,7 @@ export default function Compte() {
   }
 
   return (
-    <Screen scroll centre>
+    <Screen scroll centre gabarit="etroit">
       <View className="items-center gap-2">
         <Text variant="h2">Créer ma boutique</Text>
         <Text variant="muted" className="text-center">

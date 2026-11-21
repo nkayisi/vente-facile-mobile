@@ -123,7 +123,7 @@ export default function NouveauMotDePasse() {
   );
 
   return (
-    <Screen scroll centre>
+    <Screen scroll centre gabarit="etroit">
       <View className="mb-6 gap-1">
         <Text variant="h2">Choisissez votre mot de passe</Text>
         <Text variant="muted">

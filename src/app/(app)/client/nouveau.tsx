@@ -36,6 +36,7 @@ import {
   EmptyState,
   FormField,
   Input,
+  RangeeChamps,
   Screen,
   Segmented,
   Spinner,
@@ -197,51 +198,55 @@ function FormulaireClient({
             />
           </FormField>
 
-          <FormField
-            label={type === "business" ? "Nom de l'entreprise" : "Nom complet"}
-            required
-            error={nom.length > 0 && nomManquant ? "Le nom est obligatoire." : undefined}
-          >
-            <Input
-              value={nom}
-              onChangeText={setNom}
-              placeholder={type === "business" ? "Ets Kalume & Fils" : "Jean Mukendi"}
-              autoFocus
-            />
-          </FormField>
+          <RangeeChamps>
+            <FormField
+              label={type === "business" ? "Nom de l'entreprise" : "Nom complet"}
+              required
+              error={nom.length > 0 && nomManquant ? "Le nom est obligatoire." : undefined}
+            >
+              <Input
+                value={nom}
+                onChangeText={setNom}
+                placeholder={type === "business" ? "Ets Kalume & Fils" : "Jean Mukendi"}
+                autoFocus
+              />
+            </FormField>
 
-          <FormField label="Téléphone" required>
-            <Input
-              value={telephone}
-              onChangeText={setTelephone}
-              keyboardType="phone-pad"
-              placeholder="0900000000"
-            />
-          </FormField>
+            <FormField label="Téléphone" required>
+              <Input
+                value={telephone}
+                onChangeText={setTelephone}
+                keyboardType="phone-pad"
+                placeholder="0900000000"
+              />
+            </FormField>
+          </RangeeChamps>
 
           {type === "business" ? (
-            <>
+            <RangeeChamps>
               <FormField label="Raison sociale">
                 <Input value={raisonSociale} onChangeText={setRaisonSociale} />
               </FormField>
               <FormField label="Numéro d'impôt">
                 <Input value={numeroImpot} onChangeText={setNumeroImpot} />
               </FormField>
-            </>
+            </RangeeChamps>
           ) : null}
 
-          <FormField label="E-mail">
-            <Input
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </FormField>
+          <RangeeChamps>
+            <FormField label="E-mail">
+              <Input
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </FormField>
 
-          <FormField label="Adresse">
-            <Input value={adresse} onChangeText={setAdresse} />
-          </FormField>
+            <FormField label="Adresse">
+              <Input value={adresse} onChangeText={setAdresse} />
+            </FormField>
+          </RangeeChamps>
 
           <FormField label="Notes">
             <Input value={notes} onChangeText={setNotes} />

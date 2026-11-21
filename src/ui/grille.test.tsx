@@ -7,7 +7,7 @@ import { Text, View } from "react-native";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 
 import { Volet } from "./disposition";
-import { Colonnes, Grille } from "./grille";
+import { Colonnes, Grille, RangeeChamps, SEUIL_RANGEE_CHAMPS } from "./grille";
 
 function rendre(element: React.ReactElement) {
   let rendu!: ReturnType<typeof create>;
@@ -120,5 +120,53 @@ describe("Colonnes", () => {
       </Volet>
     );
     expect(r.root.findAll((n) => n.type === View && n.props.className === "flex-row")).toHaveLength(1);
+  });
+});
+
+describe("RangeeChamps", () => {
+  it("rend les champs TELS QUELS sous le seuil : aucune vue entre le formulaire et eux", () => {
+    // Une vue intercalée porterait un écart, qui s'ajouterait à la marge du
+    // bas de chaque `FormField` : un formulaire de téléphone s'espacerait.
+    const r = rendre(
+      <Volet largeur={SEUIL_RANGEE_CHAMPS - 1}>
+        <RangeeChamps>
+          <Text>nom</Text>
+          <Text>telephone</Text>
+        </RangeeChamps>
+      </Volet>
+    );
+    expect(r.root.findAll((n) => n.type === View)).toHaveLength(0);
+    expect(r.root.findAllByType(Text).map((t) => t.props.children)).toEqual(["nom", "telephone"]);
+  });
+
+  it("met deux champs côte à côte au-delà, chacun avec SA largeur", () => {
+    let vu = 0;
+    function Sonde() {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      vu = require("./disposition").useDisposition().largeur;
+      return null;
+    }
+    const r = rendre(
+      <Volet largeur={612}>
+        <RangeeChamps>
+          <Sonde />
+          <Text>telephone</Text>
+        </RangeeChamps>
+      </Volet>
+    );
+    expect(r.root.findAll((n) => n.type === View && n.props.className === "flex-row")).toHaveLength(1);
+    expect(vu).toBe(300);
+  });
+
+  it("laisse un champ seul tel quel, même sur un grand écran", () => {
+    const r = rendre(
+      <Volet largeur={1200}>
+        <RangeeChamps>
+          <Text>seul</Text>
+          {null}
+        </RangeeChamps>
+      </Volet>
+    );
+    expect(r.root.findAll((n) => n.type === View)).toHaveLength(0);
   });
 });

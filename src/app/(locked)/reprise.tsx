@@ -154,7 +154,7 @@ export default function Reprise() {
   }, [effacerBaseEtrangere]);
 
   return (
-    <Screen scroll centre>
+    <Screen scroll centre gabarit="etroit">
       <View className="mb-6">
         <Text variant="h2">Ce terminal porte encore des données d&apos;un autre compte</Text>
         <Text variant="muted">

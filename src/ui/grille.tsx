@@ -124,14 +124,31 @@ export function Colonnes({
   );
 }
 
+/** La largeur de volet à partir de laquelle deux champs tiennent côte à côte. */
+export const SEUIL_RANGEE_CHAMPS = 560;
+
 /**
  * Deux champs de formulaire côte à côte, sur un volet assez large pour que
  * chacun garde la largeur d'un champ de téléphone.
+ *
+ * ⚠ EMPILÉS, LES CHAMPS SONT RENDUS TELS QUELS. `FormField` porte déjà sa
+ * propre marge du bas : l'écart d'une `Colonnes` s'y ajouterait, et un
+ * formulaire de téléphone verrait ses champs s'espacer de douze points de plus
+ * à chaque paire.
  */
 export function RangeeChamps({ children }: { children: ReactNode }) {
+  const { largeur } = useDisposition();
+  const blocs = Children.toArray(children);
+  if (largeur < SEUIL_RANGEE_CHAMPS || blocs.length < 2) return <>{children}</>;
+  const ecart = 12;
+  const largeurBloc = (largeur - ecart * (blocs.length - 1)) / blocs.length;
   return (
-    <Colonnes seuil={560} ecart={12}>
-      {children}
-    </Colonnes>
+    <View className="flex-row" style={{ gap: ecart }}>
+      {blocs.map((b, i) => (
+        <View key={i} className="min-w-0 flex-1">
+          <Volet largeur={largeurBloc}>{b}</Volet>
+        </View>
+      ))}
+    </View>
   );
 }
