@@ -38,7 +38,6 @@ import {
   Modal,
   Pressable as PressableNatif,
   ScrollView,
-  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -46,6 +45,7 @@ import {
 import { Icon } from "./icon";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
+import { useDisposition } from "./disposition";
 import { useMargesSysteme } from "./zone-sure";
 
 export function Sheet({
@@ -106,7 +106,7 @@ export function Sheet({
   children: React.ReactNode;
 }) {
   const marges = useMargesSysteme();
-  const { height } = useWindowDimensions();
+  const { hauteur: height } = useDisposition().fenetre;
   // `useState` d'initialisation paresseuse plutôt qu'un `useRef` : la valeur
   // animée est LUE au rendu (elle part dans le style), et un ref lu au rendu
   // est ce que `react-hooks/refs` interdit. L'identité ne change jamais, comme

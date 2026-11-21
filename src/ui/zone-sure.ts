@@ -53,11 +53,13 @@ export function useMargesSysteme(): MargesSysteme {
   const frame = useSafeAreaFrame();
   const forced = useVerdictForce();
 
-  // ⚠ `Dimensions.get("screen")` n'est PAS réactif, et c'est acceptable ici et
-  // seulement ici : l'application est verrouillée en portrait
-  // (`orientation: "portrait"`), donc la hauteur PHYSIQUE ne change jamais. Ne
-  // pas y substituer `useWindowDimensions` : il mesure la FENÊTRE, qui est
-  // justement l'autre terme de la comparaison.
+  // ⚠ `Dimensions.get("screen")` n'est PAS réactif, et il est RELU À CHAQUE
+  // RENDU, ce qui suffit : depuis que les tablettes tournent (2026-11-21), la
+  // hauteur PHYSIQUE change à la rotation, mais une rotation change aussi le
+  // cadre (`useSafeAreaFrame`), donc fait rendre ce hook, donc relit l'écran.
+  // Ne pas le figer dans un `useState` initial. Ne pas y substituer
+  // `useWindowDimensions` non plus : il mesure la FENÊTRE, qui est justement
+  // l'autre terme de la comparaison.
   const ecran = Dimensions.get("screen");
 
   return useMemo(() => {

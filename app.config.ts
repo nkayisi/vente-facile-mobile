@@ -106,13 +106,26 @@ const BUNDLE = `com.smizone.app${SUFFIX[profile]}`;
  * │ Parti de 12 le 2026-11-16 (EAS en était à 4) : on ne redescend jamais.    │
  * └────────────────────────────────────────────────────────────────────────────┘
  */
-const VERSION_CODE = 12;
+const VERSION_CODE = 13;
 
 const config: ExpoConfig = {
   name: NAME[profile],
   slug: "vf-marchand",
-  version: "3.0.0",
-  orientation: "portrait",
+  version: "3.1.0",
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ `default`, ET LE VERROU DU TÉLÉPHONE EST POSÉ PAR LE CODE.            │
+  // │                                                                        │
+  // │ Une tablette tourne librement (portrait et paysage) ; un téléphone     │
+  // │ reste en portrait, plus sûr au comptoir. Le manifeste ne sait pas      │
+  // │ dire « selon la taille » : `src/ui/use-orientation.ts` verrouille au   │
+  // │ démarrage quand le plus petit côté de la fenêtre est sous 600 dp.      │
+  // │                                                                        │
+  // │ ⚠ ON NE DÉMARRE PAS VERROUILLÉ EN PORTRAIT POUR LIBÉRER ENSUITE : un   │
+  // │ terminal dont l'écran est paysage de naissance (le rk3568) pivoterait  │
+  // │ à chaque lancement. Android 16 ignore d'ailleurs tout verrou au-delà   │
+  // │ de 600 dp, ce qui est exactement notre règle.                          │
+  // └────────────────────────────────────────────────────────────────────────┘
+  orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: "ventefacile",
   // Le mode sombre est traité dès le premier jour : un terminal POS sert
@@ -298,6 +311,10 @@ const config: ExpoConfig = {
         imageWidth: 180,
       },
     ],
+    // Le verrou portrait des téléphones, posé à l'exécution : voir
+    // `orientation` plus haut. `DEFAULT` au démarrage, pour qu'une tablette
+    // paysage ne pivote pas avant que le code ait parlé.
+    ["expo-screen-orientation", { initialOrientation: "DEFAULT" }],
     "expo-sqlite",
     "expo-secure-store",
     "expo-background-task",

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
@@ -14,14 +14,17 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 
+import { useRepliMemorise } from "@/navigation/repli";
 import { initSentry } from "@/observabilite/sentry";
 import { DatabaseProvider } from "@/db/provider";
 import { DeconnexionProvider } from "@/session/deconnexion";
 import { SessionGate } from "@/session/gate";
 import { SessionProvider } from "@/session/provider";
 import { BarresSysteme } from "@/ui/barres-systeme";
+import { DispositionProvider } from "@/ui/disposition";
 import { EcranErreur } from "@/ui/ecran-erreur";
 import { ThemeProvider } from "@/ui/theme";
+import { VerrouOrientation } from "@/ui/verrou-orientation";
 
 import "../global.css";
 
@@ -82,6 +85,11 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  // Le chemin courant, pour la disposition : au comptoir (`/vendre`), la barre
+  // latérale d'un grand écran se replie en rail. Lu ICI parce que `src/ui/`
+  // n'importe pas `expo-router` (voir `ui/disposition.tsx`).
+  const chemin = usePathname();
+  const { replie, basculerRepli } = useRepliMemorise();
 
   useEffect(() => {
     // On lève le splash même si les polices ont échoué : une police manquante
@@ -114,14 +122,24 @@ export default function RootLayout() {
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ThemeProvider>
           <BarresSysteme />
-          <DatabaseProvider>
-            <SessionProvider>
-              <SessionGate />
-              <DeconnexionProvider>
-                <Stack screenOptions={{ headerShown: false }} />
-              </DeconnexionProvider>
-            </SessionProvider>
-          </DatabaseProvider>
+          {/* Téléphone en portrait, tablette libre : voir `verrou-orientation.tsx`. */}
+          <VerrouOrientation />
+          {/* La disposition à côté du thème : l'authentification, les toasts et
+              la coquille lisent la même source (`ui/disposition.tsx`). */}
+          <DispositionProvider
+            chemin={chemin}
+            replie={replie}
+            basculerRepli={basculerRepli}
+          >
+            <DatabaseProvider>
+              <SessionProvider>
+                <SessionGate />
+                <DeconnexionProvider>
+                  <Stack screenOptions={{ headerShown: false }} />
+                </DeconnexionProvider>
+              </SessionProvider>
+            </DatabaseProvider>
+          </DispositionProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

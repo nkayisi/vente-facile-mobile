@@ -36,10 +36,10 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 import { useEffect, useState } from "react";
-import { Animated, Easing, useWindowDimensions, View } from "react-native";
+import { Animated, Easing, View } from "react-native";
 
 import type { PullProgress } from "@/sync";
-import { useMargesSysteme, useMouvementReduit, useTheme } from "@/ui";
+import { useDisposition, useMargesSysteme, useMouvementReduit, useTheme } from "@/ui";
 
 const HAUTEUR = 3;
 /** Part de la largeur occupée par le segment qui glisse. */
@@ -66,7 +66,9 @@ export function BarreProgressionSync({
 }) {
   const marges = useMargesSysteme();
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
+  // Le filet court sur toute la FENÊTRE, navigation comprise : il est posé
+  // par-dessus la coquille.
+  const width = useDisposition().fenetre.largeur;
   const reduit = useMouvementReduit();
 
   // Même motif qu'`Apparition` : une `Animated.Value` est LUE au rendu, et un

@@ -49,6 +49,15 @@ export async function ecrireReglage(cle: string, valeur: unknown): Promise<void>
 export const CLE_THEME = "theme.preference";
 
 /**
+ * La barre latérale repliée en rail, sur un grand écran.
+ *
+ * Un réglage d'APPAREIL, comme le thème : il décrit l'écran posé sur le
+ * comptoir, pas le compte de celui qui s'en sert. Deux caissiers qui se
+ * partagent une tablette n'ont pas à se renvoyer la barre ouverte et fermée.
+ */
+export const CLE_NAVIGATION_REPLIEE = "navigation.repliee";
+
+/**
  * L'identifiant de CETTE installation de l'application.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐

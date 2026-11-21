@@ -58,6 +58,8 @@ export const TRAITEMENT_LOCAL: Record<string, Traitement> = {
  * « La présentation a été vue » aussi : elle est pour qui vient d'INSTALLER
  * l'application, pas pour qui change de compte (voir `data/reglages.ts`).
  *
+ * La barre latérale repliée aussi : elle décrit l'ÉCRAN, comme le thème.
+ *
  * ⚠ Les valeurs sont contre-vérifiées en TEXTE contre `data/reglages.ts` et
  * `printing/preferences.ts` : les importer ici tirerait `@/db/client` et ferait
  * de ce module autre chose qu'un module pur.
@@ -67,6 +69,7 @@ export const CLES_CONSERVEES = [
   "imprimante",
   "appareil.installation",
   "accueil.vu",
+  "navigation.repliee",
 ] as const;
 
 /**

@@ -3309,3 +3309,81 @@ describe("aucun tiret cadratin", () => {
     expect(fautifs).toEqual([]);
   });
 });
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LA DISPOSITION ADAPTATIVE A UNE SEULE SOURCE (2026-11-21).              │
+ * │                                                                          │
+ * │ Un écran qui décide de ses colonnes sur la largeur de la FENÊTRE se      │
+ * │ trompe dès qu'une barre latérale ou un volet de liste prend de la place. │
+ * │ C'est le piège que le back-office a payé avec ses seuils `sm:`. Toute    │
+ * │ décision passe donc par `ui/disposition.tsx`, qui rend la largeur du     │
+ * │ VOLET où l'écran est posé.                                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+describe("disposition adaptative", () => {
+  /** Les chaînes du code : c'est là que vivent les classes, et seulement là. */
+  function chaines(source: string): string[] {
+    return [...source.matchAll(/"[^"\n]*"|'[^'\n]*'|`[^`]*`/g)].map((m) => m[0]);
+  }
+  const PREFIXE = /(?<![\w-])(?:sm|md|lg|xl|2xl):[a-z[-]/;
+
+  it("aucune classe n'emploie un préfixe de fenêtre (`sm:` `md:` `lg:` `xl:`)", () => {
+    const tous = fichiers(RACINE);
+    expect(tous.length).toBeGreaterThan(200);
+    const fautifs: string[] = [];
+    for (const f of tous) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      for (const c of chaines(code)) {
+        if (PREFIXE.test(c)) fautifs.push(`${relative(RACINE, f)} : ${c.slice(0, 60)}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le balayage MORD sur un préfixe, et pas sur une heure ni une URL", () => {
+    expect(chaines('<View className="p-4 md:p-6" />').some((c) => PREFIXE.test(c))).toBe(true);
+    expect(chaines("className={`gap-2 ${x ? \"lg:flex-row\" : \"\"}`}").some((c) => PREFIXE.test(c))).toBe(true);
+    expect(PREFIXE.test('"14:07"')).toBe(false);
+    expect(PREFIXE.test('"https://exemple.cd"')).toBe(false);
+    expect(PREFIXE.test('"active:opacity-60"')).toBe(false);
+  });
+
+  const LECTEURS = [join("ui", "disposition.tsx"), join("ui", "zone-sure.ts")];
+  const LECTURE_FENETRE = /\buseWindowDimensions\s*\(|\bDimensions\s*\.\s*(?:get|addEventListener)\s*\(/;
+
+  it("la fenêtre n'est lue que par la disposition et la zone sûre", () => {
+    const fautifs: string[] = [];
+    let vus = 0;
+    for (const f of fichiers(RACINE)) {
+      const nom = relative(RACINE, f);
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!LECTURE_FENETRE.test(code)) continue;
+      vus += 1;
+      if (!LECTEURS.includes(nom)) fautifs.push(nom);
+    }
+    expect(fautifs).toEqual([]);
+    // Les deux lecteurs légitimes lisent bien : sinon le balayage ne prouve rien.
+    expect(vus).toBe(LECTEURS.length);
+  });
+
+  it("le balayage VOIT une lecture de fenêtre", () => {
+    expect(LECTURE_FENETRE.test("const { width } = useWindowDimensions();")).toBe(true);
+    expect(LECTURE_FENETRE.test('const e = Dimensions.get("window");')).toBe(true);
+    expect(LECTURE_FENETRE.test("const { largeur } = useDisposition();")).toBe(false);
+  });
+
+  it("la racine monte la disposition et le verrou d'orientation", () => {
+    const racine = sansCommentaires(readFileSync(join(RACINE, "app", "_layout.tsx"), "utf8"));
+    expect(racine).toMatch(/<DispositionProvider\b/);
+    expect(racine).toMatch(/<VerrouOrientation\s*\/>/);
+  });
+
+  it("l'orientation n'est plus verrouillée par la configuration", () => {
+    // Le verrou du TÉLÉPHONE est posé par le code : un `orientation: "portrait"`
+    // revenu dans la configuration verrouillerait aussi les tablettes.
+    const config = readFileSync(join(RACINE, "..", "app.config.ts"), "utf8");
+    expect(config).toMatch(/orientation:\s*"default"/);
+    expect(config).toMatch(/"expo-screen-orientation"/);
+  });
+});

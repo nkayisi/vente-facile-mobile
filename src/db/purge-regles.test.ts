@@ -75,12 +75,13 @@ describe("le classement des tables locales", () => {
 });
 
 describe("l'allowlist de `local_settings`", () => {
-  it("conserve le thème, l'imprimante, l'identifiant d'installation et la présentation vue", () => {
+  it("conserve le thème, l'imprimante, l'identifiant d'installation, la présentation vue et la barre repliée", () => {
     expect([...CLES_CONSERVEES]).toEqual([
       "theme.preference",
       "imprimante",
       "appareil.installation",
       "accueil.vu",
+      "navigation.repliee",
     ]);
   });
 
@@ -127,14 +128,16 @@ describe("l'allowlist de `local_settings`", () => {
     const theme = /CLE_THEME\s*=\s*"([^"]+)"/.exec(reglages);
     const installation = /CLE_INSTALLATION\s*=\s*"([^"]+)"/.exec(reglages);
     const accueil = /CLE_ACCUEIL_VU\s*=\s*"([^"]+)"/.exec(reglages);
+    const repliee = /CLE_NAVIGATION_REPLIEE\s*=\s*"([^"]+)"/.exec(reglages);
     const impr = /^const CLE = "([^"]+)"/m.exec(imprimante);
 
     expect(theme).not.toBeNull();
     expect(installation).not.toBeNull();
     expect(accueil).not.toBeNull();
+    expect(repliee).not.toBeNull();
     expect(impr).not.toBeNull();
     expect([...CLES_CONSERVEES].sort()).toEqual(
-      [theme![1], installation![1], accueil![1], impr![1]].sort()
+      [theme![1], installation![1], accueil![1], repliee![1], impr![1]].sort()
     );
   });
 });

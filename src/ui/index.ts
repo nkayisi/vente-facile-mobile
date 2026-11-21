@@ -104,3 +104,23 @@ export { BarChart, BarChartHorizontal, type PointGraphe } from "./bar-chart";
 export { AreaChart, type PointAire } from "./area-chart";
 export { DonutChart, couleurDeSerie, type TrancheDonut } from "./donut-chart";
 export { VignetteArticle } from "./vignette-article";
+
+// --- Disposition adaptative : téléphones, tablettes, portrait et paysage ---
+export {
+  DispositionProvider,
+  Volet,
+  useDisposition,
+  useRepliNavigation,
+  type Disposition,
+} from "./disposition";
+export {
+  LARGEUR_LATERALE,
+  LARGEUR_RAIL,
+  colonnesPour,
+  largeurMaxDe,
+  margePage,
+  formeDeModale,
+  type ClasseFenetre,
+  type Gabarit,
+  type Navigation,
+} from "./disposition-regles";

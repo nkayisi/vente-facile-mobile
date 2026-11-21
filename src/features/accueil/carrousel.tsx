@@ -32,23 +32,30 @@
  * │ qu'on veut sur l'écran d'un premier lancement.                           │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
- * ⚠ LA LARGEUR VIENT DE `useWindowDimensions`, JAMAIS DE `Dimensions.get`.
+ * ⚠ LA LARGEUR VIENT DE `useDisposition().fenetre`, JAMAIS DE `Dimensions.get`.
  * La seconde est lue une fois et ne bouge plus : à la rotation, ou en écran
  * partagé, les pages garderaient la largeur d'avant et la pagination
- * s'arrêterait entre deux vues.
+ * s'arrêterait entre deux vues. La disposition, elle, suit la fenêtre - et elle
+ * est la seule main qui la lit (`ui/disposition.tsx`).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
   ScrollView,
-  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
 
-import { Apparition, Button, Pressable, Text, useMouvementReduit } from "@/ui";
+import {
+  Apparition,
+  Button,
+  Pressable,
+  Text,
+  useDisposition,
+  useMouvementReduit,
+} from "@/ui";
 import { styleDeLaPage } from "./geometrie";
 import { PileCartes } from "./pile-cartes";
 import {
@@ -77,7 +84,7 @@ import {
 export function useCarrousel() {
   // ⚠ LA HAUTEUR SERT AUSSI, et pas seulement la largeur : c'est elle qui dit
   // si la page a de quoi porter le titre des maquettes. Voir `styleDeLaPage`.
-  const { width, height } = useWindowDimensions();
+  const { largeur: width, hauteur: height } = useDisposition().fenetre;
   const reduit = useMouvementReduit();
   const [index, setIndex] = useState(0);
   /**
