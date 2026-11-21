@@ -50,7 +50,16 @@ import {
 } from "@vente-facile/core/pos";
 
 import { lireNombre } from "@/data/nombres";
-import { Button, Divider, Icon, Pressable, Text, useMargesSysteme } from "@/ui";
+import {
+  Button,
+  Divider,
+  formeDeModale,
+  Icon,
+  Pressable,
+  Text,
+  useDisposition,
+  useMargesSysteme,
+} from "@/ui";
 import { libelleAilleurs } from "./ailleurs";
 import type { ArticlePos } from "./catalogue";
 import { paliersRemise } from "./remise-ligne";
@@ -214,6 +223,10 @@ export function SelecteurQuantite({
   // ⚠ AVANT le retour anticipé : un hook appelé conditionnellement change
   // l'ordre des hooks d'un rendu à l'autre.
   const marges = useMargesSysteme();
+  // Sur une tablette, le sélecteur se pose au CENTRE, comme toute feuille
+  // (`ui/sheet.tsx`) : monté du bas sur 1 920 points, son pavé numérique
+  // aurait des touches de six cents points de large.
+  const dialogue = formeDeModale(useDisposition().classe) === "dialogue";
 
   if (!article) return null;
 
@@ -278,7 +291,7 @@ export function SelecteurQuantite({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={dialogue ? "fade" : "slide"}
       onRequestClose={onFermer}
       // Voir `ui/sheet.tsx` : inertes tant que le bord-à-bord est actif, mais
       // il l'est par un drapeau Gradle que ce dépôt ne garde pas.
@@ -286,7 +299,14 @@ export function SelecteurQuantite({
       navigationBarTranslucent
     >
       <Pressable
-        className="flex-1 justify-end bg-foreground/50"
+        className={
+          dialogue
+            ? "flex-1 items-center justify-center bg-foreground/50 px-6"
+            : "flex-1 justify-end bg-foreground/50"
+        }
+        // Au centre, la carte peut toucher les deux bords : la zone sûre se
+        // prend en haut ET en bas, par la main unique.
+        style={dialogue ? { paddingTop: marges.haut + 16, paddingBottom: marges.bas + 16 } : undefined}
         onPress={onFermer}
         haptic="none"
         accessibilityLabel="Fermer"
@@ -300,12 +320,22 @@ export function SelecteurQuantite({
         <Pressable
           onPress={() => {}}
           haptic="none"
-          className="rounded-t-3xl bg-card"
-          style={{ paddingBottom: Math.max(marges.bas, 24) }}
+          className={dialogue ? "w-full rounded-3xl bg-card" : "rounded-t-3xl bg-card"}
+          // Au centre, la largeur d'un pavé de caisse : trois touches de
+          // cent vingt points, la cible du comptoir, et pas davantage.
+          style={
+            dialogue
+              ? { maxWidth: 440, paddingBottom: 24, flexShrink: 1 }
+              : { paddingBottom: Math.max(marges.bas, 24) }
+          }
         >
-          <View className="items-center py-3">
-            <View className="h-1 w-10 rounded-full bg-border" />
-          </View>
+          {dialogue ? (
+            <View className="h-5" />
+          ) : (
+            <View className="items-center py-3">
+              <View className="h-1 w-10 rounded-full bg-border" />
+            </View>
+          )}
 
           <View className="px-5">
             <Text variant="h3" numberOfLines={2}>

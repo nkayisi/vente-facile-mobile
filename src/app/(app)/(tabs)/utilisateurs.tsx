@@ -20,8 +20,19 @@ import { ROLE_HIERARCHY, ROLE_LABELS, type Role } from "@vente-facile/core";
 import { listeMembres, type Membre } from "@/data/administration";
 import { useLecture } from "@/data/live";
 import {
-  Badge, Banner, Card, CarteReleve, DataList, DataRow, Icon, PageHeader,
-  Screen, StatValue, Text,
+  Badge,
+  Banner,
+  Card,
+  CarteReleve,
+  DataList,
+  DataRow,
+  Grille,
+  Icon,
+  LARGEUR_MIN_CARTE_RELEVE,
+  PageHeader,
+  Screen,
+  StatValue,
+  Text,
 } from "@/ui";
 
 const TABLES = ["memberships", "users"];
@@ -51,7 +62,7 @@ export default function Utilisateurs() {
           label: membres.length > 1 ? "membres" : "membre",
         }}
       />
-      <View className="flex-row flex-wrap gap-4">
+      <Grille largeurMin={LARGEUR_MIN_CARTE_RELEVE} min={2} max={4} ecart={16}>
         {(Object.keys(ROLE_LABELS) as Role[])
           .sort((a, b) => ROLE_HIERARCHY[b] - ROLE_HIERARCHY[a])
           .map((role) => (
@@ -71,7 +82,7 @@ export default function Utilisateurs() {
               <StatValue value={String(parRole[role] ?? 0)} />
             </CarteReleve>
           ))}
-      </View>
+      </Grille>
       {/* L'INVITATION et la modification d'un rôle restent au back-office :
           elles envoient un e-mail et touchent à qui peut faire quoi. Un
           terminal perdu ne doit pas pouvoir promouvoir son porteur. */}

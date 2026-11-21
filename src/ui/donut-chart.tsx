@@ -28,6 +28,7 @@ import Svg, { Circle, G, Path } from "react-native-svg";
 
 import { arcsDonut, cheminSecteur } from "@/features/tableau-de-bord/series";
 
+import { useDisposition } from "./disposition";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { useTheme } from "./theme";
@@ -55,7 +56,7 @@ export function couleurDeSerie(i: number): ColorToken {
 
 export function DonutChart({
   tranches,
-  taille = 168,
+  taille: tailleDemandee = 168,
   formater,
   /** Libellé du total inscrit au centre, hors sélection. */
   legendeTotal = "Total",
@@ -67,6 +68,17 @@ export function DonutChart({
 }) {
   const { colors } = useTheme();
   const [choisi, setChoisi] = useState<string | null>(null);
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ SUR UN VOLET LARGE, L'ANNEAU ET SA LÉGENDE PASSENT CÔTE À CÔTE.      │
+  // │                                                                      │
+  // │ Empilés sur 1 200 points, l'anneau flottait seul au milieu d'une     │
+  // │ bande vide et la légende s'étirait d'un bord à l'autre. Côte à côte, │
+  // │ on lit la part et son montant d'un seul regard. L'anneau grandit un  │
+  // │ peu : à 168 points, son centre coupait « Total encaissé » et le      │
+  // │ montant (« 92 865,09.. »), relevé sur le terminal de 1 920 points.   │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const cote = useDisposition().largeur >= 520;
+  const taille = cote ? Math.max(tailleDemandee, 208) : tailleDemandee;
 
   const total = tranches.reduce((s, t) => s + Math.max(0, t.valeur), 0);
   const arcs = arcsDonut(tranches.map((t) => t.valeur));
@@ -85,7 +97,7 @@ export function DonutChart({
   const partEcrite = (v: number) => `${formatFixedFr(part(v), 1)} %`;
 
   return (
-    <View>
+    <View className={cote ? "flex-row items-center gap-6" : undefined}>
       <View className="items-center">
         <View style={{ width: taille, height: taille }}>
           <Svg width={taille} height={taille}>
@@ -146,7 +158,7 @@ export function DonutChart({
         </View>
       </View>
 
-      <View className="mt-4">
+      <View className={cote ? "min-w-0 flex-1" : "mt-4"}>
         {tranches.map((t, i) => {
           const selectionne = choisi === t.cle;
           return (

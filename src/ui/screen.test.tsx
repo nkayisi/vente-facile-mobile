@@ -253,3 +253,49 @@ describe("Screen et le clavier", () => {
     }
   );
 });
+
+describe("Screen sur un grand écran", () => {
+  /** Une fenêtre de `largeur` points ; l'écran physique la suit. */
+  function poserFenetre(largeur: number, hauteur = 1080) {
+    jest
+      .spyOn(Dimensions, "get")
+      .mockImplementation(
+        () => ({ width: largeur, height: hauteur, scale: 1, fontScale: 1 }) as never
+      );
+  }
+
+  it("ne change RIEN sur un téléphone : aucune contrainte, aucune gouttière", () => {
+    poserFenetre(400, 800);
+    expect(styleDuContenu(<Screen scroll>x</Screen>)).toEqual({ padding: 16 });
+    expect(styleDuContenu(<Screen scroll padded={false}>x</Screen>)).toEqual({});
+  });
+
+  it("centre le contenu à sa largeur de lecture, et porte la marge à 24", () => {
+    poserFenetre(1920);
+    expect(styleDuContenu(<Screen scroll>x</Screen>)).toEqual({
+      width: "100%",
+      maxWidth: 760,
+      alignSelf: "center",
+      padding: 16,
+      paddingHorizontal: 24,
+    });
+  });
+
+  it("élargit la colonne d'un tableau de bord, et laisse tout au comptoir", () => {
+    poserFenetre(1920);
+    expect(styleDuContenu(<Screen scroll gabarit="large">x</Screen>)).toMatchObject({
+      maxWidth: 1280,
+    });
+    const plein = styleDuContenu(<Screen scroll gabarit="plein">x</Screen>) as Record<string, unknown>;
+    expect(plein).toEqual({ padding: 16 });
+  });
+
+  it("pose la gouttière sans borner quand le volet tient dans le gabarit", () => {
+    // Une tablette portrait de 700 : plus large qu'un téléphone, moins que la
+    // colonne de lecture. La marge passe à 24, la largeur reste libre.
+    poserFenetre(700, 1100);
+    expect(styleDuContenu(<Screen scroll padded={false}>x</Screen>)).toEqual({
+      paddingHorizontal: 8,
+    });
+  });
+});

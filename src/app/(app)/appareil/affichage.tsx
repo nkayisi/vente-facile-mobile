@@ -39,6 +39,7 @@ import {
   Section,
   Segmented,
   Text,
+  useDisposition,
   useMargesSysteme,
 } from "@/ui";
 import { LIBELLES, type Verdict } from "@/features/diagnostic/marge-basse";
@@ -56,6 +57,7 @@ const SIMULATIONS: { valeur: Verdict | "reel"; label: string }[] = [
 
 export default function Affichage() {
   const m = useMargesSysteme();
+  const d = useDisposition();
   const force = useVerdictForce();
   const [copie, setCopie] = useState(false);
 
@@ -71,6 +73,11 @@ export default function Affichage() {
     `frame          ${m.fenetre.largeur} x ${m.fenetre.hauteur}`,
     `screen         ${m.ecran.largeur} x ${m.ecran.hauteur}`,
     `barre onglets  ${HAUTEUR_ONGLETS} + ${m.bas} = ${HAUTEUR_ONGLETS + m.bas}`,
+    // La disposition : c'est ce qu'on demandera à un marchand dont la tablette
+    // s'affiche de travers. Classe, navigation et largeur du volet disent
+    // quelle règle s'est appliquée, et pourquoi.
+    `disposition    ${d.classe} / ${d.navigation} / ${d.paysage ? "paysage" : "portrait"} / ${d.tablette ? "tablette" : "téléphone"}`,
+    `volet          ${Math.round(d.largeur)}`,
     `plateforme     ${Platform.OS} ${String(Platform.Version)}`,
   ].join("\n");
 

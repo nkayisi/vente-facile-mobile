@@ -71,6 +71,7 @@ export function DataList<T>({
   separateur = true,
   basDeListe = 96,
   typeElement,
+  colonnes = 1,
 }: {
   donnees: T[];
   cle: (item: T) => string;
@@ -103,11 +104,23 @@ export function DataList<T>({
    * `FlashList` appelle `getItemType`.
    */
   typeElement?: (item: T, index: number) => string;
+  /**
+   * Des CARTES sur plusieurs colonnes (grille du comptoir, entrepôts). Le
+   * nombre se calcule par `colonnesPour` sur la largeur du volet, jamais en
+   * dur : deux colonnes sur un téléphone en font six sur un grand écran.
+   *
+   * ⚠ LA LISTE EST REMONTÉE QUAND LE NOMBRE CHANGE (`key`) : FlashList ne sait
+   * pas changer de nombre de colonnes à chaud, et une rotation de tablette le
+   * change. Des rangées de liste, elles, restent sur une colonne.
+   */
+  colonnes?: number;
 }) {
   const primary = useColor("primary");
 
   return (
     <FlashList
+      key={colonnes}
+      numColumns={colonnes}
       data={donnees}
       keyExtractor={cle}
       renderItem={({ item }) => rendu(item)}
@@ -196,6 +209,7 @@ export function DataRow({
   vignette,
   onPress,
   chevron = true,
+  selectionne = false,
 }: {
   principal: string;
   secondaire?: string | null;
@@ -214,9 +228,21 @@ export function DataRow({
   vignette?: React.ReactNode;
   onPress?: () => void;
   chevron?: boolean;
+  /**
+   * La rangée dont la fiche est ouverte à côté, sur un grand écran (liste et
+   * fiche côte à côte). Sans repère, on ne sait plus quelle ligne on lit à
+   * droite dès qu'on fait défiler la liste.
+   */
+  selectionne?: boolean;
 }) {
   const contenu = (
-    <View className="flex-row items-center gap-3 bg-card px-4 py-3" style={{ minHeight: HIT.min }}>
+    <View
+      className={`flex-row items-center gap-3 px-4 py-3 ${selectionne ? "bg-accent" : "bg-card"}`}
+      style={{ minHeight: HIT.min }}
+    >
+      {/* Le liseré dit la sélection sans compter sur la seule couleur de fond,
+          qu'un écran pâle au soleil rend difficile à distinguer. */}
+      {selectionne ? <View className="absolute bottom-0 left-0 top-0 w-1 bg-primary" /> : null}
       {vignette ?? (icon ? (
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-muted">
           <Icon name={icon} size={18} color="mutedForeground" />
@@ -247,7 +273,12 @@ export function DataRow({
 
   if (!onPress) return contenu;
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={principal}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={principal}
+      accessibilityState={selectionne ? { selected: true } : undefined}
+    >
       {contenu}
     </Pressable>
   );

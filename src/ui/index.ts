@@ -67,8 +67,13 @@ export { AppBar } from "./app-bar";
 export { TopBar } from "./top-bar";
 export { PageHeader, type PageHeaderProps } from "./page-header";
 export { StatValue, statValueSize, Mesure, mesureSize } from "./stat-value";
-export { StatStrip, StatStripItem, type StatTone } from "./stat-strip";
-export { ActionTile, type AccentTuile } from "./action-tile";
+export { StatStrip, StatStripItem, LARGEUR_MIN_RELEVE, type StatTone } from "./stat-strip";
+export {
+  ActionTile,
+  LARGEUR_MIN_RACCOURCI,
+  LARGEUR_MIN_TUILE,
+  type AccentTuile,
+} from "./action-tile";
 export { Chip, ChipRow, BoutonFiltres } from "./chip";
 export { Pastille } from "./pastille";
 export { ChampMontant, type DeviseChoisissable } from "./champ-montant";
@@ -96,7 +101,11 @@ export { Tableau, Rang, type ColonneTableau } from "./tableau";
 export { Stepper } from "./stepper";
 export { TuileChoix } from "./tuile-choix";
 export { HorsLigneBloquant } from "./hors-ligne";
-export { MultiCurrencyTotal, CarteReleve } from "./multi-currency-total";
+export {
+  MultiCurrencyTotal,
+  CarteReleve,
+  LARGEUR_MIN_CARTE_RELEVE,
+} from "./multi-currency-total";
 export { IconBrute } from "./icon";
 
 // --- Lot 9 : le tableau de bord ---
@@ -113,6 +122,7 @@ export {
   useRepliNavigation,
   type Disposition,
 } from "./disposition";
+export { Grille, Colonnes, RangeeChamps } from "./grille";
 export {
   LARGEUR_LATERALE,
   LARGEUR_RAIL,

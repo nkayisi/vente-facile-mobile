@@ -46,7 +46,18 @@ import { Icon } from "./icon";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { useDisposition } from "./disposition";
+import { formeDeModale } from "./disposition-regles";
 import { useMargesSysteme } from "./zone-sure";
+
+/**
+ * La largeur d'une feuille posée au CENTRE, hors téléphone.
+ *
+ * `standard` : la largeur d'un formulaire, comme `max-w-lg` des dialogues du
+ * back-office. `large` : les feuilles qui portent une liste à côté de leurs
+ * champs (encaissement, approvisionnement de masse, devis, mouvement), où 560
+ * points feraient replier chaque ligne.
+ */
+const LARGEUR_DIALOGUE = { standard: 560, large: 760 } as const;
 
 export function Sheet({
   ouvert,
@@ -54,11 +65,17 @@ export function Sheet({
   titre,
   retour,
   pied,
+  taille = "standard",
   children,
 }: {
   ouvert: boolean;
   onFermer: () => void;
   titre?: string;
+  /**
+   * La largeur de la feuille quand elle est posée au centre (tablette). Sans
+   * effet sur un téléphone, où elle monte du bas sur toute la largeur.
+   */
+  taille?: keyof typeof LARGEUR_DIALOGUE;
   /**
    * Revenir d'un PANNEAU vers le précédent, sans fermer la feuille.
    *
@@ -106,7 +123,18 @@ export function Sheet({
   children: React.ReactNode;
 }) {
   const marges = useMargesSysteme();
-  const { hauteur: height } = useDisposition().fenetre;
+  const { fenetre, classe } = useDisposition();
+  const height = fenetre.hauteur;
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ SUR UNE TABLETTE, LA FEUILLE SE POSE AU CENTRE.                      │
+  // │                                                                      │
+  // │ Montée du bas sur 1 920 points, elle se lisait comme un bandeau, et  │
+  // │ son bouton de validation partait à l'autre bout de l'écran. Au       │
+  // │ centre, elle garde la largeur d'un formulaire. MÊME API : les        │
+  // │ cinquante-cinq appelants (feuilles, `ChampSelect`, thème) suivent    │
+  // │ sans une ligne changée, `retour`, `pied` et clavier compris.         │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const dialogue = formeDeModale(classe) === "dialogue";
   // `useState` d'initialisation paresseuse plutôt qu'un `useRef` : la valeur
   // animée est LUE au rendu (elle part dans le style), et un ref lu au rendu
   // est ce que `react-hooks/refs` interdit. L'identité ne change jamais, comme
@@ -151,7 +179,16 @@ export function Sheet({
       statusBarTranslucent
       navigationBarTranslucent
     >
-      <View className="flex-1 justify-end">
+      <View
+        className={dialogue ? "flex-1 items-center justify-center px-6" : "flex-1 justify-end"}
+        // Au centre, la carte touche les deux bords quand elle est haute : la
+        // zone sûre se prend donc en haut ET en bas (voir `dialog.tsx`).
+        style={
+          dialogue
+            ? { paddingTop: marges.haut + 16, paddingBottom: marges.bas + 16 }
+            : undefined
+        }
+      >
         {/* Le voile lit un JETON. `bg-black/50` resterait noir en thème sombre
             alors que le fond, lui, a changé : le contraste s'inverserait. */}
         <PressableNatif
@@ -180,22 +217,45 @@ export function Sheet({
         <KeyboardAvoidingView
           behavior="padding"
           // La feuille ne monte jamais au-delà de 90 % : au-dessus, elle se lit
-          // comme un écran plein et le retour en arrière devient ambigu.
-          style={{ maxHeight: height * 0.9 }}
+          // comme un écran plein et le retour en arrière devient ambigu. Au
+          // centre, elle prend la largeur d'un formulaire et pas davantage.
+          style={
+            dialogue
+              ? { width: "100%", maxWidth: LARGEUR_DIALOGUE[taille], maxHeight: height * 0.9 }
+              : { maxHeight: height * 0.9 }
+          }
         >
           <Animated.View
-            style={{
-              // Voir l'encadre ci-dessous.
-              flexShrink: 1,
-              transform: [
-                {
-                  translateY: glissement.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [height * 0.5, 0],
-                  }),
-                },
-              ],
-            }}
+            style={
+              dialogue
+                ? {
+                    flexShrink: 1,
+                    // Au centre, un glissement depuis le bas traverserait la
+                    // moitié de l'écran : la carte apparaît sur place, en
+                    // fondu, à peine grandie - le mouvement d'un dialogue.
+                    opacity: glissement,
+                    transform: [
+                      {
+                        scale: glissement.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.96, 1],
+                        }),
+                      },
+                    ],
+                  }
+                : {
+                    // Voir l'encadre ci-dessous.
+                    flexShrink: 1,
+                    transform: [
+                      {
+                        translateY: glissement.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [height * 0.5, 0],
+                        }),
+                      },
+                    ],
+                  }
+            }
             // ┌──────────────────────────────────────────────────────────┐
             // │ `flexShrink: 1`, ET CE N'EST PAS UNE PRECAUTION.         │
             // │                                                          │
@@ -207,13 +267,22 @@ export function Sheet({
             // │ valide disparait alors exactement quand le contenu       │
             // │ grandit, c'est-a-dire quand on en a le plus besoin.      │
             // └──────────────────────────────────────────────────────────┘
-            className="rounded-t-2xl border-t border-border bg-card"
+            className={
+              dialogue
+                ? "rounded-2xl border border-border bg-card"
+                : "rounded-t-2xl border-t border-border bg-card"
+            }
           >
             {/* La poignée ne se glisse pas, mais elle DIT que c'est une feuille
-                et non un écran : sans elle, on cherche un bouton de retour. */}
-            <View className="items-center py-2">
-              <View className="h-1 w-10 rounded-full bg-muted-foreground/40" />
-            </View>
+                et non un écran : sans elle, on cherche un bouton de retour. Au
+                centre, il n'y a rien à tirer vers le bas : pas de poignée. */}
+            {dialogue ? (
+              <View className="h-3" />
+            ) : (
+              <View className="items-center py-2">
+                <View className="h-1 w-10 rounded-full bg-muted-foreground/40" />
+              </View>
+            )}
             <ScrollView
               // C'est le DEFILEMENT qui cede la place au pied, jamais le pied
               // qui cede la sienne : lui garde son `flexShrink` a zero, sinon
@@ -225,7 +294,9 @@ export function Sheet({
                 paddingTop: 4,
                 // Voir `pied` : quand il est la, c'est lui qui porte la
                 // zone sure, et les cumuler laisserait une bande vide.
-                paddingBottom: pied ? 16 : Math.max(marges.bas, 16) + 16,
+                // Au centre, la carte ne touche pas le bas de l'écran : la
+                // marge système est déjà prise par le voile.
+                paddingBottom: pied || dialogue ? 16 : Math.max(marges.bas, 16) + 16,
                 gap: 16,
               }}
             >
@@ -260,7 +331,7 @@ export function Sheet({
               // le `DialogFooter` du back-office.
               <View
                 className="border-t border-border px-4 pt-3"
-                style={{ paddingBottom: Math.max(marges.bas, 16) }}
+                style={{ paddingBottom: dialogue ? 16 : Math.max(marges.bas, 16) }}
               >
                 {pied}
               </View>

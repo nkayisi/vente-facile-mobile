@@ -4,6 +4,7 @@ import {
   SEUIL_LARGE,
   SEUIL_MOYEN,
   classeDeFenetre,
+  colonnesEquilibrees,
   colonnesPour,
   estAuComptoir,
   estPaysage,
@@ -130,6 +131,29 @@ describe("les colonnes", () => {
   it("ne rend jamais zéro, même sans largeur connue", () => {
     expect(colonnesPour(0, { largeurMin: 160 })).toBe(1);
     expect(colonnesPour(Number.NaN, { largeurMin: 160, min: 2 })).toBe(2);
+  });
+});
+
+describe("des rangées équilibrées", () => {
+  it("préfère deux rangées pleines à une rangée et demie", () => {
+    // Six relevés : trois par rangée plutôt que quatre puis deux.
+    expect(colonnesEquilibrees(6, 4)).toBe(3);
+    // Quatre relevés : deux et deux plutôt que trois puis un.
+    expect(colonnesEquilibrees(4, 3)).toBe(2);
+    // Cinq tuiles : trois puis deux plutôt que quatre puis un.
+    expect(colonnesEquilibrees(5, 4)).toBe(3);
+  });
+
+  it("prend tout sur une rangée quand la place le permet", () => {
+    expect(colonnesEquilibrees(6, 6)).toBe(6);
+    expect(colonnesEquilibrees(4, 6)).toBe(4);
+    expect(colonnesEquilibrees(2, 6)).toBe(2);
+  });
+
+  it("ne dépasse jamais ce que la largeur permet", () => {
+    expect(colonnesEquilibrees(8, 2)).toBe(2);
+    expect(colonnesEquilibrees(8, 6)).toBe(4);
+    expect(colonnesEquilibrees(1, 6)).toBe(1);
   });
 });
 

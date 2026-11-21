@@ -65,8 +65,24 @@ import {
 } from "@/printing/jobs";
 import { useSession } from "@/session/provider";
 import {
-  AppBar, Badge, Button, Card, CardHeader, Chip, ChipRow, EmptyState, FormField, Icon, Input,
-  Screen, Sheet, Spinner, StatValue, Text, useToast,
+  AppBar,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  ChipRow,
+  EmptyState,
+  FormField,
+  Grille,
+  Icon,
+  Input,
+  Screen,
+  Sheet,
+  Spinner,
+  StatValue,
+  Text,
+  useToast,
 } from "@/ui";
 
 const TABLES = [
@@ -353,9 +369,9 @@ export default function DetailDepense() {
                   : "Une décision attend déjà son envoi pour cette dépense."}
               </Text>
             ) : null}
-            <View className="flex-row flex-wrap gap-2">
+            <Grille largeurMin={150} min={2} max={4} ecart={8}>
               {possibles.map((t) => (
-                <View key={t} className="min-w-[46%] flex-1">
+                <View key={t}>
                   <Button
                     fullWidth
                     variant={TRANSITION_DEPENSE[t].destructif ? "outline" : "primary"}
@@ -372,7 +388,7 @@ export default function DetailDepense() {
                   </Button>
                 </View>
               ))}
-            </View>
+            </Grille>
           </View>
         ) : undefined
       }

@@ -86,8 +86,10 @@ import {
   Chip,
   ChipRow,
   Divider,
+  Grille,
   Icon,
   IconButton,
+  LARGEUR_MIN_RELEVE,
   PageHeader,
   Rang,
   Screen,
@@ -694,10 +696,11 @@ function RelevesGlobauxVue({
           │                                                                │
           │ Empilées sur toute la largeur, elles poussaient les onglets     │
           │ sous la ligne de flottaison : on ouvrait la rubrique sans voir  │
-          │ qu'elle en avait huit. `basis-[45%]` en donne deux par rangée,  │
-          │ le motif déjà employé par `StatStrip`.                          │
+          │ qu'elle en avait huit. `Grille` en donne deux par rangée sur un │
+          │ téléphone et les quatre sur une rangée dès que la place le      │
+          │ permet, le motif de `StatStrip`.                                │
           └────────────────────────────────────────────────────────────────┘ */}
-      <View className="flex-row flex-wrap justify-between gap-y-2">
+      <Grille largeurMin={200} min={2} max={4} ecart={8}>
         <CarteReleveGlobal
           label="Chiffre d'affaires"
           valeur={m(r.chiffreAffaires)}
@@ -735,7 +738,7 @@ function RelevesGlobauxVue({
           icone="CreditCard"
           detail={`${r.clientsAvecDette} client${r.clientsAvecDette > 1 ? "s" : ""} avec une dette`}
         />
-      </View>
+      </Grille>
 
       <StatStrip>
         <StatStripItem
@@ -804,22 +807,11 @@ function CarteReleveGlobal({
   // │ largeur de la cellule ».                                             │
   // └──────────────────────────────────────────────────────────────────────┘
   return (
-    // ┌──────────────────────────────────────────────────────────────────┐
-    // │ LA LARGEUR EST UN STYLE, PAS UNE CLASSE. `flex-1` GAGNE CONTRE    │
-    // │ `basis-[45%]`.                                                    │
-    // │                                                                   │
-    // │ En NativeWind, deux classes qui touchent la même propriété se     │
-    // │ départagent par ORDRE ALPHABÉTIQUE dans la feuille compilée, quel │
-    // │ que soit l'ordre du `className` : « b » perd contre « f », et     │
-    // │ `flex-1` remet la base à zéro. Relevé à l'écran - les QUATRE      │
-    // │ cartes tenaient sur une seule ligne, « 560 740,7 $ » sortant en   │
-    // │ « 560 7... ». C'est le piège déjà documenté pour `Text` et        │
-    // │ `Card` ; ici un style résout la question sans cascade du tout.    │
-    // │                                                                   │
-    // │ 48 % et non 50 : `justify-between` pose la gouttière entre les    │
-    // │ deux colonnes, et deux moitiés pleines ne laisseraient rien.      │
-    // └──────────────────────────────────────────────────────────────────┘
-    <View style={{ width: "48%" }}>
+    // La CELLULE est posée par `Grille` (`ui/grille.tsx`), en style et non en
+    // classe : `flex-1` l'emporterait sur une `basis-[…]` par ordre alphabétique
+    // de la feuille compilée. Relevé à l'écran avant cela : les QUATRE cartes
+    // tenaient sur une ligne, « 560 740,7 $ » sortant en « 560 7... ».
+    <View className="flex-1">
       <Card>
         <View className="flex-row items-center gap-1.5">
           <Icon name={icone} size={14} color="primary" />
@@ -913,19 +905,19 @@ function SectionVue({
       ) : null}
 
       {section.cartes?.length ? (
-        <View className="flex-row flex-wrap gap-px bg-border">
+        <Grille filets largeurMin={LARGEUR_MIN_RELEVE} min={2} max={6}>
           {section.cartes.map((c) => (
             <CarteVue key={c.cle} c={c} />
           ))}
-        </View>
+        </Grille>
       ) : null}
 
       {section.tuiles?.length ? (
-        <View className="flex-row flex-wrap gap-2 bg-card p-4">
+        <Grille className="bg-card p-4" largeurMin={150} min={2} max={4} ecart={8}>
           {section.tuiles.map((tu) => (
             <View
               key={tu.cle}
-              className={`min-w-0 flex-1 basis-[44%] items-center rounded-lg p-3 ${FOND_TON[tu.ton]}`}
+              className={`min-w-0 flex-1 items-center rounded-lg p-3 ${FOND_TON[tu.ton]}`}
             >
               <Text variant="caption" numberOfLines={1}>
                 {tu.label}
@@ -940,7 +932,7 @@ function SectionVue({
               </Text>
             </View>
           ))}
-        </View>
+        </Grille>
       ) : null}
 
       {section.graphe && section.graphe.points.length > 0 ? (
@@ -1036,7 +1028,7 @@ const TEXTE_TON: Record<string, string> = {
 
 function CarteVue({ c }: { c: CarteRapport }) {
   return (
-    <View className="min-w-0 flex-1 basis-[45%] bg-card px-4 py-3">
+    <View className="min-w-0 flex-1 bg-card px-4 py-3">
       <Text variant="caption" numberOfLines={1}>
         {c.label}
       </Text>

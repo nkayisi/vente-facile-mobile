@@ -34,7 +34,7 @@ export function TuileChoix({
       accessibilityRole="radio"
       accessibilityState={{ selected: choisie }}
       accessibilityLabel={description ? `${titre}. ${description}` : titre}
-      className={`min-w-0 flex-1 basis-[45%] rounded-lg border-2 p-4 ${
+      className={`min-w-0 flex-1 rounded-lg border-2 p-4 ${
         choisie ? "border-primary bg-accent" : "border-border bg-card"
       }`}
     >

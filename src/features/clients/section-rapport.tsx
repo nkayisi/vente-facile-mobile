@@ -32,7 +32,7 @@ import {
 } from "@/data/rapport-client";
 import { useEnLigne } from "@/data/reseau";
 import { useSession } from "@/session/provider";
-import { Banner, Card, Chip, ChipRow, Mesure, Section, Text } from "@/ui";
+import { Banner, Card, Chip, ChipRow, Grille, Mesure, Section, Text } from "@/ui";
 
 /**
  * Les quatre fenêtres, celles de `data/periodes` - la SEULE règle de périodes
@@ -142,7 +142,7 @@ export function SectionRapportClient({ clientId }: { clientId: string }) {
       {rapport ? (
         <>
           <Card>
-            <View className="flex-row flex-wrap">
+            <Grille largeurMin={150} min={2} max={6} ecart={12}>
               <Releve
                 label="Chiffre d'affaires"
                 valeur={argent(rapport.chiffre)}
@@ -155,7 +155,7 @@ export function SectionRapportClient({ clientId }: { clientId: string }) {
               />
               <Releve label="Encaissé" valeur={argent(rapport.encaisse)} />
               <Releve label="Reste dû" valeur={argent(rapport.resteDu)} />
-            </View>
+            </Grille>
             <Text variant="caption" className="mt-2">
               {`Montants convertis en ${rapport.devisePrincipale}, au taux figé sur chaque facture.`}
             </Text>
@@ -184,7 +184,7 @@ export function SectionRapportClient({ clientId }: { clientId: string }) {
           {rapport.fidelite.aUnProgramme ? (
             <Card>
               <Text variant="caption">Cagnotte de fidélité</Text>
-              <View className="mt-1 flex-row flex-wrap">
+              <Grille className="mt-1" largeurMin={150} min={2} max={3} ecart={12}>
                 <Releve
                   label="Gagnée sur la période"
                   valeur={argent(rapport.fidelite.gagnee)}
@@ -198,7 +198,7 @@ export function SectionRapportClient({ clientId }: { clientId: string }) {
                   label={`Disponible au ${rapport.arreteAu ?? "jour"}`}
                   valeur={argent(rapport.fidelite.cagnotte)}
                 />
-              </View>
+              </Grille>
             </Card>
           ) : null}
         </>
@@ -208,16 +208,17 @@ export function SectionRapportClient({ clientId }: { clientId: string }) {
 }
 
 /**
- * Un relevé du cadran : la moitié de la largeur.
+ * Un relevé du cadran, dans une cellule de `Grille` : deux par rangée sur un
+ * téléphone, tous sur une rangée dès que la carte est assez large.
  *
  * ⚠ `Mesure` ET NON `StatValue` : celui-ci part d'un titre en gras, parce que
  * dans une cellule de cadran le nombre EST le contenu. Ici les relevés vivent
  * dans une carte à deux colonnes - deux par rangée tiennent les six chiffres
- * sur un même écran, trois seraient de trop.
+ * sur un même écran, trois seraient de trop sur un téléphone.
  */
 function Releve({ label, valeur }: { label: string; valeur: string }) {
   return (
-    <View className="mb-3 pr-3" style={{ width: "50%" }}>
+    <View className="mb-3">
       <Text variant="caption">{label}</Text>
       <Mesure value={valeur} />
     </View>

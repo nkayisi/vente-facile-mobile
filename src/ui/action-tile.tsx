@@ -88,6 +88,18 @@ const ACCENTS: Record<AccentTuile, { fond: string; jeton: "primary" | "chart2" |
   chart3: { fond: "bg-chart-3/10", jeton: "chart3" },
 };
 
+/**
+ * La plus petite cellule d'un RACCOURCI (`forme="action"`) : une pastille de
+ * quarante-huit points et un libellé d'un mot. Trois tiennent sur un
+ * téléphone de 390 points.
+ */
+export const LARGEUR_MIN_RACCOURCI = 104;
+/**
+ * La plus petite cellule d'une TUILE (`forme="grille"`) : pastille, titre et
+ * description d'une ligne. Deux tiennent sur un téléphone.
+ */
+export const LARGEUR_MIN_TUILE = 168;
+
 export function ActionTile({
   href,
   title,
@@ -139,11 +151,12 @@ export function ActionTile({
     .join(". ");
 
   if (forme === "action") {
-    // `flex-1` avec `basis-[30%]` : trois par rangée, qui se PARTAGENT la
-    // largeur restante. Une base fixe laisserait une bande vide à droite, et
-    // la grille ne serait plus alignée sur les cartes de la page.
+    // La CELLULE est posée par `Grille` (`ui/grille.tsx`), qui compte les
+    // colonnes sur la largeur du volet : trois par rangée sur un téléphone,
+    // six sur un grand écran. Une base en pourcentage écrite ici donnait trois
+    // colonnes partout, donc des tuiles de six cents points sur le rk3568.
     return (
-      <View className="min-w-0 flex-1 basis-[30%]">
+      <View className="min-w-0 flex-1">
         <Pressable
           onPress={aller}
           haptic={desactive ? "none" : "selection"}
@@ -213,7 +226,7 @@ export function ActionTile({
     );
 
   return (
-    <View className={grille ? "min-w-0 flex-1 basis-[45%]" : undefined}>
+    <View className={grille ? "min-w-0 flex-1" : undefined}>
       <Pressable
         onPress={aller}
         haptic={desactive ? "none" : "selection"}

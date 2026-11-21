@@ -345,6 +345,9 @@ export function FeuilleNouveauMouvement({
   return (
     <Sheet
       ouvert
+      // Au centre d'une tablette, une feuille qui porte des lignes prend la
+      // largeur large : à 560 points, chaque ligne se replierait.
+      taille="large"
       onFermer={reculer}
       titre={titre}
       retour={surLeFormulaire ? undefined : reculer}

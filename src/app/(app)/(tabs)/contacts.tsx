@@ -26,13 +26,15 @@ import {
   CarteReleve,
   DataList,
   DataRow,
+  Grille,
   Icon,
+  LARGEUR_MIN_CARTE_RELEVE,
+  Mesure,
   MultiCurrencyTotal,
   PageHeader,
   Screen,
   SearchInput,
   Segmented,
-  Mesure,
   StatValue,
   Text,
 } from "@/ui";
@@ -105,8 +107,9 @@ export default function Contacts() {
         }
       />
 
-      {/* Quatre relevés, deux colonnes, dans l'ordre du web. */}
-      <View className="flex-row flex-wrap gap-4">
+      {/* Quatre relevés, dans l'ordre du web : deux par rangée sur un
+          téléphone, les quatre sur une rangée dès que la largeur le permet. */}
+      <Grille largeurMin={LARGEUR_MIN_CARTE_RELEVE} min={2} max={4} ecart={16}>
         <CarteReleve
           label="Clients"
           icone={
@@ -150,7 +153,7 @@ export default function Contacts() {
             money={money.money}
           />
         </CarteReleve>
-      </View>
+      </Grille>
 
       <Segmented
         options={[

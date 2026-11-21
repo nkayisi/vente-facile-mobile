@@ -155,6 +155,39 @@ export function colonnesPour(
   return Math.min(max, Math.max(min, n));
 }
 
+/**
+ * Le nombre de colonnes qui range `n` cellules le plus proprement, sans
+ * dépasser `max`.
+ *
+ * ⚠ LE PLUS GRAND N'EST PAS LE MEILLEUR. Six relevés sur quatre colonnes font
+ * une rangée pleine et une rangée à moitié vide ; sur trois, deux rangées
+ * pleines. On cherche donc, dans l'ordre : le moins de RANGÉES, puis le moins
+ * de cellules VIDES dans la dernière, puis le plus de colonnes. C'est ce que le
+ * back-office obtient à la main avec ses paliers `2 / 3 / 6`, qui divisent
+ * tous six.
+ */
+export function colonnesEquilibrees(n: number, max: number): number {
+  if (n <= 0) return Math.max(1, max);
+  const plafond = Math.max(1, Math.min(n, max));
+  let meilleur = 1;
+  let meilleursRangs = Number.POSITIVE_INFINITY;
+  let meilleursVides = Number.POSITIVE_INFINITY;
+  for (let c = 1; c <= plafond; c++) {
+    const rangs = Math.ceil(n / c);
+    const vides = rangs * c - n;
+    const mieux =
+      rangs < meilleursRangs ||
+      (rangs === meilleursRangs && vides < meilleursVides) ||
+      (rangs === meilleursRangs && vides === meilleursVides && c > meilleur);
+    if (mieux) {
+      meilleur = c;
+      meilleursRangs = rangs;
+      meilleursVides = vides;
+    }
+  }
+  return meilleur;
+}
+
 export function largeurMaxDe(gabarit: Gabarit): number | null {
   return LARGEUR_MAX[gabarit];
 }

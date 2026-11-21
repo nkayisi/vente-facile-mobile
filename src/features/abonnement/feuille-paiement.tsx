@@ -45,8 +45,18 @@ import { formatDateFr } from "@vente-facile/core";
 import { useSession } from "@/session/provider";
 import { unblockAll } from "@/sync";
 import {
-  Badge, Banner, Button, Divider, Icon, Input, ProgressBar, Pressable,
-  Sheet, Spinner, Text,
+  Badge,
+  Banner,
+  Button,
+  Divider,
+  Grille,
+  Icon,
+  Input,
+  Pressable,
+  ProgressBar,
+  Sheet,
+  Spinner,
+  Text,
 } from "@/ui";
 
 /** Les logos, importés statiquement : Metro exige un chemin littéral. */
@@ -410,7 +420,7 @@ export function FeuillePaiement({
           <Text variant="label">Opérateur Mobile Money</Text>
           {/* On reconnaît son opérateur à son LOGO bien avant de lire son nom :
               c'est le geste le plus rapide de tout l'écran. */}
-          <View className="flex-row flex-wrap gap-2">
+          <Grille largeurMin={140} min={2} max={4} ecart={8}>
             {OPERATEURS.map((o) => {
               const actif = o.id === operateur;
               return (
@@ -420,7 +430,6 @@ export function FeuillePaiement({
                   accessibilityRole="button"
                   accessibilityLabel={o.label}
                   accessibilityState={{ selected: actif }}
-                  style={{ width: "48%" }}
                   className={`flex-row items-center gap-2 rounded-xl border-2 p-3 ${
                     actif ? "border-primary bg-primary/5" : "border-border bg-card"
                   }`}
@@ -437,7 +446,7 @@ export function FeuillePaiement({
                 </Pressable>
               );
             })}
-          </View>
+          </Grille>
         </View>
 
         {/* ------------------------------------------------------- numéro */}

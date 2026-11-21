@@ -15,6 +15,7 @@ import { View } from "react-native";
 
 import { HAUTEUR_ONGLETS } from "@/navigation/metriques";
 
+import { useDisposition } from "./disposition";
 import { Icon, type IconName } from "./icon";
 import { Text } from "./text";
 import { useMargesSysteme } from "./zone-sure";
@@ -39,6 +40,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [courant, setCourant] = useState<{ ton: TonToast; message: string } | null>(null);
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const marges = useMargesSysteme();
+  const { navigation } = useDisposition();
 
   const montrer = useCallback((ton: TonToast, message: string) => {
     if (minuteur.current) clearTimeout(minuteur.current);
@@ -78,9 +80,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
            * fournisseur est monté au-dessus - il doit aussi servir les écrans
            * plein écran du comptoir, qui n'ont pas de barre.
            */
-          style={{ bottom: marges.bas + HAUTEUR_ONGLETS + 12 }}
+          //
+          // ⚠ SANS BARRE D'ONGLETS, PAS DE HAUTEUR D'ONGLETS : sur une tablette
+          // la navigation vit à gauche, et le bandeau flotterait quarante-neuf
+          // points au-dessus de rien. Sur un grand écran il garde la largeur
+          // d'une phrase, centré, au lieu de barrer tout l'écran.
+          style={{
+            bottom: marges.bas + (navigation === "barre" ? HAUTEUR_ONGLETS : 0) + 12,
+          }}
         >
-          <View className={`flex-row items-center gap-2 rounded-xl border px-3 py-3 ${h.fond}`}>
+          <View
+            className={`flex-row items-center gap-2 rounded-xl border px-3 py-3 ${h.fond}`}
+            style={navigation === "barre" ? undefined : { alignSelf: "center", maxWidth: 480 }}
+          >
             <Icon name={h.icone} size={18} color={h.couleur} />
             <Text variant="bodySmall" className="flex-1">
               {courant.message}

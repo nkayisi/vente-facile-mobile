@@ -43,14 +43,15 @@ import {
   Button,
   ChampSelect,
   FormField,
+  Grille,
+  type IconName,
   Input,
+  type OptionSelect,
   Pressable,
   Screen,
   Stepper,
   Text,
   TuileChoix,
-  type IconName,
-  type OptionSelect,
 } from "@/ui";
 import { useInscription } from "./_layout";
 
@@ -236,7 +237,7 @@ export default function Etablissement() {
           <Text variant="label" className="mb-2">
             Type d'établissement <Text className="text-destructive">*</Text>
           </Text>
-          <View className="flex-row flex-wrap gap-3">
+          <Grille largeurMin={150} min={2} max={3}>
             {TYPES.map((t) => (
               <TuileChoix
                 key={t.valeur}
@@ -247,7 +248,7 @@ export default function Etablissement() {
                 onPress={() => poser({ business_type: t.valeur })}
               />
             ))}
-          </View>
+          </Grille>
         </View>
 
         {/* L'avertissement est SOUS le champ, comme sur le web : c'est une

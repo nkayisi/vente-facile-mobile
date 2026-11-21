@@ -85,7 +85,18 @@ export function MultiCurrencyTotal({
   );
 }
 
-/** Carte de relevé du hub Ventes : pastille à gauche, valeur puis libellé à droite. */
+/**
+ * La plus petite cellule d'une `CarteReleve` : une pastille et un total CDF à
+ * sept chiffres, en entier.
+ */
+export const LARGEUR_MIN_CARTE_RELEVE = 200;
+
+/**
+ * Carte de relevé du hub Ventes : pastille à gauche, valeur puis libellé à droite.
+ *
+ * Elle se pose dans une `Grille` (`ui/grille.tsx`), qui en compte les colonnes
+ * sur la largeur du volet : deux sur un téléphone, quatre sur un grand écran.
+ */
 export function CarteReleve({
   children,
   label,
@@ -96,7 +107,7 @@ export function CarteReleve({
   icone: React.ReactNode;
 }) {
   return (
-    <View className="min-w-0 flex-1 basis-[45%] flex-row items-center gap-3 rounded-xl border border-border bg-card p-4">
+    <View className="min-w-0 flex-1 flex-row items-center gap-3 rounded-xl border border-border bg-card p-4">
       {icone}
       <View className="min-w-0 flex-1">
         {children}

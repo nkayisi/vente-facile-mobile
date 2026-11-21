@@ -80,7 +80,20 @@ export function Tableau<T>({
   messageVide?: string;
 }) {
   const [largeurVue, setLargeurVue] = useState(0);
-  const largeurTotale = colonnes.reduce((s, c) => s + c.largeur, 0);
+  const largeurNaturelle = colonnes.reduce((s, c) => s + c.largeur, 0);
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ SUR UN GRAND ÉCRAN, LES COLONNES S'ÉTIRENT À LA LARGEUR DE LA VUE.   │
+  // │                                                                      │
+  // │ Leur largeur est fixe pour que l'en-tête reste aligné d'une rangée   │
+  // │ à l'autre ; mais un tableau de 540 points collé à gauche d'une carte │
+  // │ de 1 200 laissait la moitié droite vide. On garde les PROPORTIONS,   │
+  // │ donc l'alignement, et on étire ; on ne rétrécit jamais (le           │
+  // │ défilement horizontal reste le remède d'un téléphone).               │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const utile = largeurVue - 32;
+  const facteur = largeurVue > 0 && utile > largeurNaturelle ? utile / largeurNaturelle : 1;
+  const largeurDe = (c: ColonneTableau<T>) => Math.floor(c.largeur * facteur);
+  const largeurTotale = colonnes.reduce((s, c) => s + largeurDe(c), 0);
   // On ne le DIT que si ça déborde vraiment : une invite à faire glisser sur
   // un tableau qui tient en entier apprend au lecteur à ignorer l'invite.
   const deborde = largeurVue > 0 && largeurTotale > largeurVue + 8;
@@ -108,7 +121,7 @@ export function Tableau<T>({
               lequel coiffe quoi. Défaut déjà corrigé sur les exports serveur. */}
           <View className="flex-row border-b border-border pb-2">
             {colonnes.map((c) => (
-              <View key={c.cle} style={{ width: c.largeur }} className="pr-3">
+              <View key={c.cle} style={{ width: largeurDe(c) }} className="pr-3">
                 <Text
                   variant="caption"
                   numberOfLines={1}
@@ -125,7 +138,7 @@ export function Tableau<T>({
               {i > 0 ? <Divider /> : null}
               <View className="flex-row py-2.5">
                 {colonnes.map((c) => (
-                  <View key={c.cle} style={{ width: c.largeur }} className="pr-3">
+                  <View key={c.cle} style={{ width: largeurDe(c) }} className="pr-3">
                     {c.rendu ? (
                       <View className={c.mesure ? "items-end" : "items-start"}>
                         {c.rendu(l, i)}

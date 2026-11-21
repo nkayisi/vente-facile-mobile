@@ -614,6 +614,9 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
     // └──────────────────────────────────────────────────────────────────────┘
     <Sheet
       ouvert
+      // Au centre d'une tablette, une feuille qui porte des lignes prend la
+      // largeur large : à 560 points, chaque ligne se replierait.
+      taille="large"
       // Le voile et le bouton retour d'Android RECULENT d'un panneau avant de
       // fermer : un geste destine a revenir en arriere ne perd pas la saisie.
       onFermer={reculer}

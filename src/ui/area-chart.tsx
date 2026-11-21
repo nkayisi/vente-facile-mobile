@@ -40,6 +40,7 @@ import Svg, {
 
 import { indicesEtiquettes } from "@/features/tableau-de-bord/series";
 
+import { useDisposition } from "./disposition";
 import { Text } from "./text";
 import { useTheme } from "./theme";
 
@@ -107,7 +108,7 @@ function cheminCourbe(xs: number[], ys: number[], dx: number): string {
 
 export function AreaChart({
   points,
-  hauteur = 170,
+  hauteur: hauteurDemandee,
   formater,
   /**
    * Ce qui s'écrit en tête tant que rien n'est touché. À défaut, le MAXIMUM
@@ -124,6 +125,11 @@ export function AreaChart({
   resume?: { label: string; valeur: number };
 }) {
   const { colors } = useTheme();
+  // Sur un volet large, la courbe prend de la hauteur : à 170 points sur
+  // 1 200 de large, elle s'écrasait en un trait, et les creux d'une semaine ne
+  // se distinguaient plus des jours sans vente.
+  const voletLarge = useDisposition().largeur >= 720;
+  const hauteur = hauteurDemandee ?? (voletLarge ? 240 : 170);
   const [largeur, setLargeur] = useState(0);
   const [choisi, setChoisi] = useState<number | null>(null);
 

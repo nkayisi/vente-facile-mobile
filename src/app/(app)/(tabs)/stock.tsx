@@ -33,7 +33,9 @@ import {
   Button,
   Card,
   EmptyState,
+  Grille,
   Icon,
+  LARGEUR_MIN_TUILE,
   PageHeader,
   Pressable,
   Screen,
@@ -65,7 +67,7 @@ export default function Stock() {
   );
 
   return (
-    <Screen scroll edges={[]}>
+    <Screen scroll edges={[]} gabarit="large">
       <PageHeader
         title="Gestion de stock"
         subtitle="Vue d'ensemble de vos entrepôts, niveaux de stock et mouvements"
@@ -124,7 +126,9 @@ export default function Stock() {
         <Text variant="h4" className="mb-3">
           Opérations
         </Text>
-        <View className="flex-row flex-wrap gap-3">
+        {/* Deux par rangée sur un téléphone, les cinq sur une rangée dès que
+            la largeur le permet. */}
+        <Grille largeurMin={LARGEUR_MIN_TUILE} min={2} max={6}>
           <ActionTile
             forme="grille"
             href="/rayon"
@@ -168,7 +172,7 @@ export default function Stock() {
             icon="ShoppingBasket"
             accent="chart2"
           />
-        </View>
+        </Grille>
       </View>
 
       <View className="mt-6">

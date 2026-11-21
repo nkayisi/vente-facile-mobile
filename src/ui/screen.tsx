@@ -16,6 +16,8 @@ import {
 } from "react-native";
 import type { Edge } from "react-native-safe-area-context";
 
+import { useDisposition, Volet } from "./disposition";
+import { largeurMaxDe, margePage, type Gabarit } from "./disposition-regles";
 import { useTheme } from "./theme";
 import {
   BORDS_PAR_DEFAUT,
@@ -148,6 +150,25 @@ export interface ScreenProps {
    *    sures.
    */
   fond?: keyof typeof FONDS;
+  /**
+   * La largeur maximale du contenu : `lecture` (défaut), `large`, `etroit`,
+   * `plein`. Voir `disposition-regles.ts`.
+   *
+   * ┌────────────────────────────────────────────────────────────────────────┐
+   * │ LE CONTENU EST CENTRÉ À SA LARGEUR, LE FOND RESTE PLEINE LARGEUR.      │
+   * │                                                                        │
+   * │ Sur le rk3568 (1 920 points), l'écran Imprimante étirait chaque rangée │
+   * │ sur toute la largeur : le libellé à gauche, sa valeur à 1 900 points à │
+   * │ droite, et l'oeil devait traverser l'écran pour les relier. Un         │
+   * │ formulaire, une fiche ou une liste se lisent sur une colonne ; un      │
+   * │ tableau de bord sur une grille plus large ; le comptoir prend tout.    │
+   * └────────────────────────────────────────────────────────────────────────┘
+   *
+   * ⚠ RIEN NE CHANGE SUR UN TÉLÉPHONE, et c'est vérifié : la contrainte ne
+   * s'écrit que lorsqu'elle MORD (volet plus large que le gabarit), et la
+   * gouttière vaut zéro en `compact`. Les 115 écrans gardent leur géométrie.
+   */
+  gabarit?: Gabarit;
   className?: string;
 }
 
@@ -161,20 +182,49 @@ export function Screen({
   pied,
   centre = false,
   fond = "background",
+  gabarit = "lecture",
   className = "",
 }: ScreenProps) {
   const marges = useMargesSysteme();
   const { colors } = useTheme();
+  const { largeur, classe } = useDisposition();
 
   // Le calcul vit dans `zone-sure.ts`, et c'est ce qui le rend eprouvable sans
   // rendre un composant. `Screen` DELEGUE : s'il recalculait ici, le test pur
   // resterait vert sur un code que plus personne n'appellerait.
   const pad = rembourrageZoneSure(edges, marges);
 
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LA GOUTTIÈRE S'AJOUTE AUX SEIZE POINTS QUE TOUT ÉCRAN POSE DÉJÀ.     │
+  // │                                                                      │
+  // │ 71 écrans sur 115 passent `padded={false}` et écrivent leur propre   │
+  // │ `px-4`. Changer la marge de page écran par écran laisserait des      │
+  // │ seize et des vingt-quatre côte à côte. Ici, la gouttière (8 points   │
+  // │ hors téléphone) se pose AUTOUR de la boîte de contenu : seize plus   │
+  // │ huit donnent les vingt-quatre du `lg:p-6` du web, partout à la fois. │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const max = largeurMaxDe(gabarit);
+  const gouttiere = gabarit === "plein" ? 0 : margePage(classe) - 16;
+  const contraint = max !== null && largeur > max;
+  const boite = {
+    ...(contraint ? { width: "100%" as const, maxWidth: max, alignSelf: "center" as const } : null),
+    ...(gouttiere > 0 ? { paddingHorizontal: gouttiere } : null),
+  };
+  // La largeur que les ENFANTS ont pour eux : une grille, un graphique ou un
+  // volet lisent CETTE valeur, pas celle de la fenêtre.
+  const largeurEnfants =
+    Math.min(largeur, max ?? Number.POSITIVE_INFINITY) - 2 * gouttiere - (padded ? 32 : 0);
+
   const contenu = {
-    ...(padded ? { padding: 16 } : null),
+    ...boite,
+    ...(padded
+      ? gouttiere > 0
+        ? { padding: 16, paddingHorizontal: 16 + gouttiere }
+        : { padding: 16 }
+      : null),
     ...(centre ? { flexGrow: 1, justifyContent: "center" as const } : null),
   };
+  const enfants = <Volet largeur={largeurEnfants}>{children}</Volet>;
 
   const body = scroll ? (
     <ScrollView
@@ -192,13 +242,18 @@ export function Screen({
         ) : undefined
       }
     >
-      {children}
+      {enfants}
     </ScrollView>
   ) : (
     <View
       className={`flex-1 ${padded ? "p-4" : ""} ${centre ? "justify-center" : ""} ${className}`}
+      style={
+        gouttiere > 0 || contraint
+          ? { ...boite, ...(padded ? { paddingHorizontal: 16 + gouttiere } : null) }
+          : undefined
+      }
     >
-      {children}
+      {enfants}
     </View>
   );
 
@@ -228,7 +283,13 @@ export function Screen({
           // défile dessous. Sans eux, un texte qui passe derrière donne
           // l'impression que la page s'arrête là où elle continue. En `card`
           // ils disparaissent : voir la table `FONDS`.
-          <View className={`px-4 py-3 ${f.pied}`}>{pied}</View>
+          <View className={`px-4 py-3 ${f.pied}`}>
+            {/* Le pied suit la colonne du contenu : sur un grand écran, des
+                boutons étirés sur 1 900 points se liraient comme un bandeau, et
+                « Encaisser » partirait à l'autre bout de l'écran. Le fond et le
+                filet, eux, restent pleine largeur. */}
+            {gouttiere > 0 || contraint ? <View style={boite}>{pied}</View> : pied}
+          </View>
         ) : null}
       </KeyboardAvoidingView>
     </View>

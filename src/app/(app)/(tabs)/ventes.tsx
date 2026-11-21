@@ -68,7 +68,9 @@ import {
   Card,
   Divider,
   EmptyState,
+  Grille,
   Icon,
+  LARGEUR_MIN_RACCOURCI,
   MultiCurrencyTotal,
   PageHeader,
   Pressable,
@@ -122,7 +124,7 @@ export default function Ventes() {
   const envoiSession = libelleEnvoi(session?.envoi);
 
   return (
-    <Screen scroll edges={[]}>
+    <Screen scroll edges={[]} gabarit="large">
       {/* ┌────────────────────────────────────────────────────────────────┐
           │ L'ACTION EST SUR LA LIGNE DU TITRE, ET ELLE Y GAGNE UN ÉCRAN. │
           │                                                                │
@@ -304,7 +306,9 @@ export default function Ventes() {
         {/* Le libellé dessiné tient en un mot ; la description n'est PAS
             dessinée à cette largeur, elle complète ce que le lecteur d'écran
             annonce. */}
-        <View className="flex-row flex-wrap gap-3">
+        {/* Trois par rangée sur un téléphone, les six sur une rangée dès que la
+            largeur le permet : `Grille` compte sur le volet. */}
+        <Grille largeurMin={LARGEUR_MIN_RACCOURCI} min={3} max={6}>
           <ActionTile
             href="/vente/reglements"
             forme="action"
@@ -354,7 +358,7 @@ export default function Ventes() {
             icon="Clock"
             accent="chart3"
           />
-        </View>
+        </Grille>
       </View>
 
       <View className="mt-6">

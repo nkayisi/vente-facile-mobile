@@ -6,7 +6,7 @@
  * produits les plus vendus, les alertes d'inventaire.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ QUATRE RELEVÉS EN DEUX COLONNES, ET C'EST UN CHOIX DE LECTURE.          │
+ * │ QUATRE RELEVÉS EN DEUX COLONNES SUR UN TÉLÉPHONE, CHOIX DE LECTURE.     │
  * │                                                                          │
  * │ Le back-office rend une seule colonne à 390 points. Deux colonnes tient  │
  * │ les quatre chiffres sur un même écran, sans défiler : c'est le geste du  │
@@ -17,6 +17,10 @@
  * │                                                                          │
  * │ Trois colonnes seraient de trop : `StatStrip` porte déjà la mesure, tout │
  * │ montant en CDF y tomberait au plus petit palier.                         │
+ * │                                                                          │
+ * │ Sur une tablette, les quatre passent sur une rangée dès que chaque carte │
+ * │ garde ses deux cents points : c'est `Grille` qui compte, sur la largeur  │
+ * │ du volet (`ui/grille.tsx`).                                              │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
@@ -82,6 +86,7 @@ import {
   Divider,
   DonutChart,
   EmptyState,
+  Grille,
   Icon,
   ListItem,
   PageHeader,
@@ -155,7 +160,7 @@ function CarteKpi({
   pied?: React.ReactNode;
 }) {
   return (
-    <View className="min-w-0 flex-1 basis-[45%] rounded-xl bg-card p-3.5">
+    <View className="min-w-0 flex-1 rounded-xl bg-card p-3.5">
       <View className="flex-row items-start justify-between gap-2">
         <Text
           variant="caption"
@@ -474,8 +479,9 @@ export default function TableauDeBord() {
         </ChipRow>
       ) : null}
 
-      {/* Quatre relevés, DEUX COLONNES : voir l'encadré en tête de fichier. */}
-      <View className="mt-4 flex-row flex-wrap gap-3">
+      {/* Quatre relevés, deux colonnes sur un téléphone : voir l'encadré en
+          tête de fichier. */}
+      <Grille className="mt-4" largeurMin={200} min={2} max={4}>
         <CarteKpi
           label="Ventes totales"
           icon="Banknote"
@@ -529,7 +535,7 @@ export default function TableauDeBord() {
         >
           <StatValue value={r ? enPrincipale(r.benefice) : formatPrice(0)} />
         </CarteKpi>
-      </View>
+      </Grille>
 
       <View className="mt-5">
         <Card>

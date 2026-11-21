@@ -3387,3 +3387,77 @@ describe("disposition adaptative", () => {
     expect(config).toMatch(/"expo-screen-orientation"/);
   });
 });
+
+describe("grilles et modales adaptatives", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ UNE GRILLE EN POURCENTAGE A LE MÊME NOMBRE DE COLONNES PARTOUT.         │
+   * │                                                                          │
+   * │ `basis-[45%]` faisait deux colonnes sur un téléphone de 390 points ET    │
+   * │ sur le terminal de 1 920 : deux relevés de six cents points, qui se      │
+   * │ lisent comme des bandeaux. `Grille` compte sur la largeur du volet.      │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   *
+   * ⚠ `100%` n'est pas une grille : une image qui remplit sa case, un filet
+   * pleine largeur. On ne vise que les fractions.
+   */
+  const POURCENT =
+    /\bbasis-\[\d+(?:\.\d+)?%\]|\bmin-w-\[\d+(?:\.\d+)?%\]|\bw-\d+\/\d+\b|width:\s*["'`](?!100%)\d{1,2}(?:\.\d+)?%["'`]/;
+  const GRILLE = join("ui", "grille.tsx");
+  /**
+   * Exceptions NOMMÉES : un pavé numérique est TROIS colonnes par définition,
+   * à toute largeur - la carte qui le porte est déjà bornée au centre d'une
+   * tablette (`selecteur-quantite.tsx`). Et deux squelettes de chargement
+   * dessinent une ligne de texte, pas une grille.
+   */
+  const NOMMEES = [
+    join("features", "pos", "selecteur-quantite.tsx"),
+    join("ui", "feedback.tsx"),
+    join("app", "(app)", "caisses", "index.tsx"),
+  ];
+
+  it("aucune grille n'est écrite en pourcentage hors de `Grille`", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const nom = relative(RACINE, f);
+      if (nom === GRILLE || NOMMEES.includes(nom)) continue;
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      code.split("\n").forEach((l, i) => {
+        const m = POURCENT.exec(l);
+        if (m) fautifs.push(`${nom}:${i + 1} - ${m[0]}`);
+      });
+    }
+    expect(fautifs).toEqual([]);
+    // Les exceptions désignent encore quelque chose.
+    for (const nom of NOMMEES) {
+      expect(POURCENT.test(commentairesBlanchis(readFileSync(join(RACINE, nom), "utf8")))).toBe(true);
+    }
+  });
+
+  it("le balayage MORD sur les trois écritures, et laisse passer 100 %", () => {
+    expect(POURCENT.test('<View className="min-w-0 flex-1 basis-[45%]" />')).toBe(true);
+    expect(POURCENT.test('<View style={{ width: "48%" }} />')).toBe(true);
+    expect(POURCENT.test('<View className="w-1/3" />')).toBe(true);
+    expect(POURCENT.test('style={{ width: "100%", height: "100%" }}')).toBe(false);
+  });
+
+  /**
+   * Une feuille pleine largeur sur un grand écran se lit comme un bandeau, et
+   * son bouton part à l'autre bout. Toute modale décide de sa forme par la même
+   * règle (`formeDeModale`), sauf `Dialog`, qui est centré par nature.
+   */
+  it("toute modale décide de sa forme par la règle partagée", () => {
+    const fautifs: string[] = [];
+    let vues = 0;
+    for (const f of fichiers(RACINE)) {
+      const nom = relative(RACINE, f);
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (!/<Modal\b/.test(code)) continue;
+      vues += 1;
+      if (nom === join("ui", "dialog.tsx")) continue;
+      if (!/\bformeDeModale\s*\(/.test(code)) fautifs.push(nom);
+    }
+    expect(vues).toBeGreaterThanOrEqual(3);
+    expect(fautifs).toEqual([]);
+  });
+});

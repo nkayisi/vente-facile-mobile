@@ -178,3 +178,55 @@ describe("le pied d'une feuille", () => {
     );
   });
 });
+
+describe("sur une tablette, la feuille se pose au centre", () => {
+  function poserFenetre(largeur: number, hauteur: number) {
+    mockMarges.frame = { width: largeur, height: hauteur };
+    jest
+      .spyOn(Dimensions, "get")
+      .mockReturnValue({ width: largeur, height: hauteur, scale: 1, fontScale: 1 } as never);
+  }
+
+  it("monte du bas, pleine largeur, sur un téléphone", () => {
+    const rendu = rendre(
+      <Sheet ouvert onFermer={() => {}}>
+        <View />
+      </Sheet>
+    );
+    expect(styles(rendu.root.findByType(KeyboardAvoidingView)).maxWidth).toBeUndefined();
+  });
+
+  it("prend la largeur d'un formulaire au centre d'un grand écran", () => {
+    poserFenetre(1920, 1080);
+    const rendu = rendre(
+      <Sheet ouvert onFermer={() => {}}>
+        <View />
+      </Sheet>
+    );
+    const kav = styles(rendu.root.findByType(KeyboardAvoidingView));
+    expect(kav.maxWidth).toBe(560);
+    expect(kav.width).toBe("100%");
+  });
+
+  it("s'élargit pour une feuille qui porte une liste", () => {
+    poserFenetre(1280, 800);
+    const rendu = rendre(
+      <Sheet ouvert onFermer={() => {}} taille="large">
+        <View />
+      </Sheet>
+    );
+    expect(styles(rendu.root.findByType(KeyboardAvoidingView)).maxWidth).toBe(760);
+  });
+
+  it("garde son pied à seize points du bas de la CARTE, plus de la barre système", () => {
+    poserFenetre(1920, 1080);
+    mockMarges.insets = { top: 24, bottom: 48, left: 0, right: 0 };
+    const rendu = rendre(
+      <Sheet ouvert onFermer={() => {}} pied={<View testID="pied" />}>
+        <View />
+      </Sheet>
+    );
+    const barre = rendu.root.findByProps({ testID: "pied" }).parent!;
+    expect((barre.props.style as { paddingBottom: number }).paddingBottom).toBe(16);
+  });
+});
