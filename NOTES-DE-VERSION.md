@@ -32,6 +32,38 @@ publication, et ce qu'on envoie aux marchands.
 
 ---
 
+## 3.1.0 (`versionCode` 13) · la même application, sur toutes les tailles d'écran
+
+### Français (`fr-FR`) · 454 caractères
+
+```
+Vente Facile 3.1
+
+• S'adapte aux tablettes, en portrait comme en paysage. Sur téléphone, rien ne change.
+• Sur grand écran : le menu reste ouvert, le panier se tient à côté des articles, la liste et la fiche s'affichent ensemble.
+• Scannez un article : la saisie de quantité s'ouvre aussitôt.
+• Créez un article depuis une recherche sans résultat.
+• Payez une dépense même sans réseau, reçu compris.
+• Connexion rétablie sur certains terminaux de caisse.
+```
+
+### Ce que porte cette version
+
+Référence interne, pas du texte de magasin.
+
+- Disposition adaptative (lots 1 à 7, branche `tablette-adaptative`) : trois classes de
+  fenêtre (moins de 600, 600 à 1023, 1024 et plus), barre latérale fixe ou rail sur tablette,
+  comptoir à deux volets, liste et fiche côte à côte, gabarits par famille d'écrans,
+  rotation libre sur tablette et portrait verrouillé sur téléphone
+- Comptoir au scan, création d'article depuis une recherche, dépense payée hors ligne et reçu
+  au paiement (2026-11-20)
+- Connexion sur un terminal dont le Keystore est en panne : repli fichier (2026-11-21)
+- Devis : la conversion sort la marchandise du stock
+- ⚠ Nouveau module natif (`expo-screen-orientation`) : nouveau binaire obligatoire, aucune mise
+  à jour par-dessus l'air
+
+---
+
 ## 3.0.0 (`versionCode` 12) · chacun voit d'abord son travail
 
 ### Français (`fr-FR`) · 411 caractères

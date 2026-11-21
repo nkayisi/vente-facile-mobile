@@ -3477,3 +3477,187 @@ describe("grilles et modales adaptatives", () => {
     expect(fautifs).toEqual([]);
   });
 });
+
+describe("écrans adaptatifs", () => {
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ UN NOMBRE DE COLONNES ÉCRIT EN DUR EST LE MÊME PARTOUT.                 │
+   * │                                                                          │
+   * │ `numColumns={2}` donnait deux cartes sur le téléphone ET sur le          │
+   * │ terminal de 1 920 points : la grille du comptoir se lisait en bandeaux.  │
+   * │ Le nombre se calcule sur la largeur du volet (`colonnesPour`, ou la      │
+   * │ règle du comptoir), jamais à la main.                                    │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  const COLONNES_EN_DUR = /\bnumColumns\s*(?:=\s*\{|:)\s*\d|<DataList\b[^>]*\bcolonnes=\{\s*\d/;
+
+  it("aucun nombre de colonnes n'est écrit en dur", () => {
+    const fautifs: string[] = [];
+    let vus = 0;
+    for (const f of fichiers(RACINE)) {
+      const code = commentairesBlanchis(readFileSync(f, "utf8"));
+      if (/\bnumColumns\b/.test(code)) vus += 1;
+      // Une balise `DataList` s'écrit sur plusieurs lignes : on la lit d'un
+      // seul tenant, sans quoi `colonnes={2}` trois lignes plus bas échappe.
+      const aplati = code.replace(/\s+/g, " ");
+      const m = COLONNES_EN_DUR.exec(aplati);
+      if (m) fautifs.push(`${relative(RACINE, f)} - ${m[0].slice(-40)}`);
+    }
+    expect(fautifs).toEqual([]);
+    // La grille du comptoir et `DataList` portent bien un `numColumns` :
+    // sinon le balayage ne regarde rien.
+    expect(vus).toBeGreaterThanOrEqual(2);
+  });
+
+  it("le balayage MORD sur `numColumns` et sur `colonnes` d'une liste", () => {
+    expect(COLONNES_EN_DUR.test("<FlatList numColumns={2} />")).toBe(true);
+    expect(COLONNES_EN_DUR.test("{ numColumns: 3 }")).toBe(true);
+    expect(COLONNES_EN_DUR.test('<DataList donnees={x} colonnes={2} cle={c} />')).toBe(true);
+    expect(COLONNES_EN_DUR.test("<FlatList numColumns={colonnes} />")).toBe(false);
+    // Les colonnes d'un TABLEAU sont des définitions, pas un nombre.
+    expect(COLONNES_EN_DUR.test("<Tableau colonnes={colonnesDevise} />")).toBe(false);
+  });
+
+  /**
+   * `plein` retire toute largeur maximale : réservé aux écrans qui remplissent
+   * vraiment leur volet (la grille du comptoir et son panneau, le viseur du
+   * scan). Sur un formulaire ou une liste, il étale les rangées sur 1 900
+   * points, libellé collé à gauche, valeur à l'autre bout.
+   *
+   * ⚠ Le gabarit s'écrit en LITTÉRAL, pour que ce balayage le voie : un
+   * `gabarit={g}` calculé lui échapperait.
+   */
+  const PLEIN_NOMMES = [join("app", "(app)", "(tabs)", "vendre.tsx"), join("app", "(app)", "pos", "scan.tsx")];
+
+  it("le gabarit « plein » est réservé au comptoir, et tout gabarit est écrit en littéral", () => {
+    const fautifs: string[] = [];
+    for (const f of fichiers(RACINE)) {
+      const nom = relative(RACINE, f);
+      if (nom === join("ui", "screen.tsx")) continue;
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      if (/\bgabarit=\{/.test(code)) fautifs.push(`${nom} : gabarit calculé`);
+      if (/\bgabarit="plein"/.test(code) && !PLEIN_NOMMES.includes(nom)) fautifs.push(`${nom} : gabarit plein`);
+    }
+    expect(fautifs).toEqual([]);
+    for (const nom of PLEIN_NOMMES) {
+      expect(sansCommentaires(readFileSync(join(RACINE, nom), "utf8"))).toMatch(/\bgabarit="plein"/);
+    }
+  });
+
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ UNE ROUTE DE FICHE EST UNE ENVELOPPE.                                   │
+   * │                                                                          │
+   * │ La même fiche sert la route (téléphone, petite tablette) ET le volet de │
+   * │ droite d'une liste (grand écran). Une fiche qui lirait son identifiant  │
+   * │ dans l'URL resterait vide dans le volet ; une fiche qui sortirait par   │
+   * │ `router.back()` ferait quitter la LISTE au lieu de refermer le volet.   │
+   * │ Le corps vit donc dans `features/<module>/fiche-<nom>.tsx`, lit         │
+   * │ `useIdDeFiche()` et sort par `useSortieDeFiche()`.                      │
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  function routesDeFiche(): string[] {
+    return fichiers(join(RACINE, "app")).filter((f) => {
+      const nom = f.split("/").pop() ?? "";
+      const parent = f.split("/").slice(-2, -1)[0] ?? "";
+      return /^\[[^\]]+\]\.tsx$/.test(nom) || (nom === "index.tsx" && /^\[[^\]]+\]$/.test(parent));
+    });
+  }
+  const ENVELOPPE =
+    /^import \{ (Fiche\w+) \} from "@\/features\/([\w/-]+)";\s*export default function \w+\(\) \{\s*return <\1 \/>;\s*\}\s*$/;
+
+  it("toute route de fiche est une enveloppe d'une fiche de `features/`", () => {
+    const routes = routesDeFiche();
+    expect(routes.length).toBeGreaterThanOrEqual(15);
+    const fautifs: string[] = [];
+    for (const f of routes) {
+      const code = sansCommentaires(readFileSync(f, "utf8")).trim();
+      if (!ENVELOPPE.test(code)) fautifs.push(relative(RACINE, f));
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("toute fiche lit son identifiant et sort par le volet, jamais par l'URL", () => {
+    const fiches = new Set<string>();
+    for (const f of routesDeFiche()) {
+      const m = ENVELOPPE.exec(sansCommentaires(readFileSync(f, "utf8")).trim());
+      if (m) fiches.add(join(RACINE, "features", `${m[2]}.tsx`));
+    }
+    expect(fiches.size).toBeGreaterThanOrEqual(15);
+    const fautifs: string[] = [];
+    for (const f of fiches) {
+      const code = sansCommentaires(readFileSync(f, "utf8"));
+      const nom = relative(RACINE, f);
+      if (!/\buseIdDeFiche\s*\(/.test(code)) fautifs.push(`${nom} : sans useIdDeFiche`);
+      if (!/\buseSortieDeFiche\s*\(/.test(code)) fautifs.push(`${nom} : sans useSortieDeFiche`);
+      if (/\buseLocalSearchParams\b/.test(code)) fautifs.push(`${nom} : lit l'URL`);
+      if (/\brouter\s*\.\s*back\s*\(/.test(code)) fautifs.push(`${nom} : sort par router.back`);
+    }
+    expect(fautifs).toEqual([]);
+  });
+
+  it("le balayage d'enveloppe MORD sur une route qui porte un corps", () => {
+    const ok = 'import { FicheVente } from "@/features/ventes/fiche-vente";\n\nexport default function E() {\n  return <FicheVente />;\n}\n';
+    expect(ENVELOPPE.test(ok.trim())).toBe(true);
+    expect(ENVELOPPE.test(ok.replace("return <FicheVente />;", "const x = 1;\n  return <FicheVente />;").trim())).toBe(false);
+    expect(ENVELOPPE.test(`import { useState } from "react";\n${ok}`.trim())).toBe(false);
+  });
+
+  /**
+   * Les listes qui ouvrent une fiche la posent à côté d'elles sur un grand
+   * écran. Une liste qui pousserait sa fiche à la main enverrait le marchand
+   * sur un écran de 1 664 points pour lire une vente, et lui ferait perdre sa
+   * place dans la liste à chaque pièce.
+   *
+   * ⚠ La fiche d'un ENTREPÔT reste poussée depuis le hub Stock, et c'est
+   * voulu : un concentrateur n'est pas une liste, et l'écraser sur 360 points
+   * coûterait plus qu'il ne rapporte. La fiche de CLÔTURE aussi : on y vient
+   * pour compter un tiroir, pas pour parcourir.
+   */
+  const LISTES_A_VOLET = [
+    join("app", "(app)", "vente", "historique.tsx"),
+    join("app", "(app)", "vente", "reglements.tsx"),
+    join("app", "(app)", "(tabs)", "articles.tsx"),
+    join("app", "(app)", "(tabs)", "inventaire.tsx"),
+    join("app", "(app)", "(tabs)", "contacts.tsx"),
+    join("app", "(app)", "creances", "index.tsx"),
+    join("app", "(app)", "rayon", "index.tsx"),
+    join("app", "(app)", "transfert", "index.tsx"),
+    join("app", "(app)", "ajustement", "index.tsx"),
+    join("app", "(app)", "requisition", "index.tsx"),
+    join("app", "(app)", "retour", "index.tsx"),
+    join("app", "(app)", "devis", "index.tsx"),
+    join("app", "(app)", "depense", "index.tsx"),
+    join("app", "(app)", "caisses", "index.tsx"),
+  ];
+
+  it("les listes qui ouvrent une fiche passent par `useListeFiche`, vers une route d'enveloppe", () => {
+    const routes = new Set(
+      routesDeFiche().map((f) => {
+        const segments = relative(join(RACINE, "app"), f).split("/").filter((s) => !/^\(.*\)$/.test(s));
+        if (segments[segments.length - 1] === "index.tsx") segments.pop();
+        return `/${segments.join("/").replace(/\.tsx$/, "").replace(/\[[^\]]+\]/, "${id}")}`;
+      })
+    );
+    const fautifs: string[] = [];
+    for (const nom of LISTES_A_VOLET) {
+      const code = sansCommentaires(readFileSync(join(RACINE, nom), "utf8"));
+      if (!/\buseListeFiche\s*\(/.test(code)) {
+        fautifs.push(`${nom} : sans useListeFiche`);
+        continue;
+      }
+      const chemins = [...code.matchAll(/chemin:\s*\(\w+\)\s*=>\s*`([^`]+)`/g)].map((m) => m[1].replace(/\$\{\w+\}/, "${id}"));
+      if (chemins.length === 0) fautifs.push(`${nom} : aucun chemin lisible`);
+      for (const c of chemins) if (!routes.has(c)) fautifs.push(`${nom} : ${c} n'est pas une route d'enveloppe`);
+    }
+    // Et la liste nommée est COMPLÈTE : une liste à volet ajoutée demain y
+    // entre, sans quoi elle échapperait au contrôle de son chemin.
+    for (const f of fichiers(join(RACINE, "app"))) {
+      const nom = relative(RACINE, f);
+      if (/\buseListeFiche\s*\(/.test(sansCommentaires(readFileSync(f, "utf8"))) && !LISTES_A_VOLET.includes(nom)) {
+        fautifs.push(`${nom} : appelle useListeFiche sans figurer dans LISTES_A_VOLET`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
