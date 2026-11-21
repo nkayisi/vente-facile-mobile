@@ -225,3 +225,24 @@ export function formeDeModale(classe: ClasseFenetre): "feuille" | "dialogue" {
 export function verrouPour(largeur: number, hauteur: number): "portrait" | "libre" {
   return estTablette(largeur, hauteur) ? "libre" : "portrait";
 }
+
+/** L'anneau posé à côté de sa légende, à partir de ce volet. */
+export const SEUIL_ANNEAU_A_COTE = 520;
+/** Le diamètre où le centre de l'anneau tient « Total encaissé » et un total à sept chiffres. */
+export const DIAMETRE_ANNEAU_LISIBLE = 208;
+
+/**
+ * Le diamètre d'un anneau de répartition, sur la largeur de son volet.
+ *
+ * Côte à côte avec sa légende, il prend le diamètre lisible. EMPILÉ, il suit
+ * la largeur, jusqu'à ce même diamètre : figé à 168 points, son centre ne
+ * laissait qu'une cinquantaine de points au total (« 92 865,09.. »), sur un
+ * téléphone comme dans une carte d'accueil de tablette. Il ne descend jamais
+ * sous le diamètre demandé.
+ */
+export function diametreDeLAnneau(largeurVolet: number, demande: number): number {
+  if (largeurVolet >= SEUIL_ANNEAU_A_COTE) return Math.max(demande, DIAMETRE_ANNEAU_LISIBLE);
+  const selonLaPlace = Math.floor(largeurVolet * 0.6);
+  return Math.max(demande, Math.min(DIAMETRE_ANNEAU_LISIBLE, selonLaPlace));
+}
+

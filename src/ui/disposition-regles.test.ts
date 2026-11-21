@@ -1,4 +1,6 @@
 import {
+  diametreDeLAnneau,
+  DIAMETRE_ANNEAU_LISIBLE,
   LARGEUR_LATERALE,
   LARGEUR_RAIL,
   SEUIL_LARGE,
@@ -175,5 +177,22 @@ describe("le gabarit, la marge, la modale", () => {
     expect(formeDeModale("compact")).toBe("feuille");
     expect(formeDeModale("moyen")).toBe("dialogue");
     expect(formeDeModale("large")).toBe("dialogue");
+  });
+});
+
+describe("l'anneau de répartition", () => {
+  it("prend le diamètre lisible à côté de sa légende", () => {
+    expect(diametreDeLAnneau(600, 168)).toBe(DIAMETRE_ANNEAU_LISIBLE);
+  });
+
+  it("suit la largeur une fois empilé, jusqu'au diamètre lisible", () => {
+    // Une carte d'accueil de tablette en deux colonnes, puis un téléphone : le
+    // centre doit tenir le total, plus seulement à 1 920 points.
+    expect(diametreDeLAnneau(374, 168)).toBe(DIAMETRE_ANNEAU_LISIBLE);
+    expect(diametreDeLAnneau(296, 168)).toBe(177);
+  });
+
+  it("ne descend jamais sous le diamètre demandé", () => {
+    expect(diametreDeLAnneau(200, 168)).toBe(168);
   });
 });

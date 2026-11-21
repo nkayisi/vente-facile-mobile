@@ -29,6 +29,7 @@ import Svg, { Circle, G, Path } from "react-native-svg";
 import { arcsDonut, cheminSecteur } from "@/features/tableau-de-bord/series";
 
 import { useDisposition } from "./disposition";
+import { diametreDeLAnneau, SEUIL_ANNEAU_A_COTE } from "./disposition-regles";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { useTheme } from "./theme";
@@ -77,8 +78,9 @@ export function DonutChart({
   // │ peu : à 168 points, son centre coupait « Total encaissé » et le      │
   // │ montant (« 92 865,09.. »), relevé sur le terminal de 1 920 points.   │
   // └──────────────────────────────────────────────────────────────────────┘
-  const cote = useDisposition().largeur >= 520;
-  const taille = cote ? Math.max(tailleDemandee, 208) : tailleDemandee;
+  const { largeur } = useDisposition();
+  const cote = largeur >= SEUIL_ANNEAU_A_COTE;
+  const taille = diametreDeLAnneau(largeur, tailleDemandee);
 
   const total = tranches.reduce((s, t) => s + Math.max(0, t.valeur), 0);
   const arcs = arcsDonut(tranches.map((t) => t.valeur));
@@ -136,15 +138,19 @@ export function DonutChart({
 
           <View
             pointerEvents="none"
-            className="absolute inset-0 items-center justify-center px-6"
+            className="absolute inset-0 items-center justify-center px-5"
           >
-            <Text variant="caption" numberOfLines={1}>
+            {/* En dernier recours, c'est la TAILLE qui cède, jamais les
+                chiffres : un total coupé est un faux total. */}
+            <Text variant="caption" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
               {actif ? actif.label : legendeTotal}
             </Text>
             <Text
               variant="bodySmall"
               numeric
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
               className="mt-0.5 font-sans-bold text-foreground"
             >
               {formater(actif ? actif.valeur : total)}
