@@ -43,15 +43,27 @@ import {
   usePropositionCreation,
 } from "@/features/inventaire/use-proposition-creation";
 import { usePanier } from "@/features/pos/panier";
+import {
+  colonnesDeLaGrille,
+  completerRangee,
+  panneauDuComptoir,
+} from "@/features/pos/disposition-comptoir";
+import { PanneauPanier } from "@/features/pos/panneau-panier";
 import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
 import {
-  Banner, Button, EmptyState, Icon, Input, Pressable, Screen, Spinner, Text,
+  Banner, Button, EmptyState, Icon, Input, Pressable, Screen, Spinner, Text, useDisposition,
 } from "@/ui";
+import { LARGEUR_PANNEAU_PANIER } from "@/ui/disposition-regles";
 
 export default function Comptoir() {
   const { snapshot } = useSession();
   const panier = usePanier();
+  // La largeur de la PAGE, navigation retirée : c'est elle qui dit si le
+  // panier tient à côté de la grille, et combien de colonnes la grille porte.
+  const { largeur: largeurPage } = useDisposition();
+  const avecPanneau = panneauDuComptoir(largeurPage);
+  const colonnes = colonnesDeLaGrille(largeurPage);
 
   const [session, setSession] = useState<SessionCaisse | null | undefined>(undefined);
   const [articles, setArticles] = useState<ArticlePos[]>([]);
@@ -228,11 +240,8 @@ export default function Comptoir() {
   const nbLignes = panier.etat.lignes.length;
   const ruptures = panier.ruptures;
 
-  return (
-    // Le comptoir est un ONGLET : il n'a plus de bouton « quitter », on en
-    // sort en touchant un autre onglet. Et il ne consomme plus l'encoche, que
-    // la barre du haut prend déjà.
-    <Screen edges={[]}>
+  const corps = (
+    <>
       <View className="flex-row items-center gap-2 pt-2">
         <View className="flex-1">
           <Text variant="h4" numberOfLines={1}>
@@ -372,33 +381,88 @@ export default function Comptoir() {
         <GrilleVide diagnostic={diagnostic} terme={terme} />
       ) : (
         <FlatList
-          data={articles}
-          keyExtractor={(a) => a.id}
-          numColumns={2}
+          // ┌──────────────────────────────────────────────────────────────┐
+          // │ LES COLONNES SUIVENT LA LARGEUR DE LA GRILLE.               │
+          // │                                                              │
+          // │ Deux sur un téléphone, jusqu'à six sur le rk3568, chaque    │
+          // │ carte gardant la largeur d'un nom sur deux lignes et d'un    │
+          // │ prix écrit en entier. ⚠ La `key` suit le nombre de colonnes : │
+          // │ une `FlatList` refuse qu'on change `numColumns` à chaud, et  │
+          // │ une tablette qu'on tourne en change.                         │
+          // └──────────────────────────────────────────────────────────────┘
+          key={`grille-${colonnes}`}
+          data={completerRangee(articles, colonnes)}
+          keyExtractor={(a, i) => a?.id ?? `vide-${i}`}
+          numColumns={colonnes}
           columnWrapperClassName="gap-3"
-          contentContainerClassName="gap-3 pb-40 pt-3"
+          // La barre du bas d'un téléphone recouvre la fin de la grille : on
+          // lui réserve sa hauteur. Sur une tablette, l'encaissement vit dans
+          // le panneau, et rien ne recouvre la grille.
+          contentContainerClassName={avecPanneau ? "gap-3 pb-4 pt-3" : "gap-3 pb-40 pt-3"}
           keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
-            <CarteArticle
-              article={item}
-              prix={panier.argent(Number(item.selling_price), panier.devises.primary)}
-              prixConverti={
-                prixAffiche(Number(item.selling_price), deviseRetenue, money).converti
-              }
-              prixGros={
-                item.wholesale_price
-                  ? panier.argent(Number(item.wholesale_price), panier.devises.primary)
-                  : null
-              }
-              auPanier={quantitesAuPanier.get(item.id) ?? 0}
-              epuise={estEpuise(item)}
-              onPress={() => setChoisi(item)}
-            />
-          )}
+          renderItem={({ item }) =>
+            // Une cellule vide complète la dernière rangée : sans elle, une
+            // carte isolée s'étirerait sur toute la largeur.
+            item === null ? (
+              <View className="flex-1" />
+            ) : (
+              <CarteArticle
+                article={item}
+                prix={panier.argent(Number(item.selling_price), panier.devises.primary)}
+                prixConverti={
+                  prixAffiche(Number(item.selling_price), deviseRetenue, money).converti
+                }
+                prixGros={
+                  item.wholesale_price
+                    ? panier.argent(Number(item.wholesale_price), panier.devises.primary)
+                    : null
+                }
+                auPanier={quantitesAuPanier.get(item.id) ?? 0}
+                epuise={estEpuise(item)}
+                onPress={() => setChoisi(item)}
+              />
+            )
+          }
         />
       )}
+    </>
+  );
 
-      {nbLignes > 0 ? (
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ UN SEUL ARBRE POUR LES DEUX DISPOSITIONS, ET C'EST VOULU.            │
+  // │                                                                      │
+  // │ Une tablette qu'on tourne passe de l'une à l'autre. Si la feuille    │
+  // │ d'encaissement vivait dans deux branches différentes, elle se        │
+  // │ refermerait au milieu d'un paiement, montant reçu perdu, client      │
+  // │ devant le comptoir. Elle garde donc son rang dans `Screen` quelle    │
+  // │ que soit la disposition, et c'est le comptoir qui l'ouvre, panneau   │
+  // │ compris (`onEncaisser`).                                             │
+  // └──────────────────────────────────────────────────────────────────────┘
+  return (
+    // Le comptoir est un ONGLET : il n'a plus de bouton « quitter », on en
+    // sort en touchant un autre onglet. Et il ne consomme plus l'encoche, que
+    // la barre du haut prend déjà. Aucun gabarit (`plein`) : au comptoir,
+    // chaque point sert.
+    <Screen edges={[]} padded={!avecPanneau} gabarit="plein">
+      {avecPanneau ? (
+        // TABLETTE : la grille à gauche, le panier toujours visible à droite,
+        // comme le point de vente du back-office. Le panneau porte le
+        // récapitulatif, la remise, la mise en attente et l'encaissement : il
+        // n'y a donc ni barre du bas ni « Voir le panier ».
+        <View className="flex-1 flex-row">
+          <View className="min-w-0 flex-1 px-4 pt-2">{corps}</View>
+          <View
+            className="border-l border-border bg-card"
+            style={{ width: LARGEUR_PANNEAU_PANIER }}
+          >
+            <PanneauPanier mode="panneau" onEncaisser={() => setEncaissement(true)} />
+          </View>
+        </View>
+      ) : (
+        corps
+      )}
+
+      {!avecPanneau && nbLignes > 0 ? (
         <View className="absolute inset-x-0 bottom-0 border-t border-border bg-card px-4 pb-6 pt-3">
           <View className="mb-2 flex-row items-baseline justify-between">
             <Text variant="bodySmall" className="text-muted-foreground">

@@ -7,7 +7,7 @@
  */
 import { useCallback, useState } from "react";
 import { FlatList, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, usePathname } from "expo-router";
 
 import { formatDateTime } from "@vente-facile/core";
 
@@ -21,12 +21,30 @@ import {
 } from "@/features/pos/attente";
 import { sessionOuverte } from "@/features/pos/caisse";
 import { usePanier } from "@/features/pos/panier";
+import { destinationDuPanier } from "@/features/pos/disposition-comptoir";
+import { allerALaSection } from "@/navigation/aller";
 import {
-  AlertDialog, Banner, Divider, EmptyState, Icon, Pressable, Screen, Spinner, Text,
+  AlertDialog, Banner, Divider, EmptyState, Icon, Pressable, Screen, Spinner, Text, useDisposition,
 } from "@/ui";
 
 export default function Attente() {
   const panier = usePanier();
+  const chemin = usePathname();
+  const { largeur: largeurPage } = useDisposition();
+
+  /**
+   * Le panier repris, là où il se lit : son écran sur un téléphone ; le
+   * comptoir sur une tablette, dont le panneau le montre déjà.
+   *
+   * ⚠ Vers le comptoir, `allerALaSection` et non `replace` : remplacer cet
+   * écran par `/vendre` empilerait une seconde coquille d'onglets au-dessus de
+   * la première. Vers `/pos/panier`, `replace` reste juste : les deux écrans
+   * vivent dans la même pile du comptoir.
+   */
+  const allerAuPanier = () => {
+    if (destinationDuPanier(largeurPage) === "/vendre") allerALaSection("/vendre", chemin);
+    else router.replace("/pos/panier");
+  };
   const [paniers, setPaniers] = useState<PanierEnAttente[] | null>(null);
   const [avis, setAvis] = useState<{ ton: "info" | "warning"; texte: string } | null>(null);
 
@@ -103,7 +121,7 @@ export default function Attente() {
       setReserves(messages.join("\n\n"));
       return;
     }
-    router.replace("/pos/panier");
+    allerAuPanier();
   };
 
   const confirmerSuppression = async () => {
@@ -226,11 +244,11 @@ export default function Attente() {
         annuler=""
         onConfirmer={() => {
           setReserves(null);
-          router.replace("/pos/panier");
+          allerAuPanier();
         }}
         onAnnuler={() => {
           setReserves(null);
-          router.replace("/pos/panier");
+          allerAuPanier();
         }}
       />
 </Screen>

@@ -80,7 +80,10 @@ export function MenuLateral({
   return (
     <View className="flex-1 bg-card" style={{ paddingTop: marges.haut }}>
       {/* 1. Marque, exactement comme le web : « Vente » puis « Facile » orange. */}
-      <View className="flex-row items-center justify-between border-b border-border pr-2">
+      {/* `pl-3` : le tourbillon du dessin touche le bord de son fichier ; collé
+          au bord de l'écran, il se lisait comme un logo rogné. Toléré dans un
+          tiroir qu'on ouvre une seconde, il ne l'est plus sur une barre fixe. */}
+      <View className="flex-row items-center justify-between border-b border-border pl-3 pr-2">
         <View className="flex-row items-center">
           {/* ⚠ L'encre GRANDIT à hauteur de rangée égale, et c'est le
               correctif : `logo.png` est un carré dont plus de la moitié est

@@ -24,11 +24,12 @@ import { articleParCodeBarres, type ArticlePos } from "@/features/pos/catalogue"
 import { sessionOuverte } from "@/features/pos/caisse";
 import { usePanier } from "@/features/pos/panier";
 import { SelecteurDuComptoir } from "@/features/pos/selecteur-du-comptoir";
+import { cadreDuViseur } from "@/features/pos/disposition-comptoir";
 import {
   phraseDejaEnFile,
   usePropositionCreation,
 } from "@/features/inventaire/use-proposition-creation";
-import { Button, Icon, Pressable, Screen, Text } from "@/ui";
+import { Button, Icon, Pressable, Screen, Text, useDisposition } from "@/ui";
 
 /**
  * Formats du commerce de détail, plus le QR (souvent le SKU, imprimé par le
@@ -56,6 +57,8 @@ export default function Scan() {
   // lecteur qui refuserait ce que la recherche montre ferait chercher à la
   // main l'article qu'on vient de scanner.
   const panier = usePanier();
+  const { largeur: largeurPage } = useDisposition();
+  const viseur = cadreDuViseur(largeurPage);
   const [permission, demanderPermission] = useCameraPermissions();
   const [message, setMessage] = useState<{
     texte: string;
@@ -172,7 +175,9 @@ export default function Scan() {
   );
 
   return (
-    <Screen padded={false} pied={barreDuBas}>
+    // La caméra n'a pas de gabarit (`plein`) : centrée à 760 points sur une
+    // tablette, elle laisserait deux bandes grises de part et d'autre.
+    <Screen padded={false} pied={barreDuBas} gabarit="plein">
       {/* La caméra EST le corps : le viseur, l'en-tête et le bandeau de message
           se posent dessus, dans ce corps, donc au-dessus de la marge du haut
           que `Screen` a déjà réservée. `pt-14` en dur n'a plus lieu d'être. */}
@@ -188,7 +193,10 @@ export default function Scan() {
         {/* Viseur : un cadre, pas un masque. Cacher le reste de l'image empêche
             de viser un code mal placé sur un emballage. */}
         <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
-          <View className="h-32 w-72 rounded-2xl border-2 border-white/80" />
+          <View
+            className="rounded-2xl border-2 border-white/80"
+            style={{ width: viseur.largeur, height: viseur.hauteur }}
+          />
         </View>
 
         <View className="absolute inset-x-0 top-0 flex-row items-center gap-2 px-2 pt-2">
@@ -205,21 +213,28 @@ export default function Scan() {
         </View>
 
         {message ? (
-          <View
-            className={`absolute inset-x-4 bottom-4 rounded-xl px-4 py-3 ${
-              message.ton === "ok"
-                ? "bg-success"
-                : message.ton === "alerte"
-                  ? "bg-warning"
-                  : "bg-destructive"
-            }`}
-          >
-            <Text variant="body" className="text-white">
-              {message.texte}
-            </Text>
-            {introuvable ? (
-              <CreationDuCode code={introuvable} proposer={proposer} />
-            ) : null}
+          // Borné et centré : sur une tablette, un bandeau de 1 800 points se
+          // lit comme une barre d'état, pas comme la réponse au scan. ⚠ Le
+          // centrage passe par un conteneur : une vue absolue tenue par ses
+          // deux bords reste collée à gauche sous un `maxWidth`.
+          <View pointerEvents="box-none" className="absolute inset-x-4 bottom-4 items-center">
+            <View
+              style={{ width: "100%", maxWidth: 560 }}
+              className={`rounded-xl px-4 py-3 ${
+                message.ton === "ok"
+                  ? "bg-success"
+                  : message.ton === "alerte"
+                    ? "bg-warning"
+                    : "bg-destructive"
+              }`}
+            >
+              <Text variant="body" className="text-white">
+                {message.texte}
+              </Text>
+              {introuvable ? (
+                <CreationDuCode code={introuvable} proposer={proposer} />
+              ) : null}
+            </View>
           </View>
         ) : null}
       </View>
