@@ -136,7 +136,27 @@ export function Button({
           <Icon name={leftIcon} size={18} color={v.icon} />
         </View>
       ) : null}
-      <Text variant={s.text} className={v.label}>
+      {/* ┌──────────────────────────────────────────────────────────────────┐
+          │ UNE SEULE LIGNE, TOUJOURS.                                      │
+          │                                                                  │
+          │ Le bouton a une hauteur FIXE (`h-11`…) : une seconde ligne n'y   │
+          │ paraît pas, elle est rognée sans un mot. Et Android en créait    │
+          │ une sur des libellés qui tiennent : la boîte du texte sort d'un  │
+          │ point plus étroite que ce qu'il dessine (arrondi des bords au    │
+          │ pixel), et le dernier mot passe à la ligne. Mesuré sur la fiche  │
+          │ d'entrepôt, téléphone ET tablette : « Voir les niveaux de » au   │
+          │ lieu de « … de stock », avec la place du mot restée vide.        │
+          │ `textBreakStrategy="simple"` n'y change rien ; une ligne         │
+          │ imposée, si. Un libellé vraiment trop long finit par des points  │
+          │ de suspension (`flexShrink`), ce qui se lit, au lieu d'un mot    │
+          │ manquant, qui ne se voit pas.                                    │
+          └──────────────────────────────────────────────────────────────────┘ */}
+      <Text
+        variant={s.text}
+        className={v.label}
+        numberOfLines={1}
+        style={{ flexShrink: 1 }}
+      >
         {children}
       </Text>
       {rightIcon && !loading ? (
