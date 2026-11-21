@@ -25,6 +25,7 @@ import { View } from "react-native";
 import { router } from "expo-router";
 
 import { useDisposition } from "./disposition";
+import { useVoletDeFiche } from "./volet-fiche";
 import { HIT } from "./tokens";
 import { Icon } from "./icon";
 import { Pressable } from "./pressable";
@@ -45,6 +46,11 @@ export function AppBar({
 }) {
   const { classe } = useDisposition();
   const bandeau = classe === "compact";
+  // Dans un volet, la fiche ne se QUITTE pas, elle se FERME : une flèche de
+  // retour y ferait croire qu'on revient à un écran précédent, alors que la
+  // liste est déjà là, à gauche. La croix referme le volet.
+  const volet = useVoletDeFiche();
+  const fermeLeVolet = volet !== null && onBack === undefined;
   return (
     <View
       className={
@@ -55,13 +61,13 @@ export function AppBar({
     >
       {back ? (
         <Pressable
-          onPress={onBack ?? (() => router.back())}
+          onPress={fermeLeVolet ? volet.fermer : (onBack ?? (() => router.back()))}
           accessibilityRole="button"
-          accessibilityLabel="Revenir à la page précédente"
+          accessibilityLabel={fermeLeVolet ? "Fermer la fiche" : "Revenir à la page précédente"}
           className="items-center justify-center rounded-lg"
           style={{ width: HIT.min, height: HIT.min }}
         >
-          <Icon name="ArrowLeft" size={20} />
+          <Icon name={fermeLeVolet ? "X" : "ArrowLeft"} size={20} />
         </Pressable>
       ) : (
         <View className="w-2" />

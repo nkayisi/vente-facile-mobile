@@ -7,7 +7,6 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import {
@@ -37,11 +36,25 @@ import {
   Badge, Chip, ChipRow, DataList, DataRow, Fab, PageHeader, Screen,
   BoutonFiltres,
   SearchInput, StatStrip, StatStripItem, Text,
+  useListeFiche,
 } from "@/ui";
+import { FicheComptage } from "@/features/inventaire/fiche-comptage";
 
 const TABLES = ["inventory_sessions", "inventory_counts", "warehouses"];
 
 export default function Inventaire() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/comptage/${id}`,
+    Fiche: FicheComptage,
+    vide: {
+      icon: "ClipboardList",
+      titre: "Choisissez un inventaire",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+    bords: [],
+  });
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
@@ -228,14 +241,16 @@ export default function Inventaire() {
           </Text>
         }
         sousValeur={s.date ? formatDateFr(s.date) : null}
-        onPress={() => router.push(`/comptage/${s.id}`)}
+        onPress={() => listeFiche.ouvrir(s.id)}
+        selectionne={listeFiche.selection === s.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen edges={[]} padded={false}>
       <DataList
+        selection={listeFiche.selection}
         donnees={elements}
         cle={(s) => s.id}
         rendu={rendu}
@@ -278,7 +293,7 @@ export default function Inventaire() {
           onFermer={() => setCreation(false)}
           onCree={(id) => {
             setCreation(false);
-            router.push(`/comptage/${id}`);
+            listeFiche.ouvrir(id);
           }}
         />
       ) : null}

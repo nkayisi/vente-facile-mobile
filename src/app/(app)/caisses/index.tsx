@@ -43,8 +43,11 @@ import { useSession } from "@/session/provider";
 import {
   Apparition, AppBar, Badge, Banner, Button, Card, EmptyState, Icon,
   Mesure, MultiCurrencyTotal, Pressable, Screen, SearchInput, Sheet,
+  RepereSelection,
   Skeleton, Text, useToast,
+  useListeFiche,
 } from "@/ui";
+import { FicheCaisse } from "@/features/caisse/fiche-caisse";
 
 const TABLES = [
   "registers", "register_sessions", "register_session_currency_balances", "warehouses", "sales", "users",
@@ -58,6 +61,17 @@ const TABLES = [
 const SEUIL_RECHERCHE = 5;
 
 export default function Caisses() {
+  // Sur un grand écran, la fiche d'une caisse s'ouvre à droite : on relit les
+  // clôtures de chaque comptoir sans quitter le parc.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/caisses/${id}`,
+    Fiche: FicheCaisse,
+    vide: {
+      icon: "Calculator",
+      titre: "Choisissez une caisse",
+      message: "Sa fiche et ses clôtures s'ouvrent ici, le parc reste à côté.",
+    },
+  });
   const money = useMonnaie();
   const toast = useToast();
   const { can, snapshot } = useSession();
@@ -151,7 +165,7 @@ export default function Caisses() {
   // sans moyen d'effacer.
   const rechercheVisible = parc.length >= SEUIL_RECHERCHE || recherche !== "";
 
-  return (
+  return listeFiche.rendre(
     <Screen
       scroll
       padded={false}
@@ -199,6 +213,8 @@ export default function Caisses() {
                 caisse={c}
                 money={money}
                 peutOuvrir={can("sales.create")}
+                onFiche={() => listeFiche.ouvrir(c.id)}
+                selectionne={listeFiche.selection === c.id}
                 onOuvrir={() => {
                   setAOuvrir(c);
                   setFonds({});
@@ -295,23 +311,33 @@ function CarteCaisse({
   money,
   peutOuvrir,
   onOuvrir,
+  onFiche,
+  selectionne = false,
 }: {
   caisse: CaisseParc;
   money: MoneyHelpers;
   peutOuvrir: boolean;
   onOuvrir: () => void;
+  /** Ouvre la fiche : dans le volet, ou en poussant sa route. */
+  onFiche: () => void;
+  /** La caisse dont la fiche est ouverte à côté, sur un grand écran. */
+  selectionne?: boolean;
 }) {
   const etat = c.session ? ETAT_SESSION[c.session.envoi] : null;
   const envoi = c.session ? libelleEnvoi(c.session.envoi) : null;
   const motif = c.session ? motifClotureFermee(c.session.envoi) : "";
 
   return (
-    <Card className="p-0">
+    <Card className="overflow-hidden p-0">
+      {/* Le même repère que `DataRow` : une pièce ouverte à côté se reconnaît
+          d'un écran à l'autre. */}
+      {selectionne ? <RepereSelection /> : null}
       {/* L'EN-TÊTE EST LE LIEN vers la fiche : le chevron et le compteur de
           clôtures disent où il mène, ce qu'un troisième bouton pleine largeur
           faisait en occupant une rangée entière. */}
       <Pressable
-        onPress={() => router.push(`/caisses/${c.id}`)}
+        onPress={onFiche}
+        accessibilityState={selectionne ? { selected: true } : undefined}
         accessibilityRole="link"
         accessibilityLabel={
           c.nbClotures > 0
@@ -320,7 +346,7 @@ function CarteCaisse({
               }. Ouvrir la fiche`
             : `${c.nom}. Ouvrir la fiche`
         }
-        className="flex-row items-center gap-3 p-4"
+        className={`flex-row items-center gap-3 p-4 ${selectionne ? "bg-accent" : ""}`}
         pressedClassName="active:opacity-60"
       >
         <View
@@ -350,7 +376,10 @@ function CarteCaisse({
         </View>
         <View className="shrink-0 flex-row items-center gap-1">
           {c.nbClotures > 0 ? (
-            <Text variant="caption" numeric>
+            // `numberOfLines` : sans lui, Android mesurait le compteur d'un
+            // point trop court et « clôtures » passait à une ligne coupée,
+            // laissant un « 2 » seul en tête de carte.
+            <Text variant="caption" numeric numberOfLines={1} className="shrink-0">
               {`${c.nbClotures} clôture${c.nbClotures > 1 ? "s" : ""}`}
             </Text>
           ) : null}

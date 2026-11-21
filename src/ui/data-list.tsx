@@ -72,6 +72,7 @@ export function DataList<T>({
   basDeListe = 96,
   typeElement,
   colonnes = 1,
+  selection,
 }: {
   donnees: T[];
   cle: (item: T) => string;
@@ -114,6 +115,14 @@ export function DataList<T>({
    * change. Des rangées de liste, elles, restent sur une colonne.
    */
   colonnes?: number;
+  /**
+   * La ligne surlignée, quand la liste et sa fiche sont côte à côte.
+   *
+   * ⚠ `FlashList` ne re-rend une rangée que si ses DONNÉES changent ou si ce
+   * marqueur change (`extraData`). Sans lui, toucher une seconde vente ouvrait
+   * bien sa fiche à droite, mais le surlignage restait sur la première.
+   */
+  selection?: string | null;
 }) {
   const primary = useColor("primary");
 
@@ -122,6 +131,7 @@ export function DataList<T>({
       key={colonnes}
       numColumns={colonnes}
       data={donnees}
+      extraData={selection}
       keyExtractor={cle}
       renderItem={({ item }) => rendu(item)}
       ListHeaderComponent={enTete}
@@ -193,6 +203,18 @@ export function DataSection({
 }
 
 /**
+ * Le filet orange qui marque la pièce ouverte à côté, sur un grand écran.
+ *
+ * Partagé par toute rangée ou carte qui ouvre une fiche (`DataRow`, les
+ * débiteurs des créances, les caisses du parc) : une pièce ouverte doit se
+ * reconnaître d'un écran à l'autre, et un dessin recopié finit par diverger.
+ * Le parent porte `bg-accent` et, pour une carte, `overflow-hidden`.
+ */
+export function RepereSelection() {
+  return <View className="absolute bottom-0 left-0 top-0 z-10 w-1 bg-primary" />;
+}
+
+/**
  * Rangée à deux colonnes.
  *
  * `principal` et `valeur` ne se disputent jamais la largeur : la mesure ne
@@ -242,7 +264,7 @@ export function DataRow({
     >
       {/* Le liseré dit la sélection sans compter sur la seule couleur de fond,
           qu'un écran pâle au soleil rend difficile à distinguer. */}
-      {selectionne ? <View className="absolute bottom-0 left-0 top-0 w-1 bg-primary" /> : null}
+      {selectionne ? <RepereSelection /> : null}
       {vignette ?? (icon ? (
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-muted">
           <Icon name={icon} size={18} color="mutedForeground" />

@@ -34,15 +34,29 @@ import {
   Button,
   DataList,
   DataRow,
+  Mesure,
   PageHeader,
   Screen,
   SearchInput,
-  Mesure,
+  useListeFiche,
 } from "@/ui";
+import { FicheArticle } from "@/features/inventaire/fiche-article";
 
 const TABLES = ["products", "categories", "brands", "units", "stocks"];
 
 export default function Articles() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/article/${id}`,
+    Fiche: FicheArticle,
+    vide: {
+      icon: "Package",
+      titre: "Choisissez un article",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+    bords: [],
+  });
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [importOuvert, setImportOuvert] = useState(false);
@@ -161,13 +175,15 @@ export default function Articles() {
       // `null` ne se lit JAMAIS comme zéro : un produit non suivi affiche « - »,
       // comme le back-office, et surtout pas « 0 » qui affirmerait une rupture.
       sousValeur={a.stockAffiche ?? (a.suitLeStock ? "-" : "Non suivi")}
-      onPress={() => router.push(`/article/${a.id}`)}
+      onPress={() => listeFiche.ouvrir(a.id)}
+      selectionne={listeFiche.selection === a.id}
     />
   );
 
-  return (
+  return listeFiche.rendre(
     <Screen edges={[]} padded={false}>
       <DataList
+        selection={listeFiche.selection}
         donnees={articles}
         cle={(a) => a.id}
         rendu={rendu}

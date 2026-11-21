@@ -17,7 +17,6 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
@@ -48,7 +47,9 @@ import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, BoutonFiltres, Chip, ChipRow, DataList, DataRow, Fab,
   Screen, SearchInput, Text,
+  useListeFiche,
 } from "@/ui";
+import { FicheRequisition } from "@/features/stock/fiche-requisition";
 
 /**
  * La taille d'un cran de fenêtre.
@@ -68,6 +69,17 @@ const TON: Record<string, "neutral" | "warning" | "success" | "destructive"> = {
 };
 
 export default function Requisitions() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/requisition/${id}`,
+    Fiche: FicheRequisition,
+    vide: {
+      icon: "ClipboardList",
+      titre: "Choisissez une réquisition",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [statut, setStatut] = useState<string | null>(null);
@@ -194,18 +206,20 @@ export default function Requisitions() {
           </Text>
         }
         sousValeur={r.demandeLe ? formatDateFr(r.demandeLe) : null}
-        onPress={() => router.push(`/requisition/${r.id}`)}
+        onPress={() => listeFiche.ouvrir(r.id)}
+        selectionne={listeFiche.selection === r.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Réquisitions"
         subtitle={`Ce qu'il faut acheter (${total} au total)`}
       />
       <DataList
+        selection={listeFiche.selection}
         donnees={elements}
         cle={(r) => r.id}
         rendu={rendu}
@@ -244,7 +258,7 @@ export default function Requisitions() {
           onFermer={feuille.fermer}
           onCree={(id) => {
             feuille.fermer();
-            router.push(`/requisition/${id}`);
+            listeFiche.ouvrir(id);
           }}
         />
       ) : null}

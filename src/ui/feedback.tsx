@@ -112,11 +112,17 @@ export function EmptyState({
       <View className="h-16 w-16 items-center justify-center rounded-full bg-muted">
         <Icon name={icon} size={32} color="mutedForeground" />
       </View>
-      <Text variant="h4" className="mt-4 text-center">
+      {/* ⚠ `self-stretch`, et le centrage par `text-center` : centré par son
+          parent, un texte est mesuré à sa largeur PROPRE, et Android la rate
+          d'un point. Le dernier mot passait alors à une ligne que la boîte
+          n'avait pas prévue : « Choisissez un » au lieu de « Choisissez un
+          contact », relevé sur une tablette. Étiré, il se mesure sur toute la
+          largeur ; le rendu est le même. */}
+      <Text variant="h4" className="mt-4 self-stretch text-center">
         {title}
       </Text>
       {message ? (
-        <Text variant="muted" className="mt-1.5 text-center">
+        <Text variant="muted" className="mt-1.5 self-stretch text-center">
           {message}
         </Text>
       ) : null}

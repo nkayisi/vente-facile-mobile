@@ -52,7 +52,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatDateFr, formatTimeFr } from "@vente-facile/core";
 
 import { dateDepuisJourISO } from "@/data/dates";
@@ -105,8 +104,11 @@ import {
   AppBar, Badge, Banner, BarreEmpilee, Card, Chip, ChipRow, DataList, DataSection,
   BoutonFiltres,
   HIT, Icon, IconButton, Mesure, Pressable, Screen, SearchInput, Segmented,
+  RepereSelection,
   StatStrip, StatStripItem, Text, useToast,
+  useListeFiche,
 } from "@/ui";
+import { FicheClient } from "@/features/clients/fiche-client";
 
 /**
  * L'échelle d'ancienneté, du tiède au grave.
@@ -140,6 +142,17 @@ const TRIS: { valeur: TriCreances; label: string }[] = [
 ];
 
 export default function EcranCreances() {
+  // Sur un grand écran, la fiche du client s'ouvre à droite : on relance
+  // débiteur après débiteur sans perdre sa place dans la balance.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/client/${id}`,
+    Fiche: FicheClient,
+    vide: {
+      icon: "Users",
+      titre: "Choisissez un débiteur",
+      message: "Sa fiche s'ouvre ici, la balance reste à côté.",
+    },
+  });
   const money = useMonnaie();
   const { snapshot } = useSession();
   const enLigne = useEnLigne();
@@ -567,10 +580,19 @@ export default function EcranCreances() {
         />
       );
     }
-    return <LigneDebiteur d={e.debiteur} money={money} onAppeler={appeler} />;
+    const id = e.debiteur.clientId;
+    return (
+      <LigneDebiteur
+        d={e.debiteur}
+        money={money}
+        onAppeler={appeler}
+        onOuvrir={id ? () => listeFiche.ouvrir(id) : undefined}
+        selectionne={id !== null && id !== undefined && listeFiche.selection === id}
+      />
+    );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Créances"
@@ -593,6 +615,7 @@ export default function EcranCreances() {
         }
       />
       <DataList
+        selection={listeFiche.selection}
         donnees={vue.elements}
         cle={(e) => e.cle}
         rendu={rendu}
@@ -667,19 +690,29 @@ function LigneDebiteur({
   d,
   money,
   onAppeler,
+  onOuvrir,
+  selectionne = false,
 }: {
   d: Debiteur;
   money: ReturnType<typeof useMonnaie>;
   onAppeler: (d: Debiteur) => void;
+  /** Ouvre la fiche du client : dans le volet, ou en poussant sa route. */
+  onOuvrir?: () => void;
+  /** Le client dont la fiche est ouverte à côté, sur un grand écran. */
+  selectionne?: boolean;
 }) {
   const retard = d.plusAncienneJours;
   const ton = tonDuRetard(retard);
 
   return (
-    <View className="flex-row items-center bg-card">
+    <View className={`flex-row items-center ${selectionne ? "bg-accent" : "bg-card"}`}>
+      {/* Le même repère que `DataRow` : une rangée surlignée se reconnaît d'un
+          écran à l'autre. */}
+      {selectionne ? <RepereSelection /> : null}
       <Pressable
-        onPress={() => (d.clientId ? router.push(`/client/${d.clientId}` as never) : undefined)}
-        disabled={!d.clientId}
+        onPress={onOuvrir}
+        disabled={!onOuvrir}
+        accessibilityState={selectionne ? { selected: true } : undefined}
         accessibilityRole="button"
         accessibilityLabel={d.nom}
         className="min-w-0 flex-1 flex-row items-center gap-3 py-3 pl-4"

@@ -3,7 +3,6 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
@@ -38,11 +37,24 @@ import {
   Screen,
   SearchInput,
   Text,
+  useListeFiche,
 } from "@/ui";
+import { FicheTransfert } from "@/features/stock/fiche-transfert";
 
 const TABLES = ["stock_transfers", "stock_transfer_items", "warehouses"];
 
 export default function Transferts() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/transfert/${id}`,
+    Fiche: FicheTransfert,
+    vide: {
+      icon: "ArrowLeftRight",
+      titre: "Choisissez un transfert",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   const { can, snapshot } = useSession();
   // L'annuaire nomme les dépôts hors de mon périmètre : un transfert reçu
   // vient presque toujours de l'un d'eux.
@@ -147,18 +159,20 @@ export default function Transferts() {
           </Text>
         }
         sousValeur={t.date ? formatDateFr(t.date) : null}
-        onPress={() => router.push(`/transfert/${t.id}`)}
+        onPress={() => listeFiche.ouvrir(t.id)}
+        selectionne={listeFiche.selection === t.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Transferts de stock"
         subtitle={`Gérez les transferts entre entrepôts (${donnees?.total ?? 0} au total)`}
       />
       <DataList
+        selection={listeFiche.selection}
         donnees={elements}
         cle={(t) => t.id}
         rendu={rendu}
@@ -183,7 +197,7 @@ export default function Transferts() {
           onFermer={() => setFeuille(false)}
           onCree={(id) => {
             setFeuille(false);
-            router.push(`/transfert/${id}`);
+            listeFiche.ouvrir(id);
           }}
         />
       ) : null}

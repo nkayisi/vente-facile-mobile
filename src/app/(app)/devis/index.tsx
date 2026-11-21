@@ -19,7 +19,6 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
@@ -39,12 +38,25 @@ import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Chip, ChipRow, DataList, DataRow, Fab, Screen, SearchInput,
   Mesure,
+  useListeFiche,
 } from "@/ui";
+import { FicheDevis } from "@/features/ventes/fiche-devis";
 import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = ["quotations", "quotation_items", "customers"];
 
 export default function Devis() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/devis/${id}`,
+    Fiche: FicheDevis,
+    vide: {
+      icon: "FileText",
+      titre: "Choisissez un devis",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   // Le DÉFAUT du membre : un caissier n'y voit que les siens.
   const perimetre = usePerimetreParDefaut(true);
   const money = useMonnaie();
@@ -161,15 +173,17 @@ export default function Devis() {
         sousValeur={
           d.valideJusquau ? `Jusqu'au ${formatDateFr(d.valideJusquau)}` : null
         }
-        onPress={() => router.push(`/devis/${d.id}`)}
+        onPress={() => listeFiche.ouvrir(d.id)}
+        selectionne={listeFiche.selection === d.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar title="Devis" subtitle="Propositions de prix, converties en vente" />
       <DataList
+        selection={listeFiche.selection}
         donnees={devis}
         cle={(d) => d.id}
         rendu={rendu}
@@ -197,7 +211,7 @@ export default function Devis() {
           onFermer={creation.fermer}
           onCree={(id) => {
             creation.fermer();
-            router.push(`/devis/${id}`);
+            listeFiche.ouvrir(id);
           }}
         />
       ) : null}

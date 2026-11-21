@@ -37,12 +37,29 @@ import {
   Segmented,
   StatValue,
   Text,
+  useListeFiche,
 } from "@/ui";
+import { FicheClient } from "@/features/clients/fiche-client";
+import { FicheFournisseur } from "@/features/clients/fiche-fournisseur";
 
 const TABLES = ["customers", "customer_balances", "suppliers"];
 type Onglet = "clients" | "fournisseurs";
 
 export default function Contacts() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là. Deux
+  // sortes de pièces : clients et fournisseurs n'ont pas la même fiche.
+  const listeFiche = useListeFiche({
+    variantes: {
+      client: { chemin: (id) => `/client/${id}`, Fiche: FicheClient },
+      fournisseur: { chemin: (id) => `/fournisseur/${id}`, Fiche: FicheFournisseur },
+    },
+    vide: {
+      icon: "Users",
+      titre: "Choisissez un contact",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+    bords: [],
+  });
   const money = useMonnaie();
   const { can } = useSession();
   const [onglet, setOnglet] = useState<Onglet>("clients");
@@ -161,7 +178,12 @@ export default function Contacts() {
           { valeur: "fournisseurs", label: "Fournisseurs", icon: "Truck" },
         ]}
         valeur={onglet}
-        onChange={(v) => setOnglet(v as Onglet)}
+        onChange={(v) => {
+          // Une fiche de client restée ouverte à côté d'une liste de
+          // fournisseurs ne désignerait plus rien de ce qu'on regarde.
+          listeFiche.fermer();
+          setOnglet(v as Onglet);
+        }}
       />
 
       <SearchInput
@@ -177,9 +199,10 @@ export default function Contacts() {
   );
 
   if (onglet === "clients") {
-    return (
+    return listeFiche.rendre(
       <Screen edges={[]} padded={false}>
         <DataList
+          selection={listeFiche.selection}
           donnees={tousLesClients}
           cle={(c) => c.id}
           enTete={enTete}
@@ -232,7 +255,8 @@ export default function Contacts() {
                         ? "Dette"
                         : "Avance"
               }
-              onPress={() => router.push(`/client/${c.id}`)}
+              onPress={() => listeFiche.ouvrir(c.id, "client")}
+              selectionne={listeFiche.selection === c.id}
             />
           )}
         />
@@ -240,9 +264,10 @@ export default function Contacts() {
     );
   }
 
-  return (
+  return listeFiche.rendre(
     <Screen edges={[]} padded={false}>
       <DataList
+        selection={listeFiche.selection}
         donnees={fournisseurs?.elements ?? []}
         cle={(f) => f.id}
         enTete={enTete}
@@ -270,7 +295,8 @@ export default function Contacts() {
               ) : undefined
             }
             sousValeur={f.solde !== 0 ? "Solde" : null}
-            onPress={() => router.push(`/fournisseur/${f.id}`)}
+            onPress={() => listeFiche.ouvrir(f.id, "fournisseur")}
+            selectionne={listeFiche.selection === f.id}
           />
         )}
       />

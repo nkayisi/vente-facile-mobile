@@ -11,7 +11,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { formatPrice } from "@vente-facile/core";
 
 import { jourISO } from "@/data/dates";
@@ -40,12 +40,14 @@ import {
   DataList,
   DataRow,
   IconButton,
+  Mesure,
   Screen,
   SearchInput,
-  Mesure,
   Text,
+  useListeFiche,
   useToast,
 } from "@/ui";
+import { FicheRayon } from "@/features/stock/fiche-rayon";
 
 const TABLES = ["stocks", "products", "warehouses", "categories", "units"];
 
@@ -56,6 +58,17 @@ function etatDemande(v: string | string[] | undefined): FiltreEtatStock {
 }
 
 export default function Niveaux() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/rayon/${id}`,
+    Fiche: FicheRayon,
+    vide: {
+      icon: "Boxes",
+      titre: "Choisissez un rayon",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   // Le relevé « Stock bas » du tableau de bord ouvre cette page DÉJÀ filtrée.
   // Un chiffre d'alerte qui débarque sur la liste entière oblige le magasinier
   // à refaire le tri à la main, et il ne retrouve pas forcément les mêmes
@@ -153,7 +166,8 @@ export default function Niveaux() {
         // Le total brut n'apparaît QUE s'il diffère de la lecture affichée :
         // « 12 au total » sous « 12 pièces » est du bruit.
         sousValeur={l.facteur ? `${l.total} au total` : null}
-        onPress={() => router.push(`/rayon/${l.id}`)}
+        onPress={() => listeFiche.ouvrir(l.id)}
+        selectionne={listeFiche.selection === l.id}
       />
     );
   };
@@ -208,7 +222,7 @@ export default function Niveaux() {
     }
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Niveaux de stock"
@@ -232,6 +246,7 @@ export default function Niveaux() {
         }
       />
       <DataList
+        selection={listeFiche.selection}
         donnees={lignes}
         cle={(l) => l.id}
         rendu={rendu}

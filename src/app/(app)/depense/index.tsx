@@ -46,12 +46,25 @@ import {
   AppBar, Badge, BoutonFiltres, Chip, ChipRow, DataList, DataRow, Fab, IconButton, Mesure,
   MultiCurrencyTotal, Pastille, Screen, SearchInput, StatStrip, StatStripItem,
   Text, type OptionSelect,
+  useListeFiche,
 } from "@/ui";
+import { FicheDepense } from "@/features/caisse/fiche-depense";
 
 const TABLES = ["expenses", "expense_categories", "outbox_operations"];
 const PAS_FENETRE = 60;
 
 export default function Depenses() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/depense/${id}`,
+    Fiche: FicheDepense,
+    vide: {
+      icon: "Wallet",
+      titre: "Choisissez une dépense",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   const money = useMonnaie();
   const { can, snapshot } = useSession();
 
@@ -189,12 +202,13 @@ export default function Depenses() {
           ) : undefined
         }
         valeur={<Mesure value={money.money(d.montant, d.devise)} tone="destructive" />}
-        onPress={() => router.push(`/depense/${d.id}`)}
+        onPress={() => listeFiche.ouvrir(d.id)}
+        selectionne={listeFiche.selection === d.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Dépenses"
@@ -213,6 +227,7 @@ export default function Depenses() {
         }
       />
       <DataList
+        selection={listeFiche.selection}
         donnees={depenses}
         cle={(d) => d.id}
         rendu={rendu}
@@ -367,7 +382,7 @@ export default function Depenses() {
       {feuilleDepense ? (
         <FeuilleNouvelleDepense
           onFermer={() => setFeuilleDepense(false)}
-          onCree={(id) => router.push(`/depense/${id}`)}
+          onCree={(id) => listeFiche.ouvrir(id)}
         />
       ) : null}
 

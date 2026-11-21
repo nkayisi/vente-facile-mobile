@@ -45,7 +45,6 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatTimeFr } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
@@ -101,8 +100,10 @@ import {
   StatStrip,
   StatStripItem,
   Text,
+  useListeFiche,
   useToast,
 } from "@/ui";
+import { FicheVente } from "@/features/ventes/fiche-vente";
 
 // `outbox_operations` et `print_jobs` en sont : l'historique fusionne les
 // ventes encore en file, et leurs montants viennent du ticket rangé. Sans eux,
@@ -130,6 +131,17 @@ function libelleRetard(jours: number): string {
 
 export default function Historique() {
   const { snapshot } = useSession();
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là : on
+  // relit dix ventes sans perdre sa place. Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/vente/${id}`,
+    Fiche: FicheVente,
+    vide: {
+      icon: "Receipt",
+      titre: "Choisissez une vente",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   const money = useMonnaie();
   const toast = useToast();
   const [envoiExport, setEnvoiExport] = useState(false);
@@ -447,7 +459,8 @@ export default function Historique() {
         sousValeur={
           v.resteAPayer > 0 ? `Reste ${money.money(v.resteAPayer, v.devise)}` : null
         }
-        onPress={() => router.push(`/vente/${v.id}`)}
+        onPress={() => listeFiche.ouvrir(v.id)}
+        selectionne={listeFiche.selection === v.id}
       />
     );
   };
@@ -482,7 +495,7 @@ export default function Historique() {
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Historique des ventes"
@@ -507,6 +520,7 @@ export default function Historique() {
         // Sans elle, la virtualisation recycle un en-tête de journée en rangée
         // de vente : les hauteurs sautent au défilement, sans avertissement.
         typeElement={(e) => e.type}
+        selection={listeFiche.selection}
         enTete={enTete}
         chargement={chargement && ventes.length === 0}
         // Les séparateurs sont portés par les rangées elles-mêmes : un filet

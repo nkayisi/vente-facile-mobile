@@ -30,6 +30,20 @@ function fichiers(dir: string, ext = [".ts", ".tsx"]): string[] {
   return sortie;
 }
 
+/**
+ * Les ÉCRANS : les routes de `src/app/`, et les corps de fiche qu'elles rendent
+ * (`src/features/<module>/fiche-<nom>.tsx`).
+ *
+ * ⚠ Une fiche a quitté sa route pour servir aussi le volet de droite d'une
+ * liste (`ui/liste-fiche.tsx`). Un balayage qui ne lirait que `src/app/` ne la
+ * verrait plus : la règle qu'il porte cesserait de valoir pour quinze écrans,
+ * et il resterait vert.
+ */
+function fichiersEcrans(): string[] {
+  const fiches = fichiers(join(RACINE, "features")).filter((f) => /[\\/]fiche-[^\\/]+\.tsx$/.test(f));
+  return [...fichiers(join(RACINE, "app")), ...fiches];
+}
+
 /** Le code, commentaires retirés : une règle citée dans un commentaire n'est pas une infraction. */
 function sansCommentaires(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
@@ -543,7 +557,7 @@ describe("un seul propriétaire par bord de zone sûre", () => {
     expect(BARRE.test("absolute inset-x-0 top-0 flex-row items-center")).toBe(false);
 
     const fautifs: string[] = [];
-    for (const f of fichiers(join(RACINE, "app"))) {
+    for (const f of fichiersEcrans()) {
       const nom = relative(RACINE, f);
       if (NOMMEES.includes(nom)) continue;
       if (BARRE.test(sansCommentaires(readFileSync(f, "utf8")))) fautifs.push(nom);
@@ -1998,7 +2012,7 @@ describe("la zone sûre du bas a un propriétaire, et un seul", () => {
     // dépôt l'a déjà payé trois fois.
     let onglets = 0;
     let piles = 0;
-    for (const f of fichiers(ECRANS)) {
+    for (const f of fichiersEcrans()) {
       const n = balisesScreen(readFileSync(f, "utf8")).length;
       if (relative(ECRANS, f).includes("(tabs)")) onglets += n;
       else piles += n;
@@ -2020,8 +2034,10 @@ describe("la zone sûre du bas a un propriétaire, et un seul", () => {
   });
 
   it("aucun écran de pile ne renonce à sa zone sûre", () => {
+    // Les corps de fiche en font partie : posés à côté d'un onglet, ils
+    // reçoivent les bords de l'hôte par le volet, jamais par `edges={[]}`.
     const fautifs: string[] = [];
-    for (const f of fichiers(ECRANS)) {
+    for (const f of fichiersEcrans()) {
       const rel = relative(RACINE, f);
       if (rel.includes("(tabs)")) continue;
       for (const b of balisesScreen(readFileSync(f, "utf8"))) {
@@ -2699,7 +2715,7 @@ describe("un filtre à choix unique offre toujours de le retirer", () => {
     //: personne ne tient.
     const fautifs: string[] = [];
     let puces = 0;
-    for (const f of fichiers(join(RACINE, "app"))) {
+    for (const f of fichiersEcrans()) {
       const code = sansCommentaires(readFileSync(f, "utf8"));
       if (!/sansLeFiltre\w*\(/.test(code)) continue;
       puces += 1;

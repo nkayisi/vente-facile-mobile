@@ -30,7 +30,6 @@
  */
 import { useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
@@ -55,7 +54,9 @@ import {
   StatStrip,
   StatStripItem,
   Text,
+  useListeFiche,
 } from "@/ui";
+import { FicheVente } from "@/features/ventes/fiche-vente";
 import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = ["sales", "customers"];
@@ -74,6 +75,17 @@ function libelleRetard(jours: number): string {
 }
 
 export default function Reglements() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/vente/${id}`,
+    Fiche: FicheVente,
+    vide: {
+      icon: "Receipt",
+      titre: "Choisissez une facture",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   const money = useMonnaie();
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<Filtre>("toutes");
@@ -223,18 +235,20 @@ export default function Reglements() {
           </Text>
         }
         sousValeur={`sur ${money.money(v.total, v.devise)}`}
-        onPress={() => router.push(`/vente/${v.id}`)}
+        onPress={() => listeFiche.ouvrir(v.id)}
+        selectionne={listeFiche.selection === v.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Règlements en attente"
         subtitle="Factures en attente et partiellement payées"
       />
       <DataList
+        selection={listeFiche.selection}
         donnees={ventes}
         cle={(v) => v.id}
         rendu={rendu}

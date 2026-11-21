@@ -33,6 +33,7 @@ jest.mock("react-native-safe-area-context", () => ({
 }));
 jest.mock("./theme", () => ({ useTheme: () => ({ colors: { primary: "#f60" } }) }));
 
+import { Volet } from "./disposition";
 import { Screen } from "./screen";
 
 /** L'ecran PHYSIQUE. En bord-a-bord il vaut la fenetre ; sinon il la depasse. */
@@ -288,6 +289,37 @@ describe("Screen sur un grand écran", () => {
     });
     const plein = styleDuContenu(<Screen scroll gabarit="plein">x</Screen>) as Record<string, unknown>;
     expect(plein).toEqual({ padding: 16 });
+  });
+
+  it("ne pose AUCUNE gouttière dans un volet de liste, même sur une grande fenêtre", () => {
+    // Une liste à côté de sa fiche a 360 points : c'est un téléphone. La marge
+    // de tablette y prenait huit points de chaque côté d'une colonne étroite.
+    poserFenetre(1920);
+    expect(
+      styleDuContenu(
+        <Volet largeur={360}>
+          <Screen scroll padded={false}>
+            x
+          </Screen>
+        </Volet>
+      )
+    ).toEqual({});
+  });
+
+  it("aligne la barre fixe sur les cartes dans une colonne contrainte", () => {
+    // Le `px-4` de la barre ne compte plus quand la boîte est centrée à sa
+    // largeur max : les boutons débordaient les cartes de quatorze points.
+    poserFenetre(1920);
+    let rendu!: ReturnType<typeof create>;
+    act(() => {
+      rendu = create(
+        <Screen scroll padded={false} pied={<View testID="barre" />}>
+          x
+        </Screen>
+      );
+    });
+    const barre = rendu.root.findByProps({ testID: "barre" });
+    expect(barre.parent?.props.style).toMatchObject({ maxWidth: 760, paddingHorizontal: 24 });
   });
 
   it("pose la gouttière sans borner quand le volet tient dans le gabarit", () => {

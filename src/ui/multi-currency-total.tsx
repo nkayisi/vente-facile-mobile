@@ -13,6 +13,7 @@
 import { View } from "react-native";
 import { getDefaultCurrency } from "@vente-facile/core";
 
+import { useDisposition } from "./disposition";
 import { Mesure, StatValue } from "./stat-value";
 import { Text } from "./text";
 import type { Palette } from "./tokens";
@@ -106,8 +107,20 @@ export function CarteReleve({
   label: string;
   icone: React.ReactNode;
 }) {
+  // ⚠ SOUS SA LARGEUR MINIMALE, LA CARTE S'EMPILE, ELLE NE TRONQUE PAS. Une
+  // grille forcée à deux colonnes sur 360 points (un téléphone d'entrée de
+  // gamme, ou la liste à côté de sa fiche sur une tablette) laissait 156 points
+  // par carte, dont la pastille prenait un tiers : « 43 405,... » s'affichait
+  // à la place du montant. Pastille au-dessus, le montant reprend toute la
+  // largeur de la cellule.
+  const { largeur } = useDisposition();
+  const empile = largeur < LARGEUR_MIN_CARTE_RELEVE;
   return (
-    <View className="min-w-0 flex-1 flex-row items-center gap-3 rounded-xl border border-border bg-card p-4">
+    <View
+      className={`min-w-0 flex-1 rounded-xl border border-border bg-card p-4 ${
+        empile ? "gap-2" : "flex-row items-center gap-3"
+      }`}
+    >
       {icone}
       <View className="min-w-0 flex-1">
         {children}

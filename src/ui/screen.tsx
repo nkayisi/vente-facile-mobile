@@ -17,7 +17,8 @@ import {
 import type { Edge } from "react-native-safe-area-context";
 
 import { useDisposition, Volet } from "./disposition";
-import { largeurMaxDe, margePage, type Gabarit } from "./disposition-regles";
+import { classeDeFenetre, largeurMaxDe, margePage, type Gabarit } from "./disposition-regles";
+import { useBordsDuVolet } from "./volet-fiche";
 import { useTheme } from "./theme";
 import {
   BORDS_PAR_DEFAUT,
@@ -187,12 +188,17 @@ export function Screen({
 }: ScreenProps) {
   const marges = useMargesSysteme();
   const { colors } = useTheme();
-  const { largeur, classe } = useDisposition();
+  const { largeur } = useDisposition();
 
   // Le calcul vit dans `zone-sure.ts`, et c'est ce qui le rend eprouvable sans
   // rendre un composant. `Screen` DELEGUE : s'il recalculait ici, le test pur
   // resterait vert sur un code que plus personne n'appellerait.
-  const pad = rembourrageZoneSure(edges, marges);
+  //
+  // ⚠ DANS UN VOLET DE FICHE, LES BORDS SONT CEUX DE L'ÉCRAN HÔTE (voir
+  // `liste-fiche.tsx`) : une fiche posée à côté d'un onglet garde ainsi la
+  // barre du haut de l'onglet pour seule marge, au lieu d'en ajouter une.
+  const bordsDuVolet = useBordsDuVolet();
+  const pad = rembourrageZoneSure(bordsDuVolet ?? edges, marges);
 
   // ┌──────────────────────────────────────────────────────────────────────┐
   // │ LA GOUTTIÈRE S'AJOUTE AUX SEIZE POINTS QUE TOUT ÉCRAN POSE DÉJÀ.     │
@@ -203,8 +209,13 @@ export function Screen({
   // │ hors téléphone) se pose AUTOUR de la boîte de contenu : seize plus   │
   // │ huit donnent les vingt-quatre du `lg:p-6` du web, partout à la fois. │
   // └──────────────────────────────────────────────────────────────────────┘
+  //
+  // ⚠ LA MARGE SUIT LA LARGEUR DU VOLET, PAS CELLE DE LA FENÊTRE. Une liste
+  // posée dans un volet de 360 points, à côté de sa fiche, est un téléphone :
+  // la gouttière de tablette y ajoutait huit points de chaque côté, pris sur
+  // une colonne qui n'en a déjà pas assez.
   const max = largeurMaxDe(gabarit);
-  const gouttiere = gabarit === "plein" ? 0 : margePage(classe) - 16;
+  const gouttiere = gabarit === "plein" ? 0 : margePage(classeDeFenetre(largeur)) - 16;
   const contraint = max !== null && largeur > max;
   const boite = {
     ...(contraint ? { width: "100%" as const, maxWidth: max, alignSelf: "center" as const } : null),
@@ -288,7 +299,17 @@ export function Screen({
                 boutons étirés sur 1 900 points se liraient comme un bandeau, et
                 « Encaisser » partirait à l'autre bout de l'écran. Le fond et le
                 filet, eux, restent pleine largeur. */}
-            {gouttiere > 0 || contraint ? <View style={boite}>{pied}</View> : pied}
+            {gouttiere > 0 || contraint ? (
+              // ⚠ Dans une colonne CONTRAINTE, le `px-4` de la barre ne compte
+              // plus (la boîte est centrée à sa largeur max) : sans les seize
+              // points rendus ici, les boutons débordaient les cartes au-dessus
+              // de quatorze points de chaque côté.
+              <View style={contraint ? { ...boite, paddingHorizontal: gouttiere + 16 } : boite}>
+                {pied}
+              </View>
+            ) : (
+              pied
+            )}
           </View>
         ) : null}
       </KeyboardAvoidingView>

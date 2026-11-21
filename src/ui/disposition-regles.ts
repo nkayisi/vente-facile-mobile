@@ -70,6 +70,16 @@ export const LARGEUR_PANNEAU_PANIER = 400;
 export const SEUIL_LISTE_FICHE = 900;
 export const LARGEUR_VOLET_LISTE = 360;
 
+/** La liste et sa fiche tiennent-elles côte à côte dans cette page ? */
+export function listeEtFicheCoteACote(largeurPage: number): boolean {
+  return largeurPage >= SEUIL_LISTE_FICHE;
+}
+
+/** La largeur laissée à la fiche : la page, moins la liste et son filet. */
+export function largeurDuVoletFiche(largeurPage: number): number {
+  return Math.max(0, largeurPage - LARGEUR_VOLET_LISTE - 1);
+}
+
 const LARGEUR_MAX: Record<Gabarit, number | null> = {
   etroit: 480,
   lecture: 760,

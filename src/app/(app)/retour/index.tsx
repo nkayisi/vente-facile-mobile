@@ -21,12 +21,25 @@ import {
 import {
   AppBar, Badge, Banner, Chip, ChipRow, DataList, DataRow, Screen,
   SearchInput, Mesure,
+  useListeFiche,
 } from "@/ui";
+import { FicheRetour } from "@/features/ventes/fiche-retour";
 import { usePerimetreParDefaut } from "@/features/perimetre/use-perimetre";
 
 const TABLES = ["sale_returns", "sale_return_items", "sales"];
 
 export default function Retours() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/retour/${id}`,
+    Fiche: FicheRetour,
+    vide: {
+      icon: "PackageX",
+      titre: "Choisissez un retour",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   // Le DÉFAUT du membre : un caissier n'y voit que les siens.
   const perimetre = usePerimetreParDefaut(true);
   const money = useMonnaie();
@@ -169,15 +182,17 @@ export default function Retours() {
             ? `Remboursé ${money.money(r.rembourse, devise)}`
             : null
         }
-        onPress={() => router.push(`/retour/${r.id}`)}
+        onPress={() => listeFiche.ouvrir(r.id)}
+        selectionne={listeFiche.selection === r.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar title="Retours" subtitle="Marchandise rendue par les clients" />
       <DataList
+        selection={listeFiche.selection}
         donnees={retours}
         cle={(r) => r.id}
         rendu={rendu}

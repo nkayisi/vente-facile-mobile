@@ -3,7 +3,6 @@
  */
 import { useCallback, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import { formatDateFr } from "@vente-facile/core";
 
 import { useLecture } from "@/data/live";
@@ -28,11 +27,24 @@ import { useSession } from "@/session/provider";
 import {
   AppBar, Badge, Chip, ChipRow, DataList, DataRow, Fab, Screen, SearchInput, Text,
   BoutonFiltres,
+  useListeFiche,
 } from "@/ui";
+import { FicheAjustement } from "@/features/stock/fiche-ajustement";
 
 const TABLES = ["stock_adjustments", "stock_adjustment_items", "warehouses"];
 
 export default function Ajustements() {
+  // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.
+  // Voir `ui/liste-fiche.tsx`.
+  const listeFiche = useListeFiche({
+    chemin: (id) => `/ajustement/${id}`,
+    Fiche: FicheAjustement,
+    vide: {
+      icon: "SlidersHorizontal",
+      titre: "Choisissez un ajustement",
+      message: "Sa fiche s'ouvre ici, la liste reste à côté.",
+    },
+  });
   const { can } = useSession();
   const [recherche, setRecherche] = useState("");
   const [feuille, setFeuille] = useState(false);
@@ -134,18 +146,20 @@ export default function Ajustements() {
           </Text>
         }
         sousValeur={a.date ? formatDateFr(a.date) : null}
-        onPress={() => router.push(`/ajustement/${a.id}`)}
+        onPress={() => listeFiche.ouvrir(a.id)}
+        selectionne={listeFiche.selection === a.id}
       />
     );
   };
 
-  return (
+  return listeFiche.rendre(
     <Screen padded={false}>
       <AppBar
         title="Ajustements de stock"
         subtitle="Corrections d'inventaire et pertes"
       />
       <DataList
+        selection={listeFiche.selection}
         donnees={elements}
         cle={(a) => a.id}
         rendu={rendu}
@@ -170,7 +184,7 @@ export default function Ajustements() {
           onFermer={() => setFeuille(false)}
           onCree={(id) => {
             setFeuille(false);
-            router.push(`/ajustement/${id}`);
+            listeFiche.ouvrir(id);
           }}
         />
       ) : null}

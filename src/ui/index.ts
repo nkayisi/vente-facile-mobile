@@ -96,7 +96,7 @@ export { ToastProvider, useToast } from "./toast";
 export { Fab, type ActionSecondaire } from "./fab";
 export { Apparition } from "./apparition";
 export { useMouvementReduit } from "./mouvement-reduit";
-export { DataList, DataRow, DataSection } from "./data-list";
+export { DataList, DataRow, DataSection, RepereSelection } from "./data-list";
 export { Tableau, Rang, type ColonneTableau } from "./tableau";
 export { Stepper } from "./stepper";
 export { TuileChoix } from "./tuile-choix";
@@ -123,6 +123,15 @@ export {
   type Disposition,
 } from "./disposition";
 export { Grille, Colonnes, RangeeChamps } from "./grille";
+export {
+  useListeFiche,
+  useIdDeFiche,
+  useSortieDeFiche,
+  type ListeFiche,
+  type OptionsListeFiche,
+  type SorteDeFiche,
+} from "./liste-fiche";
+export { useVoletDeFiche } from "./volet-fiche";
 export {
   LARGEUR_LATERALE,
   LARGEUR_RAIL,
