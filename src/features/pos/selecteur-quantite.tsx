@@ -30,7 +30,7 @@
  * validation ferme la saisie au lieu d'ajouter au panier. Le pavé garde tout
  * visible et laisse la confirmation au seul endroit qui la déclenche.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, View } from "react-native";
 
 import {
@@ -43,6 +43,7 @@ import {
 } from "@vente-facile/core";
 import {
   basculerCanal,
+  quantiteApresRescan,
   quantiteInitiale,
   saisieDeQuantite,
   type EtatQuantite,
@@ -63,6 +64,7 @@ import {
 import { libelleAilleurs } from "./ailleurs";
 import type { ArticlePos } from "./catalogue";
 import { paliersRemise } from "./remise-ligne";
+import { AVIS_AUTRE_ARTICLE, inscrireSelecteur } from "./selecteur-actif";
 import { frapper as frapperTouche, SEPARATEUR } from "./saisie-quantite";
 
 type Canal = "package" | "retail";
@@ -166,6 +168,8 @@ export function SelecteurQuantite({
   const [motifVide, setMotifVide] = useState<string | null>(null);
   /** La prochaine touche REMPLACE la valeur au lieu de s'y ajouter. */
   const [remplacer, setRemplacer] = useState(false);
+  /** Un AUTRE article a été scanné pendant la saisie : le dire, ne rien changer. */
+  const [avisScan, setAvisScan] = useState<string | null>(null);
 
   /** Le motif qu'un « 1 » dans ce canal ouvrirait : refus, verrou, stock. */
   const alerteSiUn = (c: Canal): string | null => {
@@ -198,6 +202,7 @@ export function SelecteurQuantite({
       })
     );
     setBorne(null);
+    setAvisScan(null);
     setDevise(deviseInitiale);
     setRemiseChoisie(remise?.initiale ?? 0);
     // `conditionnement` se reconstruit à chaque rendu : c'est l'article qui
@@ -220,6 +225,41 @@ export function SelecteurQuantite({
     };
   }, [conditionnement, contenants, detail]);
 
+  /**
+   * Le lecteur de codes, pendant que la saisie est ouverte (le web :
+   * `lib/pos/rescan.ts`). Le MÊME article scanné de nouveau ajoute 1 au canal
+   * actif - scanner deux fois donne 2 ; un autre est refusé avec un avis, et
+   * la saisie en cours n'est pas touchée.
+   *
+   * Les gestes lisent l'état COURANT par une référence, mise à jour après
+   * chaque rendu : l'inscription, elle, ne se refait qu'à l'ouverture.
+   */
+  const gestesScan = useRef({ ajouterUn: () => {}, signalerAutre: () => {} });
+  useEffect(() => {
+    gestesScan.current = {
+      ajouterUn: () => {
+        const valeur = canal === "package" ? saisie.packages : saisie.loose;
+        const suivante = saisieDeQuantite(quantiteApresRescan(valeur));
+        setBorne(null);
+        setAvisScan(null);
+        setProposee(false);
+        setMotifVide(null);
+        setRemplacer(false);
+        if (canal === "package") setContenants(suivante);
+        else setDetail(suivante);
+      },
+      signalerAutre: () => setAvisScan(AVIS_AUTRE_ARTICLE),
+    };
+  });
+  useEffect(() => {
+    if (!visible || !article) return;
+    return inscrireSelecteur({
+      article: { barcode: article.barcode, sku: article.sku },
+      ajouterUn: () => gestesScan.current.ajouterUn(),
+      signalerAutre: () => gestesScan.current.signalerAutre(),
+    });
+  }, [visible, article]);
+
   // ⚠ AVANT le retour anticipé : un hook appelé conditionnellement change
   // l'ordre des hooks d'un rendu à l'autre.
   const marges = useMargesSysteme();
@@ -234,6 +274,7 @@ export function SelecteurQuantite({
   /** La saisie devient celle du caissier : proposition, motif et remplacement tombent. */
   const poser = (v: string) => {
     setBorne(null);
+    setAvisScan(null);
     setProposee(false);
     setMotifVide(null);
     setRemplacer(false);
@@ -253,6 +294,7 @@ export function SelecteurQuantite({
   const raccourci = (n: number) => poser(String(n));
   const choisirCanal = (c: Canal) => {
     if (c === canal) return;
+    setAvisScan(null);
     // ⚠ Une proposition intacte SUIT le canal : « 1 bouteille » proposée ne
     // doit pas rester sous les « 2 casiers » tapés ensuite.
     appliquer(
@@ -432,6 +474,18 @@ export function SelecteurQuantite({
             <Text variant="caption" className="mt-1 px-5 text-muted-foreground">
               {libelleAilleurs(article.ailleurs, motDetail)}
             </Text>
+          ) : null}
+
+          {avisScan ? (
+            <View
+              className="mx-5 mt-3 flex-row items-start gap-2 rounded-xl bg-warning/10 px-4 py-3"
+              accessibilityLiveRegion="polite"
+            >
+              <Icon name="ion:barcode-outline" size={18} color="warning" />
+              <Text variant="bodySmall" className="flex-1 text-warning">
+                {avisScan}
+              </Text>
+            </View>
           ) : null}
 
           {refus ? (

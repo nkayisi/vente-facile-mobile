@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Aucune permission : un lecteur en mode clavier passe par les touches de
+    l'activité, et un lecteur en mode message par un récepteur déclaré à
+    l'exécution (src/main/java/.../Capture.kt).
+  -->
+</manifest>

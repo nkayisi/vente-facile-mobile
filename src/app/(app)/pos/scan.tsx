@@ -21,6 +21,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
 
 import { articleParCodeBarres, type ArticlePos } from "@/features/pos/catalogue";
+import { useScanComptoir } from "@/features/pos/use-scan-comptoir";
 import { sessionOuverte } from "@/features/pos/caisse";
 import { usePanier } from "@/features/pos/panier";
 import { SelecteurDuComptoir } from "@/features/pos/selecteur-du-comptoir";
@@ -82,6 +83,27 @@ export default function Scan() {
   const dernierCode = useRef<string | null>(null);
   const enCours = useRef(false);
 
+  // Le lecteur INTÉGRÉ marche aussi sur cet écran : un terminal qui a les deux
+  // ne doit pas faire choisir entre la caméra et son lecteur.
+  const [entrepot, setEntrepot] = useState<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      void sessionOuverte().then((s) => setEntrepot(s?.warehouseId ?? null));
+    }, [])
+  );
+  useScanComptoir({
+    entrepot,
+    surTrouve: (article) => {
+      setIntrouvable(null);
+      setMessage(null);
+      setScanne(article);
+    },
+    surIntrouvable: (code) => {
+      setIntrouvable(code);
+      setMessage({ texte: `Aucun article ne porte le code ${code}.`, ton: "refus" });
+    },
+  });
+
   const surLecture = useCallback(async ({ data }: { data: string }) => {
     const maintenant = Date.now();
     if (enCours.current || maintenant - dernierScan.current < TEMPS_MORT_MS) return;
@@ -95,7 +117,8 @@ export default function Scan() {
       const article = await articleParCodeBarres(data, session?.warehouseId ?? null);
       if (!article) {
         setIntrouvable(data);
-        setMessage({ texte: `Aucun article pour le code ${data}.`, ton: "refus" });
+        // La phrase du web, mot pour mot : deux surfaces, un seul vocabulaire.
+        setMessage({ texte: `Aucun article ne porte le code ${data}.`, ton: "refus" });
         return;
       }
       setIntrouvable(null);

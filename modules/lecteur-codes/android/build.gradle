@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.lecteurcodes'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.lecteurcodes"
+  defaultConfig {
+    minSdkVersion 24
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+// Le champ de recherche du comptoir se reconnaît à son `nativeID`, que React
+// Native range sous `R.id.view_tag_native_id` ; et `ReactActivityHandler`
+// nomme des classes de React Native. `expo-modules-core` ne les réexporte pas.
+dependencies {
+  implementation 'com.facebook.react:react-android'
+}
