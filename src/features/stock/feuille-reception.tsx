@@ -67,7 +67,23 @@ export function FeuilleReception({
   const refus = useMemo(() => refusDeReception(lignes, saisies), [lignes, saisies]);
 
   return (
-    <Sheet ouvert={ouvert} onFermer={onFermer} titre="Réceptionner le transfert">
+    <Sheet
+      ouvert={ouvert}
+      onFermer={onFermer}
+      titre="Réceptionner le transfert"
+      pied={
+        <Button
+          fullWidth
+          size="lg"
+          leftIcon="Boxes"
+          loading={enCours}
+          disabled={enCours || refus !== null}
+          onPress={() => onConfirmer(lignesDeReception(lignes, saisies))}
+        >
+          Confirmer la réception
+        </Button>
+      }
+    >
       <View className="gap-4">
         <Text variant="caption" className="text-muted-foreground">
           Les quantités sont celles qui ont été expédiées. Corrigez seulement
@@ -121,17 +137,6 @@ export function FeuilleReception({
             {refus}
           </Text>
         ) : null}
-
-        <Button
-          fullWidth
-          size="lg"
-          leftIcon="Boxes"
-          loading={enCours}
-          disabled={enCours || refus !== null}
-          onPress={() => onConfirmer(lignesDeReception(lignes, saisies))}
-        >
-          Confirmer la réception
-        </Button>
       </View>
     </Sheet>
   );

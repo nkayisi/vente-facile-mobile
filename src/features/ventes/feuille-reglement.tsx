@@ -194,7 +194,13 @@ export function FeuilleReglement({
   ]);
 
   return (
-    <Sheet ouvert={ouvert} onFermer={onFermer} titre="Encaisser cette facture">
+    <Sheet ouvert={ouvert} onFermer={onFermer} titre="Encaisser cette facture"
+        pied={
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+          {envoi ? "Enregistrement…" : "Encaisser et imprimer"}
+        </Button>
+        }
+      >
       <View className="gap-1">
         <Text variant="caption">
           {`${vente.reference} · reste ${money.money(resteReel, vente.devise)}`}
@@ -274,10 +280,6 @@ export function FeuilleReglement({
         title="Le reçu sort tout de suite"
         message="Il porte un numéro définitif, même hors ligne. Le règlement partira à la prochaine synchronisation."
       />
-
-      <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-        {envoi ? "Enregistrement…" : "Encaisser et imprimer"}
-      </Button>
     </Sheet>
   );
 }

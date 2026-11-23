@@ -26,6 +26,7 @@
  */
 import {
   Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -228,5 +229,31 @@ describe("sur une tablette, la feuille se pose au centre", () => {
     );
     const barre = rendu.root.findByProps({ testID: "pied" }).parent!;
     expect((barre.props.style as { paddingBottom: number }).paddingBottom).toBe(16);
+  });
+
+  it("se pose AU-DESSUS du clavier, et reprend sa hauteur quand il se ferme", () => {
+    // Relevé sur le rk3568 : la carte centrée passait sous le clavier, et le
+    // bouton « Enregistrer » avec elle.
+    poserFenetre(1920, 1080);
+    const ecoutes: Record<string, (e?: unknown) => void> = {};
+    jest.spyOn(Keyboard, "addListener").mockImplementation(((
+      nom: string,
+      rappel: (e?: unknown) => void
+    ) => {
+      ecoutes[nom] = rappel;
+      return { remove: () => {} };
+    }) as never);
+    const rendu = rendre(
+      <Sheet ouvert onFermer={() => {}}>
+        <View />
+      </Sheet>
+    );
+    const plafond = () => styles(rendu.root.findByType(KeyboardAvoidingView)).maxHeight;
+    const avant = plafond();
+    act(() => ecoutes.keyboardDidShow({ endCoordinates: { screenY: 658 } }));
+    // 1080, moins la marge du haut (24 + 16), moins le clavier (422) et son écart (8).
+    expect(plafond()).toBe(610);
+    act(() => ecoutes.keyboardDidHide());
+    expect(plafond()).toBe(avant);
   });
 });

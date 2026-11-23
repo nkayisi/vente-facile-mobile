@@ -397,6 +397,7 @@ export default function Mouvements() {
                   //   « plusieurs cartons » dit bien une livraison de masse.
                   name="Boxes"
                   label="Approvisionner en masse"
+                  texte="Approvisionner en masse"
                   variant="ghost"
                   onPress={ouvrirMasse}
                 />
@@ -404,6 +405,7 @@ export default function Mouvements() {
               <IconButton
                 name="Truck"
                 label="Rapport d'approvisionnement"
+                texte="Rapport"
                 variant="ghost"
                 onPress={() => setFeuille("approvisionnement")}
                 disabled={!enLigne || envoiExport}
@@ -411,6 +413,7 @@ export default function Mouvements() {
               <IconButton
                 name="Download"
                 label="Exporter les mouvements"
+                texte="Exporter"
                 variant="ghost"
                 onPress={() => setFeuille("format")}
                 disabled={Boolean(raisonExport)}

@@ -214,6 +214,13 @@ export function FeuilleNouvelInventaire({
       onFermer={reculer}
       titre={titre}
       retour={surLeFormulaire ? undefined : reculer}
+      pied={
+        surLeFormulaire ? (
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+            {envoi ? "Enregistrement…" : "Créer l'inventaire"}
+          </Button>
+        ) : undefined
+      }
     >
       {choix ? (
         <ListeChoix
@@ -402,10 +409,6 @@ export function FeuilleNouvelInventaire({
             title="La feuille est engendrée au démarrage"
             message="Elle fige alors le stock théorique. C'est cet instantané qui sert de référence à l'écart, et non le stock d'aujourd'hui."
           />
-
-          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-            {envoi ? "Enregistrement…" : "Créer l'inventaire"}
-          </Button>
         </>
       )}
     </Sheet>

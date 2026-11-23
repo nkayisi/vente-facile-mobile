@@ -39,13 +39,23 @@ import {
   Logo,
   Pressable,
   Text,
+  useDisposition,
   useMargesSysteme,
   useRepliNavigation,
 } from "@/ui";
+import { largeurDeLaLaterale } from "@/ui/disposition-regles";
 import { HIT } from "@/ui/tokens";
 import { allerA } from "./aller";
 import { fermerPuis } from "./fermeture";
-import { SECTION_COMPTOIR, entreesDuMenu, sectionDeLaRoute } from "./menu";
+import {
+  CLE_OPERATIONS,
+  ENTREES_APPAREIL,
+  ENTREE_MA_JOURNEE,
+  SECTION_COMPTOIR,
+  entreesDuMenu,
+  sectionDeLaRoute,
+  type EntreeAnnexe,
+} from "./menu";
 import { PERMISSION_DU_COMPTOIR } from "./onglets";
 
 export function MenuLateral({
@@ -61,6 +71,10 @@ export function MenuLateral({
   const { snapshot, can } = useSession();
   const { demander } = useDeconnexion();
   const { basculer } = useRepliNavigation();
+  const { fenetre } = useDisposition();
+  // À partir de 300 points, le nom du compte et « Quitter » tiennent côte à
+  // côte. En dessous, le libellé mangerait le nom, qu'on vient lire ici.
+  const quitterEnToutesLettres = permanent && largeurDeLaLaterale(fenetre.largeur) >= 300;
   const { donnees: etab } = useLecture(etablissement, { tables: ["organizations"] });
   // Le journal se relit dès qu'il change : une opération refusée pendant que le
   // tiroir est ouvert fait paraître sa pastille sans rouvrir le menu.
@@ -143,6 +157,10 @@ export function MenuLateral({
           passant par le hub Ventes. C'est un BOUTON, et non une ligne du
           menu : `MENU` est le miroir exact du back-office, et le geste le
           plus fréquent de la journée mérite d'être distingué d'une section.
+
+          ⚠ JAMAIS EN PLEIN ORANGE : c'est la marque de l'entrée ACTIVE. Rempli,
+          il se lisait comme une deuxième page ouverte. Le contour dit « une
+          action », le plein dit « vous êtes ici ».
         */}
         {permanent && can(PERMISSION_DU_COMPTOIR) ? (
           <View className="px-3 pb-2">
@@ -152,11 +170,11 @@ export function MenuLateral({
               accessibilityRole="link"
               accessibilityState={{ selected: active === SECTION_COMPTOIR }}
               accessibilityLabel="Point de vente"
-              className="flex-row items-center justify-center gap-2 rounded-lg bg-primary px-4"
+              className="flex-row items-center justify-center gap-2 rounded-lg border border-primary bg-accent px-4 active:bg-primary/15"
               style={{ minHeight: HIT.min }}
             >
-              <Icon name="ShoppingCart" size={18} color="primaryForeground" />
-              <Text variant="label" className="text-primary-foreground">
+              <Icon name="ShoppingCart" size={18} color="primary" />
+              <Text variant="label" className="font-sans-semibold text-primary">
                 Vendre
               </Text>
             </Pressable>
@@ -227,18 +245,13 @@ export function MenuLateral({
           <Text variant="caption" className="px-4 pb-1 uppercase">
             Moi
           </Text>
-          <Pressable
-            onPress={aller("/(app)/ma-journee")}
-            haptic="selection"
-            accessibilityRole="link"
-            accessibilityLabel="Ma journée : mes ventes, mes encaissements, mes dépenses"
-            className="flex-row items-center gap-3 rounded-lg px-4 py-2.5"
-          >
-            <Icon name="CalendarCheck" size={18} color="foreground" />
-            <Text variant="bodySmall" className="flex-1 font-sans-medium text-foreground">
-              Ma journée
-            </Text>
-          </Pressable>
+          <LigneAnnexe
+            entree={ENTREE_MA_JOURNEE}
+            active={active === ENTREE_MA_JOURNEE.cle}
+            description="Ma journée : mes ventes, mes encaissements, mes dépenses"
+            accentuee
+            aller={aller}
+          />
         </View>
 
         <Divider />
@@ -248,36 +261,19 @@ export function MenuLateral({
           <Text variant="caption" className="px-4 pb-1 uppercase">
             Cet appareil
           </Text>
-          {[
-            { titre: "Synchronisation", icon: "CloudDownload" as const, href: "/(app)/appareil/synchronisation", pastille: null },
-            // L'écran où un refus du serveur devient lisible et se corrige. Il
-            // porte sa PASTILLE (refusées + bloquées) : sans elle, le marchand
-            // n'avait aucune raison d'ouvrir cet écran, et une vente refusée
-            // restait en quarantaine des jours. Voir `journal-lisible.ts`.
-            { titre: "Opérations à corriger", icon: "AlertTriangle" as const, href: "/(app)/appareil/operations", pastille },
-            { titre: "Imprimante", icon: "Printer" as const, href: "/(app)/appareil/imprimante", pastille: null },
-            // ⚠ SANS CETTE ENTRÉE, L'ÉCRAN DE DIAGNOSTIC N'EXISTE POUR PERSONNE.
-            // Il a été écrit pour qu'un marchand chez qui la barre du système
-            // recouvre le bas de l'écran puisse nous envoyer un relevé - et il
-            // n'était câblé nulle part. Un outil qu'on ne peut pas atteindre ne
-            // sert qu'à celui qui l'a écrit.
-            { titre: "Diagnostic d'affichage", icon: "Ruler" as const, href: "/(app)/appareil/affichage", pastille: null },
-          ].map((a) => (
-            <Pressable
-              key={a.href}
-              onPress={aller(a.href)}
-              haptic="selection"
-              accessibilityRole="link"
-              accessibilityLabel={a.pastille ? a.pastille.etiquette : a.titre}
-              className="flex-row items-center gap-3 rounded-lg px-4 py-2.5"
-            >
-              <Icon name={a.icon} size={18} color="mutedForeground" />
-              <Text variant="bodySmall" className="flex-1 text-muted-foreground">
-                {a.titre}
-              </Text>
-              {a.pastille ? <Badge tone={a.pastille.ton}>{a.pastille.texte}</Badge> : null}
-            </Pressable>
-          ))}
+          {ENTREES_APPAREIL.map((a) => {
+            const badge = a.cle === CLE_OPERATIONS ? pastille : null;
+            return (
+              <LigneAnnexe
+                key={a.cle}
+                entree={a}
+                active={active === a.cle}
+                description={badge ? badge.etiquette : a.label}
+                badge={badge}
+                aller={aller}
+              />
+            );
+          })}
         </View>
       </ScrollView>
 
@@ -306,12 +302,68 @@ export function MenuLateral({
           onPress={fermerPuis(onFermer, demander)}
           accessibilityRole="button"
           accessibilityLabel="Se déconnecter"
-          className="items-center justify-center rounded-lg"
-          style={{ width: HIT.min, height: HIT.min }}
+          className="flex-row items-center justify-center gap-1.5 rounded-lg"
+          style={
+            quitterEnToutesLettres
+              ? { height: HIT.min, paddingHorizontal: 8 }
+              : { width: HIT.min, height: HIT.min }
+          }
         >
           <Icon name="LogOut" size={20} color="destructive" />
+          {quitterEnToutesLettres ? (
+            <Text variant="bodySmall" className="font-sans-medium text-destructive">
+              Quitter
+            </Text>
+          ) : null}
         </Pressable>
       </View>
     </View>
+  );
+}
+
+/**
+ * Une ligne de « Moi » ou de « Cet appareil ». Comme une section, elle s'allume
+ * en plein orange sur son écran : sans cela, la barre restée à l'écran ne disait
+ * plus où l'on était.
+ */
+function LigneAnnexe({
+  entree,
+  active,
+  description,
+  accentuee = false,
+  badge,
+  aller,
+}: {
+  entree: EntreeAnnexe;
+  active: boolean;
+  description: string;
+  /** « Ma journée » a le poids d'une section, « Cet appareil » reste en retrait. */
+  accentuee?: boolean;
+  badge?: ReturnType<typeof pastilleOperations>;
+  /** La fabrique du menu : elle referme le tiroir AVANT d'aller quelque part. */
+  aller: (href: string) => () => void;
+}) {
+  const couleur = active ? "primaryForeground" : accentuee ? "foreground" : "mutedForeground";
+  const texte = active
+    ? "flex-1 font-sans-medium text-primary-foreground"
+    : accentuee
+      ? "flex-1 font-sans-medium text-foreground"
+      : "flex-1 text-muted-foreground";
+  return (
+    <Pressable
+      onPress={aller(entree.href)}
+      haptic="selection"
+      accessibilityRole="link"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={description}
+      className={`flex-row items-center gap-3 rounded-lg px-4 py-2.5${active ? " bg-primary" : ""}`}
+    >
+      <Icon name={entree.icon} size={18} color={couleur} />
+      <Text variant="bodySmall" numberOfLines={1} className={texte}>
+        {entree.label}
+      </Text>
+      {badge ? <Badge tone={badge.ton}>{badge.texte}</Badge> : null}
+      {active ? <Icon name="ChevronRight" size={16} color="primaryForeground" /> : null}
+    </Pressable>
   );
 }

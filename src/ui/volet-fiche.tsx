@@ -24,6 +24,20 @@ export const FicheContexte = createContext<VoletDeFiche | null>(null);
  */
 export const BordsDuVolet = createContext<Edge[] | null>(null);
 
+/**
+ * Vrai pour un écran posé dans la colonne LISTE, à côté de sa fiche.
+ *
+ * Cette colonne fait moins de 600 points, donc `Screen` n'y pose aucune
+ * gouttière et se croit sur un téléphone, où une rangée va d'un bord à l'autre.
+ * Mais sa recherche et ses boutons y portent leur `px-4` : les rangées
+ * dépassaient donc tout ce qu'il y a au-dessus d'elles de seize points.
+ */
+export const DansVoletDeListe = createContext(false);
+
+export function useDansVoletDeListe(): boolean {
+  return useContext(DansVoletDeListe);
+}
+
 /** Le volet où la fiche est posée, ou `null` quand elle est une route. */
 export function useVoletDeFiche(): VoletDeFiche | null {
   return useContext(FicheContexte);

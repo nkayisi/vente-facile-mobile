@@ -608,6 +608,7 @@ export default function EcranCreances() {
           <IconButton
             name="Download"
             label="Exporter les créances"
+            texte="Exporter"
             variant="ghost"
             onPress={() => setFeuilleFormat(true)}
             disabled={envoiExport || !creances || vue.lignes.length === 0}

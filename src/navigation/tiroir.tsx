@@ -1,6 +1,6 @@
 /**
  * Le tiroir latéral : le hamburger de la barre du haut sur un téléphone, le
- * bouton « Menu » du rail sur une tablette.
+ * bouton « Déplier » du rail sur une tablette et au comptoir.
  *
  * Il enveloppe TOUTE l'application connectée (pile, onglets, rail), et non la
  * seule barre d'onglets : c'est ce qui fait que le voile couvre aussi les
@@ -31,9 +31,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { BackHandler } from "react-native";
+import { BackHandler, Pressable } from "react-native";
 import { usePathname } from "expo-router";
 import { Drawer } from "react-native-drawer-layout";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { useColor, useDisposition } from "@/ui";
 import { retourFermeLeTiroir } from "./fermeture";
@@ -47,6 +48,46 @@ interface ApiTiroir {
 }
 
 const Contexte = createContext<ApiTiroir | null>(null);
+
+/**
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE VOILE DE LA BIBLIOTHÈQUE EST MASQUÉ, ET LE NÔTRE SUIT L'ÉTAT REACT.  │
+ * │                                                                          │
+ * │ Celui de `react-native-drawer-layout` anime son opacité et son          │
+ * │ `pointerEvents` sur le fil d'interface, sans les inscrire dans l'arbre  │
+ * │ de React (Reanimated 4 ne commite pas une propriété qui n'est pas de    │
+ * │ mise en page ; la bibliothèque le dit elle-même, et ne le contourne     │
+ * │ que pour le tiroir et le contenu). Le premier rendu qui suit une        │
+ * │ fermeture réécrit donc les valeurs vues à l'ouverture : voile opaque,   │
+ * │ et touches capturées.                                                   │
+ * │                                                                          │
+ * │ Reproduit sur l'émulateur : ouvrir puis fermer le menu sur une          │
+ * │ tablette, puis passer en largeur de téléphone (rotation, écran          │
+ * │ partagé). L'application restait grisée et ne répondait plus à rien,     │
+ * │ hamburger compris. Le nôtre n'existe que si le menu est ouvert : un     │
+ * │ rendu ne peut pas le faire revenir.                                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+const VOILE_DE_LA_BIBLIOTHEQUE = { display: "none" } as const;
+
+function VoileDuTiroir({ onFermer }: { onFermer: () => void }) {
+  return (
+    <Animated.View
+      entering={FadeIn.duration(150)}
+      exiting={FadeOut.duration(150)}
+      // Le jeton du voile des feuilles : `bg-black/50` resterait noir en thème
+      // sombre, alors que le fond, lui, aurait changé.
+      className="absolute inset-0 bg-foreground/50"
+    >
+      <Pressable
+        onPress={onFermer}
+        accessibilityRole="button"
+        accessibilityLabel="Fermer le menu"
+        style={{ flex: 1 }}
+      />
+    </Animated.View>
+  );
+}
 
 export function TiroirProvider({ children }: { children: ReactNode }) {
   const [demande, setOuvert] = useState(false);
@@ -89,11 +130,13 @@ export function TiroirProvider({ children }: { children: ReactNode }) {
         swipeEnabled={balayage}
         // 320 points : la largeur `w-64` du back-office, à quelques points près.
         drawerStyle={{ width: 320, backgroundColor: card }}
+        overlayStyle={VOILE_DE_LA_BIBLIOTHEQUE}
         renderDrawerContent={() =>
           navigation === "laterale" ? null : <MenuLateral onFermer={fermer} />
         }
       >
         {children}
+        {ouvert ? <VoileDuTiroir onFermer={fermer} /> : null}
       </Drawer>
     </Contexte.Provider>
   );

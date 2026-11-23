@@ -144,9 +144,9 @@ describe("cibles de navigation", () => {
    * │ LE TIROIR PORTE DES DESTINATIONS QUE `menu.ts` NE DÉCLARE PAS.          │
    * │                                                                          │
    * │ `MENU` est verrouillé à onze entrées, comparées une à une à la barre     │
-   * │ latérale du web : tout ce qui est propre au terminal s'écrit donc EN DUR │
-   * │ dans `menu-lateral.tsx` - les quatre entrées de « Cet appareil », et     │
-   * │ « Ma journée ». Aucune n'était contrôlée.                                │
+   * │ latérale du web : ce qui est propre au terminal vit à côté, dans         │
+   * │ `ENTREES_APPAREIL` et `ENTREE_MA_JOURNEE`, que le tiroir ET le rail      │
+   * │ lisent. Aucune de ces destinations n'était contrôlée.                    │
    * │                                                                          │
    * │ Une faute de frappe y est muette : `aller()` navigue, expo-router ne     │
    * │ trouve rien, et l'entrée ne fait simplement RIEN. C'est le défaut qui a  │
@@ -156,7 +156,9 @@ describe("cibles de navigation", () => {
    * └──────────────────────────────────────────────────────────────────────────┘
    */
   it("chaque destination écrite en dur dans le tiroir mène quelque part", () => {
-    const tiroir = readFileSync(join(SRC, "navigation/menu-lateral.tsx"), "utf8");
+    const tiroir =
+      readFileSync(join(SRC, "navigation/menu-lateral.tsx"), "utf8") +
+      readFileSync(join(SRC, "navigation/menu.ts"), "utf8").split("ENTREE_MA_JOURNEE: EntreeAnnexe")[1];
     const casses: string[] = [];
     let vus = 0;
     // Les deux formes qu'emploie ce fichier : `href: "…"` dans ses tables, et

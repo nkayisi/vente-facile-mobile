@@ -3519,15 +3519,48 @@ describe("écrans adaptatifs", () => {
   });
 
   /**
-   * `plein` retire toute largeur maximale : réservé aux écrans qui remplissent
-   * vraiment leur volet (la grille du comptoir et son panneau, le viseur du
-   * scan). Sur un formulaire ou une liste, il étale les rangées sur 1 900
-   * points, libellé collé à gauche, valeur à l'autre bout.
+   * `plein` retire aussi la GOUTTIÈRE de la page : réservé aux écrans qui
+   * veulent chaque point (la grille du comptoir et son panneau, le viseur du
+   * scan). Une page ordinaire reste en `page`, qui couvre la largeur elle aussi
+   * mais garde sa marge, et range ses cartes en colonnes par `Flux`.
    *
    * ⚠ Le gabarit s'écrit en LITTÉRAL, pour que ce balayage le voie : un
    * `gabarit={g}` calculé lui échapperait.
    */
   const PLEIN_NOMMES = [join("app", "(app)", "(tabs)", "vendre.tsx"), join("app", "(app)", "pos", "scan.tsx")];
+
+  /**
+   * ┌──────────────────────────────────────────────────────────────────────────┐
+   * │ LE BOUTON QUI VALIDE UNE FEUILLE VIT DANS SON PIED.                     │
+   * │                                                                          │
+   * │ Relevé sur le rk3568 : clavier ouvert, « Enregistrer » restait dans le   │
+   * │ défilement, sous le bord de la carte, et rien ne disait qu'il existait. │
+   * │ Le pied, lui, est un frère du défilement : il reste au-dessus du clavier.│
+   * └──────────────────────────────────────────────────────────────────────────┘
+   */
+  it("toute feuille qui porte un champ de saisie a un pied", () => {
+    const CHAMP = /<(?:Input|ChampMontant)\b/;
+    const avecFeuille = fichiers(RACINE, [".tsx"])
+      .filter((f) => !f.endsWith(".test.tsx") && !f.endsWith(join("ui", "sheet.tsx")))
+      .map((f) => ({ nom: relative(RACINE, f), code: sansCommentaires(readFileSync(f, "utf8")) }))
+      .filter(({ code }) => /<Sheet\b/.test(code) && CHAMP.test(code) && /<Button\b/.test(code));
+    // Un balayage qui ne trouve rien passerait au vert sans rien démontrer.
+    expect(avecFeuille.length).toBeGreaterThan(12);
+    expect(avecFeuille.filter(({ code }) => !/(?<![-\w])pied=\{/.test(code)).map((x) => x.nom)).toEqual([]);
+  });
+
+  /**
+   * Un écran ne promet pas une version à venir : « arrive au lot 10 » a survécu
+   * au lot 10, sur un bouton grisé, devant le marchand.
+   */
+  it("aucun libellé n'annonce un lot de développement", () => {
+    const tous = fichiers(RACINE, [".tsx"]).filter((f) => !f.endsWith(".test.tsx"));
+    expect(tous.length).toBeGreaterThan(200);
+    const fautifs = tous
+      .filter((f) => /\barrive(?:ra)?\s+au\s+lot\s+\d/i.test(sansCommentaires(readFileSync(f, "utf8"))))
+      .map((f) => relative(RACINE, f));
+    expect(fautifs).toEqual([]);
+  });
 
   it("le gabarit « plein » est réservé au comptoir, et tout gabarit est écrit en littéral", () => {
     const fautifs: string[] = [];
@@ -3658,6 +3691,36 @@ describe("écrans adaptatifs", () => {
         fautifs.push(`${nom} : appelle useListeFiche sans figurer dans LISTES_A_VOLET`);
       }
     }
+    expect(fautifs).toEqual([]);
+  });
+});
+
+describe("le lecteur de codes du comptoir", () => {
+  it("un seul fichier charge le module natif `LecteurCodes`", () => {
+    const tous = fichiers(RACINE);
+    expect(tous.length).toBeGreaterThan(200);
+    const chargeurs = tous
+      .filter((f) => /requireOptionalNativeModule\b[^(]*\(\s*["']LecteurCodes["']/.test(sansCommentaires(readFileSync(f, "utf8"))))
+      .map((f) => relative(RACINE, f));
+    // Un second chargeur serait un second abonné : chaque touche lue deux fois,
+    // donc un scan ouvert deux fois.
+    expect(chargeurs).toEqual(["features/pos/lecteur-codes.ts"]);
+  });
+
+  it("la recherche du comptoir porte le `nativeID` que le module laisse écrire", () => {
+    // Sans lui, le module prendrait la recherche pour un AUTRE champ : il la
+    // laisserait passer, et l'Entrée d'un scan validerait aussi la recherche.
+    const code = sansCommentaires(readFileSync(join(RACINE, "app/(app)/(tabs)/vendre.tsx"), "utf8"));
+    expect(code).toMatch(/nativeID=\{CHAMP_RECHERCHE_COMPTOIR\}/);
+    const lecteur = readFileSync(join(RACINE, "features/pos/lecteur-codes.ts"), "utf8");
+    expect(lecteur).toMatch(/champRecherche:\s*CHAMP_RECHERCHE_COMPTOIR/);
+  });
+
+  it("tout écran de vente qui scanne passe par `useScanComptoir`", () => {
+    const ecrans = ["app/(app)/(tabs)/vendre.tsx", "app/(app)/pos/panier.tsx", "app/(app)/pos/scan.tsx"];
+    const fautifs = ecrans.filter(
+      (e) => !/\buseScanComptoir\s*\(/.test(sansCommentaires(readFileSync(join(RACINE, e), "utf8")))
+    );
     expect(fautifs).toEqual([]);
   });
 });

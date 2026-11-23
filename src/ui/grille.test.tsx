@@ -6,8 +6,8 @@
 import { Text, View } from "react-native";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 
-import { Volet } from "./disposition";
-import { Colonnes, Grille, RangeeChamps, SEUIL_RANGEE_CHAMPS } from "./grille";
+import { useDisposition, Volet } from "./disposition";
+import { Colonnes, Flux, Grille, RangeeChamps, SEUIL_RANGEE_CHAMPS } from "./grille";
 
 function rendre(element: React.ReactElement) {
   let rendu!: ReturnType<typeof create>;
@@ -168,5 +168,72 @@ describe("RangeeChamps", () => {
       </Volet>
     );
     expect(r.root.findAll((n) => n.type === View)).toHaveLength(0);
+  });
+});
+
+describe("Flux", () => {
+  /** Un bloc qui écrit la largeur que son volet lui annonce. */
+  function Bloc({ nom }: { nom: string }) {
+    const { largeur } = useDisposition();
+    return <Text testID={nom}>{String(largeur)}</Text>;
+  }
+  const blocs = (n: number) =>
+    Array.from({ length: n }, (_, i) => <Bloc key={i} nom={`b${i}`} />);
+  const rangees = (r: ReturnType<typeof create>) =>
+    r.root.findAll(
+      (n) => n.type === View && String(n.props.className ?? "").includes("flex-row")
+    );
+  const colonnes = (r: ReturnType<typeof create>) =>
+    r.root.findAll(
+      (n) => n.type === View && String(n.props.className ?? "").includes("min-w-0 flex-1")
+    );
+
+  it("laisse un téléphone exactement comme il était : une seule pile", () => {
+    const r = rendre(
+      <Volet largeur={360}>
+        <Flux>{blocs(4)}</Flux>
+      </Volet>
+    );
+    expect(rangees(r)).toHaveLength(0);
+    expect(r.root.findByProps({ testID: "b3" }).props.children).toBe("360");
+  });
+
+  it("occupe la largeur d'un grand écran, et annonce à chaque bloc SA colonne", () => {
+    const r = rendre(
+      <Volet largeur={1540}>
+        <Flux>{blocs(6)}</Flux>
+      </Volet>
+    );
+    expect(colonnes(r)).toHaveLength(3);
+    // (1540 - 2 écarts de 16) / 3 : un bloc qui lirait la largeur de la page
+    // poserait ses propres colonnes sur 1 540 points, dans une colonne de 500.
+    expect(r.root.findByProps({ testID: "b0" }).props.children).toBe("502.6666666666667");
+  });
+
+  it("ne crée jamais une colonne vide : deux blocs font deux colonnes", () => {
+    const r = rendre(
+      <Volet largeur={1540}>
+        <Flux>{blocs(2)}</Flux>
+      </Volet>
+    );
+    expect(colonnes(r)).toHaveLength(2);
+  });
+
+  it("respecte le plafond demandé par l'écran", () => {
+    const r = rendre(
+      <Volet largeur={1540}>
+        <Flux max={2}>{blocs(6)}</Flux>
+      </Volet>
+    );
+    expect(colonnes(r)).toHaveLength(2);
+  });
+
+  it("ne perd aucun bloc en les répartissant", () => {
+    const r = rendre(
+      <Volet largeur={1540}>
+        <Flux>{blocs(7)}</Flux>
+      </Volet>
+    );
+    for (let i = 0; i < 7; i++) expect(r.root.findAllByProps({ testID: `b${i}` }).length).toBeGreaterThan(0);
   });
 });

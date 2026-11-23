@@ -75,6 +75,7 @@ import {
 import { usePerimetre } from "@/features/perimetre/use-perimetre";
 import { router } from "expo-router";
 import {
+  AligneSurLaPage,
   AreaChart,
   Badge,
   Banner,
@@ -334,8 +335,7 @@ export default function Rapports() {
   const membreChoisi = membres.find((m) => m.userId === utilisateur);
 
   return (
-    <Screen gabarit="large"
-      edges={[]}
+    <Screen edges={[]}
       padded={false}
       scroll
       onRefresh={() => void charger()}
@@ -350,14 +350,15 @@ export default function Rapports() {
           // n'en rendent jamais plusieurs à la fois. Miroir du bouton « Par
           // entrepôt » du back-office.
           action={
-            <Button
+            // L'icône seule sur un téléphone : le libellé y coupait le titre
+            // de la page en « Rapports & Statis… ».
+            <IconButton
+              name="Building2"
               variant="outline"
-              size="sm"
-              leftIcon="Building2"
+              label="Rapport par entrepôt"
+              texte="Par entrepôt"
               onPress={() => router.push("/rapport-entrepots")}
-            >
-              Par entrepôt
-            </Button>
+            />
           }
         />
 
@@ -549,12 +550,13 @@ export default function Rapports() {
 
       {/* ── Les sections de l'onglet ──────────────────────────────────────── */}
       {rapport?.sections.map((s) => (
-        <SectionVue
-          key={s.cle}
-          section={s}
-          money={money}
-          onPage={(p) => setPages((v) => ({ ...v, [s.cle]: p }))}
-        />
+        <AligneSurLaPage key={s.cle}>
+          <SectionVue
+            section={s}
+            money={money}
+            onPage={(p) => setPages((v) => ({ ...v, [s.cle]: p }))}
+          />
+        </AligneSurLaPage>
       ))}
 
       {chargement && !rapport ? (

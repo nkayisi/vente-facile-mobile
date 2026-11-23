@@ -14,7 +14,8 @@
 import { ScrollView } from "react-native";
 import { Slot, router, usePathname } from "expo-router";
 
-import { AppBar, Screen, Segmented } from "@/ui";
+import {
+  AligneSurLaPage,  AppBar, Screen, Segmented } from "@/ui";
 
 const ROUTES = {
   index: "/parametres",
@@ -35,15 +36,17 @@ export default function ParametresLayout() {
   return (
     <Screen edges={[]} padded={false}>
       <AppBar title="Paramètres" subtitle="Configuration de votre établissement" back={false} />
-      <Segmented
-        options={[
-          { valeur: "index", label: "Infos générales", icon: "Settings" },
-          { valeur: "devises", label: "Devises", icon: "Coins" },
-          { valeur: "fidelite", label: "Fidélité", icon: "Gift" },
-        ]}
-        valeur={courant}
-        onChange={(v) => router.replace(ROUTES[v] as never)}
-      />
+      <AligneSurLaPage>
+        <Segmented
+          options={[
+            { valeur: "index", label: "Infos générales", icon: "Settings" },
+            { valeur: "devises", label: "Devises", icon: "Coins" },
+            { valeur: "fidelite", label: "Fidélité", icon: "Gift" },
+          ]}
+          valeur={courant}
+          onChange={(v) => router.replace(ROUTES[v] as never)}
+        />
+      </AligneSurLaPage>
       {/* Le defilement vit ICI, pas dans les ecrans enfants : les trois onglets
           doivent rester fixes pendant qu'on parcourt un formulaire long. Sans
           cette zone defilante, le bouton « Enregistrer » etait hors d'atteinte -

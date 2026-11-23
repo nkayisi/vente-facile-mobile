@@ -236,6 +236,17 @@ export default function Caisses() {
         ouvert={aOuvrir !== null}
         onFermer={() => setAOuvrir(null)}
         titre={aOuvrir ? `Ouvrir ${aOuvrir.nom}` : "Ouvrir la caisse"}
+        pied={
+          <Button
+            fullWidth
+            size="lg"
+            loading={enCours}
+            disabled={refus !== null}
+            onPress={() => void ouvrir()}
+          >
+            Ouvrir la session
+          </Button>
+        }
       >
         <Text variant="bodySmall">
           Une vente s&apos;attache à une session de caisse : c&apos;est elle qui
@@ -268,16 +279,6 @@ export default function Caisses() {
             autoFocus
           />
         </View>
-
-        <Button
-          fullWidth
-          size="lg"
-          loading={enCours}
-          disabled={refus !== null}
-          onPress={() => void ouvrir()}
-        >
-          Ouvrir la session
-        </Button>
       </Sheet>
     </Screen>
   );

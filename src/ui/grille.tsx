@@ -20,11 +20,16 @@
  * ⚠ ON NE COMPTE QUE LES ENFANTS RÉELS (`Children.toArray`) : un `{cond && …}`
  * faux n'est pas une cellule, et le compter laisserait un trou dans la grille.
  */
-import { Children, type ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import { View } from "react-native";
 
-import { useDisposition, Volet } from "./disposition";
-import { colonnesEquilibrees, colonnesPour } from "./disposition-regles";
+import { useDisposition, useRetraitDesRangees, Volet } from "./disposition";
+import {
+  LARGEUR_MIN_FLUX,
+  colonnesEquilibrees,
+  colonnesPour,
+  repartirEnColonnes,
+} from "./disposition-regles";
 
 /**
  * La base d'une cellule. Le `- 4` laisse la place des écarts : avec la
@@ -122,6 +127,65 @@ export function Colonnes({
       ))}
     </View>
   );
+}
+
+/** Le poids d'un bloc : ses éléments, pour estimer sa hauteur sans le mesurer. */
+function poidsDeBloc(noeud: ReactNode): number {
+  if (Array.isArray(noeud)) return noeud.reduce<number>((t, n) => t + poidsDeBloc(n), 0);
+  if (!isValidElement(noeud)) return 0;
+  return 1 + poidsDeBloc((noeud.props as { children?: ReactNode }).children);
+}
+
+/**
+ * Une suite de cartes qui occupe toute la largeur.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UN GRAND ÉCRAN AJOUTE DES COLONNES, IL N'ÉTIRE PAS LES CARTES.          │
+ * │                                                                          │
+ * │ Une fiche ou un réglage se lit « libellé à gauche, valeur à droite » :   │
+ * │ étirée sur 1 600 points, la rangée oblige l'oeil à traverser l'écran ;   │
+ * │ bornée à 760 au centre, elle laisse la moitié de l'écran en blanc. Les   │
+ * │ cartes se rangent donc sur une, deux ou trois colonnes selon la place,   │
+ * │ chacune dans la plus courte. Sur un téléphone, rien ne change.           │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ `className` PORTE L'ÉCART (`gap-3`, `gap-4`…), celui que l'écran posait
+ * déjà : le téléphone garde ainsi sa géométrie au point près.
+ */
+export function Flux({
+  children,
+  className = "gap-3",
+  max = 3,
+}: {
+  children: ReactNode;
+  className?: string;
+  max?: number;
+}) {
+  const { largeur } = useDisposition();
+  const blocs = Children.toArray(children);
+  const possibles = colonnesPour(largeur, { largeurMin: LARGEUR_MIN_FLUX, max, ecart: 16 });
+  const colonnes = Math.min(possibles, blocs.length);
+  if (colonnes <= 1) return <View className={className}>{children}</View>;
+
+  const groupes = repartirEnColonnes(blocs.map(poidsDeBloc), colonnes);
+  const largeurColonne = Math.max(0, (largeur - 16 * (colonnes - 1)) / colonnes);
+  return (
+    <View className={`flex-row items-start ${className}`}>
+      {groupes.map((groupe, c) => (
+        <View key={c} className={`min-w-0 flex-1 ${className}`}>
+          <Volet largeur={largeurColonne}>{groupe.map((i) => blocs[i])}</Volet>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Un bloc pleine largeur posé directement sous un `Screen padded={false}` :
+ * bord à bord sur un téléphone, aligné sur les cartes de la page ailleurs.
+ */
+export function AligneSurLaPage({ children }: { children: ReactNode }) {
+  return useRetraitDesRangees() ? <View className="mx-4">{children}</View> : <>{children}</>;
 }
 
 /** La largeur de volet à partir de laquelle deux champs tiennent côte à côte. */

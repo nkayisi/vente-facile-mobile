@@ -28,6 +28,7 @@ import {
 import { useFeuilleAvecBrouillon } from "@/features/brouillons/use-feuille-avec-brouillon";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   ActionTile,
   Badge,
   Button,
@@ -40,7 +41,6 @@ import {
   Pressable,
   Screen,
   SearchInput,
-  Section,
   StatStrip,
   StatStripItem,
   Text,
@@ -67,7 +67,7 @@ export default function Stock() {
   );
 
   return (
-    <Screen scroll edges={[]} gabarit="large">
+    <Screen scroll edges={[]}>
       <PageHeader
         title="Gestion de stock"
         subtitle="Vue d'ensemble de vos entrepôts, niveaux de stock et mouvements"
@@ -176,18 +176,17 @@ export default function Stock() {
       </View>
 
       <View className="mt-6">
-        <View className="mb-3 flex-row items-center justify-between gap-3">
-          <Text variant="h4">Entrepôts</Text>
-          {/* La CRÉATION d'un entrepôt n'a pas d'acte de synchronisation : elle
-              relève de l'administration, pas du comptoir, et arrive au lot 10.
-              Un bouton grisé qui dit pourquoi vaut mieux qu'un bouton absent. */}
-          <Button size="sm" leftIcon="Plus" disabled onPress={() => {}}>
-            Nouvel entrepôt
-          </Button>
-        </View>
-        <Text variant="caption" className="mb-3">
-          La création d'entrepôts arrive au lot 10, avec l'administration.
+        <Text variant="h4" className="mb-3">
+          Entrepôts
         </Text>
+        {/* La CRÉATION d'un entrepôt n'a pas d'acte de synchronisation : elle se
+            fait au back-office, réservée au propriétaire. L'écran le dit à qui
+            peut la faire, sans bouton grisé. */}
+        {can("warehouses.create") ? (
+          <Text variant="caption" className="mb-3">
+            Pour créer un entrepôt, passez par le back-office.
+          </Text>
+        ) : null}
         <View className="mb-3">
           <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Rechercher..." />
         </View>
@@ -203,7 +202,7 @@ export default function Stock() {
             }
           />
         ) : (
-          <View className="gap-4">
+          <Flux className="gap-4">
             {filtres.map((w) => (
               <Pressable
                 key={w.id}
@@ -250,7 +249,7 @@ export default function Stock() {
                 </View>
               </Pressable>
             ))}
-          </View>
+          </Flux>
         )}
       </View>
 

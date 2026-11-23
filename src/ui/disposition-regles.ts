@@ -31,15 +31,23 @@ export type ClasseFenetre = "compact" | "moyen" | "large";
 export type Navigation = "barre" | "rail" | "laterale";
 
 /**
- * La largeur maximale du contenu d'un écran.
+ * La largeur du contenu d'un écran.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ LE CONTENU OCCUPE L'ÉCRAN, IL NE SE RÉTRÉCIT PAS AU MILIEU.             │
+ * │                                                                          │
+ * │ Une colonne de 760 points centrée sur le rk3568 laissait plus de la      │
+ * │ moitié de l'écran en blanc (décision de l'utilisateur, 2026-11-21). Un   │
+ * │ grand écran AJOUTE des colonnes (`Flux`, `Grille`, `Colonnes`) : les     │
+ * │ cartes gardent une largeur lisible, et c'est leur NOMBRE qui suit la     │
+ * │ place, pas une marge blanche de part et d'autre.                         │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
  * - `etroit` : une carte seule, centrée (connexion, déverrouillage) ;
- * - `lecture` : formulaires, fiches, listes, réglages - une ligne qui se lit
- *   d'un coup d'oeil, libellé et valeur reliés sans traverser l'écran ;
- * - `large` : tableaux de bord, rapports, concentrateurs - des grilles ;
- * - `plein` : le comptoir, qui veut chaque point.
+ * - `page` : tout le reste, sur toute la largeur du volet ;
+ * - `plein` : le comptoir, qui veut chaque point, sans gouttière.
  */
-export type Gabarit = "etroit" | "lecture" | "large" | "plein";
+export type Gabarit = "etroit" | "page" | "plein";
 
 /** Sous 600, un téléphone (le seuil « compact » de Material). */
 export const SEUIL_MOYEN = 600;
@@ -52,8 +60,24 @@ export const SEUIL_LARGE = 1024;
 
 /** Le rail : glyphe et libellé court, 80 points (le rail de Material). */
 export const LARGEUR_RAIL = 80;
-/** La barre latérale complète : 256 points, le `w-64` du back-office. */
-export const LARGEUR_LATERALE = 256;
+/** La barre latérale complète : jamais moins que le `w-64` du back-office. */
+export const LARGEUR_LATERALE_MIN = 256;
+export const LARGEUR_LATERALE_MAX = 320;
+
+function borne(valeur: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, valeur));
+}
+
+/**
+ * La barre latérale suit la fenêtre : un sixième, entre 256 et 320 points.
+ *
+ * 256 points sur 1 920 faisaient une barre étriquée à côté d'une page immense ;
+ * proportionnelle partout, elle prendrait 400 points sur un grand moniteur pour
+ * des libellés qui n'en demandent pas tant.
+ */
+export function largeurDeLaLaterale(largeurFenetre: number): number {
+  return borne(Math.round(largeurFenetre / 6), LARGEUR_LATERALE_MIN, LARGEUR_LATERALE_MAX);
+}
 
 /**
  * Le panier vit À CÔTÉ de la grille quand le contenu atteint 840 : le panneau
@@ -64,11 +88,27 @@ export const SEUIL_VOLET_PANIER = 840;
 export const LARGEUR_PANNEAU_PANIER = 400;
 
 /**
- * Liste et fiche côte à côte à partir de 900 de contenu : 360 de liste, et une
- * fiche d'au moins 540, assez pour ses montants et sa barre d'actions.
+ * Liste et fiche côte à côte à partir de 900 de contenu : au moins 360 de
+ * liste, et une fiche d'au moins 540, assez pour ses montants et sa barre
+ * d'actions.
  */
 export const SEUIL_LISTE_FICHE = 900;
-export const LARGEUR_VOLET_LISTE = 360;
+export const LARGEUR_VOLET_LISTE_MIN = 360;
+/**
+ * ⚠ SOUS 600, ET CE N'EST PAS UN HASARD : la classe d'un volet se lit sur sa
+ * largeur (`classeDeFenetre`). Une liste qui passerait à 600 points deviendrait
+ * une « tablette » pour `Screen` et prendrait une gouttière dans sa colonne.
+ */
+export const LARGEUR_VOLET_LISTE_MAX = 560;
+
+/** La liste prend 40 % de la page, entre 360 et 560 points. */
+export function largeurDuVoletListe(largeurPage: number): number {
+  return borne(
+    Math.round(largeurPage * 0.4),
+    LARGEUR_VOLET_LISTE_MIN,
+    LARGEUR_VOLET_LISTE_MAX
+  );
+}
 
 /** La liste et sa fiche tiennent-elles côte à côte dans cette page ? */
 export function listeEtFicheCoteACote(largeurPage: number): boolean {
@@ -77,15 +117,34 @@ export function listeEtFicheCoteACote(largeurPage: number): boolean {
 
 /** La largeur laissée à la fiche : la page, moins la liste et son filet. */
 export function largeurDuVoletFiche(largeurPage: number): number {
-  return Math.max(0, largeurPage - LARGEUR_VOLET_LISTE - 1);
+  return Math.max(0, largeurPage - largeurDuVoletListe(largeurPage) - 1);
 }
 
 const LARGEUR_MAX: Record<Gabarit, number | null> = {
   etroit: 480,
-  lecture: 760,
-  large: 1280,
+  page: null,
   plein: null,
 };
+
+/**
+ * Les boutons de la barre fixe d'un écran, posés à DROITE et bornés. Étirés sur
+ * 1 600 points ils se liraient comme un bandeau, et « Encaisser » n'aurait plus
+ * de position que le doigt retrouve.
+ */
+export const LARGEUR_MAX_PIED = 640;
+
+/**
+ * À partir de cette largeur de volet, les boutons réduits à leur icône sur un
+ * téléphone portent aussi leur libellé (synchronisation, thème, exports…).
+ */
+export const SEUIL_LIBELLES = 720;
+
+export function afficheLibelles(largeurVolet: number): boolean {
+  return largeurVolet >= SEUIL_LIBELLES;
+}
+
+/** La plus étroite colonne de cartes qui se lise, pour `Flux`. */
+export const LARGEUR_MIN_FLUX = 420;
 
 export function classeDeFenetre(largeur: number): ClasseFenetre {
   if (largeur >= SEUIL_LARGE) return "large";
@@ -137,8 +196,23 @@ export function navigationPour(
   return replie || estAuComptoir(chemin) ? "rail" : "laterale";
 }
 
-export function largeurDeNavigation(navigation: Navigation): number {
-  if (navigation === "laterale") return LARGEUR_LATERALE;
+/**
+ * Ce que fait le bouton « Déplier » du rail.
+ *
+ * Sur un grand écran il rend la barre latérale fixe. Au comptoir, la grille et
+ * le panier ont besoin de toute la place, et sur une tablette étroite la barre
+ * fixe ne tient pas : le menu s'y ouvre alors PAR-DESSUS la page, sans toucher
+ * au choix de repli que le marchand a fait pour les autres écrans.
+ */
+export function depliageDuRail(
+  classe: ClasseFenetre,
+  chemin: string | null | undefined
+): "barre" | "tiroir" {
+  return classe === "large" && !estAuComptoir(chemin) ? "barre" : "tiroir";
+}
+
+export function largeurDeNavigation(navigation: Navigation, largeurFenetre: number): number {
+  if (navigation === "laterale") return largeurDeLaLaterale(largeurFenetre);
   if (navigation === "rail") return LARGEUR_RAIL;
   return 0;
 }
@@ -196,6 +270,27 @@ export function colonnesEquilibrees(n: number, max: number): number {
     }
   }
   return meilleur;
+}
+
+/**
+ * Range des blocs sur `colonnes` colonnes, chacun dans la plus courte.
+ *
+ * ⚠ AUCUNE MESURE : la hauteur d'une carte n'est connue qu'après son premier
+ * rendu, et l'attendre ferait sauter toute la page. On l'ESTIME par son poids
+ * (`poidsDeBloc`), et l'ordre de lecture reste celui du téléphone à l'intérieur
+ * de chaque colonne.
+ */
+export function repartirEnColonnes(poids: readonly number[], colonnes: number): number[][] {
+  const n = Math.max(1, colonnes);
+  const groupes: number[][] = Array.from({ length: n }, () => []);
+  const totaux = new Array<number>(n).fill(0);
+  poids.forEach((p, i) => {
+    let cible = 0;
+    for (let c = 1; c < n; c++) if (totaux[c] < totaux[cible]) cible = c;
+    groupes[cible].push(i);
+    totaux[cible] += Math.max(1, p);
+  });
+  return groupes;
 }
 
 export function largeurMaxDe(gabarit: Gabarit): number | null {

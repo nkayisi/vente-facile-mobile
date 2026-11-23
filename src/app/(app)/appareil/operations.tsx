@@ -19,6 +19,7 @@ import { conseilDuRefus } from "@/features/sync/conseils-refus";
 import { bloquees, discard, quarantined } from "@/sync";
 import type { OutboxOperation } from "@/db/schema";
 import {
+  Flux,
   AlertDialog,
   AppBar,
   Badge,
@@ -205,8 +206,9 @@ export default function Operations() {
               Elles repartiront seules dès que la permission sera accordée ou
               l'abonnement réglé. Rien n'est perdu.
             </Text>
-            {enBlocage.map((op, i) => (
-              <View key={op.id} className={i > 0 ? "mt-3" : ""}>
+            <Flux>
+            {enBlocage.map((op) => (
+              <View key={op.id}>
                 <Card>
                   <View className="mb-2 flex-row items-start justify-between">
                     <View className="flex-1 pr-3">
@@ -229,11 +231,13 @@ export default function Operations() {
                 </Card>
               </View>
             ))}
+            </Flux>
           </View>
         ) : null}
 
-        {rows.map((op, i) => (
-          <View key={op.id} className={i > 0 ? "mt-3" : ""}>
+        <Flux>
+        {rows.map((op) => (
+          <View key={op.id}>
             <Card>
               <View className="mb-2 flex-row items-start justify-between">
                 <View className="flex-1 pr-3">
@@ -276,6 +280,7 @@ export default function Operations() {
             </Card>
           </View>
         ))}
+        </Flux>
             <AlertDialog
           ouvert={aAbandonner !== null}
           titre="Abandonner cette opération ?"

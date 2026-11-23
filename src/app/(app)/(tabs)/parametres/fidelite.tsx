@@ -23,7 +23,8 @@ import { View } from "react-native";
 import { useMonnaie } from "@/data/devises";
 import { devisePrincipale } from "@/data/devise-principale";
 import { useSession } from "@/session/provider";
-import { Badge, Card, Divider, EmptyState, ListItem, Section, Text } from "@/ui";
+import {
+  Flux,  Badge, Card, Divider, EmptyState, ListItem, Section, Text } from "@/ui";
 
 /** Facture témoin de l'aperçu : ronde, et du bon ordre de grandeur. */
 const FACTURE_TEMOIN = 10000;
@@ -65,39 +66,41 @@ export default function Fidelite() {
 
   return (
     <View className="p-4">
-      <Section title={p.name}>
-        <Card className="overflow-hidden p-0">
-          <ListItem
-            title="Statut"
-            trailing={
-              <Badge tone={p.is_active ? "success" : "neutral"}>
-                {p.is_active ? "Actif" : "Inactif"}
-              </Badge>
-            }
-          />
-          <Divider inset />
-          <ListItem title="Le client récupère" value={`${p.earn_percent} %`} />
-          <Divider inset />
-          <ListItem title="Part réglable par la cagnotte" value={`${plafond} %`} />
-        </Card>
-      </Section>
+      <Flux className="gap-4">
+        <Section title={p.name}>
+          <Card className="overflow-hidden p-0">
+            <ListItem
+              title="Statut"
+              trailing={
+                <Badge tone={p.is_active ? "success" : "neutral"}>
+                  {p.is_active ? "Actif" : "Inactif"}
+                </Badge>
+              }
+            />
+            <Divider inset />
+            <ListItem title="Le client récupère" value={`${p.earn_percent} %`} />
+            <Divider inset />
+            <ListItem title="Part réglable par la cagnotte" value={`${plafond} %`} />
+          </Card>
+        </Section>
 
-      <Section title="Sur une facture de 10 000">
-        <Card>
-          <Text variant="bodySmall" className="text-muted-foreground">
-            Sur une facture de {argent(FACTURE_TEMOIN)} réglée, le client gagne{" "}
-            {argent(gain)} dans sa cagnotte, et peut en régler jusqu&apos;à{" "}
-            {argent(reglable)} d&apos;une facture.
-          </Text>
-          {/* ⚠ LA CAGNOTTE NE SOLDE JAMAIS TOUTE UNE FACTURE, et c'est le
-          plafond qui le garantit : il reste toujours quelque chose à encaisser
-          en monnaie. On le DIT ici, parce que c'est la seule règle de fidélité
-          que le caissier verra mordre au comptoir. */}
-          <Text variant="caption" className="mt-2">
-            Le réglage se fait au back-office.
-          </Text>
-        </Card>
-      </Section>
+        <Section title="Sur une facture de 10 000">
+          <Card>
+            <Text variant="bodySmall" className="text-muted-foreground">
+              Sur une facture de {argent(FACTURE_TEMOIN)} réglée, le client gagne{" "}
+              {argent(gain)} dans sa cagnotte, et peut en régler jusqu&apos;à{" "}
+              {argent(reglable)} d&apos;une facture.
+            </Text>
+            {/* ⚠ LA CAGNOTTE NE SOLDE JAMAIS TOUTE UNE FACTURE, et c'est le
+            plafond qui le garantit : il reste toujours quelque chose à encaisser
+            en monnaie. On le DIT ici, parce que c'est la seule règle de fidélité
+            que le caissier verra mordre au comptoir. */}
+            <Text variant="caption" className="mt-2">
+              Le réglage se fait au back-office.
+            </Text>
+          </Card>
+        </Section>
+      </Flux>
     </View>
   );
 }

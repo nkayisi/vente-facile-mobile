@@ -38,6 +38,7 @@ import {
   useTheme,
   type ColorToken,
 } from "@/ui";
+import { styleDeCible, useLibellesDeBarre } from "@/ui/cible-de-barre";
 import { HIT } from "@/ui/tokens";
 
 import { etatIndicateur, type CouleurIndicateur } from "./indicateur-etat";
@@ -82,6 +83,7 @@ export function IndicateurSync() {
   const [feuille, setFeuille] = useState(false);
   const reduit = useMouvementReduit();
   const { colors } = useTheme();
+  const avecLibelle = useLibellesDeBarre();
 
   // ⚠ Les deux bascules passent par un MINUTEUR, y compris celle qui arme le
   // maintien avec un délai nul. Un `setState` synchrone dans le corps d'un
@@ -152,9 +154,12 @@ export function IndicateurSync() {
         // │ produit : il n'y a rien à étendre. Voir `ui/top-bar.tsx`.        │
         // └──────────────────────────────────────────────────────────────────┘
         hitSlop={0}
-        className="items-center justify-center rounded-lg"
-        style={{ width: HIT.min, height: HIT.min }}
+        className="flex-row items-center justify-center gap-1.5 rounded-lg"
+        style={styleDeCible(avecLibelle)}
       >
+        {/* La boîte de l'icône porte la pastille : elle reste accrochée au
+            glyphe, que le libellé soit là ou non. */}
+        <View className="items-center justify-center" style={{ width: 28, height: 28 }}>
         <Animated.View
           // ┌────────────────────────────────────────────────────────────────┐
           // │ LA ROTATION RESTE BRANCHÉE, MÊME À L'ARRÊT.                   │
@@ -194,8 +199,8 @@ export function IndicateurSync() {
             importantForAccessibility="no-hide-descendants"
             style={{
               position: "absolute",
-              top: 2,
-              right: 0,
+              top: -6,
+              right: -8,
               minWidth: 16,
               height: 16,
               paddingHorizontal: 4,
@@ -209,6 +214,12 @@ export function IndicateurSync() {
               {etat.badge}
             </Text>
           </View>
+        ) : null}
+        </View>
+        {avecLibelle ? (
+          <Text variant="bodySmall" numberOfLines={1} className="text-muted-foreground">
+            {etat.court}
+          </Text>
         ) : null}
       </Pressable>
 

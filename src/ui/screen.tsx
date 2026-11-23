@@ -16,9 +16,15 @@ import {
 } from "react-native";
 import type { Edge } from "react-native-safe-area-context";
 
-import { useDisposition, Volet } from "./disposition";
-import { classeDeFenetre, largeurMaxDe, margePage, type Gabarit } from "./disposition-regles";
-import { useBordsDuVolet } from "./volet-fiche";
+import { RetraitDesRangees, useDisposition, Volet } from "./disposition";
+import {
+  LARGEUR_MAX_PIED,
+  classeDeFenetre,
+  largeurMaxDe,
+  margePage,
+  type Gabarit,
+} from "./disposition-regles";
+import { useBordsDuVolet, useDansVoletDeListe } from "./volet-fiche";
 import { useTheme } from "./theme";
 import {
   BORDS_PAR_DEFAUT,
@@ -183,7 +189,7 @@ export function Screen({
   pied,
   centre = false,
   fond = "background",
-  gabarit = "lecture",
+  gabarit = "page",
   className = "",
 }: ScreenProps) {
   const marges = useMargesSysteme();
@@ -198,6 +204,7 @@ export function Screen({
   // `liste-fiche.tsx`) : une fiche posée à côté d'un onglet garde ainsi la
   // barre du haut de l'onglet pour seule marge, au lieu d'en ajouter une.
   const bordsDuVolet = useBordsDuVolet();
+  const dansLaListe = useDansVoletDeListe();
   const pad = rembourrageZoneSure(bordsDuVolet ?? edges, marges);
 
   // ┌──────────────────────────────────────────────────────────────────────┐
@@ -235,7 +242,19 @@ export function Screen({
       : null),
     ...(centre ? { flexGrow: 1, justifyContent: "center" as const } : null),
   };
-  const enfants = <Volet largeur={largeurEnfants}>{children}</Volet>;
+  const enfants = (
+    <RetraitDesRangees actif={(gouttiere > 0 || dansLaListe) && !padded}>
+      <Volet largeur={largeurEnfants}>{children}</Volet>
+    </RetraitDesRangees>
+  );
+  // Le comptoir et le scan gardent leur barre pleine largeur : c'est leur geste
+  // principal, et le gabarit `plein` existe pour eux.
+  const piedBorne = gabarit !== "plein" && largeurEnfants > LARGEUR_MAX_PIED;
+  const actions = piedBorne ? (
+    <View style={{ width: "100%", maxWidth: LARGEUR_MAX_PIED, alignSelf: "flex-end" }}>{pied}</View>
+  ) : (
+    pied
+  );
 
   const body = scroll ? (
     <ScrollView
@@ -295,20 +314,19 @@ export function Screen({
           // l'impression que la page s'arrête là où elle continue. En `card`
           // ils disparaissent : voir la table `FONDS`.
           <View className={`px-4 py-3 ${f.pied}`}>
-            {/* Le pied suit la colonne du contenu : sur un grand écran, des
-                boutons étirés sur 1 900 points se liraient comme un bandeau, et
-                « Encaisser » partirait à l'autre bout de l'écran. Le fond et le
-                filet, eux, restent pleine largeur. */}
+            {/* Le fond et le filet restent pleine largeur ; les boutons, eux, se
+                rangent à droite (`LARGEUR_MAX_PIED`). Étirés sur 1 600 points,
+                ils se liraient comme un bandeau. */}
             {gouttiere > 0 || contraint ? (
               // ⚠ Dans une colonne CONTRAINTE, le `px-4` de la barre ne compte
               // plus (la boîte est centrée à sa largeur max) : sans les seize
               // points rendus ici, les boutons débordaient les cartes au-dessus
               // de quatorze points de chaque côté.
               <View style={contraint ? { ...boite, paddingHorizontal: gouttiere + 16 } : boite}>
-                {pied}
+                {actions}
               </View>
             ) : (
-              pied
+              actions
             )}
           </View>
         ) : null}

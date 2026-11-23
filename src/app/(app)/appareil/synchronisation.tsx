@@ -18,12 +18,12 @@ import { useSynchronisation } from "@/features/sync/provider";
 import { countByState, readAllStates, type OutboxState } from "@/sync";
 import type { SyncStateRow } from "@/db/schema";
 import {
+  Grille,
   AppBar,
   Badge,
   Banner,
   Button,
   Card,
-  Divider,
   ListItem,
   Screen,
   Section,
@@ -162,12 +162,14 @@ export default function Sync() {
 
         {states && states.length > 0 ? (
           <Section title="État par table">
-            <Card className="overflow-hidden p-0">
+            {/* Un cadran à filets : une, deux ou trois colonnes selon la place.
+                Quarante tables sur une seule colonne de 1 600 points posaient
+                le nom à un bout de l'écran et son compte à l'autre. */}
+            <Grille largeurMin={360} max={3} filets>
               {states
                 .filter((s) => s.rowCount > 0 || s.lastError)
-                .map((s, i) => (
-                  <View key={s.table}>
-                    {i > 0 ? <Divider /> : null}
+                .map((s) => (
+                  <View key={s.table} className="grow bg-card">
                     <ListItem
                       title={labelFor(s.table)}
                       subtitle={
@@ -183,7 +185,7 @@ export default function Sync() {
                     />
                   </View>
                 ))}
-            </Card>
+            </Grille>
           </Section>
         ) : null}
       </View>

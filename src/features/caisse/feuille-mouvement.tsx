@@ -112,6 +112,27 @@ export function FeuilleMouvement({
       ouvert
       onFermer={onFermer}
       titre={m.description?.trim() || libelleTypeCaisse(m.type)}
+      pied={
+        !raison && confirme ? (
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <Button variant="outline" fullWidth onPress={() => setConfirme(false)}>
+                Non, garder
+              </Button>
+            </View>
+            <View className="flex-1">
+              <Button
+                variant="destructive"
+                fullWidth
+                loading={envoi}
+                onPress={() => void annuler()}
+              >
+                Annuler
+              </Button>
+            </View>
+          </View>
+        ) : undefined
+      }
     >
       <View className="items-center gap-1 py-2">
         <View className="flex-row items-center gap-2">
@@ -200,23 +221,6 @@ export function FeuilleMouvement({
           >
             <Input value={motif} onChangeText={setMotif} autoFocus />
           </FormField>
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Button variant="outline" fullWidth onPress={() => setConfirme(false)}>
-                Non, garder
-              </Button>
-            </View>
-            <View className="flex-1">
-              <Button
-                variant="destructive"
-                fullWidth
-                loading={envoi}
-                onPress={() => void annuler()}
-              >
-                Annuler
-              </Button>
-            </View>
-          </View>
         </>
       ) : (
         <Button

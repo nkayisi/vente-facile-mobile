@@ -40,6 +40,7 @@ import {
 } from "@/features/stock/actes-requisition";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AlertDialog, AppBar, Badge, Banner, Button, Card, CardHeader, Divider,
   EmptyState, ListItem, Screen, Spinner, Text, useToast,
   useIdDeFiche,
@@ -227,78 +228,80 @@ export function FicheRequisition() {
           />
         ) : null}
 
-        <Card className="overflow-hidden p-0">
-          <CardHeader
-            title={`Articles demandés (${lignes.length})`}
-            // Le libellé dit que l'instantané est FIGÉ : sans lui, un lecteur
-            // compare ces chiffres au stock d'aujourd'hui et croit à une erreur.
-            subtitle="Stock et seuil relevés le jour de la demande"
-          />
-          {creationEnFile ? (
-            /* Une pièce encore en file n'a pas de lignes EN TABLE. On le DIT
-               plutôt que d'afficher une section vide, qui se lirait comme une
-               réquisition sans article. */
-            <View className="pb-4">
-              <EmptyState
-                variante="carte"
-                title="Le détail arrivera avec l'envoi"
-                message="Les articles demandés sont dans la file ; ils s'afficheront ici après la prochaine synchronisation."
-              />
-            </View>
-          ) : lignes.length === 0 ? (
-            <View className="pb-4">
-              <EmptyState variante="carte" title="Aucun article" message="Cette demande est vide." />
-            </View>
-          ) : (
-            lignes.map((l, i) => (
-              <View key={l.id}>
-                {i > 0 ? <Divider inset /> : null}
-                <ListItem
-                  title={l.produit}
-                  subtitle={`En rayon ${formatQuantity(l.stockAlors)} · seuil ${formatQuantity(l.seuilAlors)}${l.note ? ` · ${l.note}` : ""}`}
-                  value={
-                    l.unite
-                      ? formatUnitQuantity(l.demande, l.unite)
-                      : formatQuantity(l.demande)
-                  }
+        <Flux className="gap-4">
+          <Card className="overflow-hidden p-0">
+            <CardHeader
+              title={`Articles demandés (${lignes.length})`}
+              // Le libellé dit que l'instantané est FIGÉ : sans lui, un lecteur
+              // compare ces chiffres au stock d'aujourd'hui et croit à une erreur.
+              subtitle="Stock et seuil relevés le jour de la demande"
+            />
+            {creationEnFile ? (
+              /* Une pièce encore en file n'a pas de lignes EN TABLE. On le DIT
+                 plutôt que d'afficher une section vide, qui se lirait comme une
+                 réquisition sans article. */
+              <View className="pb-4">
+                <EmptyState
+                  variante="carte"
+                  title="Le détail arrivera avec l'envoi"
+                  message="Les articles demandés sont dans la file ; ils s'afficheront ici après la prochaine synchronisation."
                 />
               </View>
-            ))
-          )}
-        </Card>
-
-        {r.notes ? (
-          <Card>
-            <CardHeader title="Note" />
-            <View className="px-4 pb-4">
-              <Text variant="body">{r.notes}</Text>
-            </View>
+            ) : lignes.length === 0 ? (
+              <View className="pb-4">
+                <EmptyState variante="carte" title="Aucun article" message="Cette demande est vide." />
+              </View>
+            ) : (
+              lignes.map((l, i) => (
+                <View key={l.id}>
+                  {i > 0 ? <Divider inset /> : null}
+                  <ListItem
+                    title={l.produit}
+                    subtitle={`En rayon ${formatQuantity(l.stockAlors)} · seuil ${formatQuantity(l.seuilAlors)}${l.note ? ` · ${l.note}` : ""}`}
+                    value={
+                      l.unite
+                        ? formatUnitQuantity(l.demande, l.unite)
+                        : formatQuantity(l.demande)
+                    }
+                  />
+                </View>
+              ))
+            )}
           </Card>
-        ) : null}
 
-        <Card className="overflow-hidden p-0">
-          <CardHeader title="Suivi" />
-          <ListItem title="Demandée le" value={r.demandeLe ? formatDateFr(r.demandeLe) : "-"} />
-          {r.decideLe ? (
-            <>
-              <Divider inset />
-              <ListItem title="Décidée le" value={formatDateFr(r.decideLe)} />
-            </>
+          {r.notes ? (
+            <Card>
+              <CardHeader title="Note" />
+              <View className="px-4 pb-4">
+                <Text variant="body">{r.notes}</Text>
+              </View>
+            </Card>
           ) : null}
-        </Card>
 
-        {/* ⚠ LE BORDEREAU VIENT DU SERVEUR, comme tous les documents A4 de ce
-            dépôt. Le rendre ici donnerait un second moteur, donc une seconde
-            mise en page, et deux papiers pour la même demande. Hors ligne, le
-            bouton se ferme AVEC sa raison : échouer après coup ferait croire à
-            une panne. */}
-        {!enLigne ? (
-          <Banner
-            tone="warning"
-            title="Le bordereau demande une connexion"
-            message="Il est mis en page par le serveur, pour qu'il ne diffère jamais de celui du back-office."
-          />
-        ) : null}
+          <Card className="overflow-hidden p-0">
+            <CardHeader title="Suivi" />
+            <ListItem title="Demandée le" value={r.demandeLe ? formatDateFr(r.demandeLe) : "-"} />
+            {r.decideLe ? (
+              <>
+                <Divider inset />
+                <ListItem title="Décidée le" value={formatDateFr(r.decideLe)} />
+              </>
+            ) : null}
+          </Card>
+
+          {/* ⚠ LE BORDEREAU VIENT DU SERVEUR, comme tous les documents A4 de ce
+              dépôt. Le rendre ici donnerait un second moteur, donc une seconde
+              mise en page, et deux papiers pour la même demande. Hors ligne, le
+              bouton se ferme AVEC sa raison : échouer après coup ferait croire à
+              une panne. */}
+          {!enLigne ? (
+            <Banner
+              tone="warning"
+              title="Le bordereau demande une connexion"
+              message="Il est mis en page par le serveur, pour qu'il ne diffère jamais de celui du back-office."
+            />
+          ) : null}
+        </Flux>
       </View>
 
       {confirmation ? (

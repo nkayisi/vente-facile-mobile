@@ -1,6 +1,8 @@
 import { ActivityIndicator, View } from "react-native";
 
 import { fusionner } from "./classes";
+import { useDisposition } from "./disposition";
+import { afficheLibelles } from "./disposition-regles";
 import { Icon, type IconName } from "./icon";
 import { Pressable, type HapticKind } from "./pressable";
 import { Text } from "./text";
@@ -174,6 +176,7 @@ export function IconButton({
   onPress,
   variant = "ghost",
   label,
+  texte,
   disabled = false,
   size = 22,
 }: {
@@ -182,21 +185,33 @@ export function IconButton({
   variant?: ButtonVariant;
   /** Obligatoire : sans lui, la commande est muette pour un lecteur d'écran. */
   label: string;
+  /**
+   * Le mot écrit à côté de l'icône, là où le volet a la place. Un bouton de
+   * rangée (« Retirer », « Appeler ») reste une icône : le répéter sur chaque
+   * ligne ferait du bruit.
+   */
+  texte?: string;
   disabled?: boolean;
   size?: number;
 }) {
   const v = VARIANTS[variant];
+  const avecTexte = afficheLibelles(useDisposition().largeur) && Boolean(texte);
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
-      className={`h-11 w-11 items-center justify-center rounded-lg ${v.box} ${
-        disabled ? "opacity-50" : ""
-      }`}
+      className={`h-11 ${
+        avecTexte ? "flex-row gap-2 px-3" : "w-11"
+      } items-center justify-center rounded-lg ${v.box} ${disabled ? "opacity-50" : ""}`}
     >
-      <Icon name={name} size={size} color={v.icon} />
+      <Icon name={name} size={avecTexte ? 18 : size} color={v.icon} />
+      {avecTexte ? (
+        <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
+          {texte}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }

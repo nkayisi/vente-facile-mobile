@@ -286,6 +286,17 @@ export function FeuilleNouveauDevis({
       onFermer={reculer}
       titre={titre}
       retour={panneau === "devis" ? undefined : reculer}
+      pied={
+        panneau === "devis" ? (
+          <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
+            Créer le devis
+          </Button>
+        ) : panneau === "article" && choisi ? (
+          <Button fullWidth size="lg" leftIcon="Plus" onPress={ajouter}>
+            Ajouter au devis
+          </Button>
+        ) : undefined
+      }
     >
       {panneau === "entrepot" ? (
         <ListeChoix
@@ -352,9 +363,6 @@ export function FeuilleNouveauDevis({
                 }
               />
             </FormField>
-            <Button fullWidth size="lg" leftIcon="Plus" onPress={ajouter}>
-              Ajouter au devis
-            </Button>
           </>
         ) : (
           <>
@@ -538,10 +546,6 @@ export function FeuilleNouveauDevis({
             title="Un devis n'engage pas le stock"
             message="La marchandise reste disponible pour quelqu'un d'autre. Elle ne sortira du stock qu'à la conversion en vente."
           />
-
-          <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
-            Créer le devis
-          </Button>
         </>
       )}
     </Sheet>

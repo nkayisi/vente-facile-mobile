@@ -171,7 +171,7 @@ export default function RapportsCaisse() {
       : undefined;
 
   return (
-    <Screen gabarit="large" scroll padded={false}>
+    <Screen scroll padded={false}>
       <AppBar
         title="Rapports de caisse"
         subtitle={libelle}
@@ -179,6 +179,7 @@ export default function RapportsCaisse() {
           <IconButton
             name="Download"
             label="Exporter le rapport"
+            texte="Exporter"
             variant="ghost"
             onPress={() => setFeuille(true)}
             disabled={Boolean(raisonExport) || !rapport}

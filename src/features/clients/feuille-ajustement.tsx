@@ -150,7 +150,13 @@ export function FeuilleAjustement({
   ]);
 
   return (
-    <Sheet ouvert={ouvert} onFermer={onFermer} titre="Ajuster le solde">
+    <Sheet ouvert={ouvert} onFermer={onFermer} titre="Ajuster le solde"
+        pied={
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+          {envoi ? "Enregistrement…" : "Enregistrer l'ajustement"}
+        </Button>
+        }
+      >
       <Text variant="caption">
         Une correction d&apos;écriture, pas un encaissement. Le reçu sort marqué
         AJUSTEMENT.
@@ -225,10 +231,6 @@ export function FeuilleAjustement({
           message="Réduire une dette vaut argent reçu : le montant entre au tiroir et se retrouvera dans le rapport de caisse."
         />
       ) : null}
-
-      <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-        {envoi ? "Enregistrement…" : "Enregistrer l'ajustement"}
-      </Button>
     </Sheet>
   );
 }

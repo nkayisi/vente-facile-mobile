@@ -26,6 +26,7 @@ import {
   formatPrice,
   formatUnitQuantity,
   pluralizeUnit,
+  formatQuantity,
 } from "@vente-facile/core";
 
 import { lireNombre } from "@/data/nombres";
@@ -36,6 +37,7 @@ import { deconditionner, enAttenteSurStock } from "@/features/stock/actes";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AppBar,
   Badge,
   Button,
@@ -175,85 +177,97 @@ export function FicheRayon() {
           consequence="Le rayon ci-dessous ne le prendra en compte qu'après."
         />
 
-        <Card>
-          <Text variant="caption" className="mb-1">
-            En rayon
-          </Text>
-          <StatValue value={r.quantiteAffichee} />
-          <View className="mt-3">
+        <Flux className="gap-4">
+          <Card>
             <Text variant="caption" className="mb-1">
-              Disponible à la vente
+              En rayon
             </Text>
-            <StatValue
-              value={r.disponibleAffiche}
-              tone={r.etat === "rupture" ? "destructive" : "success"}
-            />
-          </View>
-        </Card>
-
-        {peutDeconditionner ? (
-          <Button fullWidth size="lg" leftIcon="PackageX" onPress={() => setFeuille(true)}>
-            {/* « des » et non « un » : le GENRE d'un nom de contenant n'est pas
-                dérivable sans lexique, et « Ouvrir un BOITE » se lit mal. Le
-                pluriel partitif marche pour les deux genres, et le nom vient
-                du marchand - il peut être n'importe quoi. */}
-            {`Ouvrir des ${pluralizeUnit(r.uniteContenant ?? "contenant", 2)}`}
-          </Button>
-        ) : null}
-
-        <Card>
-          <CardHeader title="Détail" />
-          <View>
-            <Paire label="Total en unités" valeur={`${formatUnitQuantity(r.total, r.uniteDetail ?? "unité")}`} />
-            {/* Le réservé n'est PAS ventilé : une réservation ne porte pas sur
-                des contenants précis. Le libellé nomme l'unité pour que
-                personne n'y lise des casiers. */}
-            <Paire
-              label="Réservé (unités)"
-              valeur={
-                r.reserve > 0
-                  ? `${formatUnitQuantity(r.reserve, r.uniteDetail ?? "unité")}`
-                  : "Rien"
-              }
-            />
-            {r.facteur ? (
-              <Paire
-                label="Conditionnement"
-                valeur={`${formatUnitQuantity(r.facteur, r.uniteDetail ?? "unité")} par ${r.uniteContenant ?? "contenant"}`}
+            <StatValue value={r.quantiteAffichee} />
+            <View className="mt-3">
+              <Text variant="caption" className="mb-1">
+                Disponible à la vente
+              </Text>
+              <StatValue
+                value={r.disponibleAffiche}
+                tone={r.etat === "rupture" ? "destructive" : "success"}
               />
-            ) : null}
-            <Paire
-              label="Seuil de réassort"
-              valeur={r.seuilReassort > 0 ? String(r.seuilReassort) : "Non défini"}
-            />
-            <View className="my-2">
-              <Divider />
             </View>
-            <Paire label="Coût unitaire" valeur={formatPrice(r.coutUnitaire)} />
-            <Paire label="Valeur du stock" valeur={formatPrice(r.valeur)} />
-          </View>
-        </Card>
+          </Card>
 
-        <Card>
-          <CardHeader title="Produit" />
-          <View>
-            {r.marque ? <Paire label="Marque" valeur={r.marque} /> : null}
-            {r.categorie ? <Paire label="Catégorie" valeur={r.categorie} /> : null}
-            {r.codeBarres ? <Paire label="Code-barres" valeur={r.codeBarres} /> : null}
-            {r.dernierMouvement ? (
-              <Paire label="Dernier mouvement" valeur={formatDateTimeFr(r.dernierMouvement)} />
-            ) : null}
-            {r.dernierComptage ? (
-              <Paire label="Dernier comptage" valeur={formatDateTimeFr(r.dernierComptage)} />
-            ) : null}
-          </View>
-        </Card>
+          {peutDeconditionner ? (
+            <Button fullWidth size="lg" leftIcon="PackageX" onPress={() => setFeuille(true)}>
+              {/* « des » et non « un » : le GENRE d'un nom de contenant n'est pas
+                  dérivable sans lexique, et « Ouvrir un BOITE » se lit mal. Le
+                  pluriel partitif marche pour les deux genres, et le nom vient
+                  du marchand - il peut être n'importe quoi. */}
+              {`Ouvrir des ${pluralizeUnit(r.uniteContenant ?? "contenant", 2)}`}
+            </Button>
+          ) : null}
+
+          <Card>
+            <CardHeader title="Détail" />
+            <View>
+              <Paire label="Total en unités" valeur={`${formatUnitQuantity(r.total, r.uniteDetail ?? "unité")}`} />
+              {/* Le réservé n'est PAS ventilé : une réservation ne porte pas sur
+                  des contenants précis. Le libellé nomme l'unité pour que
+                  personne n'y lise des casiers. */}
+              <Paire
+                label="Réservé (unités)"
+                valeur={
+                  r.reserve > 0
+                    ? `${formatUnitQuantity(r.reserve, r.uniteDetail ?? "unité")}`
+                    : "Rien"
+                }
+              />
+              {r.facteur ? (
+                <Paire
+                  label="Conditionnement"
+                  valeur={`${formatUnitQuantity(r.facteur, r.uniteDetail ?? "unité")} par ${r.uniteContenant ?? "contenant"}`}
+                />
+              ) : null}
+              <Paire
+                label="Seuil de réassort"
+                valeur={r.seuilReassort > 0 ? formatQuantity(r.seuilReassort) : "Non défini"}
+              />
+              <View className="my-2">
+                <Divider />
+              </View>
+              <Paire label="Coût unitaire" valeur={formatPrice(r.coutUnitaire)} />
+              <Paire label="Valeur du stock" valeur={formatPrice(r.valeur)} />
+            </View>
+          </Card>
+
+          <Card>
+            <CardHeader title="Produit" />
+            <View>
+              {r.marque ? <Paire label="Marque" valeur={r.marque} /> : null}
+              {r.categorie ? <Paire label="Catégorie" valeur={r.categorie} /> : null}
+              {r.codeBarres ? <Paire label="Code-barres" valeur={r.codeBarres} /> : null}
+              {r.dernierMouvement ? (
+                <Paire label="Dernier mouvement" valeur={formatDateTimeFr(r.dernierMouvement)} />
+              ) : null}
+              {r.dernierComptage ? (
+                <Paire label="Dernier comptage" valeur={formatDateTimeFr(r.dernierComptage)} />
+              ) : null}
+            </View>
+          </Card>
+        </Flux>
       </View>
 
       <Sheet
         ouvert={feuille}
         onFermer={() => setFeuille(false)}
         titre={`Ouvrir des ${pluralizeUnit(r.uniteContenant ?? "contenant", 2)}`}
+        pied={
+          <Button
+            fullWidth
+            size="lg"
+            disabled={envoi || !!refusSaisie || nContenants < 1}
+            onPress={() => void valider()}
+          >
+            {envoi ? "Enregistrement…" : "Ouvrir"}
+          </Button>
+        }
       >
         <Text variant="caption">
           {`${formatUnitQuantity(r.contenants, r.uniteContenant ?? "contenant")} scellés, ${formatUnitQuantity(r.vrac, r.uniteDetail ?? "unité")} au détail.`}
@@ -276,14 +290,6 @@ export function FicheRayon() {
             autoFocus
           />
         </FormField>
-        <Button
-          fullWidth
-          size="lg"
-          disabled={envoi || !!refusSaisie || nContenants < 1}
-          onPress={() => void valider()}
-        >
-          {envoi ? "Enregistrement…" : "Ouvrir"}
-        </Button>
       </Sheet>
     </Screen>
   );

@@ -1,21 +1,31 @@
 import {
   diametreDeLAnneau,
   DIAMETRE_ANNEAU_LISIBLE,
-  LARGEUR_LATERALE,
+  LARGEUR_LATERALE_MAX,
+  LARGEUR_LATERALE_MIN,
   LARGEUR_RAIL,
+  LARGEUR_VOLET_LISTE_MAX,
+  LARGEUR_VOLET_LISTE_MIN,
   SEUIL_LARGE,
+  SEUIL_LISTE_FICHE,
   SEUIL_MOYEN,
+  afficheLibelles,
   classeDeFenetre,
   colonnesEquilibrees,
   colonnesPour,
+  depliageDuRail,
   estAuComptoir,
   estPaysage,
   estTablette,
   formeDeModale,
+  largeurDeLaLaterale,
   largeurDeNavigation,
+  largeurDuVoletFiche,
+  largeurDuVoletListe,
   largeurMaxDe,
   margePage,
   navigationPour,
+  repartirEnColonnes,
   verrouPour,
 } from "./disposition-regles";
 
@@ -110,11 +120,19 @@ describe("la navigation", () => {
   });
 
   it("donne la largeur réservée par chaque forme", () => {
-    expect(largeurDeNavigation("barre")).toBe(0);
-    expect(largeurDeNavigation("rail")).toBe(LARGEUR_RAIL);
-    expect(largeurDeNavigation("laterale")).toBe(LARGEUR_LATERALE);
-    // Le `w-64` du back-office : la même barre, à la même largeur.
-    expect(LARGEUR_LATERALE).toBe(256);
+    expect(largeurDeNavigation("barre", 1920)).toBe(0);
+    expect(largeurDeNavigation("rail", 1920)).toBe(LARGEUR_RAIL);
+    expect(largeurDeNavigation("laterale", 1920)).toBe(320);
+  });
+
+  it("élargit la barre latérale avec la fenêtre, entre deux bornes", () => {
+    // Jamais sous le `w-64` du back-office, même sur la plus petite fenêtre
+    // qui la porte.
+    expect(largeurDeLaLaterale(SEUIL_LARGE)).toBe(LARGEUR_LATERALE_MIN);
+    expect(largeurDeLaLaterale(1280)).toBe(256);
+    expect(largeurDeLaLaterale(1680)).toBe(280);
+    expect(largeurDeLaLaterale(1920)).toBe(320);
+    expect(largeurDeLaLaterale(3840)).toBe(LARGEUR_LATERALE_MAX);
   });
 });
 
@@ -159,11 +177,71 @@ describe("des rangées équilibrées", () => {
   });
 });
 
+describe("la liste et sa fiche", () => {
+  it("prend 40 % de la page, entre ses deux bornes", () => {
+    expect(largeurDuVoletListe(SEUIL_LISTE_FICHE)).toBe(LARGEUR_VOLET_LISTE_MIN);
+    expect(largeurDuVoletListe(1024)).toBe(410);
+    expect(largeurDuVoletListe(1600)).toBe(LARGEUR_VOLET_LISTE_MAX);
+    expect(largeurDuVoletListe(3000)).toBe(LARGEUR_VOLET_LISTE_MAX);
+  });
+
+  it("couvre toute la page : liste, filet et fiche", () => {
+    for (const page of [900, 1024, 1280, 1600, 2560]) {
+      expect(largeurDuVoletListe(page) + 1 + largeurDuVoletFiche(page)).toBe(page);
+    }
+  });
+
+  /**
+   * ⚠ Une liste qui atteindrait 600 points deviendrait une « tablette » pour
+   * `Screen`, qui lui poserait une gouttière dans sa propre colonne.
+   */
+  it("reste une colonne de téléphone, quelle que soit la page", () => {
+    expect(classeDeFenetre(LARGEUR_VOLET_LISTE_MAX)).toBe("compact");
+  });
+
+  it("laisse à la fiche la place de ses montants", () => {
+    for (const page of [900, 1000, 1280, 1600]) {
+      expect(largeurDuVoletFiche(page)).toBeGreaterThanOrEqual(539);
+    }
+  });
+});
+
+describe("les colonnes de cartes", () => {
+  it("garde l'ordre de lecture à l'intérieur de chaque colonne", () => {
+    for (const groupe of repartirEnColonnes([3, 1, 4, 1, 5, 9, 2, 6], 3)) {
+      expect(groupe).toEqual([...groupe].sort((a, b) => a - b));
+    }
+  });
+
+  it("n'oublie aucun bloc, et n'en range aucun deux fois", () => {
+    const groupes = repartirEnColonnes([1, 2, 3, 4, 5], 2);
+    expect(groupes.flat().sort()).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("pose chaque bloc dans la colonne la plus courte", () => {
+    // Le grand bloc occupe la première colonne : les trois petits vont en face.
+    expect(repartirEnColonnes([9, 1, 1, 1], 2)).toEqual([[0], [1, 2, 3]]);
+  });
+
+  it("rend tout sur une colonne quand il n'y en a qu'une", () => {
+    expect(repartirEnColonnes([2, 2], 1)).toEqual([[0, 1]]);
+  });
+});
+
+describe("les libellés des boutons à icône", () => {
+  it("n'apparaissent que là où il y a la place", () => {
+    expect(afficheLibelles(448)).toBe(false);
+    // Une liste à côté de sa fiche reste une colonne de téléphone.
+    expect(afficheLibelles(LARGEUR_VOLET_LISTE_MAX)).toBe(false);
+    expect(afficheLibelles(720)).toBe(true);
+    expect(afficheLibelles(1600)).toBe(true);
+  });
+});
+
 describe("le gabarit, la marge, la modale", () => {
-  it("borne chaque gabarit, sauf le comptoir", () => {
+  it("ne borne plus que la carte seule d'une connexion", () => {
     expect(largeurMaxDe("etroit")).toBe(480);
-    expect(largeurMaxDe("lecture")).toBe(760);
-    expect(largeurMaxDe("large")).toBe(1280);
+    expect(largeurMaxDe("page")).toBeNull();
     expect(largeurMaxDe("plein")).toBeNull();
   });
 
@@ -194,5 +272,19 @@ describe("l'anneau de répartition", () => {
 
   it("ne descend jamais sous le diamètre demandé", () => {
     expect(diametreDeLAnneau(200, 168)).toBe(168);
+  });
+});
+
+describe("le bouton qui déplie le rail", () => {
+  it("rend la barre fixe sur un grand écran", () => {
+    expect(depliageDuRail("large", "/articles")).toBe("barre");
+  });
+
+  it("ouvre le menu par-dessus la page au comptoir, qui garde toute sa place", () => {
+    expect(depliageDuRail("large", "/vendre")).toBe("tiroir");
+  });
+
+  it("ouvre le menu par-dessus la page là où la barre fixe ne tient pas", () => {
+    expect(depliageDuRail("moyen", "/articles")).toBe("tiroir");
   });
 });

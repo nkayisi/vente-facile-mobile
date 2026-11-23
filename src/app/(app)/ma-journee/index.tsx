@@ -37,6 +37,7 @@ import { useEnLigne } from "@/data/reseau";
 import { ApiError } from "@/api/errors";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AppBar, Banner, BarChart, Card, CardHeader, Divider, EmptyState, ListItem,
   Mesure, Screen, Segmented, Spinner, StatStrip, StatStripItem, Text,
 } from "@/ui";
@@ -150,7 +151,7 @@ export default function MaJourneeEcran() {
   }, [charger, enLigne]);
 
   return (
-    <Screen gabarit="large" scroll padded={false} onRefresh={() => void charger("rafraichir")} refreshing={rafraichissement}>
+    <Screen scroll padded={false} onRefresh={() => void charger("rafraichir")} refreshing={rafraichissement}>
       <AppBar
         title="Ma journée"
         // Le NOM, parce que l'écran ne peut rendre que le sien : l'endpoint
@@ -227,67 +228,73 @@ function Contenu({ d, money }: { d: MaJournee; money: ReturnType<typeof useMonna
         />
       </StatStrip>
 
-      <Card>
-        <CardHeader title="Mes dépenses" />
-        <View className="px-4 pb-4">
-          <Mesure value={m(d.depenses.total)} />
-          <Text variant="caption" className="text-muted-foreground">
-            {d.depenses.nombre === 1
-              ? "1 dépense enregistrée"
-              : `${formatNumberFr(d.depenses.nombre, 0)} dépenses enregistrées`}
-          </Text>
-        </View>
-      </Card>
-
-      <Card className="overflow-hidden p-0">
-        <CardHeader title="Encaissé par moyen de paiement" />
-        {d.parMoyen.length === 0 ? (
-          <View className="pb-4">
-            <EmptyState
-              variante="carte"
-              title="Aucun encaissement"
-              message="Rien n'est entré sur cette période."
-            />
+      <Flux className="gap-4">
+        <Card>
+          <CardHeader title="Mes dépenses" />
+          <View className="px-4 pb-4">
+            <Mesure value={m(d.depenses.total)} />
+            <Text variant="caption" className="text-muted-foreground">
+              {d.depenses.nombre === 1
+                ? "1 dépense enregistrée"
+                : `${formatNumberFr(d.depenses.nombre, 0)} dépenses enregistrées`}
+            </Text>
           </View>
-        ) : (
-          d.parMoyen.map((p, i) => (
-            <View key={p.moyen}>
-              {i > 0 ? <Divider inset /> : null}
-              <ListItem title={p.moyen} value={m(p.total)} />
-            </View>
-          ))
-        )}
-      </Card>
+        </Card>
 
-      <Card>
-        <CardHeader
-          title={d.parHeure ? "Mes ventes, heure par heure" : "Mes ventes, jour par jour"}
-        />
-        <View className="px-4 pb-4">
-          {d.detail.length < 2 ? (
-            // ⚠ Un graphique de comparaison exige DEUX choses à comparer : une
-            // barre unique remplit toute la largeur et toute la hauteur, ce qui
-            // se lit comme un défaut d'affichage.
-            <EmptyState
-              variante="carte"
-              title={d.detail.length === 0 ? "Aucune vente" : "Une seule période vendue"}
-              message={
-                d.detail.length === 0
-                  ? "Rien n'a été vendu sur cette période."
-                  : `${m(d.detail[0].total)} au total.`
-              }
-            />
+        <Card className="overflow-hidden p-0">
+          {/* La carte est en `p-0` pour ses RANGÉES, pleine largeur : son titre,
+              lui, garde le retrait de ses voisines, sinon il colle au bord. */}
+          <View className="p-4 pb-0">
+            <CardHeader title="Encaissé par moyen de paiement" />
+          </View>
+          {d.parMoyen.length === 0 ? (
+            <View className="pb-4">
+              <EmptyState
+                variante="carte"
+                title="Aucun encaissement"
+                message="Rien n'est entré sur cette période."
+              />
+            </View>
           ) : (
-            <BarChart
-              points={d.detail.map((b) => ({
-                label: d.parHeure ? etiquetteHeure(b.bucket) : etiquetteJour(b.bucket),
-                valeur: b.total,
-              }))}
-              formater={m}
-            />
+            d.parMoyen.map((p, i) => (
+              <View key={p.moyen}>
+                {i > 0 ? <Divider inset /> : null}
+                <ListItem title={p.moyen} value={m(p.total)} />
+              </View>
+            ))
           )}
-        </View>
-      </Card>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title={d.parHeure ? "Mes ventes, heure par heure" : "Mes ventes, jour par jour"}
+          />
+          <View className="px-4 pb-4">
+            {d.detail.length < 2 ? (
+              // ⚠ Un graphique de comparaison exige DEUX choses à comparer : une
+              // barre unique remplit toute la largeur et toute la hauteur, ce qui
+              // se lit comme un défaut d'affichage.
+              <EmptyState
+                variante="carte"
+                title={d.detail.length === 0 ? "Aucune vente" : "Une seule période vendue"}
+                message={
+                  d.detail.length === 0
+                    ? "Rien n'a été vendu sur cette période."
+                    : `${m(d.detail[0].total)} au total.`
+                }
+              />
+            ) : (
+              <BarChart
+                points={d.detail.map((b) => ({
+                  label: d.parHeure ? etiquetteHeure(b.bucket) : etiquetteJour(b.bucket),
+                  valeur: b.total,
+                }))}
+                formater={m}
+              />
+            )}
+          </View>
+        </Card>
+      </Flux>
     </View>
   );
 }

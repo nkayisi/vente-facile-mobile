@@ -146,4 +146,22 @@ describe("l'état du témoin de synchronisation", () => {
       }
     });
   });
+
+  describe("le mot écrit à côté de l'icône sur un grand écran", () => {
+    it("nomme chaque état en quelques mots", () => {
+      expect(etatIndicateur(REPOS).court).toBe("Synchronisé");
+      expect(etatIndicateur({ ...REPOS, enLigne: false }).court).toBe("Hors ligne");
+      expect(etatIndicateur({ ...REPOS, cycleEnCours: true }).court).toBe("Synchronisation…");
+      expect(etatIndicateur({ ...REPOS, compteurs: compteurs({ pending: 3 }) }).court).toBe(
+        "3 en attente"
+      );
+    });
+
+    it("s'accorde avec le nombre, sans jamais écrire « (s) »", () => {
+      const un = etatIndicateur({ ...REPOS, compteurs: compteurs({ quarantined: 1 }) }).court;
+      const deux = etatIndicateur({ ...REPOS, compteurs: compteurs({ quarantined: 2 }) }).court;
+      expect(un).toMatch(/refusée$/);
+      expect(deux).toMatch(/refusées$/);
+    });
+  });
 });

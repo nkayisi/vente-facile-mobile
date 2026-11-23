@@ -29,6 +29,7 @@ import { tirerTables } from "@/data/rafraichir";
 import { useEnLigne } from "@/data/reseau";
 import { useSession } from "@/session/provider";
 import {
+  Flux, Grille,
   Banner,
   Button,
   Card,
@@ -44,6 +45,7 @@ import {
   TuileChoix,
   useToast,
 } from "@/ui";
+import { LARGEUR_MAX_PIED } from "@/ui/disposition-regles";
 import { CarteRemiseAZero } from "@/features/parametres/remise-a-zero";
 
 const TABLES = ["organizations", "organization_settings"];
@@ -163,121 +165,128 @@ export default function InfosGenerales() {
 
       {erreur ? <Banner tone="destructive" title="Échec" message={erreur} /> : null}
 
-      <Section title="Informations de l'établissement">
-        <Card className="gap-4">
-          <FormField label="Nom de l'établissement" required>
-            <Input value={form.nom} onChangeText={(v) => setForm((f) => ({ ...f, nom: v }))}
-                   editable={modifiable} placeholder="Ex : Boutique Chez Nelson" />
-          </FormField>
+      <Flux className="gap-6">
+        <Section title="Informations de l'établissement">
+          <Card className="gap-4">
+            <Grille largeurMin={260} max={2} ecart={14}>
+              <FormField label="Nom de l'établissement" required>
+                <Input value={form.nom} onChangeText={(v) => setForm((f) => ({ ...f, nom: v }))}
+                       editable={modifiable} placeholder="Ex : Boutique Chez Nelson" />
+              </FormField>
 
-          {/* Non modifiable après la création, comme sur le web. */}
-          <ListItem title="Type d'activité" value={etab?.typeAffiche ?? "-"}
-                    subtitle="Non modifiable après la création" />
+              {/* Non modifiable après la création, comme sur le web. */}
+              <ListItem title="Type d'activité" value={etab?.typeAffiche ?? "-"}
+                        subtitle="Non modifiable après la création" />
 
-          <FormField label="Téléphone" required>
-            <Input value={form.telephone} onChangeText={(v) => setForm((f) => ({ ...f, telephone: v }))}
-                   editable={modifiable} keyboardType="phone-pad" placeholder="Ex : +243 800 000 000" />
-          </FormField>
-          <FormField label="Email">
-            <Input value={form.email} onChangeText={(v) => setForm((f) => ({ ...f, email: v }))}
-                   editable={modifiable} keyboardType="email-address" autoCapitalize="none" />
-          </FormField>
-          <FormField label="Adresse">
-            <Input value={form.adresse} onChangeText={(v) => setForm((f) => ({ ...f, adresse: v }))}
-                   editable={modifiable} multiline numberOfLines={2}
-                   style={{ minHeight: 72, textAlignVertical: "top" }} />
-          </FormField>
-          <FormField label="Ville">
-            <Input value={form.ville} onChangeText={(v) => setForm((f) => ({ ...f, ville: v }))}
-                   editable={modifiable} placeholder="Ex : Kinshasa" />
-          </FormField>
-          <FormField label="Pays">
-            <Input value={form.pays} onChangeText={(v) => setForm((f) => ({ ...f, pays: v }))}
-                   editable={modifiable} />
-          </FormField>
-          <FormField label="N° impôt (NIF)">
-            <Input value={form.nif} onChangeText={(v) => setForm((f) => ({ ...f, nif: v }))}
-                   editable={modifiable} />
-          </FormField>
-          <FormField label="RCCM">
-            <Input value={form.rccm} onChangeText={(v) => setForm((f) => ({ ...f, rccm: v }))}
-                   editable={modifiable} />
-          </FormField>
-          <FormField label="ID National">
-            <Input value={form.idNat} onChangeText={(v) => setForm((f) => ({ ...f, idNat: v }))}
-                   editable={modifiable} />
-          </FormField>
+              <FormField label="Téléphone" required>
+                <Input value={form.telephone} onChangeText={(v) => setForm((f) => ({ ...f, telephone: v }))}
+                       editable={modifiable} keyboardType="phone-pad" placeholder="Ex : +243 800 000 000" />
+              </FormField>
+              <FormField label="Email">
+                <Input value={form.email} onChangeText={(v) => setForm((f) => ({ ...f, email: v }))}
+                       editable={modifiable} keyboardType="email-address" autoCapitalize="none" />
+              </FormField>
+              <FormField label="Adresse">
+                <Input value={form.adresse} onChangeText={(v) => setForm((f) => ({ ...f, adresse: v }))}
+                       editable={modifiable} multiline numberOfLines={2}
+                       style={{ minHeight: 72, textAlignVertical: "top" }} />
+              </FormField>
+              <FormField label="Ville">
+                <Input value={form.ville} onChangeText={(v) => setForm((f) => ({ ...f, ville: v }))}
+                       editable={modifiable} placeholder="Ex : Kinshasa" />
+              </FormField>
+              <FormField label="Pays">
+                <Input value={form.pays} onChangeText={(v) => setForm((f) => ({ ...f, pays: v }))}
+                       editable={modifiable} />
+              </FormField>
+              <FormField label="N° impôt (NIF)">
+                <Input value={form.nif} onChangeText={(v) => setForm((f) => ({ ...f, nif: v }))}
+                       editable={modifiable} />
+              </FormField>
+              <FormField label="RCCM">
+                <Input value={form.rccm} onChangeText={(v) => setForm((f) => ({ ...f, rccm: v }))}
+                       editable={modifiable} />
+              </FormField>
+              <FormField label="ID National">
+                <Input value={form.idNat} onChangeText={(v) => setForm((f) => ({ ...f, idNat: v }))}
+                       editable={modifiable} />
+              </FormField>
+            </Grille>
         </Card>
-      </Section>
+        </Section>
 
-      <Section title="Paramètres généraux">
-        <Card className="gap-4">
-          <CardHeader title="Reçus" subtitle="Ce qui s'imprime en tête et en pied de ticket" />
-          <FormField label="En-tête du reçu">
-            <Input value={reglages.enTete} onChangeText={(v) => setReglages((r) => ({ ...r, enTete: v }))}
-                   editable={modifiable} multiline numberOfLines={3}
-                   style={{ minHeight: 88, textAlignVertical: "top" }} />
-          </FormField>
-          <FormField label="Pied de page du reçu">
-            <Input value={reglages.pied} onChangeText={(v) => setReglages((r) => ({ ...r, pied: v }))}
-                   editable={modifiable} multiline numberOfLines={3}
-                   style={{ minHeight: 88, textAlignVertical: "top" }} />
-          </FormField>
-          {/*
-            ⚠ CE RÉGLAGE N'EST PAS CELUI DE L'IMPRIMANTE DE CE TERMINAL.
+        <Section title="Paramètres généraux">
+          <Card className="gap-4">
+            <CardHeader title="Reçus" subtitle="Ce qui s'imprime en tête et en pied de ticket" />
+            <FormField label="En-tête du reçu">
+              <Input value={reglages.enTete} onChangeText={(v) => setReglages((r) => ({ ...r, enTete: v }))}
+                     editable={modifiable} multiline numberOfLines={3}
+                     style={{ minHeight: 88, textAlignVertical: "top" }} />
+            </FormField>
+            <FormField label="Pied de page du reçu">
+              <Input value={reglages.pied} onChangeText={(v) => setReglages((r) => ({ ...r, pied: v }))}
+                     editable={modifiable} multiline numberOfLines={3}
+                     style={{ minHeight: 88, textAlignVertical: "top" }} />
+            </FormField>
+            {/*
+              ⚠ CE RÉGLAGE N'EST PAS CELUI DE L'IMPRIMANTE DE CE TERMINAL.
 
-            Il voyage jusqu'au serveur (`receipt_paper_width`) et sert les reçus
-            que le back-office produit. L'imprimante du comptoir, elle, lit son
-            propre réglage local (Appareil → Imprimante), parce qu'une largeur
-            décrit un ROULEAU, donc une machine, et que deux comptoirs d'une
-            même boutique peuvent avoir deux imprimantes.
+              Il voyage jusqu'au serveur (`receipt_paper_width`) et sert les reçus
+              que le back-office produit. L'imprimante du comptoir, elle, lit son
+              propre réglage local (Appareil → Imprimante), parce qu'une largeur
+              décrit un ROULEAU, donc une machine, et que deux comptoirs d'une
+              même boutique peuvent avoir deux imprimantes.
 
-            Le dire est indispensable : les deux réglages voisins de cette même
-            carte - en-tête et pied - arrivent bien sur le papier du comptoir.
-            Le marchand les règle ensemble, voit l'en-tête sortir, et en conclut
-            que la largeur est prise en compte. Elle ne l'est pas.
-          */}
-          <View>
-            <Text variant="label" className="mb-2">Largeur du papier au back-office</Text>
-            <Text variant="caption" className="mb-2 text-muted-foreground">
-              Pour les reçus imprimés depuis un ordinateur. L&apos;imprimante de ce
-              terminal a sa propre largeur, dans Appareil → Imprimante.
-            </Text>
-            <View className="flex-row gap-3">
-              <TuileChoix titre="58 mm" description="Ticket étroit"
-                          choisie={reglages.largeurPapier === 58}
-                          onPress={() => modifiable && setReglages((r) => ({ ...r, largeurPapier: 58 }))} />
-              <TuileChoix titre="80 mm" description="Ticket standard"
-                          choisie={reglages.largeurPapier === 80}
-                          onPress={() => modifiable && setReglages((r) => ({ ...r, largeurPapier: 80 }))} />
+              Le dire est indispensable : les deux réglages voisins de cette même
+              carte - en-tête et pied - arrivent bien sur le papier du comptoir.
+              Le marchand les règle ensemble, voit l'en-tête sortir, et en conclut
+              que la largeur est prise en compte. Elle ne l'est pas.
+            */}
+            <View>
+              <Text variant="label" className="mb-2">Largeur du papier au back-office</Text>
+              <Text variant="caption" className="mb-2 text-muted-foreground">
+                Pour les reçus imprimés depuis un ordinateur. L&apos;imprimante de ce
+                terminal a sa propre largeur, dans Appareil → Imprimante.
+              </Text>
+              <View className="flex-row gap-3">
+                <TuileChoix titre="58 mm" description="Ticket étroit"
+                            choisie={reglages.largeurPapier === 58}
+                            onPress={() => modifiable && setReglages((r) => ({ ...r, largeurPapier: 58 }))} />
+                <TuileChoix titre="80 mm" description="Ticket standard"
+                            choisie={reglages.largeurPapier === 80}
+                            onPress={() => modifiable && setReglages((r) => ({ ...r, largeurPapier: 80 }))} />
+              </View>
             </View>
-          </View>
-        </Card>
+          </Card>
 
-        <Card className="mt-3 gap-4">
-          <CardHeader title="Notifications" />
-          <FormField label="Seuil d'alerte stock bas">
-            <Input value={reglages.seuil} onChangeText={(v) => setReglages((r) => ({ ...r, seuil: v }))}
-                   editable={modifiable} keyboardType="number-pad" />
-          </FormField>
-        </Card>
+          <Card className="mt-3 gap-4">
+            <CardHeader title="Notifications" />
+            <FormField label="Seuil d'alerte stock bas">
+              <Input value={reglages.seuil} onChangeText={(v) => setReglages((r) => ({ ...r, seuil: v }))}
+                     editable={modifiable} keyboardType="number-pad" />
+            </FormField>
+          </Card>
 
-        <Card className="mt-3">
-          <CardHeader title="Affichage sur les reçus" />
-          <Switch
-            label="Afficher la cagnotte de fidélité sur les reçus"
-            valeur={reglages.fidelite}
-            desactive={!modifiable}
-            onChange={(v) => setReglages((r) => ({ ...r, fidelite: v }))}
-          />
-        </Card>
-      </Section>
+          <Card className="mt-3">
+            <CardHeader title="Affichage sur les reçus" />
+            <Switch
+              label="Afficher la cagnotte de fidélité sur les reçus"
+              valeur={reglages.fidelite}
+              desactive={!modifiable}
+              onChange={(v) => setReglages((r) => ({ ...r, fidelite: v }))}
+            />
+          </Card>
+        </Section>
+      </Flux>
 
-      <Button fullWidth size="lg" leftIcon="Save" loading={envoi}
-              disabled={!modifiable}
-              onPress={() => void enregistrer()}>
-        Enregistrer
-      </Button>
+      {/* Comme la barre d'un écran : à droite, jamais étiré sur 1 600 points. */}
+      <View className="self-end" style={{ width: "100%", maxWidth: LARGEUR_MAX_PIED }}>
+        <Button fullWidth size="lg" leftIcon="Save" loading={envoi}
+                disabled={!modifiable}
+                onPress={() => void enregistrer()}>
+          Enregistrer
+        </Button>
+      </View>
       {!modifiable ? (
         <Text variant="caption" className="-mt-4 text-center">
           {enLigne

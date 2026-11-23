@@ -91,6 +91,7 @@ export { SearchInput, BarreRecherche } from "./search-input";
 export { Avatar, initiales } from "./avatar";
 export { ProgressBar, BarreEmpilee } from "./progress";
 export { Sheet } from "./sheet";
+export { useModaleOuverte, modaleOuverte } from "./modales-ouvertes";
 export { Dialog, AlertDialog } from "./dialog";
 export { ToastProvider, useToast } from "./toast";
 export { Fab, type ActionSecondaire } from "./fab";
@@ -122,7 +123,7 @@ export {
   useRepliNavigation,
   type Disposition,
 } from "./disposition";
-export { Grille, Colonnes, RangeeChamps } from "./grille";
+export { AligneSurLaPage, Grille, Colonnes, Flux, RangeeChamps } from "./grille";
 export {
   useListeFiche,
   useIdDeFiche,
@@ -133,8 +134,10 @@ export {
 } from "./liste-fiche";
 export { useVoletDeFiche } from "./volet-fiche";
 export {
-  LARGEUR_LATERALE,
+  LARGEUR_LATERALE_MAX,
+  LARGEUR_LATERALE_MIN,
   LARGEUR_RAIL,
+  afficheLibelles,
   colonnesPour,
   largeurMaxDe,
   margePage,

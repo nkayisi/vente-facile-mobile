@@ -191,6 +191,16 @@ export function FeuilleNouveauMouvement({ onFermer }: { onFermer: () => void }) 
         onFermer={onFermer}
         titre={libelleChamp}
         retour={() => setPanneau("mouvement")}
+        pied={
+          <Button
+            variant="outline"
+            fullWidth
+            leftIcon="Plus"
+            onPress={() => setPanneau("creation")}
+          >
+            {genre === "recette" ? "Nouveau type d'entrée" : "Nouvelle catégorie"}
+          </Button>
+        }
       >
         <ListeChoix
           options={optionsCategorie}
@@ -204,23 +214,18 @@ export function FeuilleNouveauMouvement({ onFermer }: { onFermer: () => void }) 
           libelleVide="Aucune"
           messageVide="Aucune rubrique pour l'instant."
         />
-        {/* La création s'atteint D'ICI, et c'est le bon endroit : on découvre
-            qu'une rubrique manque en parcourant la liste, pas avant de
-            l'ouvrir. */}
-        <Button
-          variant="outline"
-          fullWidth
-          leftIcon="Plus"
-          onPress={() => setPanneau("creation")}
-        >
-          {genre === "recette" ? "Nouveau type d'entrée" : "Nouvelle catégorie"}
-        </Button>
       </Sheet>
     );
   }
 
   return (
-    <Sheet ouvert onFermer={onFermer} titre="Nouveau mouvement">
+    <Sheet ouvert onFermer={onFermer} titre="Nouveau mouvement"
+        pied={
+          <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
+          Enregistrer le mouvement
+        </Button>
+        }
+      >
       <FormField label="Sens" required>
         <Segmented
           options={[
@@ -307,10 +312,6 @@ export function FeuilleNouveauMouvement({ onFermer }: { onFermer: () => void }) 
           message="Le mouvement n'entrera dans aucun Z de caisse, et seul le propriétaire pourra le retrouver. Ouvrez votre caisse d'abord."
         />
       )}
-
-      <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
-        Enregistrer le mouvement
-      </Button>
     </Sheet>
   );
 }

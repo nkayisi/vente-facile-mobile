@@ -271,21 +271,18 @@ describe("Screen sur un grand écran", () => {
     expect(styleDuContenu(<Screen scroll padded={false}>x</Screen>)).toEqual({});
   });
 
-  it("centre le contenu à sa largeur de lecture, et porte la marge à 24", () => {
+  it("occupe toute la largeur sur un grand écran, et porte la marge à 24", () => {
     poserFenetre(1920);
-    expect(styleDuContenu(<Screen scroll>x</Screen>)).toEqual({
-      width: "100%",
-      maxWidth: 760,
-      alignSelf: "center",
-      padding: 16,
-      paddingHorizontal: 24,
-    });
+    const style = styleDuContenu(<Screen scroll>x</Screen>) as Record<string, unknown>;
+    expect(style).toEqual({ padding: 16, paddingHorizontal: 24 });
+    // Une borne revenue ici laisserait la moitié du terminal en blanc.
+    expect(style.maxWidth).toBeUndefined();
   });
 
-  it("élargit la colonne d'un tableau de bord, et laisse tout au comptoir", () => {
+  it("ne borne plus que la carte d'une connexion, et laisse tout au comptoir", () => {
     poserFenetre(1920);
-    expect(styleDuContenu(<Screen scroll gabarit="large">x</Screen>)).toMatchObject({
-      maxWidth: 1280,
+    expect(styleDuContenu(<Screen scroll gabarit="etroit">x</Screen>)).toMatchObject({
+      maxWidth: 480,
     });
     const plein = styleDuContenu(<Screen scroll gabarit="plein">x</Screen>) as Record<string, unknown>;
     expect(plein).toEqual({ padding: 16 });
@@ -306,9 +303,7 @@ describe("Screen sur un grand écran", () => {
     ).toEqual({});
   });
 
-  it("aligne la barre fixe sur les cartes dans une colonne contrainte", () => {
-    // Le `px-4` de la barre ne compte plus quand la boîte est centrée à sa
-    // largeur max : les boutons débordaient les cartes de quatorze points.
+  it("range les boutons de la barre fixe à droite, sans les étirer", () => {
     poserFenetre(1920);
     let rendu!: ReturnType<typeof create>;
     act(() => {
@@ -319,12 +314,25 @@ describe("Screen sur un grand écran", () => {
       );
     });
     const barre = rendu.root.findByProps({ testID: "barre" });
-    expect(barre.parent?.props.style).toMatchObject({ maxWidth: 760, paddingHorizontal: 24 });
+    expect(barre.parent?.props.style).toMatchObject({ maxWidth: 640, alignSelf: "flex-end" });
+  });
+
+  it("laisse la barre fixe pleine largeur sur un téléphone", () => {
+    poserFenetre(400, 800);
+    let rendu!: ReturnType<typeof create>;
+    act(() => {
+      rendu = create(
+        <Screen scroll padded={false} pied={<View testID="barre" />}>
+          x
+        </Screen>
+      );
+    });
+    const barre = rendu.root.findByProps({ testID: "barre" });
+    expect(barre.parent?.props.style?.maxWidth).toBeUndefined();
   });
 
   it("pose la gouttière sans borner quand le volet tient dans le gabarit", () => {
-    // Une tablette portrait de 700 : plus large qu'un téléphone, moins que la
-    // colonne de lecture. La marge passe à 24, la largeur reste libre.
+    // Une tablette portrait de 700 : la marge passe à 24, la largeur reste libre.
     poserFenetre(700, 1100);
     expect(styleDuContenu(<Screen scroll padded={false}>x</Screen>)).toEqual({
       paddingHorizontal: 8,

@@ -16,7 +16,13 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { MENU, SECTION_COMPTOIR, sectionDeLaRoute } from "./menu";
+import {
+  ENTREES_APPAREIL,
+  ENTREE_MA_JOURNEE,
+  MENU,
+  SECTION_COMPTOIR,
+  sectionDeLaRoute,
+} from "./menu";
 
 const SIDEBAR = resolve(__dirname, "../../../../frontend/components/layout/sidebar.tsx");
 const REGLES = resolve(__dirname, "../../../../frontend/lib/navigation/regles-de-route.ts");
@@ -176,8 +182,7 @@ describe("la section d'une route", () => {
    */
   const HORS_SECTION: Record<string, string> = {
     profil: "le compte, ouvert par l'avatar, pas une section",
-    appareil: "le bloc « Cet appareil », propre au terminal",
-    "ma-journee": "la lecture de son propre travail, hors des sections",
+    appareil: "un dossier : c'est son second segment qui désigne l'entrée",
     notifications: "ouvertes par la cloche, d'où qu'on soit",
   };
 
@@ -205,7 +210,7 @@ describe("la section d'une route", () => {
   });
 
   it("chaque route appartient à une section du menu, ou est déclarée hors section", () => {
-    const cles = new Set([...MENU.map((e) => e.cle), SECTION_COMPTOIR]);
+    const cles = new Set([...MENU.map((e) => e.cle), SECTION_COMPTOIR, ENTREE_MA_JOURNEE.cle]);
     const orphelines = premiers
       .filter((s) => s !== "index")
       .filter((s) => !(s in HORS_SECTION))
@@ -218,6 +223,30 @@ describe("la section d'une route", () => {
 
   it("chaque entrée du menu allume sa propre section", () => {
     for (const e of MENU) expect(sectionDeLaRoute(e.href)).toBe(e.cle);
+  });
+
+  /**
+   * ⚠ Ces entrées vivent dans la barre et dans le rail : une route qui n'allume
+   * rien y laisse le marchand sans repère, ce qui a été relevé à l'écran sur le
+   * terminal le 2026-11-21.
+   */
+  it("chaque entrée propre au terminal allume sa propre ligne", () => {
+    expect(ENTREES_APPAREIL.length).toBe(4);
+    for (const e of [ENTREE_MA_JOURNEE, ...ENTREES_APPAREIL]) {
+      expect(sectionDeLaRoute(e.href)).toBe(e.cle);
+      expect(sectionDeLaRoute(e.href.replace("/(app)", ""))).toBe(e.cle);
+    }
+  });
+
+  it("range les documents imprimés sous l'imprimante", () => {
+    expect(sectionDeLaRoute("/appareil/documents")).toBe("imprimante");
+    expect(sectionDeLaRoute("/appareil")).toBeNull();
+  });
+
+  it("garde une étiquette de rail qui tient dans quatre-vingts points", () => {
+    for (const e of [ENTREE_MA_JOURNEE, ...ENTREES_APPAREIL]) {
+      expect(e.court.length).toBeLessThanOrEqual(10);
+    }
   });
 
   it("une fiche allume la section d'où on l'ouvre", () => {

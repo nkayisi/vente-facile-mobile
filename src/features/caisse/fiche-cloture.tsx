@@ -37,6 +37,7 @@ import { chromeDeLaSession } from "@/features/pos/ticket";
 import { enregistrerEtImprimer } from "@/printing/jobs";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AppBar, Banner, Button, Card, CardHeader, Divider, EmptyState, FormField,
   Input, Screen, Spinner, Text, useToast,
   useIdDeFiche,
@@ -211,82 +212,84 @@ export function FicheCloture() {
           consequence="La session ne se fermera qu'après."
         />
 
-        {lignes.map((l) => (
-          <Card key={l.devise}>
-            <CardHeader title={l.devise} />
-            <View>
-              <Ligne label="Fonds d'ouverture" valeur={money.money(l.ouverture, l.devise)} />
-              <Ligne label="Encaissements espèces" valeur={money.money(l.entrees, l.devise)} />
-              <Ligne
-                label="Sorties"
-                // « -0 $ » se lisait comme une sortie : un zéro reste un zéro.
-                valeur={
-                  l.sorties > 0
-                    ? `-${money.money(l.sorties, l.devise)}`
-                    : money.money(0, l.devise)
-                }
-              />
-              <View className="my-2">
-                <Divider />
-              </View>
-              <Ligne label="Attendu au tiroir" valeur={money.money(l.attendu, l.devise)} fort />
-            </View>
-            <View className="mt-3">
-              <FormField
-                label={`Compté (${l.devise})`}
-                error={
-                  l.refus === "negatif"
-                    ? "Un tiroir ne contient pas de billets négatifs : comptez ce qui s'y trouve."
-                    : l.refus === "illisible"
-                      ? "Montant illisible : écrivez par exemple 1 772,4."
-                      : undefined
-                }
-                hint={
-                  l.ecart !== null && Math.abs(l.ecart) > 0.005
-                    ? `Écart : ${l.ecart > 0 ? "+" : ""}${money.money(l.ecart, l.devise)}`
-                    : undefined
-                }
-              >
-                <Input
-                  value={comptages[l.devise] ?? ""}
-                  onChangeText={(v) =>
-                    setComptages((c) => ({ ...c, [l.devise]: v }))
+        <Flux className="gap-4">
+          {lignes.map((l) => (
+            <Card key={l.devise}>
+              <CardHeader title={l.devise} />
+              <View>
+                <Ligne label="Fonds d'ouverture" valeur={money.money(l.ouverture, l.devise)} />
+                <Ligne label="Encaissements espèces" valeur={money.money(l.entrees, l.devise)} />
+                <Ligne
+                  label="Sorties"
+                  // « -0 $ » se lisait comme une sortie : un zéro reste un zéro.
+                  valeur={
+                    l.sorties > 0
+                      ? `-${money.money(l.sorties, l.devise)}`
+                      : money.money(0, l.devise)
                   }
-                  keyboardType="decimal-pad"
-                  invalid={l.refus !== null || (l.ecart !== null && Math.abs(l.ecart) > 0.005)}
                 />
-              </FormField>
-            </View>
+                <View className="my-2">
+                  <Divider />
+                </View>
+                <Ligne label="Attendu au tiroir" valeur={money.money(l.attendu, l.devise)} fort />
+              </View>
+              <View className="mt-3">
+                <FormField
+                  label={`Compté (${l.devise})`}
+                  error={
+                    l.refus === "negatif"
+                      ? "Un tiroir ne contient pas de billets négatifs : comptez ce qui s'y trouve."
+                      : l.refus === "illisible"
+                        ? "Montant illisible : écrivez par exemple 1 772,4."
+                        : undefined
+                  }
+                  hint={
+                    l.ecart !== null && Math.abs(l.ecart) > 0.005
+                      ? `Écart : ${l.ecart > 0 ? "+" : ""}${money.money(l.ecart, l.devise)}`
+                      : undefined
+                  }
+                >
+                  <Input
+                    value={comptages[l.devise] ?? ""}
+                    onChangeText={(v) =>
+                      setComptages((c) => ({ ...c, [l.devise]: v }))
+                    }
+                    keyboardType="decimal-pad"
+                    invalid={l.refus !== null || (l.ecart !== null && Math.abs(l.ecart) > 0.005)}
+                  />
+                </FormField>
+              </View>
+            </Card>
+          ))}
+
+          <Card>
+            <FormField
+              label="Note explicative"
+              required={ecartNonNul}
+              hint={
+                ecartNonNul
+                  ? "Obligatoire : un écart est constaté."
+                  : "Facultative quand le comptage tombe juste."
+              }
+            >
+              <Input
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Erreur de rendu de monnaie, avance non enregistrée…"
+              />
+            </FormField>
           </Card>
-        ))}
 
-        <Card>
-          <FormField
-            label="Note explicative"
-            required={ecartNonNul}
-            hint={
-              ecartNonNul
-                ? "Obligatoire : un écart est constaté."
-                : "Facultative quand le comptage tombe juste."
-            }
-          >
-            <Input
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Erreur de rendu de monnaie, avance non enregistrée…"
-            />
-          </FormField>
-        </Card>
+          <Banner
+            tone="info"
+            title="Le Z sort tout de suite"
+            message="Il porte un numéro définitif, même hors ligne. La session se fermera à la prochaine synchronisation."
+          />
 
-        <Banner
-          tone="info"
-          title="Le Z sort tout de suite"
-          message="Il porte un numéro définitif, même hors ligne. La session se fermera à la prochaine synchronisation."
-        />
-
-        <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-          {envoi ? "Clôture…" : "Clôturer et imprimer le Z"}
-        </Button>
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+            {envoi ? "Clôture…" : "Clôturer et imprimer le Z"}
+          </Button>
+        </Flux>
       </View>
     </Screen>
   );

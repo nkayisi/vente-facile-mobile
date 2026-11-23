@@ -286,6 +286,22 @@ export function FeuilleNouvelAjustement({
       onFermer={reculer}
       titre={titre}
       retour={surLeFormulaire ? undefined : reculer}
+      pied={
+        surLeFormulaire ? (
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+            {envoi ? "Enregistrement…" : "Créer l'ajustement"}
+          </Button>
+        ) : !choix && panneauArticle && choisi ? (
+          <View className="flex-row gap-2">
+            <Button variant="outline" className="flex-1" onPress={() => setChoisi(null)}>
+              Changer
+            </Button>
+            <Button className="flex-1" leftIcon="Plus" onPress={ajouter}>
+              Ajouter
+            </Button>
+          </View>
+        ) : undefined
+      }
     >
       {choix ? (
         <ListeChoix
@@ -353,15 +369,6 @@ export function FeuilleNouvelAjustement({
                 </Text>
               </View>
             ) : null}
-
-            <View className="flex-row gap-2">
-              <Button variant="outline" className="flex-1" onPress={() => setChoisi(null)}>
-                Changer
-              </Button>
-              <Button className="flex-1" leftIcon="Plus" onPress={ajouter}>
-                Ajouter
-              </Button>
-            </View>
           </>
         ) : (
           <>
@@ -563,10 +570,6 @@ export function FeuilleNouvelAjustement({
             title="Le stock ne bouge pas encore"
             message="L'ajustement est créé en brouillon. Les écarts s'appliqueront à l'approbation, depuis sa fiche."
           />
-
-          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-            {envoi ? "Enregistrement…" : "Créer l'ajustement"}
-          </Button>
         </>
       )}
     </Sheet>

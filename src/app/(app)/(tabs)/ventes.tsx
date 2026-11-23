@@ -124,7 +124,7 @@ export default function Ventes() {
   const envoiSession = libelleEnvoi(session?.envoi);
 
   return (
-    <Screen scroll edges={[]} gabarit="large">
+    <Screen scroll edges={[]}>
       {/* ┌────────────────────────────────────────────────────────────────┐
           │ L'ACTION EST SUR LA LIGNE DU TITRE, ET ELLE Y GAGNE UN ÉCRAN. │
           │                                                                │

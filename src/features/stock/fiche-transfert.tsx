@@ -43,6 +43,7 @@ import {
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AlertDialog,
   AppBar,
   Badge,
@@ -299,62 +300,64 @@ export function FicheTransfert() {
           </Button>
         ) : null}
 
-        <Card>
-          <CardHeader title="Informations" />
-          <View>
-            <Ligne label="Référence" valeur={t.reference} />
-            <Ligne label="Source" valeur={nomOuInconnu(t.source)} />
-            <Ligne label="Destination" valeur={nomOuInconnu(t.destination)} />
-            <Ligne
-              label="Demandé le"
-              valeur={t.demandeLe ? formatDateTimeFr(t.demandeLe) : "-"}
-            />
-            {t.expedieLe ? (
-              <Ligne label="Expédié le" valeur={formatDateTimeFr(t.expedieLe)} />
-            ) : null}
-            {t.recuLe ? (
-              <Ligne label="Reçu le" valeur={formatDateTimeFr(t.recuLe)} />
-            ) : null}
-          </View>
-          {t.notes ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Notes
-              </Text>
-              <Text variant="bodySmall">{t.notes}</Text>
+        <Flux className="gap-4">
+          <Card>
+            <CardHeader title="Informations" />
+            <View>
+              <Ligne label="Référence" valeur={t.reference} />
+              <Ligne label="Source" valeur={nomOuInconnu(t.source)} />
+              <Ligne label="Destination" valeur={nomOuInconnu(t.destination)} />
+              <Ligne
+                label="Demandé le"
+                valeur={t.demandeLe ? formatDateTimeFr(t.demandeLe) : "-"}
+              />
+              {t.expedieLe ? (
+                <Ligne label="Expédié le" valeur={formatDateTimeFr(t.expedieLe)} />
+              ) : null}
+              {t.recuLe ? (
+                <Ligne label="Reçu le" valeur={formatDateTimeFr(t.recuLe)} />
+              ) : null}
             </View>
-          ) : null}
-        </Card>
+            {t.notes ? (
+              <View className="mt-3">
+                <Text variant="caption" className="mb-1">
+                  Notes
+                </Text>
+                <Text variant="bodySmall">{t.notes}</Text>
+              </View>
+            ) : null}
+          </Card>
 
-        <Card>
-          <CardHeader title={`Articles (${t.lignes.length})`} />
-          <View>
-            {t.lignes.map((l, i) => (
-              <View key={l.id}>
-                {i > 0 ? <Divider /> : null}
-                <View className="py-3">
-                  <Text variant="bodySmall" className="font-sans-medium">
-                    {l.produit}
-                  </Text>
-                  {l.sku ? <Text variant="caption">{l.sku}</Text> : null}
-                  <View className="mt-1 gap-0.5">
-                    <Ligne label="Demandé" valeur={l.demandeAffiche} />
-                    {/* `null` n'est PAS zéro : « pas encore expédié » et
-                        « expédié : rien » ne se disent pas pareil. */}
-                    <Ligne
-                      label="Expédié"
-                      valeur={l.expedie != null ? String(l.expedie) : "Pas encore"}
-                    />
-                    <Ligne
-                      label="Reçu"
-                      valeur={l.recu != null ? String(l.recu) : "Pas encore"}
-                    />
+          <Card>
+            <CardHeader title={`Articles (${t.lignes.length})`} />
+            <View>
+              {t.lignes.map((l, i) => (
+                <View key={l.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <View className="py-3">
+                    <Text variant="bodySmall" className="font-sans-medium">
+                      {l.produit}
+                    </Text>
+                    {l.sku ? <Text variant="caption">{l.sku}</Text> : null}
+                    <View className="mt-1 gap-0.5">
+                      <Ligne label="Demandé" valeur={l.demandeAffiche} />
+                      {/* `null` n'est PAS zéro : « pas encore expédié » et
+                          « expédié : rien » ne se disent pas pareil. */}
+                      <Ligne
+                        label="Expédié"
+                        valeur={l.expedie != null ? String(l.expedie) : "Pas encore"}
+                      />
+                      <Ligne
+                        label="Reçu"
+                        valeur={l.recu != null ? String(l.recu) : "Pas encore"}
+                      />
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
-          </View>
-        </Card>
+              ))}
+            </View>
+          </Card>
+        </Flux>
       </View>
 
       {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un

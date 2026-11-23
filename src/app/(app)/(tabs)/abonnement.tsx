@@ -47,6 +47,7 @@ import { useMonnaie } from "@/data/devises";
 import { useEnLigne } from "@/data/reseau";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   Badge, Banner, Button, Card, CardHeader, Divider, Icon, PageHeader, Screen,
   Section, Segmented, Spinner, StatValue, Text, useToast,
 } from "@/ui";
@@ -190,291 +191,297 @@ export default function Abonnement() {
 
       {onglet === "etat" ? (
         <View className="mt-4 gap-4">
-          <Card>
-            <View className="flex-row items-start gap-3">
-              <View className="h-11 w-11 items-center justify-center rounded-lg bg-primary/10">
-                <Icon name="Crown" size={22} color="primary" />
-              </View>
-              <View className="min-w-0 flex-1">
-                <Text variant="label" numberOfLines={1}>
-                  {etat?.planNom ?? "Aucun plan"}
-                </Text>
-                <Text variant="caption">
-                  {etat?.cycle ?? (etat?.aUnAbonnement ? "" : "Aucun abonnement actif")}
-                </Text>
-              </View>
-              {s ? <Badge tone={s.ton}>{s.label}</Badge> : null}
-            </View>
-
-            {etat && etat.prix !== null ? (
-              <View className="mt-4">
-                <Text variant="caption" className="mb-1">
-                  Montant
-                </Text>
-                <StatValue value={money.money(etat.prix, etat.devise)} />
-              </View>
-            ) : null}
-
-            {etat?.message ? (
-              <Text variant="bodySmall" className="mt-3">
-                {etat.message}
-              </Text>
-            ) : null}
-
-            <View className="mt-4 gap-1">
-              {etat?.finPeriode ? (
-                <View className="flex-row items-baseline justify-between gap-3">
-                  <Text variant="bodySmall" className="text-muted-foreground">
-                    {etat.essai ? "Fin de l'essai" : "Échéance"}
-                  </Text>
-                  <Text variant="bodySmall" numeric className="font-sans-medium">
-                    {formatDateFr(etat.finPeriode)}
-                  </Text>
-                </View>
-              ) : null}
-              {etat?.joursRestants !== null && etat?.joursRestants !== undefined ? (
-                <View className="flex-row items-baseline justify-between gap-3">
-                  <Text variant="bodySmall" className="text-muted-foreground">
-                    Jours restants
-                  </Text>
-                  <Text
-                    variant="bodySmall"
-                    numeric
-                    className={
-                      etat.joursRestants <= 7
-                        ? "font-sans-medium text-destructive"
-                        : "font-sans-medium"
-                    }
-                  >
-                    {String(etat.joursRestants)}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </Card>
-
-          {etat && etat.plafonds.length > 0 ? (
+          <Flux className="gap-4">
             <Card>
-              <CardHeader
-                title="Utilisation"
-                subtitle="Ce que votre plan autorise, et ce qui est consommé."
-              />
-              <View>
-                {etat.plafonds.map((p, i) => (
-                  <View key={p.label}>
-                    {i > 0 ? (
-                      <View className="my-2">
-                        <Divider />
-                      </View>
-                    ) : null}
-                    <View className="flex-row items-baseline justify-between gap-3">
-                      <Text variant="bodySmall" className="text-muted-foreground">
-                        {p.label}
-                      </Text>
-                      <Text
-                        variant="bodySmall"
-                        numeric
-                        className={
-                          // Atteindre le plafond n'est pas un incident, mais la
-                          // création suivante sera refusée : le dire avant.
-                          p.limite !== null && p.utilise >= p.limite
-                            ? "font-sans-medium text-warning"
-                            : "font-sans-medium"
-                        }
-                      >
-                        {lirePlafond(p)}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
+              <View className="flex-row items-start gap-3">
+                <View className="h-11 w-11 items-center justify-center rounded-lg bg-primary/10">
+                  <Icon name="Crown" size={22} color="primary" />
+                </View>
+                <View className="min-w-0 flex-1">
+                  <Text variant="label" numberOfLines={1}>
+                    {etat?.planNom ?? "Aucun plan"}
+                  </Text>
+                  <Text variant="caption">
+                    {etat?.cycle ?? (etat?.aUnAbonnement ? "" : "Aucun abonnement actif")}
+                  </Text>
+                </View>
+                {s ? <Badge tone={s.ton}>{s.label}</Badge> : null}
               </View>
-              <Text variant="caption" className="mt-3">
-                Un plafond absent veut dire « illimité », jamais « zéro ».
-              </Text>
+
+              {etat && etat.prix !== null ? (
+                <View className="mt-4">
+                  <Text variant="caption" className="mb-1">
+                    Montant
+                  </Text>
+                  <StatValue value={money.money(etat.prix, etat.devise)} />
+                </View>
+              ) : null}
+
+              {etat?.message ? (
+                <Text variant="bodySmall" className="mt-3">
+                  {etat.message}
+                </Text>
+              ) : null}
+
+              <View className="mt-4 gap-1">
+                {etat?.finPeriode ? (
+                  <View className="flex-row items-baseline justify-between gap-3">
+                    <Text variant="bodySmall" className="text-muted-foreground">
+                      {etat.essai ? "Fin de l'essai" : "Échéance"}
+                    </Text>
+                    <Text variant="bodySmall" numeric className="font-sans-medium">
+                      {formatDateFr(etat.finPeriode)}
+                    </Text>
+                  </View>
+                ) : null}
+                {etat?.joursRestants !== null && etat?.joursRestants !== undefined ? (
+                  <View className="flex-row items-baseline justify-between gap-3">
+                    <Text variant="bodySmall" className="text-muted-foreground">
+                      Jours restants
+                    </Text>
+                    <Text
+                      variant="bodySmall"
+                      numeric
+                      className={
+                        etat.joursRestants <= 7
+                          ? "font-sans-medium text-destructive"
+                          : "font-sans-medium"
+                      }
+                    >
+                      {String(etat.joursRestants)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </Card>
-          ) : null}
+
+            {etat && etat.plafonds.length > 0 ? (
+              <Card>
+                <CardHeader
+                  title="Utilisation"
+                  subtitle="Ce que votre plan autorise, et ce qui est consommé."
+                />
+                <View>
+                  {etat.plafonds.map((p, i) => (
+                    <View key={p.label}>
+                      {i > 0 ? (
+                        <View className="my-2">
+                          <Divider />
+                        </View>
+                      ) : null}
+                      <View className="flex-row items-baseline justify-between gap-3">
+                        <Text variant="bodySmall" className="text-muted-foreground">
+                          {p.label}
+                        </Text>
+                        <Text
+                          variant="bodySmall"
+                          numeric
+                          className={
+                            // Atteindre le plafond n'est pas un incident, mais la
+                            // création suivante sera refusée : le dire avant.
+                            p.limite !== null && p.utilise >= p.limite
+                              ? "font-sans-medium text-warning"
+                              : "font-sans-medium"
+                          }
+                        >
+                          {lirePlafond(p)}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <Text variant="caption" className="mt-3">
+                  Un plafond absent veut dire « illimité », jamais « zéro ».
+                </Text>
+              </Card>
+            ) : null}
+          </Flux>
         </View>
       ) : null}
 
       {onglet === "plans" ? (
         <View className="mt-4 gap-4">
-          {plans.length === 0 ? (
-            <Card>
-              <Text variant="bodySmall">
-                Aucun plan n&apos;est proposé pour le moment.
-              </Text>
-            </Card>
-          ) : (
-            plans.map((p) => {
-              const a = eligibiliteDuPlan(p, etat);
-              const courant = etat?.planId === p.id;
-              return (
-                <Card
-                  key={p.id}
-                  className={courant ? "border-2 border-primary p-4" : "p-4"}
-                >
-                  <View className="flex-row items-start justify-between gap-3">
-                    <View className="min-w-0 flex-1">
-                      <Text variant="label" numberOfLines={1}>
-                        {p.nom}
-                      </Text>
-                      {p.description ? (
-                        <Text variant="caption">{p.description}</Text>
+          <Flux className="gap-4">
+            {plans.length === 0 ? (
+              <Card>
+                <Text variant="bodySmall">
+                  Aucun plan n&apos;est proposé pour le moment.
+                </Text>
+              </Card>
+            ) : (
+              plans.map((p) => {
+                const a = eligibiliteDuPlan(p, etat);
+                const courant = etat?.planId === p.id;
+                return (
+                  <Card
+                    key={p.id}
+                    className={courant ? "border-2 border-primary p-4" : "p-4"}
+                  >
+                    <View className="flex-row items-start justify-between gap-3">
+                      <View className="min-w-0 flex-1">
+                        <Text variant="label" numberOfLines={1}>
+                          {p.nom}
+                        </Text>
+                        {p.description ? (
+                          <Text variant="caption">{p.description}</Text>
+                        ) : null}
+                      </View>
+                      {courant ? (
+                        <Badge tone="primary">Plan actuel</Badge>
+                      ) : p.miseEnAvant ? (
+                        <Badge tone="warning">Recommandé</Badge>
                       ) : null}
                     </View>
-                    {courant ? (
-                      <Badge tone="primary">Plan actuel</Badge>
-                    ) : p.miseEnAvant ? (
-                      <Badge tone="warning">Recommandé</Badge>
-                    ) : null}
-                  </View>
 
-                  <View className="mt-3">
-                    <StatValue value={money.money(p.prixMensuel, p.devise)} />
-                    <Text variant="caption">par mois</Text>
-                  </View>
+                    <View className="mt-3">
+                      <StatValue value={money.money(p.prixMensuel, p.devise)} />
+                      <Text variant="caption">par mois</Text>
+                    </View>
 
-                  <View className="mt-3">
-                    {p.limites.map((l) => (
-                      <View
-                        key={l.label}
-                        className="flex-row items-baseline justify-between gap-3 py-0.5"
-                      >
-                        <Text variant="caption">{l.label}</Text>
-                        <Text variant="caption" numeric className="font-sans-medium">
-                          {l.valeur}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {p.fonctions.length > 0 ? (
-                    <View className="mt-3 gap-1">
-                      {p.fonctions.slice(0, 6).map((f) => (
-                        <View key={f} className="flex-row items-start gap-2">
-                          <Icon name="Check" size={14} color="success" />
-                          <Text variant="caption" className="min-w-0 flex-1">
-                            {f}
+                    <View className="mt-3">
+                      {p.limites.map((l) => (
+                        <View
+                          key={l.label}
+                          className="flex-row items-baseline justify-between gap-3 py-0.5"
+                        >
+                          <Text variant="caption">{l.label}</Text>
+                          <Text variant="caption" numeric className="font-sans-medium">
+                            {l.valeur}
                           </Text>
                         </View>
                       ))}
                     </View>
-                  ) : null}
 
-                  <View className="mt-4">
-                    <Button
-                      fullWidth
-                      variant={courant ? "outline" : "primary"}
-                      disabled={!a.possible || !enLigne || !peutRegler}
-                      onPress={() => a.possible && payer(p, a.mode)}
-                    >
-                      {a.libelle}
-                    </Button>
-                    {!a.possible ? (
-                      <Text variant="caption" className="mt-1">
-                        {a.raison}
-                      </Text>
+                    {p.fonctions.length > 0 ? (
+                      <View className="mt-3 gap-1">
+                        {p.fonctions.slice(0, 6).map((f) => (
+                          <View key={f} className="flex-row items-start gap-2">
+                            <Icon name="Check" size={14} color="success" />
+                            <Text variant="caption" className="min-w-0 flex-1">
+                              {f}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
                     ) : null}
-                  </View>
-                </Card>
-              );
-            })
-          )}
-          {peutRegler ? (
-            <Banner
-              tone="info"
-              title="Le paiement se fait ici"
-              message="Choisissez un plan, puis votre opérateur Mobile Money. Vous confirmerez sur votre téléphone, sans quitter l'application."
-            />
-          ) : (
-            <Banner
-              tone="info"
-              title="Réservé au propriétaire"
-              message="Seul le propriétaire du compte peut régler l'abonnement. Prévenez-le : il peut le faire depuis son propre terminal."
-            />
-          )}
+
+                    <View className="mt-4">
+                      <Button
+                        fullWidth
+                        variant={courant ? "outline" : "primary"}
+                        disabled={!a.possible || !enLigne || !peutRegler}
+                        onPress={() => a.possible && payer(p, a.mode)}
+                      >
+                        {a.libelle}
+                      </Button>
+                      {!a.possible ? (
+                        <Text variant="caption" className="mt-1">
+                          {a.raison}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </Card>
+                );
+              })
+            )}
+            {peutRegler ? (
+              <Banner
+                tone="info"
+                title="Le paiement se fait ici"
+                message="Choisissez un plan, puis votre opérateur Mobile Money. Vous confirmerez sur votre téléphone, sans quitter l'application."
+              />
+            ) : (
+              <Banner
+                tone="info"
+                title="Réservé au propriétaire"
+                message="Seul le propriétaire du compte peut régler l'abonnement. Prévenez-le : il peut le faire depuis son propre terminal."
+              />
+            )}
+          </Flux>
         </View>
       ) : null}
 
       {onglet === "historique" ? (
         <View className="mt-4 gap-4">
-          <Section title={`Paiements (${paiements.length})`}>
-            <Card className="overflow-hidden p-0">
-              {paiements.length === 0 ? (
-                <View className="p-4">
-                  <Text variant="caption">Aucun paiement enregistré.</Text>
-                </View>
-              ) : (
-                paiements.map((p, i) => {
-                  const st = STATUT_PAIEMENT[p.statut];
-                  return (
-                    <View key={p.id}>
+          <Flux className="gap-4">
+            <Section title={`Paiements (${paiements.length})`}>
+              <Card className="overflow-hidden p-0">
+                {paiements.length === 0 ? (
+                  <View className="p-4">
+                    <Text variant="caption">Aucun paiement enregistré.</Text>
+                  </View>
+                ) : (
+                  paiements.map((p, i) => {
+                    const st = STATUT_PAIEMENT[p.statut];
+                    return (
+                      <View key={p.id}>
+                        {i > 0 ? <Divider /> : null}
+                        <View className="flex-row items-start gap-3 px-4 py-3">
+                          <View className="min-w-0 flex-1">
+                            <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
+                              {p.reference || "Paiement"}
+                            </Text>
+                            <Text variant="caption" numberOfLines={1}>
+                              {[p.moyen, p.paye ? formatDateFr(p.paye) : null]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </Text>
+                          </View>
+                          <View className="shrink-0 items-end gap-1">
+                            <Badge tone={st?.ton ?? "neutral"}>
+                              {p.statutLabel}
+                            </Badge>
+                            <Text variant="bodySmall" numeric className="font-sans-semibold">
+                              {money.money(p.montant, p.devise)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </Card>
+            </Section>
+
+            <Section title={`Factures (${factures.length})`}>
+              <Card className="overflow-hidden p-0">
+                {factures.length === 0 ? (
+                  <View className="p-4">
+                    <Text variant="caption">Aucune facture émise.</Text>
+                  </View>
+                ) : (
+                  factures.map((f, i) => (
+                    <View key={f.id}>
                       {i > 0 ? <Divider /> : null}
                       <View className="flex-row items-start gap-3 px-4 py-3">
                         <View className="min-w-0 flex-1">
                           <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
-                            {p.reference || "Paiement"}
+                            {f.numero}
                           </Text>
                           <Text variant="caption" numberOfLines={1}>
-                            {[p.moyen, p.paye ? formatDateFr(p.paye) : null]
+                            {[
+                              f.emise ? `Émise le ${formatDateFr(f.emise)}` : null,
+                              f.payee ? `payée le ${formatDateFr(f.payee)}` : null,
+                            ]
                               .filter(Boolean)
                               .join(" · ")}
                           </Text>
                         </View>
                         <View className="shrink-0 items-end gap-1">
-                          <Badge tone={st?.ton ?? "neutral"}>
-                            {p.statutLabel}
+                          <Badge tone={f.payee ? "success" : "warning"}>
+                            {f.statutLabel}
                           </Badge>
                           <Text variant="bodySmall" numeric className="font-sans-semibold">
-                            {money.money(p.montant, p.devise)}
+                            {money.money(f.total, f.devise)}
                           </Text>
                         </View>
                       </View>
                     </View>
-                  );
-                })
-              )}
-            </Card>
-          </Section>
-
-          <Section title={`Factures (${factures.length})`}>
-            <Card className="overflow-hidden p-0">
-              {factures.length === 0 ? (
-                <View className="p-4">
-                  <Text variant="caption">Aucune facture émise.</Text>
-                </View>
-              ) : (
-                factures.map((f, i) => (
-                  <View key={f.id}>
-                    {i > 0 ? <Divider /> : null}
-                    <View className="flex-row items-start gap-3 px-4 py-3">
-                      <View className="min-w-0 flex-1">
-                        <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
-                          {f.numero}
-                        </Text>
-                        <Text variant="caption" numberOfLines={1}>
-                          {[
-                            f.emise ? `Émise le ${formatDateFr(f.emise)}` : null,
-                            f.payee ? `payée le ${formatDateFr(f.payee)}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </Text>
-                      </View>
-                      <View className="shrink-0 items-end gap-1">
-                        <Badge tone={f.payee ? "success" : "warning"}>
-                          {f.statutLabel}
-                        </Badge>
-                        <Text variant="bodySmall" numeric className="font-sans-semibold">
-                          {money.money(f.total, f.devise)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                ))
-              )}
-            </Card>
-          </Section>
+                  ))
+                )}
+              </Card>
+            </Section>
+          </Flux>
         </View>
       ) : null}
 

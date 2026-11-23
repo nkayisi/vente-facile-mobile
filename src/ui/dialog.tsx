@@ -17,6 +17,7 @@ import { Modal, View } from "react-native";
 
 import { Button } from "./button";
 import { Text } from "./text";
+import { useInscrireModale } from "./modales-ouvertes";
 import { useMargesSysteme } from "./zone-sure";
 
 export function Dialog({
@@ -34,6 +35,8 @@ export function Dialog({
   children?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
+  // Le lecteur de codes du comptoir s'arrête tant qu'elle est ouverte.
+  useInscrireModale(ouvert);
   const marges = useMargesSysteme();
 
   return (

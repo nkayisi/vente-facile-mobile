@@ -63,6 +63,7 @@ import {
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AlertDialog, AppBar, Badge, Banner, Button, Card, CardHeader, Divider,
   EmptyState, Icon, Mesure, Screen, Skeleton, StatStrip, StatStripItem, Text,
   useIdDeFiche,
@@ -323,104 +324,106 @@ export function FicheRetour() {
           </Text>
         ) : null}
 
-        <Card className="p-0">
-          <View className="p-4 pb-0">
-            <CardHeader
-              title={`Articles rendus (${r.lignes.length})`}
-              subtitle={
-                remisEnRayon === r.lignes.length
-                  ? "Tous reviennent en stock."
-                  : remisEnRayon === 0
-                    ? "Aucun ne revient en stock."
-                    : `${remisEnRayon} sur ${r.lignes.length} reviennent en stock.`
-              }
-            />
-          </View>
-          {r.lignes.map((l, i) => (
-            <View key={l.id}>
-              {i > 0 ? <Divider /> : null}
-              <View className="flex-row items-start justify-between gap-3 px-4 py-3">
-                <View className="min-w-0 flex-1">
-                  <Text variant="bodySmall" className="font-sans-medium">
-                    {l.produit}
-                  </Text>
-                  <Text variant="caption">
-                    {`${l.quantite} × ${money.money(l.prixUnitaire, devise)}`}
-                  </Text>
-                  {/* ┌──────────────────────────────────────────────────────┐
-                      │ « NON REMIS EN STOCK » ÉTAIT UNE INCISE DE LÉGENDE.  │
-                      │                                                      │
-                      │ Il se lisait « 2 × 12 500 $  ·  non remis en stock », │
-                      │ à la même graisse et à la même couleur que la        │
-                      │ quantité. C'est pourtant la seule ligne qui décide   │
-                      │ si de la marchandise revient en rayon ou part à la   │
-                      │ casse : elle a droit à sa pastille.                  │
-                      └──────────────────────────────────────────────────────┘ */}
-                  {!l.remisEnStock ? (
-                    <View className="mt-1.5 flex-row">
-                      <Badge tone="warning">Ne revient pas en stock</Badge>
-                    </View>
-                  ) : null}
-                </View>
-                <Mesure value={money.money(l.total, devise)} />
-              </View>
-            </View>
-          ))}
-        </Card>
-
-        <Card>
-          <CardHeader title="Informations" />
-          <View>
-            {r.client ? <Paire label="Client" valeur={r.client} /> : null}
-            <Paire
-              label="Enregistré le"
-              valeur={r.date ? formatDateTimeFr(r.date) : "-"}
-            />
-            {r.creePar ? <Paire label="Par" valeur={r.creePar} /> : null}
-            {r.approuveLe ? (
-              <Paire
-                label={r.statut === "rejected" ? "Décidé le" : "Approuvé le"}
-                valeur={formatDateTimeFr(r.approuveLe)}
+        <Flux className="gap-4">
+          <Card className="p-0">
+            <View className="p-4 pb-0">
+              <CardHeader
+                title={`Articles rendus (${r.lignes.length})`}
+                subtitle={
+                  remisEnRayon === r.lignes.length
+                    ? "Tous reviennent en stock."
+                    : remisEnRayon === 0
+                      ? "Aucun ne revient en stock."
+                      : `${remisEnRayon} sur ${r.lignes.length} reviennent en stock.`
+                }
               />
+            </View>
+            {r.lignes.map((l, i) => (
+              <View key={l.id}>
+                {i > 0 ? <Divider /> : null}
+                <View className="flex-row items-start justify-between gap-3 px-4 py-3">
+                  <View className="min-w-0 flex-1">
+                    <Text variant="bodySmall" className="font-sans-medium">
+                      {l.produit}
+                    </Text>
+                    <Text variant="caption">
+                      {`${l.quantite} × ${money.money(l.prixUnitaire, devise)}`}
+                    </Text>
+                    {/* ┌──────────────────────────────────────────────────────┐
+                        │ « NON REMIS EN STOCK » ÉTAIT UNE INCISE DE LÉGENDE.  │
+                        │                                                      │
+                        │ Il se lisait « 2 × 12 500 $  ·  non remis en stock », │
+                        │ à la même graisse et à la même couleur que la        │
+                        │ quantité. C'est pourtant la seule ligne qui décide   │
+                        │ si de la marchandise revient en rayon ou part à la   │
+                        │ casse : elle a droit à sa pastille.                  │
+                        └──────────────────────────────────────────────────────┘ */}
+                    {!l.remisEnStock ? (
+                      <View className="mt-1.5 flex-row">
+                        <Badge tone="warning">Ne revient pas en stock</Badge>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Mesure value={money.money(l.total, devise)} />
+                </View>
+              </View>
+            ))}
+          </Card>
+
+          <Card>
+            <CardHeader title="Informations" />
+            <View>
+              {r.client ? <Paire label="Client" valeur={r.client} /> : null}
+              <Paire
+                label="Enregistré le"
+                valeur={r.date ? formatDateTimeFr(r.date) : "-"}
+              />
+              {r.creePar ? <Paire label="Par" valeur={r.creePar} /> : null}
+              {r.approuveLe ? (
+                <Paire
+                  label={r.statut === "rejected" ? "Décidé le" : "Approuvé le"}
+                  valeur={formatDateTimeFr(r.approuveLe)}
+                />
+              ) : null}
+              {r.approuvePar ? <Paire label="Décidé par" valeur={r.approuvePar} /> : null}
+            </View>
+
+            {r.motif ? (
+              <View className="mt-3">
+                <Text variant="caption" className="mb-1">
+                  Motif du retour
+                </Text>
+                <Text variant="bodySmall">{r.motif}</Text>
+              </View>
             ) : null}
-            {r.approuvePar ? <Paire label="Décidé par" valeur={r.approuvePar} /> : null}
-          </View>
 
-          {r.motif ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Motif du retour
+            {r.venteId ? (
+              <View className="mt-4">
+                <Button
+                  variant="outline"
+                  fullWidth
+                  leftIcon="Receipt"
+                  onPress={() => router.push(`/vente/${r.venteId}`)}
+                >
+                  Voir la vente d&apos;origine
+                </Button>
+              </View>
+            ) : null}
+          </Card>
+
+          {/* La raison pour laquelle il n'y a PAS de boutons, quand il n'y en a
+              pas : un écran qui se tait laisse chercher où l'on approuve. */}
+          {!decidable && r.statut === "draft" ? (
+            <View className="flex-row items-start gap-2 px-1">
+              <Icon name="Info" size={16} color="mutedForeground" />
+              <Text variant="caption" className="min-w-0 flex-1">
+                {enFile || aCreer
+                  ? "La décision sera possible une fois ce retour arrivé au serveur."
+                  : "Approuver ou rejeter un retour demande une permission que votre compte n'a pas. Demandez-le au gérant."}
               </Text>
-              <Text variant="bodySmall">{r.motif}</Text>
             </View>
           ) : null}
-
-          {r.venteId ? (
-            <View className="mt-4">
-              <Button
-                variant="outline"
-                fullWidth
-                leftIcon="Receipt"
-                onPress={() => router.push(`/vente/${r.venteId}`)}
-              >
-                Voir la vente d&apos;origine
-              </Button>
-            </View>
-          ) : null}
-        </Card>
-
-        {/* La raison pour laquelle il n'y a PAS de boutons, quand il n'y en a
-            pas : un écran qui se tait laisse chercher où l'on approuve. */}
-        {!decidable && r.statut === "draft" ? (
-          <View className="flex-row items-start gap-2 px-1">
-            <Icon name="Info" size={16} color="mutedForeground" />
-            <Text variant="caption" className="min-w-0 flex-1">
-              {enFile || aCreer
-                ? "La décision sera possible une fois ce retour arrivé au serveur."
-                : "Approuver ou rejeter un retour demande une permission que votre compte n'a pas. Demandez-le au gérant."}
-            </Text>
-          </View>
-        ) : null}
+        </Flux>
       </View>
 
       <AlertDialog

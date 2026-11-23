@@ -17,6 +17,7 @@ import { formatPrice, formatQuantity } from "@vente-facile/core";
 import { useLecture } from "@/data/live";
 import { detailEntrepot } from "@/data/stock";
 import {
+  Flux,
   AppBar, Badge, Button, Card, CardHeader, EmptyState, Screen, Spinner,
   StatStrip, StatStripItem, StatValue, Text,
   useIdDeFiche,
@@ -71,61 +72,63 @@ export function FicheEntrepot() {
       />
 
       <View className="gap-4 p-4">
-        <Card>
-          <Text variant="caption" className="mb-1">
-            Valeur du stock
-          </Text>
-          <StatValue value={formatPrice(e.valeurStock)} />
-        </Card>
-
-        <StatStrip>
-          <StatStripItem label="Produits" value={String(e.produits)} icon="Package" />
-          <StatStripItem
-            label="Unités au total"
-            value={formatQuantity(e.unitesAuTotal)}
-            icon="Boxes"
-          />
-          <StatStripItem
-            label="Stock bas"
-            value={String(e.stockBas)}
-            icon="AlertTriangle"
-            tone={e.stockBas > 0 ? "warn" : undefined}
-          />
-          <StatStripItem
-            label="En rupture"
-            value={String(e.enRupture)}
-            icon="PackageX"
-            tone={e.enRupture > 0 ? "alert" : undefined}
-          />
-        </StatStrip>
-        <Text variant="caption">
-          « Unités au total » additionne des unités de produits différents : elle
-          mesure un volume, pas un nombre de contenants.
-        </Text>
-
-        <Card>
-          <CardHeader title="Réglages" />
-          <View className="gap-1">
-            {e.adresse ? <Text variant="bodySmall">{e.adresse}</Text> : null}
-            {/* Le stock négatif n'existe plus : la phrase qui le réglait par
-                entrepôt cède la place à ce qui, elle, varie - l'état. Un
-                entrepôt désactivé reste lisible et fermé à toute opération. */}
-            <Text variant="caption">
-              {e.actif
-                ? "Le stock ne peut pas descendre sous zéro."
-                : "Entrepôt désactivé : son historique se consulte, aucune opération n'y est possible."}
+        <Flux className="gap-4">
+          <Card>
+            <Text variant="caption" className="mb-1">
+              Valeur du stock
             </Text>
-          </View>
-        </Card>
+            <StatValue value={formatPrice(e.valeurStock)} />
+          </Card>
 
-        <Button
-          variant="outline"
-          fullWidth
-          leftIcon="Boxes"
-          onPress={() => router.push("/rayon")}
-        >
-          Voir les niveaux de stock
-        </Button>
+          <StatStrip>
+            <StatStripItem label="Produits" value={String(e.produits)} icon="Package" />
+            <StatStripItem
+              label="Unités au total"
+              value={formatQuantity(e.unitesAuTotal)}
+              icon="Boxes"
+            />
+            <StatStripItem
+              label="Stock bas"
+              value={String(e.stockBas)}
+              icon="AlertTriangle"
+              tone={e.stockBas > 0 ? "warn" : undefined}
+            />
+            <StatStripItem
+              label="En rupture"
+              value={String(e.enRupture)}
+              icon="PackageX"
+              tone={e.enRupture > 0 ? "alert" : undefined}
+            />
+          </StatStrip>
+          <Text variant="caption">
+            « Unités au total » additionne des unités de produits différents : elle
+            mesure un volume, pas un nombre de contenants.
+          </Text>
+
+          <Card>
+            <CardHeader title="Réglages" />
+            <View className="gap-1">
+              {e.adresse ? <Text variant="bodySmall">{e.adresse}</Text> : null}
+              {/* Le stock négatif n'existe plus : la phrase qui le réglait par
+                  entrepôt cède la place à ce qui, elle, varie - l'état. Un
+                  entrepôt désactivé reste lisible et fermé à toute opération. */}
+              <Text variant="caption">
+                {e.actif
+                  ? "Le stock ne peut pas descendre sous zéro."
+                  : "Entrepôt désactivé : son historique se consulte, aucune opération n'y est possible."}
+              </Text>
+            </View>
+          </Card>
+
+          <Button
+            variant="outline"
+            fullWidth
+            leftIcon="Boxes"
+            onPress={() => router.push("/rayon")}
+          >
+            Voir les niveaux de stock
+          </Button>
+        </Flux>
       </View>
     </Screen>
   );

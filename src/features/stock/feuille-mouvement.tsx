@@ -351,6 +351,13 @@ export function FeuilleNouveauMouvement({
       onFermer={reculer}
       titre={titre}
       retour={surLeFormulaire ? undefined : reculer}
+      pied={
+        surLeFormulaire ? (
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+            {envoi ? "Enregistrement…" : "Enregistrer le mouvement"}
+          </Button>
+        ) : undefined
+      }
     >
       {choix ? (
         <ListeChoix
@@ -623,10 +630,6 @@ export function FeuilleNouveauMouvement({
               message="Il sera appliqué à la synchronisation, et se corrige ensuite par un mouvement inverse."
             />
           ) : null}
-
-          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-            {envoi ? "Enregistrement…" : "Enregistrer le mouvement"}
-          </Button>
         </>
       )}
     </Sheet>

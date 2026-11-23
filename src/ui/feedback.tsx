@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
-import { Button } from "./button";
+import { Button, IconButton } from "./button";
 import { Icon, type IconName } from "./icon";
 import { Text } from "./text";
 import type { Palette } from "./tokens";
@@ -30,12 +30,15 @@ export function Banner({
   title,
   message,
   action,
+  onFermer,
 }: {
   tone?: BannerTone;
   title: string;
   message?: string;
   /** `loading` bloque l'appui ET le dit : un second envoi n'est pas un second cycle. */
   action?: { label: string; onPress: () => void; loading?: boolean };
+  /** Présent : une croix referme le bandeau (un avis qu'on a lu, pas un état durable). */
+  onFermer?: () => void;
 }) {
   const t = BANNER[tone];
   return (
@@ -58,6 +61,13 @@ export function Banner({
           </View>
         ) : null}
       </View>
+      {onFermer ? (
+        // La cible garde ses 44 points ; elle mord sur le rembourrage du bandeau
+        // plutôt que de l'agrandir.
+        <View className="-my-2 -mr-2">
+          <IconButton name="X" label="Fermer" onPress={onFermer} size={18} />
+        </View>
+      ) : null}
     </View>
   );
 }

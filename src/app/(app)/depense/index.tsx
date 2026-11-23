@@ -221,6 +221,7 @@ export default function Depenses() {
             <IconButton
               name="Tag"
               label="Rubriques de caisse"
+              texte="Rubriques"
               onPress={() => router.push("/caisse/categories")}
             />
           ) : undefined

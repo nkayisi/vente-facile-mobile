@@ -48,11 +48,11 @@
 import { RefreshControl, View } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 
+import { useRetraitDesRangees } from "./disposition";
 import { Divider } from "./divider";
-import { EmptyState } from "./feedback";
+import { EmptyState, SkeletonList } from "./feedback";
 import { Icon, type IconName } from "./icon";
 import { Pressable } from "./pressable";
-import { SkeletonList } from "./feedback";
 import { Text } from "./text";
 import { useColor } from "./theme";
 import { HIT } from "./tokens";
@@ -125,6 +125,9 @@ export function DataList<T>({
   selection?: string | null;
 }) {
   const primary = useColor("primary");
+  // Une grille de cartes porte déjà ses marges ; seules des rangées pleine
+  // largeur s'alignent ici sur les cartes de la page (voir `disposition.tsx`).
+  const retrait = useRetraitDesRangees() && colonnes === 1;
 
   return (
     <FlashList
@@ -133,11 +136,24 @@ export function DataList<T>({
       data={donnees}
       extraData={selection}
       keyExtractor={cle}
-      renderItem={({ item }) => rendu(item)}
+      renderItem={({ item }) =>
+        retrait ? <View className="mx-4">{rendu(item)}</View> : rendu(item)
+      }
       ListHeaderComponent={enTete}
       getItemType={typeElement}
       ListFooterComponent={pied}
-      ItemSeparatorComponent={separateur ? () => <Divider /> : undefined}
+      ItemSeparatorComponent={
+        separateur
+          ? () =>
+              retrait ? (
+                <View className="mx-4">
+                  <Divider />
+                </View>
+              ) : (
+                <Divider />
+              )
+          : undefined
+      }
       ListEmptyComponent={
         chargement ? (
           <View className="px-4 py-2">

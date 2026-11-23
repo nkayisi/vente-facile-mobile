@@ -133,36 +133,54 @@ export function FeuilleRetour({
   // refuserait ; le dire ici évite une quarantaine pour rien.
   if (!vente.entrepotId) {
     return (
-      <Sheet ouvert onFermer={onFermer} titre="Retour article">
+      <Sheet ouvert onFermer={onFermer} titre="Retour article"
+        pied={
+          <Button variant="outline" fullWidth onPress={onFermer}>
+            Fermer
+          </Button>
+        }
+      >
         <Banner
           tone="warning"
           title="Cette vente n'a pas d'entrepôt"
           message="La marchandise revient là d'où elle est partie. Sans entrepôt sur la facture, le retour ne peut pas être enregistré depuis le terminal."
         />
-        <Button variant="outline" fullWidth onPress={onFermer}>
-          Fermer
-        </Button>
       </Sheet>
     );
   }
 
   if (plusRienARendre) {
     return (
-      <Sheet ouvert onFermer={onFermer} titre="Retour article">
+      <Sheet ouvert onFermer={onFermer} titre="Retour article"
+        pied={
+          <Button variant="outline" fullWidth onPress={onFermer}>
+            Fermer
+          </Button>
+        }
+      >
         <Banner
           tone="info"
           title="Tout a déjà été rendu"
           message="Chaque article de cette facture a été rendu en totalité. Un retour de plus ferait revenir en stock une marchandise vendue une seule fois."
         />
-        <Button variant="outline" fullWidth onPress={onFermer}>
-          Fermer
-        </Button>
       </Sheet>
     );
   }
 
   return (
-    <Sheet ouvert onFermer={onFermer} titre={`Retour sur ${vente.reference}`}>
+    <Sheet ouvert onFermer={onFermer} titre={`Retour sur ${vente.reference}`}
+        pied={
+          <Button
+          fullWidth
+          size="lg"
+          disabled={bloque}
+          loading={envoi}
+          onPress={() => void valider()}
+        >
+          Enregistrer le retour
+        </Button>
+        }
+      >
       <Text variant="bodySmall">
         Indiquez ce que le client rapporte. Laissez à zéro ce qui reste chez lui.
       </Text>
@@ -281,16 +299,6 @@ export function FeuilleRetour({
             : "À l'approbation, la marchandise reviendra en stock et le montant sortira de la caisse."
         }
       />
-
-      <Button
-        fullWidth
-        size="lg"
-        disabled={bloque}
-        loading={envoi}
-        onPress={() => void valider()}
-      >
-        Enregistrer le retour
-      </Button>
     </Sheet>
   );
 }

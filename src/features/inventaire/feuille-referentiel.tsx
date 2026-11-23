@@ -151,6 +151,21 @@ export function FeuilleReferentiel({
       onFermer={reculer}
       titre={titre}
       retour={panneau === "formulaire" ? undefined : reculer}
+      pied={
+        panneau === "parent" ? undefined : (
+          <Button
+            fullWidth
+            size="lg"
+            // `disabled` UNIQUEMENT pendant l'envoi : un appui doit RÉPONDRE
+            // par un message sous le champ fautif plutôt que de ne rien faire.
+            disabled={envoi}
+            loading={envoi}
+            onPress={() => void valider()}
+          >
+            {cible.mode === "edition" ? "Enregistrer" : "Créer"}
+          </Button>
+        )
+      }
     >
       {panneau === "parent" ? (
         <>
@@ -236,18 +251,6 @@ export function FeuilleReferentiel({
               aide={`Une ${SINGULIER[genre]} inactive n'est plus proposée à la création d'un article.`}
             />
           )}
-
-          <Button
-            fullWidth
-            size="lg"
-            // `disabled` UNIQUEMENT pendant l'envoi : un appui doit RÉPONDRE
-            // par un message sous le champ fautif plutôt que de ne rien faire.
-            disabled={envoi}
-            loading={envoi}
-            onPress={() => void valider()}
-          >
-            {cible.mode === "edition" ? "Enregistrer" : "Créer"}
-          </Button>
         </>
       )}
     </Sheet>

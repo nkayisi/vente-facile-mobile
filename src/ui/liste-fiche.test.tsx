@@ -31,7 +31,7 @@ jest.mock("./theme", () => ({
 }));
 
 import { AppBar } from "./app-bar";
-import { Volet } from "./disposition";
+import { useRetraitDesRangees, Volet } from "./disposition";
 import { useIdDeFiche, useListeFiche } from "./liste-fiche";
 import { Screen } from "./screen";
 
@@ -144,11 +144,11 @@ describe("en deux colonnes", () => {
     expect(montagesFiche).toBe(2);
   });
 
-  it("referme le volet par la croix de la barre, sans quitter la liste", () => {
+  it("revient à la liste par la flèche de la barre, sans quitter l'écran", () => {
     const { rendu } = rendre(1664);
     act(() => api.ouvrir("v1"));
-    const croix = rendu.root.findByProps({ accessibilityLabel: "Fermer la fiche" });
-    act(() => croix.props.onPress());
+    const fleche = rendu.root.findByProps({ accessibilityLabel: "Revenir à la liste" });
+    act(() => fleche.props.onPress());
     expect(mockRouter.back).not.toHaveBeenCalled();
     expect(api.selection).toBeNull();
     expect(texte(rendu)).toContain("Choisissez une vente");
@@ -162,6 +162,49 @@ describe("en deux colonnes", () => {
       .map((v) => v.props.style as Record<string, unknown> | undefined)
       .find((st) => st !== undefined && st !== null && "paddingTop" in st);
     expect(pad).toMatchObject({ paddingTop: 0, paddingBottom: 0 });
+  });
+});
+
+describe("les rangées de la colonne liste", () => {
+  function Sonde() {
+    return <Text testID="retrait">{String(useRetraitDesRangees())}</Text>;
+  }
+  function HoteAvecEcran() {
+    const liste = useListeFiche({
+      chemin: (id) => `/vente/${id}`,
+      Fiche,
+      vide: { icon: "Receipt", titre: "Choisissez une vente" },
+    });
+    return (
+      <>
+        {liste.rendre(
+          <Screen padded={false}>
+            <Sonde />
+          </Screen>
+        )}
+      </>
+    );
+  }
+  const retraitA = (largeur: number) => {
+    let rendu!: ReturnType<typeof create>;
+    act(() => {
+      rendu = create(
+        <Volet largeur={largeur}>
+          <HoteAvecEcran />
+        </Volet>
+      );
+    });
+    return rendu.root.findByProps({ testID: "retrait" }).props.children;
+  };
+
+  it("s'alignent sur la recherche et les boutons quand la fiche est à côté", () => {
+    // Le volet fait moins de 600 points : sans ce contexte, `Screen` s'y croit
+    // sur un téléphone et laisse les rangées dépasser de seize points.
+    expect(retraitA(1200)).toBe("true");
+  });
+
+  it("restent bord à bord sur un téléphone, où rien ne change", () => {
+    expect(retraitA(448)).toBe("false");
   });
 });
 

@@ -18,6 +18,7 @@ import { detailFournisseur } from "@/data/contact-detail";
 import { useMonnaie } from "@/data/devises";
 import { useLecture } from "@/data/live";
 import {
+  Flux,
   AppBar,
   Badge,
   Banner,
@@ -78,51 +79,53 @@ export function FicheFournisseur() {
       />
 
       <View className="gap-4 p-4">
-        {f.solde !== 0 ? (
-          <Card>
-            <Text variant="caption" className="mb-1">
-              {f.solde > 0 ? "Dû au fournisseur" : "Avance versée"}
-            </Text>
-            <StatValue
-              value={money.money(Math.abs(f.solde), f.devise)}
-              tone={f.solde > 0 ? "destructive" : "chart2"}
-            />
+        <Flux className="gap-4">
+          {f.solde !== 0 ? (
+            <Card>
+              <Text variant="caption" className="mb-1">
+                {f.solde > 0 ? "Dû au fournisseur" : "Avance versée"}
+              </Text>
+              <StatValue
+                value={money.money(Math.abs(f.solde), f.devise)}
+                tone={f.solde > 0 ? "destructive" : "chart2"}
+              />
+            </Card>
+          ) : null}
+
+          <Card className="p-0">
+            <View className="p-4 pb-0">
+              <CardHeader title="Coordonnées" />
+            </View>
+            {f.raisonSociale ? (
+              <ListItem title="Raison sociale" subtitle={f.raisonSociale} icon="Building2" />
+            ) : null}
+            {f.contact ? (
+              <ListItem title="Personne de contact" subtitle={f.contact} icon="User" />
+            ) : null}
+            {f.telephone ? (
+              <ListItem title="Téléphone" subtitle={f.telephone} icon="Phone" />
+            ) : null}
+            {f.email ? <ListItem title="E-mail" subtitle={f.email} icon="Mail" /> : null}
+            {f.adresse ? <ListItem title="Adresse" subtitle={f.adresse} icon="MapPin" /> : null}
+            {f.numeroImpot ? (
+              <ListItem title="Numéro d'impôt" subtitle={f.numeroImpot} icon="FileText" />
+            ) : null}
+            {f.devise ? <ListItem title="Devise" subtitle={f.devise} icon="Coins" /> : null}
+            {f.banque || f.compteBancaire ? (
+              <ListItem
+                title="Banque"
+                subtitle={[f.banque, f.compteBancaire].filter(Boolean).join(" · ")}
+                icon="Wallet"
+              />
+            ) : null}
           </Card>
-        ) : null}
 
-        <Card className="p-0">
-          <View className="p-4 pb-0">
-            <CardHeader title="Coordonnées" />
-          </View>
-          {f.raisonSociale ? (
-            <ListItem title="Raison sociale" subtitle={f.raisonSociale} icon="Building2" />
-          ) : null}
-          {f.contact ? (
-            <ListItem title="Personne de contact" subtitle={f.contact} icon="User" />
-          ) : null}
-          {f.telephone ? (
-            <ListItem title="Téléphone" subtitle={f.telephone} icon="Phone" />
-          ) : null}
-          {f.email ? <ListItem title="E-mail" subtitle={f.email} icon="Mail" /> : null}
-          {f.adresse ? <ListItem title="Adresse" subtitle={f.adresse} icon="MapPin" /> : null}
-          {f.numeroImpot ? (
-            <ListItem title="Numéro d'impôt" subtitle={f.numeroImpot} icon="FileText" />
-          ) : null}
-          {f.devise ? <ListItem title="Devise" subtitle={f.devise} icon="Coins" /> : null}
-          {f.banque || f.compteBancaire ? (
-            <ListItem
-              title="Banque"
-              subtitle={[f.banque, f.compteBancaire].filter(Boolean).join(" · ")}
-              icon="Wallet"
-            />
-          ) : null}
-        </Card>
-
-        <Banner
-          tone="info"
-          title="Les achats n'ont encore aucun écran"
-          message="Commandes, réceptions, règlements et retours fournisseurs existent côté serveur, mais ni le back-office ni le terminal ne les affichent aujourd'hui."
-        />
+          <Banner
+            tone="info"
+            title="Les achats se gèrent au back-office"
+            message="Commandes, réceptions, règlements et retours fournisseurs n'ont pas d'écran sur ce terminal."
+          />
+        </Flux>
       </View>
     </Screen>
   );

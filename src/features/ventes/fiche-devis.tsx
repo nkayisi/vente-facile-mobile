@@ -35,6 +35,7 @@ import {
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AlertDialog, AppBar, Badge, Banner, Button, Card, CardHeader, Divider,
   EmptyState, Screen, Spinner, StatValue, Text, useToast,
   useIdDeFiche,
@@ -221,94 +222,96 @@ export function FicheDevis() {
           />
         ) : null}
 
-        <Card>
-          <Text variant="caption" className="mb-1">
-            Total
-          </Text>
-          <StatValue value={money.money(d.total, money.primaryCode)} />
-        </Card>
+        <Flux className="gap-4">
+          <Card>
+            <Text variant="caption" className="mb-1">
+              Total
+            </Text>
+            <StatValue value={money.money(d.total, money.primaryCode)} />
+          </Card>
 
-        {convertible ? (
-          <Button
-            fullWidth
-            size="lg"
-            leftIcon="ShoppingCart"
-            onPress={() => setConfirmation(true)}
-          >
-            Convertir en vente
-          </Button>
-        ) : null}
+          {convertible ? (
+            <Button
+              fullWidth
+              size="lg"
+              leftIcon="ShoppingCart"
+              onPress={() => setConfirmation(true)}
+            >
+              Convertir en vente
+            </Button>
+          ) : null}
 
-        <Card>
-          <CardHeader title={`Articles (${d.lignes.length})`} />
-          <View>
-            {d.lignes.map((l, i) => (
-              <View key={l.id}>
-                {i > 0 ? <Divider /> : null}
-                <View className="flex-row items-start justify-between gap-3 py-3">
-                  <View className="min-w-0 flex-1">
-                    <Text variant="bodySmall" className="font-sans-medium">
-                      {l.produit}
-                    </Text>
-                    <Text variant="caption">
-                      {`${l.quantite} × ${money.money(l.prixUnitaire, money.primaryCode)}`}
+          <Card>
+            <CardHeader title={`Articles (${d.lignes.length})`} />
+            <View>
+              {d.lignes.map((l, i) => (
+                <View key={l.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <View className="flex-row items-start justify-between gap-3 py-3">
+                    <View className="min-w-0 flex-1">
+                      <Text variant="bodySmall" className="font-sans-medium">
+                        {l.produit}
+                      </Text>
+                      <Text variant="caption">
+                        {`${l.quantite} × ${money.money(l.prixUnitaire, money.primaryCode)}`}
+                      </Text>
+                    </View>
+                    <Text variant="bodySmall" numeric className="shrink-0 font-sans-medium">
+                      {money.money(l.total, money.primaryCode)}
                     </Text>
                   </View>
-                  <Text variant="bodySmall" numeric className="shrink-0 font-sans-medium">
-                    {money.money(l.total, money.primaryCode)}
-                  </Text>
                 </View>
+              ))}
+            </View>
+          </Card>
+
+          <Card>
+            <CardHeader title="Montants" />
+            <View>
+              <Paire label="Sous-total" valeur={money.money(d.sousTotal, money.primaryCode)} />
+              {d.taxes > 0 ? (
+                <Paire label="Taxes" valeur={money.money(d.taxes, money.primaryCode)} />
+              ) : null}
+              {d.remise > 0 ? (
+                <Paire label="Remise" valeur={`-${money.money(d.remise, money.primaryCode)}`} />
+              ) : null}
+              <View className="my-2">
+                <Divider />
               </View>
-            ))}
-          </View>
-        </Card>
+              <Paire label="Total" valeur={money.money(d.total, money.primaryCode)} />
+            </View>
+          </Card>
 
-        <Card>
-          <CardHeader title="Montants" />
-          <View>
-            <Paire label="Sous-total" valeur={money.money(d.sousTotal, money.primaryCode)} />
-            {d.taxes > 0 ? (
-              <Paire label="Taxes" valeur={money.money(d.taxes, money.primaryCode)} />
+          <Card>
+            <CardHeader title="Informations" />
+            <View>
+              <Paire
+                label="Créé le"
+                valeur={d.date ? formatDateTimeFr(d.date) : "-"}
+              />
+              <Paire
+                label="Valable jusqu'au"
+                valeur={d.valideJusquau ? formatDateFr(d.valideJusquau) : "-"}
+              />
+            </View>
+            {d.notes ? (
+              <View className="mt-3">
+                <Text variant="caption" className="mb-1">
+                  Notes
+                </Text>
+                <Text variant="bodySmall">{d.notes}</Text>
+              </View>
             ) : null}
-            {d.remise > 0 ? (
-              <Paire label="Remise" valeur={`-${money.money(d.remise, money.primaryCode)}`} />
+            {d.conditions ? (
+              <View className="mt-3">
+                <Text variant="caption" className="mb-1">
+                  Conditions
+                </Text>
+                <Text variant="bodySmall">{d.conditions}</Text>
+              </View>
             ) : null}
-            <View className="my-2">
-              <Divider />
-            </View>
-            <Paire label="Total" valeur={money.money(d.total, money.primaryCode)} />
-          </View>
-        </Card>
-
-        <Card>
-          <CardHeader title="Informations" />
-          <View>
-            <Paire
-              label="Créé le"
-              valeur={d.date ? formatDateTimeFr(d.date) : "-"}
-            />
-            <Paire
-              label="Valable jusqu'au"
-              valeur={d.valideJusquau ? formatDateFr(d.valideJusquau) : "-"}
-            />
-          </View>
-          {d.notes ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Notes
-              </Text>
-              <Text variant="bodySmall">{d.notes}</Text>
-            </View>
-          ) : null}
-          {d.conditions ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Conditions
-              </Text>
-              <Text variant="bodySmall">{d.conditions}</Text>
-            </View>
-          ) : null}
-        </Card>
+          </Card>
+        </Flux>
       </View>
 
       <AlertDialog

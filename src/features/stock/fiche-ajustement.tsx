@@ -28,6 +28,7 @@ import { enAttenteSurStock, transitionAjustement } from "@/features/stock/actes"
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AlertDialog, AppBar, Badge, Button, Card, CardHeader, Divider,
   EmptyState, Mesure, Screen, Spinner, StatValue, Text, useToast,
   useIdDeFiche,
@@ -170,64 +171,66 @@ export function FicheAjustement() {
           consequence="Le statut ne changera qu'après."
         />
 
-        <Card>
-          <Text variant="caption" className="mb-1">
-            Valeur de l&apos;écart
-          </Text>
-          <StatValue
-            value={formatPrice(a.valeurEcart)}
-            tone={a.valeurEcart < 0 ? "destructive" : a.valeurEcart > 0 ? "success" : "foreground"}
-          />
-          {a.motif ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Motif
-              </Text>
-              <Text variant="bodySmall">{a.motif}</Text>
-            </View>
-          ) : null}
-        </Card>
+        <Flux className="gap-4">
+          <Card>
+            <Text variant="caption" className="mb-1">
+              Valeur de l&apos;écart
+            </Text>
+            <StatValue
+              value={formatPrice(a.valeurEcart)}
+              tone={a.valeurEcart < 0 ? "destructive" : a.valeurEcart > 0 ? "success" : "foreground"}
+            />
+            {a.motif ? (
+              <View className="mt-3">
+                <Text variant="caption" className="mb-1">
+                  Motif
+                </Text>
+                <Text variant="bodySmall">{a.motif}</Text>
+              </View>
+            ) : null}
+          </Card>
 
-        <Card>
-          <CardHeader title={`Articles (${a.lignes.length})`} />
-          <View>
-            {a.lignes.map((l, i) => (
-              <View key={l.id}>
-                {i > 0 ? <Divider /> : null}
-                <View className="py-3">
-                  <Text variant="bodySmall" className="font-sans-medium">
-                    {l.produit}
-                  </Text>
-                  {l.sku ? <Text variant="caption">{l.sku}</Text> : null}
-                  <View className="mt-1 flex-row items-baseline justify-between gap-3">
-                    <Text variant="caption" numberOfLines={1} className="min-w-0 flex-1">
-                      {`Théorique ${l.attenduAffiche} · Compté ${l.compteAffiche}`}
+          <Card>
+            <CardHeader title={`Articles (${a.lignes.length})`} />
+            <View>
+              {a.lignes.map((l, i) => (
+                <View key={l.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <View className="py-3">
+                    <Text variant="bodySmall" className="font-sans-medium">
+                      {l.produit}
                     </Text>
-                    <Text
-                      variant="bodySmall"
-                      numeric
-                      className={`shrink-0 font-sans-medium ${
+                    {l.sku ? <Text variant="caption">{l.sku}</Text> : null}
+                    <View className="mt-1 flex-row items-baseline justify-between gap-3">
+                      <Text variant="caption" numberOfLines={1} className="min-w-0 flex-1">
+                        {`Théorique ${l.attenduAffiche} · Compté ${l.compteAffiche}`}
+                      </Text>
+                      <Text
+                        variant="bodySmall"
+                        numeric
+                        className={`shrink-0 font-sans-medium ${
                         l.ecart < 0 ? "text-destructive" : l.ecart > 0 ? "text-success" : ""
                       }`}
-                    >
-                      {l.ecartAffiche}
-                    </Text>
+                      >
+                        {l.ecartAffiche}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
-          </View>
-        </Card>
+              ))}
+            </View>
+          </Card>
 
-        <Card>
-          <CardHeader title="Informations" />
-          <View className="gap-0.5">
-            <Text variant="caption">{`Créé le ${a.cree ? formatDateTimeFr(a.cree) : "-"}`}</Text>
-            {a.approuveLe ? (
-              <Text variant="caption">{`Approuvé le ${formatDateTimeFr(a.approuveLe)}`}</Text>
-            ) : null}
-          </View>
-        </Card>
+          <Card>
+            <CardHeader title="Informations" />
+            <View className="gap-0.5">
+              <Text variant="caption">{`Créé le ${a.cree ? formatDateTimeFr(a.cree) : "-"}`}</Text>
+              {a.approuveLe ? (
+                <Text variant="caption">{`Approuvé le ${formatDateTimeFr(a.approuveLe)}`}</Text>
+              ) : null}
+            </View>
+          </Card>
+        </Flux>
       </View>
 
       <AlertDialog

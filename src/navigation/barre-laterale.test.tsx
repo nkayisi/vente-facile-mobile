@@ -47,7 +47,10 @@ jest.mock("@/ui", () => {
 });
 jest.mock("./menu-lateral", () => ({ MenuLateral: () => null }));
 jest.mock("./tiroir", () => ({ useTiroir: () => ({ ouvrir: () => {} }) }));
-jest.mock("@/session/provider", () => ({ useSession: () => ({ can: () => true }) }));
+jest.mock("@/session/provider", () => ({
+  useSession: () => ({ can: () => true, snapshot: { user: { full_name: "Awa Mbuyi" } } }),
+}));
+jest.mock("@/session/deconnexion", () => ({ useDeconnexion: () => ({ demander: () => {} }) }));
 jest.mock("@/data/live", () => ({ useLecture: () => ({ donnees: null }) }));
 jest.mock("@/sync", () => ({ countByState: () => null }));
 jest.mock("expo-router", () => ({ usePathname: () => "/" }));
@@ -110,13 +113,49 @@ describe("la coquille adaptative", () => {
     mockDisposition.navigation = "laterale";
     mockDisposition.largeur = 1920;
     Object.assign(mockMarges, { gauche: 24, droite: 48 });
-    expect(rendre().root.findByType(Volet).props.largeur).toBe(1920 - 256 - 24 - 48);
+    // La barre suit la fenêtre : 320 points sur 1 920.
+    expect(rendre().root.findByType(Volet).props.largeur).toBe(1920 - 320 - 24 - 48);
   });
 
   it("donne au rail ses quatre-vingts points", () => {
     mockDisposition.navigation = "rail";
     mockDisposition.largeur = 800;
     expect(rendre().root.findByType(Volet).props.largeur).toBe(800 - 80);
+  });
+
+  /**
+   * ⚠ Une entrée qui n'existe que derrière « Menu » ne se trouve pas : c'est
+   * ainsi qu'une opération refusée restait sans lecteur sur une tablette.
+   */
+  it("porte toutes les destinations sur le rail, « Cet appareil » compris", () => {
+    mockDisposition.navigation = "rail";
+    mockDisposition.largeur = 800;
+    const descriptions = rendre()
+      .root.findAll((n) => typeof n.props.accessibilityLabel === "string" && n.props.accessibilityRole === "link")
+      .map((n) => n.props.accessibilityLabel as string);
+    for (const attendu of [
+      "Point de vente",
+      "Tableau de bord",
+      "Paramètres",
+      "Ma journée",
+      "Synchronisation",
+      "Opérations à corriger",
+      "Imprimante",
+      "Diagnostic d'affichage",
+      "Se déconnecter",
+    ]) {
+      expect(descriptions).toContain(attendu);
+    }
+    // L'avatar de la barre du haut y mène déjà.
+    expect(descriptions).not.toContain("Mon profil");
+  });
+
+  it("ouvre le rail par le bouton qui déplie le menu, plus par un hamburger", () => {
+    mockDisposition.navigation = "rail";
+    mockDisposition.largeur = 800;
+    const racine = rendre().root;
+    expect(racine.findAllByProps({ accessibilityLabel: "Déplier le menu" }).length).toBeGreaterThan(0);
+    expect(racine.findAllByProps({ accessibilityLabel: "Ouvrir le menu complet" })).toHaveLength(0);
   });
 
   it("laisse toute la largeur au téléphone, sans marge latérale", () => {

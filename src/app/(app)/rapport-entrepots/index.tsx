@@ -114,8 +114,7 @@ export default function RapportEntrepotsEcran() {
   ];
 
   return (
-    <Screen gabarit="large"
-      scroll
+    <Screen scroll
       padded={false}
       onRefresh={() => void charger("rafraichir")}
       refreshing={rafraichissement}

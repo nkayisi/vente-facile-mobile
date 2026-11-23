@@ -2,6 +2,9 @@
  * Barre du haut : hamburger à gauche, un emplacement libre, la bascule de
  * thème et l'avatar à droite.
  *
+ * Là où la largeur le permet, chaque bouton écrit son libellé à côté de son
+ * icône (`cible-de-barre.ts`).
+ *
  * Miroir de `components/layout/dashboard-header.tsx` en rendu étroit. Le web y
  * met aussi une salutation, mais elle est dans un `hidden sm:block` : **à 390
  * points le back-office n'affiche que le hamburger et l'avatar**, et c'est
@@ -33,8 +36,10 @@ import { View } from "react-native";
 
 import { Avatar } from "./avatar";
 import { BasculeTheme } from "./bascule-theme";
+import { styleDeCible, useLibellesDeBarre } from "./cible-de-barre";
 import { Icon } from "./icon";
 import { Pressable } from "./pressable";
+import { Text } from "./text";
 import { HIT } from "./tokens";
 import { useMargesSysteme } from "./zone-sure";
 
@@ -70,6 +75,7 @@ export function TopBar({
   onAvatar?: () => void;
 }) {
   const marges = useMargesSysteme();
+  const avecLibelle = useLibellesDeBarre();
   return (
     <View
       className="flex-row items-center justify-between border-b border-border bg-card px-2"
@@ -111,10 +117,15 @@ export function TopBar({
           // recouvrir, et un doigt tombé dans la couture changerait le thème
           // au lieu d'ouvrir le compte. Voir `ui/bascule-theme.tsx`.
           hitSlop={0}
-          className="items-center justify-center"
-          style={{ width: HIT.min, height: HIT.min }}
+          className="flex-row items-center justify-center gap-2"
+          style={styleDeCible(avecLibelle)}
         >
           <Avatar nom={nomUtilisateur} taille={32} />
+          {avecLibelle && nomUtilisateur ? (
+            <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
+              {nomUtilisateur}
+            </Text>
+          ) : null}
         </Pressable>
       </View>
     </View>

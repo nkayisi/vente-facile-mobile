@@ -131,6 +131,11 @@ export function FeuilleCategorieCaisse({
       onFermer={retour ?? onFermer}
       retour={retour}
       titre={fiche ? `Modifier ${fiche.nom}` : `Nouveau ${quoi}`}
+      pied={
+        <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
+          {fiche ? "Enregistrer" : "Créer"}
+        </Button>
+      }
     >
       <FormField
         label="Nom"
@@ -202,10 +207,6 @@ export function FeuilleCategorieCaisse({
           }
         />
       ) : null}
-
-      <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
-        {fiche ? "Enregistrer" : "Créer"}
-      </Button>
       <Text variant="caption">
         {fiche
           ? "La correction s'applique tout de suite ici et partira à la prochaine synchronisation."

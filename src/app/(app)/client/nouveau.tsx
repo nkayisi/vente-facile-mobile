@@ -28,6 +28,7 @@ import { useLecture } from "@/data/live";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import type { EtatEnvoi } from "@/sync";
 import {
+  Flux,
   AppBar,
   Banner,
   Button,
@@ -186,121 +187,123 @@ function FormulaireClient({
             consequence="Le formulaire part de ce que vous aviez saisi. Le comptoir appliquera le nouveau plafond après l'envoi."
           />
         ) : null}
-        <Card>
-          <FormField label="Type de client">
-            <Segmented
-              options={[
-                { valeur: "individual", label: "Particulier", icon: "User" },
-                { valeur: "business", label: "Entreprise", icon: "Building2" },
-              ]}
-              valeur={type}
-              onChange={(v) => setType(v as TypeClient)}
-            />
-          </FormField>
-
-          <RangeeChamps>
-            <FormField
-              label={type === "business" ? "Nom de l'entreprise" : "Nom complet"}
-              required
-              error={nom.length > 0 && nomManquant ? "Le nom est obligatoire." : undefined}
-            >
-              <Input
-                value={nom}
-                onChangeText={setNom}
-                placeholder={type === "business" ? "Ets Kalume & Fils" : "Jean Mukendi"}
-                autoFocus
+        <Flux className="gap-4">
+          <Card>
+            <FormField label="Type de client">
+              <Segmented
+                options={[
+                  { valeur: "individual", label: "Particulier", icon: "User" },
+                  { valeur: "business", label: "Entreprise", icon: "Building2" },
+                ]}
+                valeur={type}
+                onChange={(v) => setType(v as TypeClient)}
               />
             </FormField>
 
-            <FormField label="Téléphone" required>
-              <Input
-                value={telephone}
-                onChangeText={setTelephone}
-                keyboardType="phone-pad"
-                placeholder="0900000000"
-              />
-            </FormField>
-          </RangeeChamps>
-
-          {type === "business" ? (
             <RangeeChamps>
-              <FormField label="Raison sociale">
-                <Input value={raisonSociale} onChangeText={setRaisonSociale} />
+              <FormField
+                label={type === "business" ? "Nom de l'entreprise" : "Nom complet"}
+                required
+                error={nom.length > 0 && nomManquant ? "Le nom est obligatoire." : undefined}
+              >
+                <Input
+                  value={nom}
+                  onChangeText={setNom}
+                  placeholder={type === "business" ? "Ets Kalume & Fils" : "Jean Mukendi"}
+                  autoFocus
+                />
               </FormField>
-              <FormField label="Numéro d'impôt">
-                <Input value={numeroImpot} onChangeText={setNumeroImpot} />
+
+              <FormField label="Téléphone" required>
+                <Input
+                  value={telephone}
+                  onChangeText={setTelephone}
+                  keyboardType="phone-pad"
+                  placeholder="0900000000"
+                />
               </FormField>
             </RangeeChamps>
-          ) : null}
 
-          <RangeeChamps>
-            <FormField label="E-mail">
+            {type === "business" ? (
+              <RangeeChamps>
+                <FormField label="Raison sociale">
+                  <Input value={raisonSociale} onChangeText={setRaisonSociale} />
+                </FormField>
+                <FormField label="Numéro d'impôt">
+                  <Input value={numeroImpot} onChangeText={setNumeroImpot} />
+                </FormField>
+              </RangeeChamps>
+            ) : null}
+
+            <RangeeChamps>
+              <FormField label="E-mail">
+                <Input
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </FormField>
+
+              <FormField label="Adresse">
+                <Input value={adresse} onChangeText={setAdresse} />
+              </FormField>
+            </RangeeChamps>
+
+            <FormField label="Notes">
+              <Input value={notes} onChangeText={setNotes} />
+            </FormField>
+          </Card>
+
+          <Card>
+            <Text variant="label" className="mb-3 uppercase tracking-wide text-muted-foreground">
+              Conditions de crédit
+            </Text>
+
+            <View className="flex-row items-start justify-between gap-4">
+              <View className="min-w-0 flex-1">
+                <Text variant="bodySmall" className="font-sans-medium">
+                  Autoriser les achats à crédit
+                </Text>
+                <Text variant="caption" className="mt-0.5">
+                  Désactivé, ce client doit régler intégralement chaque vente :
+                  aucune facture ne peut rester ouverte à son nom.
+                </Text>
+              </View>
+              <Switch valeur={creditAutorise} onChange={setCreditAutorise} />
+            </View>
+
+            <View className="my-3">
+              <Divider />
+            </View>
+
+            <FormField
+              label="Montant maximum autorisé à crédit"
+              hint="Vide ou 0 signifie « sans plafond », pas « crédit refusé »."
+              error={refusPlafond}
+            >
               <Input
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
+                value={plafond}
+                onChangeText={setPlafond}
+                keyboardType="decimal-pad"
+                placeholder="0"
+                editable={creditAutorise}
               />
             </FormField>
+          </Card>
 
-            <FormField label="Adresse">
-              <Input value={adresse} onChangeText={setAdresse} />
-            </FormField>
-          </RangeeChamps>
-
-          <FormField label="Notes">
-            <Input value={notes} onChangeText={setNotes} />
-          </FormField>
-        </Card>
-
-        <Card>
-          <Text variant="label" className="mb-3 uppercase tracking-wide text-muted-foreground">
-            Conditions de crédit
-          </Text>
-
-          <View className="flex-row items-start justify-between gap-4">
-            <View className="min-w-0 flex-1">
-              <Text variant="bodySmall" className="font-sans-medium">
-                Autoriser les achats à crédit
-              </Text>
-              <Text variant="caption" className="mt-0.5">
-                Désactivé, ce client doit régler intégralement chaque vente :
-                aucune facture ne peut rester ouverte à son nom.
-              </Text>
-            </View>
-            <Switch valeur={creditAutorise} onChange={setCreditAutorise} />
-          </View>
-
-          <View className="my-3">
-            <Divider />
-          </View>
-
-          <FormField
-            label="Montant maximum autorisé à crédit"
-            hint="Vide ou 0 signifie « sans plafond », pas « crédit refusé »."
-            error={refusPlafond}
-          >
-            <Input
-              value={plafond}
-              onChangeText={setPlafond}
-              keyboardType="decimal-pad"
-              placeholder="0"
-              editable={creditAutorise}
+          {enModification ? null : (
+            <Banner
+              tone="info"
+              title="Le code est attribué par le serveur"
+              message="Il est unique dans l'établissement. Vous pouvez déjà vendre à ce client : la vente et sa création partiront ensemble."
             />
-          </FormField>
-        </Card>
+          )}
 
-        {enModification ? null : (
-          <Banner
-            tone="info"
-            title="Le code est attribué par le serveur"
-            message="Il est unique dans l'établissement. Vous pouvez déjà vendre à ce client : la vente et sa création partiront ensemble."
-          />
-        )}
-
-        <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-          {envoi ? "Enregistrement…" : enModification ? "Enregistrer les modifications" : "Créer le client"}
-        </Button>
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+            {envoi ? "Enregistrement…" : enModification ? "Enregistrer les modifications" : "Créer le client"}
+          </Button>
+        </Flux>
       </View>
     </Screen>
   );

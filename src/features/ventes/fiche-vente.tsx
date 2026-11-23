@@ -50,6 +50,7 @@ import { renduDeLaVente, resteARendre } from "@/features/ventes/rendu";
 import { STATUT_RETOUR } from "@/data/retours-devis";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AlertDialog,
   AppBar,
   Badge,
@@ -456,202 +457,204 @@ export function FicheVente() {
           </View>
         ) : null}
 
-        <Card>
-          <CardHeader title="Informations" />
-          <View>
-            <Paire label="Référence" valeur={vente.reference} />
-            <Paire label="Client" valeur={vente.client?.nom ?? "Client anonyme"} />
-            {vente.client?.telephone ? (
-              <Paire label="Téléphone" valeur={vente.client.telephone} />
-            ) : null}
-            <Paire label="Date de vente" valeur={formatDateTimeFr(vente.date ?? new Date())} />
-            {vente.echeance ? (
-              // ⚠ Une échéance est un JOUR, que le tirage range en minuit UTC :
-              // lue en heure locale, elle affichait « 05 déc., 01:00 », une
-              // heure qui n'existe pas, et la veille à l'ouest de Greenwich.
-              <Paire
-                label="Échéance"
-                valeur={formatDateFr(jourDepuisMinuitUTC(vente.echeance) ?? vente.echeance)}
-              />
-            ) : null}
-            {vente.caisse ? <Paire label="Caisse" valeur={vente.caisse} /> : null}
-            {vente.entrepot ? <Paire label="Entrepôt" valeur={vente.entrepot} /> : null}
-          </View>
-          {vente.notes ? (
-            <>
-              <Divider />
-              <View className="p-4">
-                <Text variant="caption" className="mb-1">
-                  Notes
-                </Text>
-                <Text variant="bodySmall">{vente.notes}</Text>
-              </View>
-            </>
-          ) : null}
-        </Card>
-
-        <Card>
-          <CardHeader title="Paiement" />
-          <View>
-            <Paire label="Sous-total" valeur={money.money(vente.sousTotal, vente.devise)} />
-            {vente.taxes > 0 ? (
-              <Paire label="Taxes" valeur={money.money(vente.taxes, vente.devise)} />
-            ) : null}
-            {vente.remiseCommerciale > 0 ? (
-              <Paire
-                label={
-                  vente.remisePourcent > 0
-                    ? `Remise (${vente.remisePourcent} %)`
-                    : "Remise"
-                }
-                valeur={`-${money.money(vente.remiseCommerciale, vente.devise)}`}
-                ton="primary"
-              />
-            ) : null}
-            {vente.remiseFidelite > 0 ? (
-              <Paire
-                label="Remise fidélité"
-                valeur={`-${money.money(vente.remiseFidelite, vente.devise)}`}
-                ton="primary"
-              />
-            ) : null}
-            <View className="my-2">
-              <Divider />
-            </View>
-            <Paire label="Total" valeur={money.money(vente.total, vente.devise)} fort />
-            <Paire
-              label="Montant payé"
-              valeur={money.money(vente.paye, vente.devise)}
-              ton="success"
-            />
-            <Paire
-              label="Reste à payer"
-              valeur={money.money(vente.resteAPayer, vente.devise)}
-              ton={vente.resteAPayer > 0 ? "destructive" : "muted"}
-            />
-            {vente.monnaieRendue > 0 ? (
-              <Paire
-                label="Monnaie rendue"
-                valeur={money.money(vente.monnaieRendue, vente.deviseMonnaie)}
-              />
-            ) : null}
-          </View>
-        </Card>
-
-        <Card>
-          <CardHeader title={`Articles (${vente.lignes.length})`} />
-          <View>
-            {vente.lignes.length === 0 ? (
-              <Text variant="caption">Aucun article.</Text>
-            ) : (
-              vente.lignes.map((l, i) => (
-                <View key={l.id}>
-                  {i > 0 ? <Divider /> : null}
-                  <LigneArticle
-                    ligne={l}
-                    devise={vente.devise}
-                    rendu={rendu?.parLigne.get(l.id) ?? 0}
-                  />
-                </View>
-              ))
-            )}
-          </View>
-        </Card>
-
-        {/* ┌──────────────────────────────────────────────────────────────┐
-            │ LA FACTURE NE DISAIT RIEN DE SES RETOURS.                    │
-            │                                                              │
-            │ Un retour approuvé fait revenir de la marchandise en stock   │
-            │ et sortir de l'argent de la caisse, et il ne laissait aucune │
-            │ trace ici : la fiche continuait d'annoncer une vente pleine, │
-            │ et proposait d'en rendre le contenu une seconde fois. C'est  │
-            │ la première chose à voir quand on relit une facture pour     │
-            │ comprendre un écart.                                         │
-            │                                                              │
-            │ Les retours ENCORE EN FILE y sont, avec leur mention : ils   │
-            │ comptent déjà dans ce qu'on ne peut plus rendre.             │
-            └──────────────────────────────────────────────────────────────┘ */}
-        {rendu && rendu.retours.length > 0 ? (
-          <Card className="p-0">
-            <View className="p-4 pb-0">
-              <CardHeader
-                title={`Retours (${rendu.retours.length})`}
-                subtitle={
-                  rendablesRestantes.length === 0
-                    ? "Tout ce qui pouvait être rendu l'a été."
-                    : "Touchez un retour pour voir sa décision."
-                }
-              />
-            </View>
-            {rendu.retours.map((r, i) => {
-              const st = STATUT_RETOUR[r.statut];
-              const envoiRetour = libelleEnvoi(r.envoi);
-              return (
-                <View key={r.id}>
-                  {i > 0 ? <Divider /> : null}
-                  <DataRow
-                    principal={r.reference}
-                    secondaire={r.date ? formatDateTimeFr(r.date) : null}
-                    badge={
-                      envoiRetour ? (
-                        <Badge tone={envoiRetour.ton === "warning" ? "warning" : "neutral"}>
-                          {envoiRetour.court}
-                        </Badge>
-                      ) : st ? (
-                        <Badge tone={st.ton}>{st.label}</Badge>
-                      ) : undefined
-                    }
-                    valeur={<Mesure value={money.money(r.montant, vente.devise)} />}
-                    onPress={() => router.push(`/retour/${r.id}`)}
-                  />
-                </View>
-              );
-            })}
-          </Card>
-        ) : null}
-
-        {vente.reglements.length > 0 ? (
+        <Flux className="gap-4">
           <Card>
-            <CardHeader title="Règlements reçus" />
+            <CardHeader title="Informations" />
             <View>
-              {vente.reglements.map((p, i) => (
-                <View key={p.id}>
-                  {i > 0 ? <Divider /> : null}
-                  <View className="flex-row items-center gap-3 py-3">
-                    <Icon name="CreditCard" size={18} color="mutedForeground" />
-                    <View className="min-w-0 flex-1">
-                      <Text variant="bodySmall" className="font-sans-medium">
-                        {p.methode}
-                      </Text>
-                      <Text variant="caption" numberOfLines={1}>
-                        {[
-                          p.numeroRecu,
-                          p.date ? formatDateTimeFr(p.date) : null,
-                          p.reference,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-                    </View>
-                    <View className="shrink-0 items-end">
-                      <Text numeric variant="bodySmall" className="text-success font-sans-medium">
-                        {money.money(p.montant, vente.devise)}
-                      </Text>
-                      {/* Le montant REMIS n'apparaît que s'il est dans une autre
-                          devise : « 28 000 CDF remis » sous « 28 000 CDF » est
-                          du bruit. */}
-                      {p.remis != null && p.deviseRemise ? (
-                        <Text numeric variant="caption">
-                          {`remis ${money.money(p.remis, p.deviseRemise)}`}
+              <Paire label="Référence" valeur={vente.reference} />
+              <Paire label="Client" valeur={vente.client?.nom ?? "Client anonyme"} />
+              {vente.client?.telephone ? (
+                <Paire label="Téléphone" valeur={vente.client.telephone} />
+              ) : null}
+              <Paire label="Date de vente" valeur={formatDateTimeFr(vente.date ?? new Date())} />
+              {vente.echeance ? (
+                // ⚠ Une échéance est un JOUR, que le tirage range en minuit UTC :
+                // lue en heure locale, elle affichait « 05 déc., 01:00 », une
+                // heure qui n'existe pas, et la veille à l'ouest de Greenwich.
+                <Paire
+                  label="Échéance"
+                  valeur={formatDateFr(jourDepuisMinuitUTC(vente.echeance) ?? vente.echeance)}
+                />
+              ) : null}
+              {vente.caisse ? <Paire label="Caisse" valeur={vente.caisse} /> : null}
+              {vente.entrepot ? <Paire label="Entrepôt" valeur={vente.entrepot} /> : null}
+            </View>
+            {vente.notes ? (
+              <>
+                <Divider />
+                <View className="p-4">
+                  <Text variant="caption" className="mb-1">
+                    Notes
+                  </Text>
+                  <Text variant="bodySmall">{vente.notes}</Text>
+                </View>
+              </>
+            ) : null}
+          </Card>
+
+          <Card>
+            <CardHeader title="Paiement" />
+            <View>
+              <Paire label="Sous-total" valeur={money.money(vente.sousTotal, vente.devise)} />
+              {vente.taxes > 0 ? (
+                <Paire label="Taxes" valeur={money.money(vente.taxes, vente.devise)} />
+              ) : null}
+              {vente.remiseCommerciale > 0 ? (
+                <Paire
+                  label={
+                    vente.remisePourcent > 0
+                      ? `Remise (${vente.remisePourcent} %)`
+                      : "Remise"
+                  }
+                  valeur={`-${money.money(vente.remiseCommerciale, vente.devise)}`}
+                  ton="primary"
+                />
+              ) : null}
+              {vente.remiseFidelite > 0 ? (
+                <Paire
+                  label="Remise fidélité"
+                  valeur={`-${money.money(vente.remiseFidelite, vente.devise)}`}
+                  ton="primary"
+                />
+              ) : null}
+              <View className="my-2">
+                <Divider />
+              </View>
+              <Paire label="Total" valeur={money.money(vente.total, vente.devise)} fort />
+              <Paire
+                label="Montant payé"
+                valeur={money.money(vente.paye, vente.devise)}
+                ton="success"
+              />
+              <Paire
+                label="Reste à payer"
+                valeur={money.money(vente.resteAPayer, vente.devise)}
+                ton={vente.resteAPayer > 0 ? "destructive" : "muted"}
+              />
+              {vente.monnaieRendue > 0 ? (
+                <Paire
+                  label="Monnaie rendue"
+                  valeur={money.money(vente.monnaieRendue, vente.deviseMonnaie)}
+                />
+              ) : null}
+            </View>
+          </Card>
+
+          <Card>
+            <CardHeader title={`Articles (${vente.lignes.length})`} />
+            <View>
+              {vente.lignes.length === 0 ? (
+                <Text variant="caption">Aucun article.</Text>
+              ) : (
+                vente.lignes.map((l, i) => (
+                  <View key={l.id}>
+                    {i > 0 ? <Divider /> : null}
+                    <LigneArticle
+                      ligne={l}
+                      devise={vente.devise}
+                      rendu={rendu?.parLigne.get(l.id) ?? 0}
+                    />
+                  </View>
+                ))
+              )}
+            </View>
+          </Card>
+
+          {/* ┌──────────────────────────────────────────────────────────────┐
+              │ LA FACTURE NE DISAIT RIEN DE SES RETOURS.                    │
+              │                                                              │
+              │ Un retour approuvé fait revenir de la marchandise en stock   │
+              │ et sortir de l'argent de la caisse, et il ne laissait aucune │
+              │ trace ici : la fiche continuait d'annoncer une vente pleine, │
+              │ et proposait d'en rendre le contenu une seconde fois. C'est  │
+              │ la première chose à voir quand on relit une facture pour     │
+              │ comprendre un écart.                                         │
+              │                                                              │
+              │ Les retours ENCORE EN FILE y sont, avec leur mention : ils   │
+              │ comptent déjà dans ce qu'on ne peut plus rendre.             │
+              └──────────────────────────────────────────────────────────────┘ */}
+          {rendu && rendu.retours.length > 0 ? (
+            <Card className="p-0">
+              <View className="p-4 pb-0">
+                <CardHeader
+                  title={`Retours (${rendu.retours.length})`}
+                  subtitle={
+                    rendablesRestantes.length === 0
+                      ? "Tout ce qui pouvait être rendu l'a été."
+                      : "Touchez un retour pour voir sa décision."
+                  }
+                />
+              </View>
+              {rendu.retours.map((r, i) => {
+                const st = STATUT_RETOUR[r.statut];
+                const envoiRetour = libelleEnvoi(r.envoi);
+                return (
+                  <View key={r.id}>
+                    {i > 0 ? <Divider /> : null}
+                    <DataRow
+                      principal={r.reference}
+                      secondaire={r.date ? formatDateTimeFr(r.date) : null}
+                      badge={
+                        envoiRetour ? (
+                          <Badge tone={envoiRetour.ton === "warning" ? "warning" : "neutral"}>
+                            {envoiRetour.court}
+                          </Badge>
+                        ) : st ? (
+                          <Badge tone={st.ton}>{st.label}</Badge>
+                        ) : undefined
+                      }
+                      valeur={<Mesure value={money.money(r.montant, vente.devise)} />}
+                      onPress={() => router.push(`/retour/${r.id}`)}
+                    />
+                  </View>
+                );
+              })}
+            </Card>
+          ) : null}
+
+          {vente.reglements.length > 0 ? (
+            <Card>
+              <CardHeader title="Règlements reçus" />
+              <View>
+                {vente.reglements.map((p, i) => (
+                  <View key={p.id}>
+                    {i > 0 ? <Divider /> : null}
+                    <View className="flex-row items-center gap-3 py-3">
+                      <Icon name="CreditCard" size={18} color="mutedForeground" />
+                      <View className="min-w-0 flex-1">
+                        <Text variant="bodySmall" className="font-sans-medium">
+                          {p.methode}
                         </Text>
-                      ) : null}
+                        <Text variant="caption" numberOfLines={1}>
+                          {[
+                            p.numeroRecu,
+                            p.date ? formatDateTimeFr(p.date) : null,
+                            p.reference,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      </View>
+                      <View className="shrink-0 items-end">
+                        <Text numeric variant="bodySmall" className="text-success font-sans-medium">
+                          {money.money(p.montant, vente.devise)}
+                        </Text>
+                        {/* Le montant REMIS n'apparaît que s'il est dans une autre
+                            devise : « 28 000 CDF remis » sous « 28 000 CDF » est
+                            du bruit. */}
+                        {p.remis != null && p.deviseRemise ? (
+                          <Text numeric variant="caption">
+                            {`remis ${money.money(p.remis, p.deviseRemise)}`}
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))}
-            </View>
-          </Card>
-        ) : null}
+                ))}
+              </View>
+            </Card>
+          ) : null}
+        </Flux>
       </View>
 
       <FeuilleReglement

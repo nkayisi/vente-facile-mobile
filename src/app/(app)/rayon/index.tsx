@@ -238,6 +238,7 @@ export default function Niveaux() {
             <IconButton
               name="Download"
               label="Exporter les niveaux de stock"
+              texte="Exporter"
               variant="ghost"
               onPress={() => setFeuilleFormat(true)}
               disabled={Boolean(raisonExport)}

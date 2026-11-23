@@ -26,6 +26,7 @@
 import { Fragment, useState } from "react";
 import { View } from "react-native";
 
+import { styleDeCible, useLibellesDeBarre } from "./cible-de-barre";
 import { Divider } from "./divider";
 import { Icon } from "./icon";
 import { ListItem } from "./list-item";
@@ -34,11 +35,11 @@ import { Sheet } from "./sheet";
 import { Text } from "./text";
 import { useTheme } from "./theme";
 import { LIBELLE_THEME, ORDRE_THEME, themeSuivant, type ModeTheme } from "./theme-cycle";
-import { HIT } from "./tokens";
 
 export function BasculeTheme() {
   const { preference, setPreference, scheme } = useTheme();
   const [feuille, setFeuille] = useState(false);
+  const avecLibelle = useLibellesDeBarre();
 
   const mode = preference as ModeTheme;
   const courant = LIBELLE_THEME[mode] ?? LIBELLE_THEME.system;
@@ -69,10 +70,15 @@ export function BasculeTheme() {
         // │ du produit : il n'y a rien à étendre.                            │
         // └──────────────────────────────────────────────────────────────────┘
         hitSlop={0}
-        className="items-center justify-center rounded-lg"
-        style={{ width: HIT.min, height: HIT.min }}
+        className="flex-row items-center justify-center gap-1.5 rounded-lg"
+        style={styleDeCible(avecLibelle)}
       >
         <Icon name={courant.icon} size={20} color="mutedForeground" />
+        {avecLibelle ? (
+          <Text variant="bodySmall" numberOfLines={1} className="text-muted-foreground">
+            {courant.titre}
+          </Text>
+        ) : null}
       </Pressable>
 
       <Sheet ouvert={feuille} onFermer={() => setFeuille(false)} titre="Thème">

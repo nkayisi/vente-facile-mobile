@@ -35,6 +35,8 @@ export interface EtatIndicateur {
   anime: boolean;
   /** Décompte en pastille, ou `null` quand il n'y a rien à compter. */
   badge: string | null;
+  /** Le mot écrit à côté de l'icône, là où la barre a la place. */
+  court: string;
   /** Étiquette d'accessibilité : l'état PUIS le geste le plus utile. */
   libelle: string;
   hint: string;
@@ -95,6 +97,7 @@ export function etatIndicateur(e: {
       couleur: "primary",
       anime: true,
       badge,
+      court: "Synchronisation…",
       libelle: "Synchronisation en cours.",
       hint: HINT,
     };
@@ -109,6 +112,7 @@ export function etatIndicateur(e: {
       couleur: "destructive",
       anime: false,
       badge,
+      court: accord(c.quarantined, "refusée", "refusées"),
       libelle: `${accord(c.quarantined, "opération refusée", "opérations refusées")} par le serveur. Pression longue pour les corriger.`,
       hint: HINT,
     };
@@ -125,6 +129,7 @@ export function etatIndicateur(e: {
       couleur: "warning",
       anime: false,
       badge,
+      court: accord(c.blocked, "bloquée", "bloquées"),
       libelle: `${accord(c.blocked, "opération", "opérations")} ${l ? l.court.toLowerCase() : "en attente d'un droit"}.`,
       hint: HINT,
     };
@@ -136,6 +141,7 @@ export function etatIndicateur(e: {
       couleur: "mutedForeground",
       anime: false,
       badge,
+      court: "Hors ligne",
       libelle:
         enAttente > 0
           ? `Hors ligne. ${accord(enAttente, "opération attend", "opérations attendent")} le réseau.`
@@ -150,6 +156,7 @@ export function etatIndicateur(e: {
       couleur: "mutedForeground",
       anime: false,
       badge,
+      court: `${enAttente} en attente`,
       libelle: `${accord(enAttente, "opération attend son envoi", "opérations attendent leur envoi")}. Appuyer pour synchroniser.`,
       hint: HINT,
     };
@@ -163,6 +170,7 @@ export function etatIndicateur(e: {
     couleur: "mutedForeground",
     anime: false,
     badge: null,
+    court: "Synchronisé",
     libelle: "Tout est synchronisé. Appuyer pour vérifier.",
     hint: HINT,
   };

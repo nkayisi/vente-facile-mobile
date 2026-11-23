@@ -61,6 +61,7 @@ import {
 } from "@/features/inventaire/options-referentiel";
 import { TuilesModeVente } from "@/features/inventaire/tuile-mode-vente";
 import {
+  Flux,
   AppBar, Banner, Button, Card, CardHeader, ChampSelect, EmptyState, FormField, Input,
   RangeeChamps,
   Screen, Spinner, Switch, Text, useToast,
@@ -358,294 +359,296 @@ function FormulaireArticle({
         {/* --- Identification, dans l'ordre du back-office --------------- */}
         <ChampPhoto photo={photo} onChange={setPhoto} />
 
-        <Card>
-          <CardHeader title="Identification" />
-          <FormField label="Nom du produit" required>
-            <Input value={nom} onChangeText={setNom} placeholder="Eau 50cl" autoFocus={!enModification} />
-          </FormField>
-          <RangeeChamps>
-            <FormField label="Code SKU" required hint="Unique dans l'établissement.">
-              <Input
-                value={sku}
-                onChangeText={setSku}
-                placeholder="EAU-50"
-                autoCapitalize="characters"
-                trailing={
-                  !enModification && nom.trim() ? (
-                    <Button variant="ghost" size="sm" onPress={() => setSku(skuDepuis(nom))}>
-                      Auto
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </FormField>
-            {/* Clavier ALPHANUMÉRIQUE : un Code 128 ou un QR n'est pas numérique,
-                et un pavé chiffré interdisait de saisir ce qu'on vient de scanner. */}
-            <FormField label="Code-barres">
-              <Input
-                value={codeBarres}
-                onChangeText={setCodeBarres}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </FormField>
-          </RangeeChamps>
-          <RangeeChamps>
-            <FormField label="Catégorie">
-              <ChampSelect
-                valeur={categorie}
-                onChange={setCategorie}
-                options={optCats}
-                titre="Catégorie"
-                libelleVide="Aucune catégorie"
-                messageVide={MESSAGE_VIDE.categories}
-              />
-            </FormField>
-            <FormField label="Marque">
-              <ChampSelect
-                valeur={marque}
-                onChange={setMarque}
-                options={optMarques}
-                titre="Marque"
-                libelleVide="Aucune marque"
-                messageVide={MESSAGE_VIDE.marques}
-              />
-            </FormField>
-          </RangeeChamps>
-        </Card>
-
-        {/* --- Vente et prix -------------------------------------------- */}
-        <TuilesModeVente valeur={mode} onChange={setMode} />
-
-        <Card>
-          <FormField
-            label={conditionne ? "Unité (détail)" : "Unité"}
-            required={conditionne}
-            error={refus.unite}
-          >
-            <ChampSelect
-              valeur={unite}
-              onChange={setUnite}
-              options={optUnites}
-              titre="Unité de détail"
-              libelleVide="Aucune unité"
-              messageVide={MESSAGE_VIDE.unites}
-              invalid={!!refus.unite}
-            />
-          </FormField>
-
-          {conditionne ? (
-            <>
-              <FormField label="Contenant" required error={refus.contenant}>
-                <ChampSelect
-                  valeur={uniteContenant}
-                  onChange={setUniteContenant}
-                  options={optContenants}
-                  titre="Contenant"
-                  libelleVide="Aucun contenant"
-                  messageVide={MESSAGE_VIDE.unites}
-                  invalid={!!refus.contenant}
-                />
-              </FormField>
-              <FormField
-                label={`1 ${motContenant} contient`}
-                required
-                hint={`En ${plurielDetail}.`}
-                error={refus.facteur}
-              >
-                <Input
-                  value={parContenant}
-                  onChangeText={setParContenant}
-                  keyboardType="number-pad"
-                  placeholder="12"
-                  invalid={!!refus.facteur}
-                />
-              </FormField>
-            </>
-          ) : null}
-        </Card>
-
-        {/* Un bloc par canal : le marchand lit d'un trait ce que lui coûte et
-            ce que lui rapporte la bouteille, puis le carton. */}
-        {mode !== "wholesale_only" ? (
+        <Flux className="gap-4">
           <Card>
-            <CardHeader title={`Vente au détail · ${motDetail}`} />
-            {/* « par X », jamais « d'un X » ni « d'une X » : le GENRE d'un nom
-                d'unité n'est pas dérivable sans lexique, et le nom vient du
-                marchand. « par » est invariable et ne s'élide pas. */}
+            <CardHeader title="Identification" />
+            <FormField label="Nom du produit" required>
+              <Input value={nom} onChangeText={setNom} placeholder="Eau 50cl" autoFocus={!enModification} />
+            </FormField>
             <RangeeChamps>
-              <FormField label={`Prix d'achat par ${motDetail}`}>
+              <FormField label="Code SKU" required hint="Unique dans l'établissement.">
                 <Input
-                  value={prixAchat}
-                  onChangeText={setPrixAchat}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  invalid={achat.refus != null}
+                  value={sku}
+                  onChangeText={setSku}
+                  placeholder="EAU-50"
+                  autoCapitalize="characters"
+                  trailing={
+                    !enModification && nom.trim() ? (
+                      <Button variant="ghost" size="sm" onPress={() => setSku(skuDepuis(nom))}>
+                        Auto
+                      </Button>
+                    ) : undefined
+                  }
                 />
               </FormField>
-              <FormField
-                label={`Prix de vente par ${motDetail}`}
-                required
-                hint={
-                  margeDetail
-                    ? `Marge sur prix de vente : ${formatFixedFr(margeDetail.rate, 1)} %`
-                    : undefined
-                }
-                error={
-                  refus.prixVente ??
-                  (margeDetail?.isNonPositive ? "Vous vendez à perte." : undefined)
-                }
-              >
+              {/* Clavier ALPHANUMÉRIQUE : un Code 128 ou un QR n'est pas numérique,
+                  et un pavé chiffré interdisait de saisir ce qu'on vient de scanner. */}
+              <FormField label="Code-barres">
                 <Input
-                  value={prixVente}
-                  onChangeText={setPrixVente}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  invalid={!!refus.prixVente || !!margeDetail?.isNonPositive}
+                  value={codeBarres}
+                  onChangeText={setCodeBarres}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </FormField>
+            </RangeeChamps>
+            <RangeeChamps>
+              <FormField label="Catégorie">
+                <ChampSelect
+                  valeur={categorie}
+                  onChange={setCategorie}
+                  options={optCats}
+                  titre="Catégorie"
+                  libelleVide="Aucune catégorie"
+                  messageVide={MESSAGE_VIDE.categories}
+                />
+              </FormField>
+              <FormField label="Marque">
+                <ChampSelect
+                  valeur={marque}
+                  onChange={setMarque}
+                  options={optMarques}
+                  titre="Marque"
+                  libelleVide="Aucune marque"
+                  messageVide={MESSAGE_VIDE.marques}
                 />
               </FormField>
             </RangeeChamps>
           </Card>
-        ) : null}
 
-        {conditionne ? (
+          {/* --- Vente et prix -------------------------------------------- */}
+          <TuilesModeVente valeur={mode} onChange={setMode} />
+
           <Card>
-            <CardHeader title={`Vente en gros · ${motContenant}`} />
-            {facteur.valeur && facteur.valeur > 1 ? (
-              <Text variant="caption" className="mb-3">
-                1 {motContenant} = {facteur.valeur} {plurielDetail}
-              </Text>
+            <FormField
+              label={conditionne ? "Unité (détail)" : "Unité"}
+              required={conditionne}
+              error={refus.unite}
+            >
+              <ChampSelect
+                valeur={unite}
+                onChange={setUnite}
+                options={optUnites}
+                titre="Unité de détail"
+                libelleVide="Aucune unité"
+                messageVide={MESSAGE_VIDE.unites}
+                invalid={!!refus.unite}
+              />
+            </FormField>
+
+            {conditionne ? (
+              <>
+                <FormField label="Contenant" required error={refus.contenant}>
+                  <ChampSelect
+                    valeur={uniteContenant}
+                    onChange={setUniteContenant}
+                    options={optContenants}
+                    titre="Contenant"
+                    libelleVide="Aucun contenant"
+                    messageVide={MESSAGE_VIDE.unites}
+                    invalid={!!refus.contenant}
+                  />
+                </FormField>
+                <FormField
+                  label={`1 ${motContenant} contient`}
+                  required
+                  hint={`En ${plurielDetail}.`}
+                  error={refus.facteur}
+                >
+                  <Input
+                    value={parContenant}
+                    onChangeText={setParContenant}
+                    keyboardType="number-pad"
+                    placeholder="12"
+                    invalid={!!refus.facteur}
+                  />
+                </FormField>
+              </>
             ) : null}
-            <RangeeChamps>
-              <FormField label={`Prix d'achat par ${motContenant}`}>
-                <Input
-                  value={prixAchatGros}
-                  onChangeText={setPrixAchatGros}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  invalid={achatGros.refus != null}
-                />
-              </FormField>
-              <FormField
-                label={`Prix de vente par ${motContenant}`}
-                required
-                hint={
-                  margeGros
-                    ? `Marge sur prix de vente : ${formatFixedFr(margeGros.rate, 1)} %`
-                    : undefined
-                }
-                error={
-                  refus.prixVenteGros ??
-                  (margeGros?.isNonPositive ? "Vous vendez à perte." : undefined)
-                }
-              >
-                <Input
-                  value={prixVenteGros}
-                  onChangeText={setPrixVenteGros}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  invalid={!!refus.prixVenteGros || !!margeGros?.isNonPositive}
-                />
-              </FormField>
-            </RangeeChamps>
-            {venteGros.valeur && facteur.valeur && facteur.valeur > 1 ? (
-              <Text variant="caption">
-                {/* « achetée » s'accorderait avec un nom dont on ignore le genre. */}
-                Soit {money.money(venteGros.valeur / facteur.valeur, money.primaryCode)} par{" "}
-                {motDetail} en achat de gros.
-              </Text>
-            ) : null}
-            {mode === "wholesale_and_retail" ? (
-              <View className="mt-3 flex-row items-start justify-between gap-4">
-                <View className="min-w-0 flex-1">
-                  <Text variant="bodySmall" className="font-sans-medium">
-                    Ouvrir des {pluralizeUnit(motContenant, 2)} automatiquement
-                  </Text>
-                  <Text variant="caption" className="mt-0.5">
-                    Quand il ne reste plus de {plurielDetail} à l&apos;unité, on ouvre
-                    un contenant pour servir le client.
-                  </Text>
+          </Card>
+
+          {/* Un bloc par canal : le marchand lit d'un trait ce que lui coûte et
+              ce que lui rapporte la bouteille, puis le carton. */}
+          {mode !== "wholesale_only" ? (
+            <Card>
+              <CardHeader title={`Vente au détail · ${motDetail}`} />
+              {/* « par X », jamais « d'un X » ni « d'une X » : le GENRE d'un nom
+                  d'unité n'est pas dérivable sans lexique, et le nom vient du
+                  marchand. « par » est invariable et ne s'élide pas. */}
+              <RangeeChamps>
+                <FormField label={`Prix d'achat par ${motDetail}`}>
+                  <Input
+                    value={prixAchat}
+                    onChangeText={setPrixAchat}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    invalid={achat.refus != null}
+                  />
+                </FormField>
+                <FormField
+                  label={`Prix de vente par ${motDetail}`}
+                  required
+                  hint={
+                    margeDetail
+                      ? `Marge sur prix de vente : ${formatFixedFr(margeDetail.rate, 1)} %`
+                      : undefined
+                  }
+                  error={
+                    refus.prixVente ??
+                    (margeDetail?.isNonPositive ? "Vous vendez à perte." : undefined)
+                  }
+                >
+                  <Input
+                    value={prixVente}
+                    onChangeText={setPrixVente}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    invalid={!!refus.prixVente || !!margeDetail?.isNonPositive}
+                  />
+                </FormField>
+              </RangeeChamps>
+            </Card>
+          ) : null}
+
+          {conditionne ? (
+            <Card>
+              <CardHeader title={`Vente en gros · ${motContenant}`} />
+              {facteur.valeur && facteur.valeur > 1 ? (
+                <Text variant="caption" className="mb-3">
+                  1 {motContenant} = {facteur.valeur} {plurielDetail}
+                </Text>
+              ) : null}
+              <RangeeChamps>
+                <FormField label={`Prix d'achat par ${motContenant}`}>
+                  <Input
+                    value={prixAchatGros}
+                    onChangeText={setPrixAchatGros}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    invalid={achatGros.refus != null}
+                  />
+                </FormField>
+                <FormField
+                  label={`Prix de vente par ${motContenant}`}
+                  required
+                  hint={
+                    margeGros
+                      ? `Marge sur prix de vente : ${formatFixedFr(margeGros.rate, 1)} %`
+                      : undefined
+                  }
+                  error={
+                    refus.prixVenteGros ??
+                    (margeGros?.isNonPositive ? "Vous vendez à perte." : undefined)
+                  }
+                >
+                  <Input
+                    value={prixVenteGros}
+                    onChangeText={setPrixVenteGros}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    invalid={!!refus.prixVenteGros || !!margeGros?.isNonPositive}
+                  />
+                </FormField>
+              </RangeeChamps>
+              {venteGros.valeur && facteur.valeur && facteur.valeur > 1 ? (
+                <Text variant="caption">
+                  {/* « achetée » s'accorderait avec un nom dont on ignore le genre. */}
+                  Soit {money.money(venteGros.valeur / facteur.valeur, money.primaryCode)} par{" "}
+                  {motDetail} en achat de gros.
+                </Text>
+              ) : null}
+              {mode === "wholesale_and_retail" ? (
+                <View className="mt-3 flex-row items-start justify-between gap-4">
+                  <View className="min-w-0 flex-1">
+                    <Text variant="bodySmall" className="font-sans-medium">
+                      Ouvrir des {pluralizeUnit(motContenant, 2)} automatiquement
+                    </Text>
+                    <Text variant="caption" className="mt-0.5">
+                      Quand il ne reste plus de {plurielDetail} à l&apos;unité, on ouvre
+                      un contenant pour servir le client.
+                    </Text>
+                  </View>
+                  <Switch valeur={ouvertureAuto} onChange={setOuvertureAuto} />
                 </View>
-                <Switch valeur={ouvertureAuto} onChange={setOuvertureAuto} />
+              ) : null}
+            </Card>
+          ) : null}
+
+          {/* --- Taxe ------------------------------------------------------ */}
+          <Card>
+            <CardHeader title="Taxe" />
+            <View className="flex-row items-start justify-between gap-4">
+              <View className="min-w-0 flex-1">
+                <Text variant="bodySmall" className="font-sans-medium">
+                  Produit taxable
+                </Text>
+                <Text variant="caption" className="mt-0.5">
+                  Appliquer la TVA à la vente.
+                </Text>
+              </View>
+              <Switch valeur={taxable} onChange={setTaxable} />
+            </View>
+            {taxable ? (
+              <View className="mt-3">
+                <FormField label="Taux de TVA (%)">
+                  <Input
+                    value={tauxTva}
+                    onChangeText={setTauxTva}
+                    keyboardType="decimal-pad"
+                    placeholder="16"
+                  />
+                </FormField>
               </View>
             ) : null}
           </Card>
-        ) : null}
 
-        {/* --- Taxe ------------------------------------------------------ */}
-        <Card>
-          <CardHeader title="Taxe" />
-          <View className="flex-row items-start justify-between gap-4">
-            <View className="min-w-0 flex-1">
-              <Text variant="bodySmall" className="font-sans-medium">
-                Produit taxable
-              </Text>
-              <Text variant="caption" className="mt-0.5">
-                Appliquer la TVA à la vente.
-              </Text>
+          {/* --- Suivi du stock -------------------------------------------- */}
+          <Card>
+            <CardHeader title="Suivi du stock" />
+            <View className="flex-row items-start justify-between gap-4">
+              <View className="min-w-0 flex-1">
+                <Text variant="bodySmall" className="font-sans-medium">
+                  Suivre le stock
+                </Text>
+                <Text variant="caption" className="mt-0.5">
+                  Décompter les quantités à chaque vente. Désactivé, l&apos;article se
+                  vend sans jamais être compté : services, consignes, coupe.
+                </Text>
+              </View>
+              <Switch valeur={suitLeStock} onChange={setSuitLeStock} />
             </View>
-            <Switch valeur={taxable} onChange={setTaxable} />
-          </View>
-          {taxable ? (
-            <View className="mt-3">
-              <FormField label="Taux de TVA (%)">
-                <Input
-                  value={tauxTva}
-                  onChangeText={setTauxTva}
-                  keyboardType="decimal-pad"
-                  placeholder="16"
-                />
-              </FormField>
-            </View>
-          ) : null}
-        </Card>
+            {suitLeStock ? (
+              <View className="mt-3">
+                {/* ⚠ PAVÉ DÉCIMAL, et ce n'en était pas un. `reorder_point` était
+                    un `PositiveIntegerField` : le pavé entier était alors juste.
+                    La colonne porte désormais trois décimales, parce qu'un
+                    commerce qui pèse sa farine veut alerter à 2,5 kg - et un
+                    pavé sans virgule rendait ce seuil INSAISISSABLE au doigt. */}
+                <FormField
+                  label="Seuil d'alerte"
+                  hint="Déclenche l'alerte de stock bas. Écrivez par exemple 12 ou 2,5."
+                >
+                  <Input
+                    value={seuil}
+                    onChangeText={setSeuil}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                  />
+                </FormField>
+              </View>
+            ) : null}
+          </Card>
 
-        {/* --- Suivi du stock -------------------------------------------- */}
-        <Card>
-          <CardHeader title="Suivi du stock" />
-          <View className="flex-row items-start justify-between gap-4">
-            <View className="min-w-0 flex-1">
-              <Text variant="bodySmall" className="font-sans-medium">
-                Suivre le stock
-              </Text>
-              <Text variant="caption" className="mt-0.5">
-                Décompter les quantités à chaque vente. Désactivé, l&apos;article se
-                vend sans jamais être compté : services, consignes, coupe.
-              </Text>
-            </View>
-            <Switch valeur={suitLeStock} onChange={setSuitLeStock} />
-          </View>
-          {suitLeStock ? (
-            <View className="mt-3">
-              {/* ⚠ PAVÉ DÉCIMAL, et ce n'en était pas un. `reorder_point` était
-                  un `PositiveIntegerField` : le pavé entier était alors juste.
-                  La colonne porte désormais trois décimales, parce qu'un
-                  commerce qui pèse sa farine veut alerter à 2,5 kg - et un
-                  pavé sans virgule rendait ce seuil INSAISISSABLE au doigt. */}
-              <FormField
-                label="Seuil d'alerte"
-                hint="Déclenche l'alerte de stock bas. Écrivez par exemple 12 ou 2,5."
-              >
-                <Input
-                  value={seuil}
-                  onChangeText={setSeuil}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                />
-              </FormField>
-            </View>
-          ) : null}
-        </Card>
+          <Banner
+            tone="info"
+            title="Le SKU doit être unique"
+            message="Deux terminaux hors ligne peuvent saisir le même : le second sera refusé et attendra dans « Opérations à corriger »."
+          />
 
-        <Banner
-          tone="info"
-          title="Le SKU doit être unique"
-          message="Deux terminaux hors ligne peuvent saisir le même : le second sera refusé et attendra dans « Opérations à corriger »."
-        />
-
-        <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-          {envoi ? "Enregistrement…" : enModification ? "Enregistrer les modifications" : "Créer l'article"}
-        </Button>
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+            {envoi ? "Enregistrement…" : enModification ? "Enregistrer les modifications" : "Créer l'article"}
+          </Button>
+        </Flux>
       </View>
     </Screen>
   );

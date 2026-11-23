@@ -25,7 +25,7 @@ import { router, usePathname } from "expo-router";
 
 import { compterNonLues } from "@/data/notifications";
 import { useEnLigne } from "@/data/reseau";
-import { HIT } from "@/ui/tokens";
+import { styleDeCible, useLibellesDeBarre } from "@/ui/cible-de-barre";
 import { Icon } from "@/ui/icon";
 import { Pressable } from "@/ui/pressable";
 import { Text } from "@/ui/text";
@@ -34,6 +34,7 @@ export function ClocheNotifications() {
   const enLigne = useEnLigne();
   const chemin = usePathname();
   const [nombre, setNombre] = useState(0);
+  const avecLibelle = useLibellesDeBarre();
 
   const vivant = useRef(true);
   useEffect(() => {
@@ -83,22 +84,29 @@ export function ClocheNotifications() {
       // Les cibles de la barre se touchent : le `hitSlop` par défaut les ferait
       // se recouvrir, et un doigt tombé dans la couture ouvrirait le voisin.
       hitSlop={0}
-      className="items-center justify-center"
-      style={{ width: HIT.min, height: HIT.min }}
+      className="flex-row items-center justify-center gap-1.5"
+      style={styleDeCible(avecLibelle)}
     >
-      <Icon name="Bell" size={22} />
-      {nombre > 0 ? (
-        <View
-          className="absolute items-center justify-center rounded-full bg-destructive px-1"
-          style={{ top: 8, right: 6, minWidth: 16, height: 16 }}
-        >
-          {/* ⚠ Au-delà de neuf on écrit « 9+ » : trois chiffres déborderaient
-              de la pastille, et le nombre exact n'apprend rien de plus - ce
-              qu'on lit est « il y en a beaucoup ». */}
-          <Text variant="caption" className="text-destructive-foreground" numeric>
-            {nombre > 9 ? "9+" : String(nombre)}
-          </Text>
-        </View>
+      <View className="items-center justify-center" style={{ width: 28, height: 28 }}>
+        <Icon name="Bell" size={22} />
+        {nombre > 0 ? (
+          <View
+            className="absolute items-center justify-center rounded-full bg-destructive px-1"
+            style={{ top: 0, right: -2, minWidth: 16, height: 16 }}
+          >
+            {/* ⚠ Au-delà de neuf on écrit « 9+ » : trois chiffres déborderaient
+                de la pastille, et le nombre exact n'apprend rien de plus - ce
+                qu'on lit est « il y en a beaucoup ». */}
+            <Text variant="caption" className="text-destructive-foreground" numeric>
+              {nombre > 9 ? "9+" : String(nombre)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      {avecLibelle ? (
+        <Text variant="bodySmall" numberOfLines={1} className="text-muted-foreground">
+          Notifications
+        </Text>
       ) : null}
     </Pressable>
   );

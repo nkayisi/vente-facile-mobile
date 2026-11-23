@@ -52,6 +52,56 @@ export const MENU: readonly EntreeMenu[] = [
   { cle: "parametres",   label: "Paramètres",              icon: "Settings",        href: "/parametres",   permission: "settings.view",  lot: null },
 ] as const;
 
+/**
+ * Les entrées PROPRES AU TERMINAL, sans miroir dans le back-office.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ UNE SEULE LISTE, LUE PAR LA BARRE LATÉRALE, LE TIROIR ET LE RAIL.       │
+ * │                                                                          │
+ * │ Le rail ne portait que les onze sections : « Ma journée » et tout « Cet  │
+ * │ appareil » n'existaient que derrière son bouton « Menu », et c'est par   │
+ * │ là qu'une opération refusée restait sans lecteur. Elles vivent ici, avec │
+ * │ leur étiquette COURTE (`court`), celle que quatre-vingts points tiennent │
+ * │ (« Synchronisation » n'y entre pas).                                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠ ELLES NE VONT PAS DANS `MENU`, que `menu.test.ts` compare ligne à ligne au
+ * back-office : y ajouter une entrée mobile y ferait échouer trois assertions,
+ * à juste titre.
+ */
+export interface EntreeAnnexe {
+  /** La clé que `sectionDeLaRoute` rend sur cette route. */
+  cle: string;
+  label: string;
+  court: string;
+  icon: IconName;
+  href: string;
+}
+
+export const ENTREE_MA_JOURNEE: EntreeAnnexe = {
+  cle: "ma-journee",
+  label: "Ma journée",
+  court: "Ma journée",
+  icon: "CalendarCheck",
+  href: "/(app)/ma-journee",
+};
+
+/** La clé de l'entrée qui porte la pastille des opérations à corriger. */
+export const CLE_OPERATIONS = "operations";
+
+export const ENTREES_APPAREIL: readonly EntreeAnnexe[] = [
+  { cle: "synchronisation", label: "Synchronisation", court: "Sync", icon: "CloudDownload", href: "/(app)/appareil/synchronisation" },
+  // L'écran où un refus du serveur devient lisible et se corrige. Il porte sa
+  // PASTILLE (refusées + bloquées) : sans elle, le marchand n'avait aucune raison
+  // de l'ouvrir, et une vente refusée restait en quarantaine des jours.
+  { cle: CLE_OPERATIONS, label: "Opérations à corriger", court: "À corriger", icon: "AlertTriangle", href: "/(app)/appareil/operations" },
+  { cle: "imprimante", label: "Imprimante", court: "Imprimante", icon: "Printer", href: "/(app)/appareil/imprimante" },
+  // ⚠ SANS CETTE ENTRÉE, L'ÉCRAN DE DIAGNOSTIC N'EXISTE POUR PERSONNE. Il a été
+  // écrit pour qu'un marchand chez qui la barre du système recouvre le bas de
+  // l'écran puisse nous envoyer un relevé.
+  { cle: "affichage", label: "Diagnostic d'affichage", court: "Affichage", icon: "Ruler", href: "/(app)/appareil/affichage" },
+];
+
 /** Rôles, dans l'ordre de la hiérarchie backend. */
 export type Role = "cashier" | "stock_keeper" | "manager" | "owner";
 
@@ -152,6 +202,19 @@ const SECTION_PAR_SEGMENT: Readonly<Record<string, string>> = {
   parametres: "parametres",
   vendre: "vendre",
   pos: "vendre",
+  "ma-journee": ENTREE_MA_JOURNEE.cle,
+};
+
+/**
+ * Sous `/appareil`, c'est le SECOND segment qui désigne l'entrée. Les documents
+ * imprimés n'ont pas d'entrée à eux : ils se rangent sous l'imprimante.
+ */
+const SECTION_APPAREIL: Readonly<Record<string, string>> = {
+  synchronisation: "synchronisation",
+  operations: CLE_OPERATIONS,
+  imprimante: "imprimante",
+  documents: "imprimante",
+  affichage: "affichage",
 };
 
 /** La clé du comptoir, qui n'est pas une entrée de `MENU`. */
@@ -160,10 +223,11 @@ export const SECTION_COMPTOIR = "vendre";
 export function sectionDeLaRoute(chemin: string | null | undefined): string | null {
   if (!chemin) return null;
   // Les groupes (`(app)`, `(tabs)`) ne sont pas des segments d'URL.
-  const segment = chemin
+  const [segment, suivant] = chemin
     .split("?")[0]
     .split("/")
-    .filter((s) => s && !(s.startsWith("(") && s.endsWith(")")))[0];
+    .filter((s) => s && !(s.startsWith("(") && s.endsWith(")")));
   if (!segment) return "index";
+  if (segment === "appareil") return SECTION_APPAREIL[suivant ?? ""] ?? null;
   return SECTION_PAR_SEGMENT[segment] ?? null;
 }

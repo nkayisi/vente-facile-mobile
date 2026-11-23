@@ -9,6 +9,8 @@
  */
 import { ScrollView, View } from "react-native";
 
+import { useDisposition } from "./disposition";
+import { afficheLibelles } from "./disposition-regles";
 import { Icon, type IconName } from "./icon";
 import { Pastille } from "./pastille";
 import { Pressable } from "./pressable";
@@ -85,14 +87,19 @@ export function Chip({
  * hériter, et un `ScrollView` horizontal s'y mesure à zéro. La feuille sortait
  * alors avec son titre et rien d'autre - vérifié sur l'émulateur, sans la
  * moindre erreur en journal. La hauteur est celle d'une puce (`h-9`).
+ *
+ * ⚠ `flexShrink: 0` pour la raison inverse. Un `ScrollView` se comprime par
+ * défaut : posée au-dessus d'une liste longue, comme au comptoir, la rangée
+ * cédait une partie de sa hauteur à la liste, et les puces sortaient rognées
+ * par le bas (30 points mesurés sur l'émulateur).
  */
 export function ChipRow({ children }: { children: React.ReactNode }) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      style={{ flexGrow: 0, height: 36 }}
-      contentContainerStyle={{ gap: 8, paddingRight: 16 }}
+      style={{ flexGrow: 0, flexShrink: 0, height: 36 }}
+      contentContainerStyle={{ alignItems: "center", gap: 8, paddingRight: 16 }}
     >
       {children}
     </ScrollView>
@@ -101,6 +108,7 @@ export function ChipRow({ children }: { children: React.ReactNode }) {
 
 /** Bouton « Filtres » avec sa pastille de décompte. */
 export function BoutonFiltres({ actifs, onPress }: { actifs: number; onPress: () => void }) {
+  const avecTexte = afficheLibelles(useDisposition().largeur);
   return (
     <Pressable
       onPress={onPress}
@@ -113,6 +121,15 @@ export function BoutonFiltres({ actifs, onPress }: { actifs: number; onPress: ()
       style={{ height: HIT.min, minWidth: HIT.min }}
     >
       <Icon name="Filter" size={18} color={actifs > 0 ? "accentForeground" : "foreground"} />
+      {avecTexte ? (
+        <Text
+          variant="bodySmall"
+          numberOfLines={1}
+          className={actifs > 0 ? "font-sans-medium text-accent-foreground" : "font-sans-medium"}
+        >
+          Filtres
+        </Text>
+      ) : null}
       {actifs > 0 ? (
         // Pastille RONDE À CONTENU VARIABLE : `min-w` et jamais `w`, sinon
         // « 12 » déborde du cercle.

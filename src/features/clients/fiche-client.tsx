@@ -39,6 +39,7 @@ import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AppBar,
   Badge,
   Banner,
@@ -154,6 +155,7 @@ export function FicheClient() {
               <IconButton
                 name="Pencil"
                 label="Modifier le client"
+                texte="Modifier"
                 variant="ghost"
                 onPress={() => router.push(`/client/nouveau?id=${id}`)}
               />
@@ -204,227 +206,229 @@ export function FicheClient() {
           la ventilation crée des signes opposés, et n'en montrer qu'un revient
           à sommer en cachette.
         */}
-        <Card>
-          {aUneDette ? (
-            <>
-              <Text variant="caption" className="mb-1">
-                Dette du client
-              </Text>
-              <MultiCurrencyTotal lignes={c.dettes} money={money.money} tone="destructive" />
-            </>
-          ) : null}
-
-          {aUneAvance ? (
-            <View className={aUneDette ? "mt-3" : undefined}>
-              <Text variant="caption" className="mb-1">
-                Avance du client
-              </Text>
-              <MultiCurrencyTotal lignes={c.avances} money={money.money} tone="chart2" />
-            </View>
-          ) : null}
-
-          {!aUneDette && !aUneAvance ? (
-            <>
-              <Text variant="caption" className="mb-1">
-                Situation
-              </Text>
-              <StatValue value="Aucune dette" tone="success" />
-            </>
-          ) : null}
-
-          <View className="mt-3 flex-row flex-wrap gap-x-6 gap-y-2">
-            <View>
-              <Text variant="caption">Achats à crédit</Text>
-              <Text variant="bodySmall" className="font-sans-medium">
-                {c.creditAutorise ? "Autorisés" : "Refusés"}
-              </Text>
-            </View>
-            <View>
-              <Text variant="caption">Plafond</Text>
-              {/* Zéro veut dire « sans plafond », et l'écran l'écrit en toutes
-                  lettres : afficher « 0 » laisserait lire « aucun crédit ». */}
-              <Text variant="bodySmall" className="font-sans-medium">
-                {c.plafondCredit > 0
-                  ? money.money(c.plafondCredit, devisePrincipale)
-                  : "Sans plafond"}
-              </Text>
-            </View>
-            {c.creditDisponible != null ? (
-              <View>
-                <Text variant="caption">Encore disponible</Text>
-                <Text variant="bodySmall" className="font-sans-medium">
-                  {money.money(c.creditDisponible, devisePrincipale)}
+        <Flux className="gap-4">
+          <Card>
+            {aUneDette ? (
+              <>
+                <Text variant="caption" className="mb-1">
+                  Dette du client
                 </Text>
+                <MultiCurrencyTotal lignes={c.dettes} money={money.money} tone="destructive" />
+              </>
+            ) : null}
+
+            {aUneAvance ? (
+              <View className={aUneDette ? "mt-3" : undefined}>
+                <Text variant="caption" className="mb-1">
+                  Avance du client
+                </Text>
+                <MultiCurrencyTotal lignes={c.avances} money={money.money} tone="chart2" />
               </View>
             ) : null}
-          </View>
-        </Card>
 
-        {peutEcrire ? (
-          <View className="gap-2">
-            <Button
-              fullWidth
-              size="lg"
-              leftIcon="Banknote"
-              onPress={() => setFeuilleEncaissement(true)}
-            >
-              Encaisser du client
-            </Button>
-            <Button
-              variant="outline"
-              fullWidth
-              leftIcon="SlidersHorizontal"
-              onPress={() => setFeuilleAjustement(true)}
-            >
-              Ajuster le solde
-            </Button>
-          </View>
-        ) : null}
-
-        {/* ⚠ LA CAGNOTTE EST DE L'ARGENT, en devise PRINCIPALE. Elle s'affichait
-        en points, et personne ne savait ce qu'un point valait. */}
-        {c.programmeActif && c.cagnotte != null ? (
-          <Card>
-            <View className="flex-row items-center justify-between gap-3">
-              <View className="min-w-0 flex-1">
-                <Text variant="caption">Cagnotte de fidélité</Text>
-                <StatValue
-                  value={money.money(c.cagnotte, devisePrincipale)}
-                  tone="primary"
-                />
-              </View>
-              <View className="shrink-0 items-end">
-                <Text variant="caption">
-                  {`Gagnée ${money.money(c.cagnotteGagnee, devisePrincipale)}`}
+            {!aUneDette && !aUneAvance ? (
+              <>
+                <Text variant="caption" className="mb-1">
+                  Situation
                 </Text>
-                <Text variant="caption">
-                  {`Utilisée ${money.money(c.cagnotteUtilisee, devisePrincipale)}`}
+                <StatValue value="Aucune dette" tone="success" />
+              </>
+            ) : null}
+
+            <View className="mt-3 flex-row flex-wrap gap-x-6 gap-y-2">
+              <View>
+                <Text variant="caption">Achats à crédit</Text>
+                <Text variant="bodySmall" className="font-sans-medium">
+                  {c.creditAutorise ? "Autorisés" : "Refusés"}
                 </Text>
               </View>
+              <View>
+                <Text variant="caption">Plafond</Text>
+                {/* Zéro veut dire « sans plafond », et l'écran l'écrit en toutes
+                    lettres : afficher « 0 » laisserait lire « aucun crédit ». */}
+                <Text variant="bodySmall" className="font-sans-medium">
+                  {c.plafondCredit > 0
+                    ? money.money(c.plafondCredit, devisePrincipale)
+                    : "Sans plafond"}
+                </Text>
+              </View>
+              {c.creditDisponible != null ? (
+                <View>
+                  <Text variant="caption">Encore disponible</Text>
+                  <Text variant="bodySmall" className="font-sans-medium">
+                    {money.money(c.creditDisponible, devisePrincipale)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </Card>
-        ) : null}
 
-        {/* ┌──────────────────────────────────────────────────────────────┐
-            │ LES TROIS LECTURES DU PASSÉ VIVENT DANS UNE SOUS-PAGE.       │
-            │                                                              │
-            │ Le grand livre, le registre de cagnotte et le rapport par    │
-            │ période occupaient trois sections de plus sous une fiche qui │
-            │ en portait déjà sept. Ce qu'on vient y chercher devant un    │
-            │ client - ce qu'il doit, et peut-il repartir à crédit - s'y   │
-            │ perdait. On les consulte rarement, et longuement.            │
-            └──────────────────────────────────────────────────────────────┘ */}
-        <Card className="p-0">
-          <ListItem
-            title="Historique"
-            subtitle="Mouvements du compte, cagnotte et rapport"
-            // ⚠ `Clock` ET NON `History`, le glyphe du back-office : le
-            //   générateur du registre le REFUSE, « history » étant absent du
-            //   paquet lucide mobile. Déclarer la divergence sans avoir
-            //   comparé les deux tracés est ce que son message interdit.
-            icon="Clock"
-            chevron
-            onPress={() => router.push(`/client/${id}/historique`)}
-          />
-        </Card>
-
-        {c.facturesOuvertes.length > 0 || nonVisibles.length > 0 ? (
-          <Card className="p-0">
-            <View className="p-4 pb-0">
-              <CardHeader title={`Factures ouvertes (${c.facturesOuvertes.length})`} />
-            </View>
-            {c.facturesOuvertes.map((f, i) => (
-              <View key={f.id}>
-                {i > 0 ? <Divider /> : null}
-                <ListItem
-                  title={f.reference}
-                  subtitle={[
-                    f.date ? formatDateFr(f.date) : null,
-                    f.enRetard ? "En retard" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                  value={money.money(f.resteAPayer, f.devise)}
-                  valueTone={f.enRetard ? "destructive" : "default"}
-                  icon="Receipt"
-                  chevron
-                  onPress={() => router.push(`/vente/${f.id}`)}
-                />
-              </View>
-            ))}
-            {/* La dette que les factures listées n'expliquent pas. Pour un
-                tirage BORNÉ (lot L9), ce sont les factures d'un collègue ou
-                d'un autre dépôt ; pour le propriétaire, qui tire tout, c'est
-                une dette HORS FACTURE (ajustement, reliquat ancien). Une ligne
-                par devise, jamais une somme entre devises. */}
-            {nonVisibles.map((n, i) => (
-              <View key={n.devise}>
-                {c.facturesOuvertes.length > 0 || i > 0 ? <Divider /> : null}
-                <ListItem
-                  title={voitToutesLesVentes ? "Dette hors factures" : "Autres factures (non visibles)"}
-                  subtitle={
-                    voitToutesLesVentes
-                      ? "Ajustement ou reliquat ancien"
-                      : "Faites par un collègue ou dans un autre dépôt"
-                  }
-                  value={money.money(n.montant, n.devise)}
-                  icon="Receipt"
-                />
-              </View>
-            ))}
-          </Card>
-        ) : null}
-
-        <Card className="p-0">
-          <View className="p-4 pb-0">
-            <CardHeader title="Coordonnées" />
-          </View>
-          {c.raisonSociale ? (
-            <ListItem title="Raison sociale" subtitle={c.raisonSociale} icon="Building2" />
-          ) : null}
-          {c.telephone ? (
-            <ListItem title="Téléphone" subtitle={c.telephone} icon="Phone" />
-          ) : null}
-          {c.email ? <ListItem title="E-mail" subtitle={c.email} icon="Mail" /> : null}
-          {c.adresse ? <ListItem title="Adresse" subtitle={c.adresse} icon="MapPin" /> : null}
-          {c.numeroImpot ? (
-            <ListItem title="Numéro d'impôt" subtitle={c.numeroImpot} icon="FileText" />
-          ) : null}
-          {c.notes ? (
-            <View className="px-4 pb-4 pt-1">
-              <Text variant="caption" className="mb-1">
-                Notes
-              </Text>
-              <Text variant="bodySmall">{c.notes}</Text>
+          {peutEcrire ? (
+            <View className="gap-2">
+              <Button
+                fullWidth
+                size="lg"
+                leftIcon="Banknote"
+                onPress={() => setFeuilleEncaissement(true)}
+              >
+                Encaisser du client
+              </Button>
+              <Button
+                variant="outline"
+                fullWidth
+                leftIcon="SlidersHorizontal"
+                onPress={() => setFeuilleAjustement(true)}
+              >
+                Ajuster le solde
+              </Button>
             </View>
           ) : null}
-        </Card>
 
-        {c.dernieresVentes.length > 0 ? (
-          <Card className="p-0">
-            <View className="p-4 pb-0">
-              <CardHeader title="Dernières ventes" />
-            </View>
-            {c.dernieresVentes.map((v, i) => {
-              const s = STATUT_VENTE[v.statut];
-              return (
-                <View key={v.id}>
-                  {i > 0 ? <Divider /> : null}
-                  <ListItem
-                    title={v.reference}
-                    subtitle={[v.date ? formatDateFr(v.date) : null, s?.label]
-                      .filter(Boolean)
-                      .join(" · ")}
-                    value={money.money(v.total, v.devise)}
-                    icon="Receipt"
-                    chevron
-                    onPress={() => router.push(`/vente/${v.id}`)}
+          {/* ⚠ LA CAGNOTTE EST DE L'ARGENT, en devise PRINCIPALE. Elle s'affichait
+          en points, et personne ne savait ce qu'un point valait. */}
+          {c.programmeActif && c.cagnotte != null ? (
+            <Card>
+              <View className="flex-row items-center justify-between gap-3">
+                <View className="min-w-0 flex-1">
+                  <Text variant="caption">Cagnotte de fidélité</Text>
+                  <StatValue
+                    value={money.money(c.cagnotte, devisePrincipale)}
+                    tone="primary"
                   />
                 </View>
-              );
-            })}
+                <View className="shrink-0 items-end">
+                  <Text variant="caption">
+                    {`Gagnée ${money.money(c.cagnotteGagnee, devisePrincipale)}`}
+                  </Text>
+                  <Text variant="caption">
+                    {`Utilisée ${money.money(c.cagnotteUtilisee, devisePrincipale)}`}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          ) : null}
+
+          {/* ┌──────────────────────────────────────────────────────────────┐
+              │ LES TROIS LECTURES DU PASSÉ VIVENT DANS UNE SOUS-PAGE.       │
+              │                                                              │
+              │ Le grand livre, le registre de cagnotte et le rapport par    │
+              │ période occupaient trois sections de plus sous une fiche qui │
+              │ en portait déjà sept. Ce qu'on vient y chercher devant un    │
+              │ client - ce qu'il doit, et peut-il repartir à crédit - s'y   │
+              │ perdait. On les consulte rarement, et longuement.            │
+              └──────────────────────────────────────────────────────────────┘ */}
+          <Card className="p-0">
+            <ListItem
+              title="Historique"
+              subtitle="Mouvements du compte, cagnotte et rapport"
+              // ⚠ `Clock` ET NON `History`, le glyphe du back-office : le
+              //   générateur du registre le REFUSE, « history » étant absent du
+              //   paquet lucide mobile. Déclarer la divergence sans avoir
+              //   comparé les deux tracés est ce que son message interdit.
+              icon="Clock"
+              chevron
+              onPress={() => router.push(`/client/${id}/historique`)}
+            />
           </Card>
-        ) : null}
+
+          {c.facturesOuvertes.length > 0 || nonVisibles.length > 0 ? (
+            <Card className="p-0">
+              <View className="p-4 pb-0">
+                <CardHeader title={`Factures ouvertes (${c.facturesOuvertes.length})`} />
+              </View>
+              {c.facturesOuvertes.map((f, i) => (
+                <View key={f.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <ListItem
+                    title={f.reference}
+                    subtitle={[
+                      f.date ? formatDateFr(f.date) : null,
+                      f.enRetard ? "En retard" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                    value={money.money(f.resteAPayer, f.devise)}
+                    valueTone={f.enRetard ? "destructive" : "default"}
+                    icon="Receipt"
+                    chevron
+                    onPress={() => router.push(`/vente/${f.id}`)}
+                  />
+                </View>
+              ))}
+              {/* La dette que les factures listées n'expliquent pas. Pour un
+                  tirage BORNÉ (lot L9), ce sont les factures d'un collègue ou
+                  d'un autre dépôt ; pour le propriétaire, qui tire tout, c'est
+                  une dette HORS FACTURE (ajustement, reliquat ancien). Une ligne
+                  par devise, jamais une somme entre devises. */}
+              {nonVisibles.map((n, i) => (
+                <View key={n.devise}>
+                  {c.facturesOuvertes.length > 0 || i > 0 ? <Divider /> : null}
+                  <ListItem
+                    title={voitToutesLesVentes ? "Dette hors factures" : "Autres factures (non visibles)"}
+                    subtitle={
+                      voitToutesLesVentes
+                        ? "Ajustement ou reliquat ancien"
+                        : "Faites par un collègue ou dans un autre dépôt"
+                    }
+                    value={money.money(n.montant, n.devise)}
+                    icon="Receipt"
+                  />
+                </View>
+              ))}
+            </Card>
+          ) : null}
+
+          <Card className="p-0">
+            <View className="p-4 pb-0">
+              <CardHeader title="Coordonnées" />
+            </View>
+            {c.raisonSociale ? (
+              <ListItem title="Raison sociale" subtitle={c.raisonSociale} icon="Building2" />
+            ) : null}
+            {c.telephone ? (
+              <ListItem title="Téléphone" subtitle={c.telephone} icon="Phone" />
+            ) : null}
+            {c.email ? <ListItem title="E-mail" subtitle={c.email} icon="Mail" /> : null}
+            {c.adresse ? <ListItem title="Adresse" subtitle={c.adresse} icon="MapPin" /> : null}
+            {c.numeroImpot ? (
+              <ListItem title="Numéro d'impôt" subtitle={c.numeroImpot} icon="FileText" />
+            ) : null}
+            {c.notes ? (
+              <View className="px-4 pb-4 pt-1">
+                <Text variant="caption" className="mb-1">
+                  Notes
+                </Text>
+                <Text variant="bodySmall">{c.notes}</Text>
+              </View>
+            ) : null}
+          </Card>
+
+          {c.dernieresVentes.length > 0 ? (
+            <Card className="p-0">
+              <View className="p-4 pb-0">
+                <CardHeader title="Dernières ventes" />
+              </View>
+              {c.dernieresVentes.map((v, i) => {
+                const s = STATUT_VENTE[v.statut];
+                return (
+                  <View key={v.id}>
+                    {i > 0 ? <Divider /> : null}
+                    <ListItem
+                      title={v.reference}
+                      subtitle={[v.date ? formatDateFr(v.date) : null, s?.label]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      value={money.money(v.total, v.devise)}
+                      icon="Receipt"
+                      chevron
+                      onPress={() => router.push(`/vente/${v.id}`)}
+                    />
+                  </View>
+                );
+              })}
+            </Card>
+          ) : null}
+        </Flux>
 
       </View>
 

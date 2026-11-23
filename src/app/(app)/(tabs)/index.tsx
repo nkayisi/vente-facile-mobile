@@ -409,7 +409,7 @@ export default function TableauDeBord() {
   const totalMoyens = (g?.paiements ?? []).reduce((s, p) => s + p.montant, 0);
 
   return (
-    <Screen scroll edges={[]} gabarit="large">
+    <Screen scroll edges={[]}>
       <PageHeader
         title="Tableau de bord"
         subtitle={`${snapshot?.organization.name ?? ""} • ${LABELS_PERIODE[periode].phrase}`}
@@ -542,7 +542,9 @@ export default function TableauDeBord() {
         {/* Deux par deux sur un grand écran, dans le MÊME ordre que sur un
             téléphone : on réarrange, on ne réécrit pas. */}
         <Colonnes ecart={20}>
-          <Card>
+          {/* ⚠ `grow` ET JAMAIS `flex-1` : empilée sur un téléphone, une carte en
+              `flex-basis: 0` s'écraserait à la hauteur de ses marges. */}
+          <Card className="grow">
             <CardHeader
               title="Évolution des ventes"
               subtitle={`Facturé, en ${principale} • ${LABELS_PERIODE[periode].phrase.toLowerCase()}`}
@@ -563,6 +565,7 @@ export default function TableauDeBord() {
                 // touchée sur les trente derniers jours n'a plus aucun sens une
                 // fois la période changée.
                 key={periode}
+                remplir
                 points={g.evolution}
                 formater={enPrincipale}
                 resume={{ label: "Total de la période", valeur: g.totalVendu }}
@@ -575,7 +578,7 @@ export default function TableauDeBord() {
               />
             )}
           </Card>
-          <Card>
+          <Card className="grow">
             <CardHeader
               title="Encaissements par devise"
               subtitle={`Converti en ${principale}`}
@@ -634,7 +637,7 @@ export default function TableauDeBord() {
 
       <View className="mt-5">
         <Colonnes ecart={20}>
-          <Card className="overflow-hidden p-0">
+          <Card className="grow overflow-hidden p-0">
             <View className="p-4 pb-0">
               <CardHeader
                 title="Produits les plus vendus"
@@ -664,7 +667,7 @@ export default function TableauDeBord() {
               </View>
             )}
           </Card>
-          <Card>
+          <Card className="grow">
             <CardHeader title="Alertes inventaire" subtitle="État du stock" />
             <View className="gap-3">
               <TuileInventaire

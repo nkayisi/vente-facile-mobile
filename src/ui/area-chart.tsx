@@ -117,9 +117,15 @@ export function AreaChart({
    * total de la période.
    */
   resume,
+  remplir = false,
 }: {
   points: PointAire[];
   hauteur?: number;
+  /**
+   * La courbe prend toute la hauteur de sa carte, quand une voisine plus haute
+   * l'étire : sans cela, un vide reste sous l'axe. `hauteur` devient un minimum.
+   */
+  remplir?: boolean;
   /** Rendu d'une valeur avec sa devise. L'appelant la connaît, pas nous. */
   formater: (v: number) => string;
   resume?: { label: string; valeur: number };
@@ -129,7 +135,9 @@ export function AreaChart({
   // 1 200 de large, elle s'écrasait en un trait, et les creux d'une semaine ne
   // se distinguaient plus des jours sans vente.
   const voletLarge = useDisposition().largeur >= 720;
-  const hauteur = hauteurDemandee ?? (voletLarge ? 240 : 170);
+  const hauteurMin = hauteurDemandee ?? (voletLarge ? 240 : 170);
+  const [hauteurMesuree, setHauteurMesuree] = useState(0);
+  const hauteur = remplir ? Math.max(hauteurMin, hauteurMesuree) : hauteurMin;
   const [largeur, setLargeur] = useState(0);
   const [choisi, setChoisi] = useState<number | null>(null);
 
@@ -182,10 +190,13 @@ export function AreaChart({
     setChoisi(Math.min(points.length - 1, Math.max(0, i)));
   };
 
-  const mesurer = (e: LayoutChangeEvent) => setLargeur(e.nativeEvent.layout.width);
+  const mesurer = (e: LayoutChangeEvent) => {
+    setLargeur(e.nativeEvent.layout.width);
+    setHauteurMesuree(e.nativeEvent.layout.height);
+  };
 
   return (
-    <View>
+    <View className={remplir ? "grow" : undefined}>
       {/* La lecture en tête REMPLACE l'infobulle du web : sur un téléphone il
           n'y a pas de survol, et une valeur qu'on ne peut lire qu'en gardant
           le doigt posé n'est pas lisible du tout. */}
@@ -205,7 +216,7 @@ export function AreaChart({
 
       <View
         onLayout={mesurer}
-        style={{ height: hauteur }}
+        style={remplir ? { flexGrow: 1, minHeight: hauteurMin } : { height: hauteur }}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
         onResponderGrant={toucher}
@@ -214,7 +225,14 @@ export function AreaChart({
         accessibilityLabel={`Évolution sur ${points.length} points, maximum ${formater(max)}`}
       >
         {largeur > 0 ? (
-          <Svg width={largeur} height={hauteur}>
+          // ⚠ Absolu quand la courbe remplit sa carte : posé dans le flux, le
+          // dessin tiendrait la boîte à sa hauteur d'hier, et la carte ne
+          // rapetisserait plus après une rotation.
+          <Svg
+            width={largeur}
+            height={hauteur}
+            style={remplir ? { position: "absolute", top: 0, left: 0 } : undefined}
+          >
             <Defs>
               <LinearGradient id="aireVentes" x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor={colors.primary} stopOpacity={0.28} />

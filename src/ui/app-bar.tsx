@@ -46,11 +46,11 @@ export function AppBar({
 }) {
   const { classe } = useDisposition();
   const bandeau = classe === "compact";
-  // Dans un volet, la fiche ne se QUITTE pas, elle se FERME : une flèche de
-  // retour y ferait croire qu'on revient à un écran précédent, alors que la
-  // liste est déjà là, à gauche. La croix referme le volet.
+  // Une fiche posée à côté de sa liste n'est pas une modale : on en REVIENT.
+  // Même flèche que sur un téléphone (décision du 2026-11-21), et seule la
+  // destination change : le volet se referme, la liste reste où elle était.
   const volet = useVoletDeFiche();
-  const fermeLeVolet = volet !== null && onBack === undefined;
+  const revientALaListe = volet !== null && onBack === undefined;
   return (
     <View
       className={
@@ -61,13 +61,13 @@ export function AppBar({
     >
       {back ? (
         <Pressable
-          onPress={fermeLeVolet ? volet.fermer : (onBack ?? (() => router.back()))}
+          onPress={revientALaListe ? volet.fermer : (onBack ?? (() => router.back()))}
           accessibilityRole="button"
-          accessibilityLabel={fermeLeVolet ? "Fermer la fiche" : "Revenir à la page précédente"}
+          accessibilityLabel={revientALaListe ? "Revenir à la liste" : "Revenir à la page précédente"}
           className="items-center justify-center rounded-lg"
           style={{ width: HIT.min, height: HIT.min }}
         >
-          <Icon name={fermeLeVolet ? "X" : "ArrowLeft"} size={20} />
+          <Icon name="ArrowLeft" size={20} />
         </Pressable>
       ) : (
         <View className="w-2" />

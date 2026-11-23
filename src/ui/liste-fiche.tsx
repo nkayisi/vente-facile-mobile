@@ -45,13 +45,13 @@ import type { Edge } from "react-native-safe-area-context";
 
 import { Volet, useDisposition } from "./disposition";
 import {
-  LARGEUR_VOLET_LISTE,
   largeurDuVoletFiche,
+  largeurDuVoletListe,
   listeEtFicheCoteACote,
 } from "./disposition-regles";
 import { EmptyState } from "./feedback";
 import type { IconName } from "./icon";
-import { BordsDuVolet, FicheContexte } from "./volet-fiche";
+import { BordsDuVolet, DansVoletDeListe, FicheContexte } from "./volet-fiche";
 import { BORDS_PAR_DEFAUT } from "./zone-sure";
 
 /**
@@ -169,10 +169,14 @@ export function useListeFiche(options: OptionsListeFiche): ListeFiche {
 
   const ouverte = selection ? sortes[selection.variante] : undefined;
 
+  const largeurListe = coteACote ? largeurDuVoletListe(largeur) : largeur;
+
   const rendre = (liste: ReactNode) => (
     <View className="flex-1 flex-row bg-background">
-      <View style={coteACote ? { width: LARGEUR_VOLET_LISTE } : { flex: 1 }}>
-        <Volet largeur={coteACote ? LARGEUR_VOLET_LISTE : largeur}>{liste}</Volet>
+      <View style={coteACote ? { width: largeurListe } : { flex: 1 }}>
+        <DansVoletDeListe.Provider value={coteACote}>
+          <Volet largeur={largeurListe}>{liste}</Volet>
+        </DansVoletDeListe.Provider>
       </View>
       {coteACote ? (
         <View className="min-w-0 flex-1 border-l border-border">

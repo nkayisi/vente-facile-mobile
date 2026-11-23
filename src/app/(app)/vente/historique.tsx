@@ -507,6 +507,7 @@ export default function Historique() {
           <IconButton
             name="Download"
             label="Exporter l'historique"
+            texte="Exporter"
             variant="ghost"
             onPress={() => setFeuilleFormat(true)}
             disabled={envoiExport || ventes.length === 0}

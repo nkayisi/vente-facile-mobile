@@ -68,6 +68,7 @@ import {
 } from "@/printing/jobs";
 import { useSession } from "@/session/provider";
 import {
+  Flux,
   AppBar,
   Badge,
   Button,
@@ -423,68 +424,70 @@ export function FicheDepense() {
           />
         ) : null}
 
-        <Card>
-          <Text variant="caption" className="mb-1">
-            Montant
-          </Text>
-          <StatValue value={money.money(d.montant, d.devise)} tone="destructive" />
-        </Card>
+        <Flux className="gap-4">
+          <Card>
+            <Text variant="caption" className="mb-1">
+              Montant
+            </Text>
+            <StatValue value={money.money(d.montant, d.devise)} tone="destructive" />
+          </Card>
 
-        {papier ? (
-          <Button
-            variant="outline"
-            fullWidth
-            leftIcon="Printer"
-            loading={impression}
-            onPress={() => void imprimer()}
-          >
-            {papier === "recu" ? "Imprimer le reçu" : "Imprimer la demande"}
-          </Button>
-        ) : null}
+          {papier ? (
+            <Button
+              variant="outline"
+              fullWidth
+              leftIcon="Printer"
+              loading={impression}
+              onPress={() => void imprimer()}
+            >
+              {papier === "recu" ? "Imprimer le reçu" : "Imprimer la demande"}
+            </Button>
+          ) : null}
 
-        <Card>
-          <CardHeader title="Détail" />
-          <View>
-            <Paire label="Référence" valeur={d.reference} />
-            {d.categorie ? <Paire label="Catégorie" valeur={d.categorie} /> : null}
-            {d.beneficiaire ? <Paire label="Bénéficiaire" valeur={d.beneficiaire} /> : null}
-            {d.moyen ? <Paire label="Moyen de paiement" valeur={d.moyen} /> : null}
-            {d.reference_paiement ? (
-              <Paire label="Référence du paiement" valeur={d.reference_paiement} />
+          <Card>
+            <CardHeader title="Détail" />
+            <View>
+              <Paire label="Référence" valeur={d.reference} />
+              {d.categorie ? <Paire label="Catégorie" valeur={d.categorie} /> : null}
+              {d.beneficiaire ? <Paire label="Bénéficiaire" valeur={d.beneficiaire} /> : null}
+              {d.moyen ? <Paire label="Moyen de paiement" valeur={d.moyen} /> : null}
+              {d.reference_paiement ? (
+                <Paire label="Référence du paiement" valeur={d.reference_paiement} />
+              ) : null}
+              {/* `date` et `payeeLe` sont des JOURS : une heure y serait inventée.
+                  Le paiement a son instant réel, celui de la sortie d'argent. */}
+              <Paire label="Date" valeur={d.date ? formatDateFr(d.date) : "-"} />
+              {payeeLe ? <Paire label="Payée le" valeur={payeeLe} /> : null}
+            </View>
+            {d.notes ? (
+              <View className="mt-3">
+                <Text variant="caption" className="mb-1">
+                  Notes
+                </Text>
+                <Text variant="bodySmall">{d.notes}</Text>
+              </View>
             ) : null}
-            {/* `date` et `payeeLe` sont des JOURS : une heure y serait inventée.
-                Le paiement a son instant réel, celui de la sortie d'argent. */}
-            <Paire label="Date" valeur={d.date ? formatDateFr(d.date) : "-"} />
-            {payeeLe ? <Paire label="Payée le" valeur={payeeLe} /> : null}
-          </View>
-          {d.notes ? (
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Notes
+          </Card>
+
+          {/* Quand il n'y a AUCUN bouton, l'écran dit pourquoi : un pied vide se
+              lit comme une fiche à qui l'on aurait retiré ses actions. */}
+          {possibles.length === 0 ? (
+            <View className="flex-row items-start gap-2 rounded-lg border border-border bg-muted/40 p-3">
+              <Icon name="Info" size={16} color="mutedForeground" />
+              <Text variant="caption" className="min-w-0 flex-1">
+                {d.envoi
+                  ? "Le serveur ne connaît pas encore cette dépense. Synchronisez pour pouvoir la soumettre, l'approuver ou la payer."
+                  : d.statut === "cancelled"
+                    ? "Cette dépense est annulée : plus aucune décision n'est possible."
+                    : d.statut === "rejected"
+                      ? "Cette dépense est rejetée : elle ne se paie pas. Créez-en une nouvelle si elle est due."
+                      : d.statut === "pending" && d.auteur === moi && !proprietaire
+                        ? "Votre dépense attend l'approbation du propriétaire ou d'un autre gérant. Vous pourrez la payer une fois approuvée."
+                        : "Aucune décision ne vous est ouverte sur cette dépense. Approuver demande le droit « approuver une dépense » ; payer la dépense d'un autre aussi."}
               </Text>
-              <Text variant="bodySmall">{d.notes}</Text>
             </View>
           ) : null}
-        </Card>
-
-        {/* Quand il n'y a AUCUN bouton, l'écran dit pourquoi : un pied vide se
-            lit comme une fiche à qui l'on aurait retiré ses actions. */}
-        {possibles.length === 0 ? (
-          <View className="flex-row items-start gap-2 rounded-lg border border-border bg-muted/40 p-3">
-            <Icon name="Info" size={16} color="mutedForeground" />
-            <Text variant="caption" className="min-w-0 flex-1">
-              {d.envoi
-                ? "Le serveur ne connaît pas encore cette dépense. Synchronisez pour pouvoir la soumettre, l'approuver ou la payer."
-                : d.statut === "cancelled"
-                  ? "Cette dépense est annulée : plus aucune décision n'est possible."
-                  : d.statut === "rejected"
-                    ? "Cette dépense est rejetée : elle ne se paie pas. Créez-en une nouvelle si elle est due."
-                    : d.statut === "pending" && d.auteur === moi && !proprietaire
-                      ? "Votre dépense attend l'approbation du propriétaire ou d'un autre gérant. Vous pourrez la payer une fois approuvée."
-                      : "Aucune décision ne vous est ouverte sur cette dépense. Approuver demande le droit « approuver une dépense » ; payer la dépense d'un autre aussi."}
-            </Text>
-          </View>
-        ) : null}
+        </Flux>
       </View>
 
       <Sheet

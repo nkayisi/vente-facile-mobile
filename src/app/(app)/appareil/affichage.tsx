@@ -29,6 +29,7 @@ import * as Clipboard from "expo-clipboard";
 
 import { HAUTEUR_ONGLETS } from "@/navigation/metriques";
 import {
+  Flux,
   AppBar,
   Banner,
   Button,
@@ -111,111 +112,113 @@ export default function Affichage() {
           }
         />
 
-        <Section title="Marges en bas">
-          <Card className="overflow-hidden p-0">
-            {/* Les DEUX lignes, l'une sous l'autre : c'est leur écart qui dit
-                si le système ment, et le lecteur doit le voir de l'oeil. */}
-            <ListItem
-              title="Annoncée par le système"
-              icon="Ruler"
-              value={pt(m.brut.bottom)}
-            />
-            <Divider inset />
-            <ListItem
-              title="Posée par l'application"
-              value={pt(m.bas)}
-              valueTone={compense ? "success" : "muted"}
-              subtitle={compense ? "Plancher appliqué : le système n'annonçait rien" : undefined}
-            />
-          </Card>
-        </Section>
-
-        <Section title="Autres marges annoncées">
-          <Card className="overflow-hidden p-0">
-            <ListItem title="En haut" value={pt(m.brut.top)} />
-            <Divider inset />
-            <ListItem title="À gauche" value={pt(m.brut.left)} />
-            <Divider inset />
-            <ListItem title="À droite" value={pt(m.brut.right)} />
-          </Card>
-        </Section>
-
-        <Section title="Dimensions">
-          <Card className="overflow-hidden p-0">
-            {/* Les DEUX hauteurs, l'une sous l'autre : c'est leur écart qui
-                tranche, et le lecteur doit pouvoir le faire de l'oeil. */}
-            <ListItem
-              title="Fenêtre de l'application"
-              icon="Smartphone"
-              value={`${Math.round(m.fenetre.largeur)} × ${Math.round(m.fenetre.hauteur)}`}
-            />
-            <Divider inset />
-            <ListItem
-              title="Écran physique"
-              icon="Monitor"
-              value={`${Math.round(m.ecran.largeur)} × ${Math.round(m.ecran.hauteur)}`}
-            />
-            <Divider inset />
-            <ListItem
-              title="Écart de hauteur"
-              value={pt(m.ecran.hauteur - m.fenetre.hauteur)}
-              valueTone={m.verdict === "fenetre_inseree" ? "success" : "muted"}
-            />
-          </Card>
-        </Section>
-
-        <Section title="Barre d'onglets">
-          <Card className="overflow-hidden p-0">
-            <ListItem
-              title="Hauteur totale"
-              icon="LayoutDashboard"
-              value={pt(HAUTEUR_ONGLETS + m.bas)}
-              subtitle={`${HAUTEUR_ONGLETS} de barre, plus la marge posée`}
-            />
-            <Divider inset />
-            <ListItem
-              title="Plateforme"
-              value={`${Platform.OS} ${String(Platform.Version)}`}
-            />
-          </Card>
-        </Section>
-
-        {/* ┌──────────────────────────────────────────────────────────────────┐
-            │ L'INTERRUPTEUR N'EXISTE QU'EN DÉVELOPPEMENT.                    │
-            │                                                                  │
-            │ `marge_absente` ne se produit sur aucun émulateur : sans lui, le │
-            │ chemin qui pose le plancher ne serait jamais regardé. Il         │
-            │ fabrique des MESURES, jamais un verdict - voir `simulation.ts`.  │
-            └──────────────────────────────────────────────────────────────────┘ */}
-        {__DEV__ ? (
-          <Section title="Simuler un verdict (développement)">
+        <Flux className="gap-4">
+          <Section title="Marges en bas">
             <Card className="overflow-hidden p-0">
-              <Segmented
-                options={SIMULATIONS}
-                valeur={force ?? "reel"}
-                onChange={(v) => forcerVerdict(v === "reel" ? null : v)}
+              {/* Les DEUX lignes, l'une sous l'autre : c'est leur écart qui dit
+                  si le système ment, et le lecteur doit le voir de l'oeil. */}
+              <ListItem
+                title="Annoncée par le système"
+                icon="Ruler"
+                value={pt(m.brut.bottom)}
+              />
+              <Divider inset />
+              <ListItem
+                title="Posée par l'application"
+                value={pt(m.bas)}
+                valueTone={compense ? "success" : "muted"}
+                subtitle={compense ? "Plancher appliqué : le système n'annonçait rien" : undefined}
               />
             </Card>
           </Section>
-        ) : null}
 
-        <Button
-          fullWidth
-          size="lg"
-          variant={copie ? "secondary" : "primary"}
-          leftIcon={copie ? "Check" : "ClipboardList"}
-          onPress={copier}
-        >
-          {copie ? "Relevé copié" : "Copier le relevé"}
-        </Button>
+          <Section title="Autres marges annoncées">
+            <Card className="overflow-hidden p-0">
+              <ListItem title="En haut" value={pt(m.brut.top)} />
+              <Divider inset />
+              <ListItem title="À gauche" value={pt(m.brut.left)} />
+              <Divider inset />
+              <ListItem title="À droite" value={pt(m.brut.right)} />
+            </Card>
+          </Section>
 
-        {/* La bande de contrôle : si la barre du système la recouvre, le défaut
-            se voit sans lire un seul chiffre. */}
-        <View className="rounded-lg border border-dashed border-border p-3">
-          <Text variant="caption" className="text-center">
-            {"Le bas de ce cadre est la dernière chose que l'écran dessine. La barre du système ne doit pas le recouvrir."}
-          </Text>
-        </View>
+          <Section title="Dimensions">
+            <Card className="overflow-hidden p-0">
+              {/* Les DEUX hauteurs, l'une sous l'autre : c'est leur écart qui
+                  tranche, et le lecteur doit pouvoir le faire de l'oeil. */}
+              <ListItem
+                title="Fenêtre de l'application"
+                icon="Smartphone"
+                value={`${Math.round(m.fenetre.largeur)} × ${Math.round(m.fenetre.hauteur)}`}
+              />
+              <Divider inset />
+              <ListItem
+                title="Écran physique"
+                icon="Monitor"
+                value={`${Math.round(m.ecran.largeur)} × ${Math.round(m.ecran.hauteur)}`}
+              />
+              <Divider inset />
+              <ListItem
+                title="Écart de hauteur"
+                value={pt(m.ecran.hauteur - m.fenetre.hauteur)}
+                valueTone={m.verdict === "fenetre_inseree" ? "success" : "muted"}
+              />
+            </Card>
+          </Section>
+
+          <Section title="Barre d'onglets">
+            <Card className="overflow-hidden p-0">
+              <ListItem
+                title="Hauteur totale"
+                icon="LayoutDashboard"
+                value={pt(HAUTEUR_ONGLETS + m.bas)}
+                subtitle={`${HAUTEUR_ONGLETS} de barre, plus la marge posée`}
+              />
+              <Divider inset />
+              <ListItem
+                title="Plateforme"
+                value={`${Platform.OS} ${String(Platform.Version)}`}
+              />
+            </Card>
+          </Section>
+
+          {/* ┌──────────────────────────────────────────────────────────────────┐
+              │ L'INTERRUPTEUR N'EXISTE QU'EN DÉVELOPPEMENT.                    │
+              │                                                                  │
+              │ `marge_absente` ne se produit sur aucun émulateur : sans lui, le │
+              │ chemin qui pose le plancher ne serait jamais regardé. Il         │
+              │ fabrique des MESURES, jamais un verdict - voir `simulation.ts`.  │
+              └──────────────────────────────────────────────────────────────────┘ */}
+          {__DEV__ ? (
+            <Section title="Simuler un verdict (développement)">
+              <Card className="overflow-hidden p-0">
+                <Segmented
+                  options={SIMULATIONS}
+                  valeur={force ?? "reel"}
+                  onChange={(v) => forcerVerdict(v === "reel" ? null : v)}
+                />
+              </Card>
+            </Section>
+          ) : null}
+
+          <Button
+            fullWidth
+            size="lg"
+            variant={copie ? "secondary" : "primary"}
+            leftIcon={copie ? "Check" : "ClipboardList"}
+            onPress={copier}
+          >
+            {copie ? "Relevé copié" : "Copier le relevé"}
+          </Button>
+
+          {/* La bande de contrôle : si la barre du système la recouvre, le défaut
+              se voit sans lire un seul chiffre. */}
+          <View className="rounded-lg border border-dashed border-border p-3">
+            <Text variant="caption" className="text-center">
+              {"Le bas de ce cadre est la dernière chose que l'écran dessine. La barre du système ne doit pas le recouvrir."}
+            </Text>
+          </View>
+        </Flux>
       </View>
     </Screen>
   );

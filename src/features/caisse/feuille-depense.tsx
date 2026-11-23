@@ -261,7 +261,12 @@ export function FeuilleNouvelleDepense({
   }
 
   return (
-    <Sheet ouvert onFermer={onFermer} titre="Nouvelle dépense">
+    <Sheet ouvert onFermer={onFermer} titre="Nouvelle dépense"
+      pied={
+        <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
+          Enregistrer et imprimer la demande
+        </Button>
+      }>
       {/* ┌──────────────────────────────────────────────────────────────┐
           │ UN RÔLE BORNÉ SANS AFFECTATION NE PEUT PAS SAISIR UTILEMENT. │
           │                                                              │
@@ -397,10 +402,6 @@ export function FeuilleNouvelleDepense({
           numberOfLines={2}
         />
       </FormField>
-
-      <Button fullWidth size="lg" disabled={bloque} loading={envoi} onPress={() => void valider()}>
-        Enregistrer et imprimer la demande
-      </Button>
       <Text variant="caption">
         La dépense part en brouillon. L&apos;argent sortira de la caisse au paiement,
         contre le reçu de dépense : c&apos;est lui qui entre dans le rapport de caisse

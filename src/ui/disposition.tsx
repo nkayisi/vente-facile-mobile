@@ -59,6 +59,7 @@ interface Fenetre {
 
 const FenetreContexte = createContext<Fenetre | null>(null);
 const VoletContexte = createContext<number | null>(null);
+const RetraitContexte = createContext(false);
 
 /**
  * Monté à la RACINE, à côté du thème : l'authentification, les toasts et la
@@ -110,6 +111,23 @@ export function DispositionProvider({
  */
 export function Volet({ largeur, children }: { largeur: number; children: ReactNode }) {
   return <VoletContexte.Provider value={largeur}>{children}</VoletContexte.Provider>;
+}
+
+/**
+ * Les rangées d'une liste s'alignent-elles sur les cartes de la page ?
+ *
+ * Sur un téléphone une rangée va d'un bord à l'autre. Sur un grand écran, la
+ * page porte une gouttière et son en-tête un `px-4` : une rangée sans retrait
+ * dépassait les cartes au-dessus d'elle de quatorze points de chaque côté. La
+ * colonne liste d'une vue liste/fiche suit la même règle, bien qu'elle ait la
+ * largeur d'un téléphone. `Screen` le sait, `DataList` le lit.
+ */
+export function RetraitDesRangees({ actif, children }: { actif: boolean; children: ReactNode }) {
+  return <RetraitContexte.Provider value={actif}>{children}</RetraitContexte.Provider>;
+}
+
+export function useRetraitDesRangees(): boolean {
+  return useContext(RetraitContexte);
 }
 
 /**

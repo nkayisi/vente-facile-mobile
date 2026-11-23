@@ -29,6 +29,7 @@ import { depuis } from "@/data/ventes";
 import { libelleEnvoi } from "@/data/envoi";
 import { ETAT_SESSION, motifClotureFermee } from "@/features/caisse/apparence";
 import {
+  Flux,
   AppBar, Badge, Banner, Button, Card, CardHeader, Divider, EmptyState, Icon,
   MultiCurrencyTotal, Pressable, Screen, Spinner, Text,
   useIdDeFiche,
@@ -191,148 +192,150 @@ export function FicheCaisse() {
       />
 
       <View className="gap-4 p-4">
-        <Card>
-          <CardHeader title="État" />
-          {c.session ? (
-            <View className="gap-3">
-              {/* La MÊME apparence qu'au parc de caisses, et pour la même
-                  raison : une coche verte sur « attend son envoi » affirme le
-                  contraire du texte. Voir `features/caisse/apparence.ts`. */}
-              <View
-                className={`rounded-lg border border-solid p-3 ${
+        <Flux className="gap-4">
+          <Card>
+            <CardHeader title="État" />
+            {c.session ? (
+              <View className="gap-3">
+                {/* La MÊME apparence qu'au parc de caisses, et pour la même
+                    raison : une coche verte sur « attend son envoi » affirme le
+                    contraire du texte. Voir `features/caisse/apparence.ts`. */}
+                <View
+                  className={`rounded-lg border border-solid p-3 ${
                   ETAT_SESSION[c.session.envoi].boite
                 }`}
-              >
-                <View className="flex-row items-center gap-2">
-                  <Icon
-                    name={ETAT_SESSION[c.session.envoi].icone}
-                    size={18}
-                    color={ETAT_SESSION[c.session.envoi].couleur}
-                  />
-                  {/* Le titre dit l'ACQUIS : la session est ouverte, on vend
-                      dessus. Ce qui ne l'est pas encore va juste dessous. */}
-                  <Text variant="bodySmall" className="font-sans-medium">
-                    Session ouverte
-                  </Text>
+                >
+                  <View className="flex-row items-center gap-2">
+                    <Icon
+                      name={ETAT_SESSION[c.session.envoi].icone}
+                      size={18}
+                      color={ETAT_SESSION[c.session.envoi].couleur}
+                    />
+                    {/* Le titre dit l'ACQUIS : la session est ouverte, on vend
+                        dessus. Ce qui ne l'est pas encore va juste dessous. */}
+                    <Text variant="bodySmall" className="font-sans-medium">
+                      Session ouverte
+                    </Text>
+                  </View>
+                  {/* L'ÉTAT ici, la CONSÉQUENCE sous le bouton. Porter le détail
+                      aux deux endroits faisait dire deux fois « à la prochaine
+                      synchronisation » sur la même carte, et une phrase répétée
+                      finit par n'être lue ni la première ni la seconde fois. */}
+                  {libelleEnvoi(c.session.envoi) ? (
+                    <Text variant="caption" className="mt-1">
+                      {libelleEnvoi(c.session.envoi)?.court}
+                    </Text>
+                  ) : null}
                 </View>
-                {/* L'ÉTAT ici, la CONSÉQUENCE sous le bouton. Porter le détail
-                    aux deux endroits faisait dire deux fois « à la prochaine
-                    synchronisation » sur la même carte, et une phrase répétée
-                    finit par n'être lue ni la première ni la seconde fois. */}
-                {libelleEnvoi(c.session.envoi) ? (
-                  <Text variant="caption" className="mt-1">
-                    {libelleEnvoi(c.session.envoi)?.court}
-                  </Text>
-                ) : null}
-              </View>
-              <View>
-                <Paire
-                  label="Ouverte"
-                  valeur={c.session.ouverteLe ? depuis(c.session.ouverteLe) : "-"}
-                />
-                {c.session.parQui ? (
-                  <Paire label="Par" valeur={c.session.parQui} />
-                ) : null}
-                <Paire label="Ventes" valeur={String(c.session.nbVentes)} />
-              </View>
-              {/* L'ENCAISSÉ manquait ici alors que le parc le rend : le
-                  caissier venu chercher son chiffre avant de compter son
-                  tiroir le trouvait sur la liste et pas sur la fiche. Une
-                  ligne PAR DEVISE, jamais leur somme. */}
-              <View className="flex-row items-start justify-between gap-3 border-t border-border pt-3">
-                <Text variant="bodySmall" className="text-muted-foreground">
-                  Encaissé
-                </Text>
-                <View className="min-w-0 items-end">
-                  <MultiCurrencyTotal
-                    lignes={c.session.encaisseParDevise}
-                    money={money.money}
-                    taille="mesure"
+                <View>
+                  <Paire
+                    label="Ouverte"
+                    valeur={c.session.ouverteLe ? depuis(c.session.ouverteLe) : "-"}
                   />
-                  {c.session.sansMontant > 0 ? (
-                    <Text variant="caption" className="mt-0.5">
-                      {`+${c.session.sansMontant} sans montant`}
+                  {c.session.parQui ? (
+                    <Paire label="Par" valeur={c.session.parQui} />
+                  ) : null}
+                  <Paire label="Ventes" valeur={String(c.session.nbVentes)} />
+                </View>
+                {/* L'ENCAISSÉ manquait ici alors que le parc le rend : le
+                    caissier venu chercher son chiffre avant de compter son
+                    tiroir le trouvait sur la liste et pas sur la fiche. Une
+                    ligne PAR DEVISE, jamais leur somme. */}
+                <View className="flex-row items-start justify-between gap-3 border-t border-border pt-3">
+                  <Text variant="bodySmall" className="text-muted-foreground">
+                    Encaissé
+                  </Text>
+                  <View className="min-w-0 items-end">
+                    <MultiCurrencyTotal
+                      lignes={c.session.encaisseParDevise}
+                      money={money.money}
+                      taille="mesure"
+                    />
+                    {c.session.sansMontant > 0 ? (
+                      <Text variant="caption" className="mt-0.5">
+                        {`+${c.session.sansMontant} sans montant`}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View>
+                  <View className="flex-row gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      leftIcon="Calculator"
+                      disabled={c.session.envoi !== "envoye"}
+                      onPress={() => router.push(`/cloture/${c.session?.id}`)}
+                    >
+                      Clôturer
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      leftIcon="ShoppingCart"
+                      onPress={() => router.push("/vendre")}
+                    >
+                      Continuer
+                    </Button>
+                  </View>
+                  {/* Un bouton mort qui ne dit pas pourquoi laisse le caissier
+                      appuyer sans rien obtenir, son tiroir déjà compté. */}
+                  {motifClotureFermee(c.session.envoi) ? (
+                    <Text variant="caption" className="mt-2">
+                      {motifClotureFermee(c.session.envoi)}
                     </Text>
                   ) : null}
                 </View>
               </View>
-              <View>
-                <View className="flex-row gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    leftIcon="Calculator"
-                    disabled={c.session.envoi !== "envoye"}
-                    onPress={() => router.push(`/cloture/${c.session?.id}`)}
-                  >
-                    Clôturer
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    leftIcon="ShoppingCart"
-                    onPress={() => router.push("/vendre")}
-                  >
-                    Continuer
-                  </Button>
-                </View>
-                {/* Un bouton mort qui ne dit pas pourquoi laisse le caissier
-                    appuyer sans rien obtenir, son tiroir déjà compté. */}
-                {motifClotureFermee(c.session.envoi) ? (
-                  <Text variant="caption" className="mt-2">
-                    {motifClotureFermee(c.session.envoi)}
+            ) : (
+              <View className="gap-2">
+                <View className="flex-row items-center gap-2">
+                  <Icon name="PauseCircle" size={18} color="mutedForeground" />
+                  <Text variant="bodySmall" className="font-sans-medium">
+                    Aucune session ouverte
                   </Text>
-                ) : null}
-              </View>
-            </View>
-          ) : (
-            <View className="gap-2">
-              <View className="flex-row items-center gap-2">
-                <Icon name="PauseCircle" size={18} color="mutedForeground" />
-                <Text variant="bodySmall" className="font-sans-medium">
-                  Aucune session ouverte
+                </View>
+                <Text variant="caption">
+                  {c.entrepot
+                    ? `Le stock sortirait de ${c.entrepot}.`
+                    : "Aucun entrepôt n'est rattaché à cette caisse."}
                 </Text>
               </View>
-              <Text variant="caption">
-                {c.entrepot
-                  ? `Le stock sortirait de ${c.entrepot}.`
-                  : "Aucun entrepôt n'est rattaché à cette caisse."}
-              </Text>
-            </View>
-          )}
-        </Card>
+            )}
+          </Card>
 
-        <Card className="overflow-hidden p-0">
-          <View className="p-4 pb-2">
-            <CardHeader
-              title={`Clôtures passées (${sessions.length})`}
-              subtitle="Touchez une ligne pour voir son comptage."
-            />
-          </View>
-          {sessions.length === 0 ? (
-            <View className="px-4 pb-4">
-              <Text variant="caption">
-                Aucune clôture n&apos;est descendue sur ce terminal pour cette caisse.
-              </Text>
+          <Card className="overflow-hidden p-0">
+            <View className="p-4 pb-2">
+              <CardHeader
+                title={`Clôtures passées (${sessions.length})`}
+                subtitle="Touchez une ligne pour voir son comptage."
+              />
             </View>
-          ) : (
-            sessions.map((s, i) => (
-              <View key={s.id}>
-                {i > 0 ? <Divider /> : null}
-                {ligne(s)}
+            {sessions.length === 0 ? (
+              <View className="px-4 pb-4">
+                <Text variant="caption">
+                  Aucune clôture n&apos;est descendue sur ce terminal pour cette caisse.
+                </Text>
               </View>
-            ))
-          )}
-        </Card>
+            ) : (
+              sessions.map((s, i) => (
+                <View key={s.id}>
+                  {i > 0 ? <Divider /> : null}
+                  {ligne(s)}
+                </View>
+              ))
+            )}
+          </Card>
 
-        <Banner
-          tone="info"
-          title="Réimprimer un Z"
-          message="Le Z se réimprime depuis « Documents imprimés », sur le terminal qui l'a produit : c'est là que sont rangées ses données, ventilées par devise. Le numéro ne change pas, la copie porte la pastille DUPLICATA."
-          action={{
-            label: "Documents imprimés",
-            onPress: () => router.push("/appareil/documents"),
-          }}
-        />
+          <Banner
+            tone="info"
+            title="Réimprimer un Z"
+            message="Le Z se réimprime depuis « Documents imprimés », sur le terminal qui l'a produit : c'est là que sont rangées ses données, ventilées par devise. Le numéro ne change pas, la copie porte la pastille DUPLICATA."
+            action={{
+              label: "Documents imprimés",
+              onPress: () => router.push("/appareil/documents"),
+            }}
+          />
+        </Flux>
       </View>
     </Screen>
   );

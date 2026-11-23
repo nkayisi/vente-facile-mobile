@@ -239,7 +239,13 @@ export function FeuilleEncaissement({
   ]);
 
   return (
-    <Sheet ouvert={ouvert} onFermer={onFermer} titre="Encaisser du client">
+    <Sheet ouvert={ouvert} onFermer={onFermer} titre="Encaisser du client"
+        pied={
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+          {envoi ? "Enregistrement…" : "Encaisser et imprimer"}
+        </Button>
+        }
+      >
       <Text variant="caption">
         {ouvertes.length > 0
           ? `${ouvertes.length} ${ouvertes.length > 1 ? "factures ouvertes" : "facture ouverte"} en ${deviseImputation}. Les plus anciennes sont soldées d'abord.`
@@ -384,10 +390,6 @@ export function FeuilleEncaissement({
         title="Le reçu sort tout de suite"
         message="Numéro définitif, même hors ligne. L'imputation définitive reste au serveur."
       />
-
-      <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-        {envoi ? "Enregistrement…" : "Encaisser et imprimer"}
-      </Button>
     </Sheet>
   );
 }

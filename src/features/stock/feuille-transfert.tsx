@@ -298,6 +298,22 @@ export function FeuilleNouveauTransfert({
       onFermer={reculer}
       titre={titre}
       retour={surLeFormulaire ? undefined : reculer}
+      pied={
+        surLeFormulaire ? (
+          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
+            {envoi ? "Enregistrement…" : "Créer le transfert"}
+          </Button>
+        ) : !choix && panneauArticle && choisi ? (
+          <View className="flex-row gap-2">
+            <Button variant="outline" className="flex-1" onPress={() => setChoisi(null)}>
+              Changer
+            </Button>
+            <Button className="flex-1" leftIcon="Plus" onPress={ajouter}>
+              Ajouter
+            </Button>
+          </View>
+        ) : undefined
+      }
     >
       {choix ? (
         <ListeChoix
@@ -346,15 +362,6 @@ export function FeuilleNouveauTransfert({
               recapitulatif={recap}
               alerte={alerte}
             />
-
-            <View className="flex-row gap-2">
-              <Button variant="outline" className="flex-1" onPress={() => setChoisi(null)}>
-                Changer
-              </Button>
-              <Button className="flex-1" leftIcon="Plus" onPress={ajouter}>
-                Ajouter
-              </Button>
-            </View>
           </>
         ) : (
           <>
@@ -545,10 +552,6 @@ export function FeuilleNouveauTransfert({
             title="Le stock ne bouge pas encore"
             message="Le transfert est créé en brouillon. Il quittera l'entrepôt source à l'expédition, depuis sa fiche."
           />
-
-          <Button fullWidth size="lg" disabled={bloque} onPress={() => void valider()}>
-            {envoi ? "Enregistrement…" : "Créer le transfert"}
-          </Button>
         </>
       )}
     </Sheet>

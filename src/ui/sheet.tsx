@@ -34,6 +34,7 @@
 import { useEffect, useState } from "react";
 import {
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Pressable as PressableNatif,
@@ -47,6 +48,7 @@ import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { useDisposition } from "./disposition";
 import { formeDeModale } from "./disposition-regles";
+import { useInscrireModale } from "./modales-ouvertes";
 import { useMargesSysteme } from "./zone-sure";
 
 /**
@@ -58,6 +60,36 @@ import { useMargesSysteme } from "./zone-sure";
  * points feraient replier chaque ligne.
  */
 const LARGEUR_DIALOGUE = { standard: 560, large: 760 } as const;
+
+/**
+ * La place que le clavier retire à l'écran, pour une feuille posée au centre.
+ *
+ * ┌────────────────────────────────────────────────────────────────────────┐
+ * │ UNE CARTE CENTRÉE NE SE LAISSE PAS POUSSER PAR `KeyboardAvoidingView`. │
+ * │                                                                        │
+ * │ Il calcule son rembourrage depuis le bas de SA vue. Centrée, elle      │
+ * │ remonte de la moitié de ce qu'on lui ajoute, et son bas restait sous   │
+ * │ le clavier : relevé sur le rk3568 (clavier de 422 points sur 1 080),   │
+ * │ « Enregistrer » y disparaissait. La hauteur se borne donc ici, et le   │
+ * │ défilement cède la place : le pied reste au-dessus du clavier.         │
+ * └────────────────────────────────────────────────────────────────────────┘
+ */
+function useClavierAuCentre(actif: boolean, hauteurFenetre: number): number {
+  const [clavier, setClavier] = useState(0);
+  useEffect(() => {
+    if (!actif) return;
+    const montre = Keyboard.addListener("keyboardDidShow", (e) => {
+      setClavier(Math.max(0, hauteurFenetre - e.endCoordinates.screenY));
+    });
+    const cache = Keyboard.addListener("keyboardDidHide", () => setClavier(0));
+    return () => {
+      montre.remove();
+      cache.remove();
+      setClavier(0);
+    };
+  }, [actif, hauteurFenetre]);
+  return clavier;
+}
 
 export function Sheet({
   ouvert,
@@ -122,6 +154,8 @@ export function Sheet({
   pied?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  // Le lecteur de codes du comptoir s'arrête tant qu'elle est ouverte.
+  useInscrireModale(ouvert);
   const marges = useMargesSysteme();
   const { fenetre, classe } = useDisposition();
   const height = fenetre.hauteur;
@@ -135,6 +169,9 @@ export function Sheet({
   // │ sans une ligne changée, `retour`, `pied` et clavier compris.         │
   // └──────────────────────────────────────────────────────────────────────┘
   const dialogue = formeDeModale(classe) === "dialogue";
+  const clavier = useClavierAuCentre(dialogue && ouvert, height);
+  const margeHaute = marges.haut + 16;
+  const margeBasse = clavier > 0 ? clavier + 8 : marges.bas + 16;
   // `useState` d'initialisation paresseuse plutôt qu'un `useRef` : la valeur
   // animée est LUE au rendu (elle part dans le style), et un ref lu au rendu
   // est ce que `react-hooks/refs` interdit. L'identité ne change jamais, comme
@@ -185,7 +222,7 @@ export function Sheet({
         // zone sûre se prend donc en haut ET en bas (voir `dialog.tsx`).
         style={
           dialogue
-            ? { paddingTop: marges.haut + 16, paddingBottom: marges.bas + 16 }
+            ? { paddingTop: margeHaute, paddingBottom: margeBasse }
             : undefined
         }
       >
@@ -216,12 +253,18 @@ export function Sheet({
         */}
         <KeyboardAvoidingView
           behavior="padding"
+          // Au centre, c'est `useClavierAuCentre` qui borne la carte.
+          enabled={!dialogue}
           // La feuille ne monte jamais au-delà de 90 % : au-dessus, elle se lit
           // comme un écran plein et le retour en arrière devient ambigu. Au
           // centre, elle prend la largeur d'un formulaire et pas davantage.
           style={
             dialogue
-              ? { width: "100%", maxWidth: LARGEUR_DIALOGUE[taille], maxHeight: height * 0.9 }
+              ? {
+                  width: "100%",
+                  maxWidth: LARGEUR_DIALOGUE[taille],
+                  maxHeight: Math.min(height * 0.9, height - margeHaute - margeBasse),
+                }
               : { maxHeight: height * 0.9 }
           }
         >
