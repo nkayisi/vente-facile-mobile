@@ -92,7 +92,7 @@ describe("normaliserReglage", () => {
    */
   it.each([
     ["ble", "l'ancien transport"],
-    ["usb", "un transport qui n'existe pas"],
+    ["serie", "un transport qui n'existe pas"],
     ["", "une chaîne vide"],
     [42, "un nombre"],
     [null, "un nul"],
@@ -117,9 +117,11 @@ describe("normaliserReglage", () => {
 });
 
 describe("libelleTransport", () => {
-  it("nomme les trois transports en français", () => {
+  it("nomme les cinq transports en français", () => {
     expect(libelleTransport("embedded")).toBe("imprimante du terminal");
+    expect(libelleTransport("usb")).toBe("imprimante USB");
     expect(libelleTransport("bluetooth")).toBe("Bluetooth");
+    expect(libelleTransport("reseau")).toBe("imprimante réseau");
     expect(libelleTransport("pdf")).toBe("PDF");
   });
 
@@ -130,6 +132,33 @@ describe("libelleTransport", () => {
   });
 
   it("rend une valeur inconnue telle quelle plutôt que de se taire", () => {
-    expect(libelleTransport("usb")).toBe("usb");
+    expect(libelleTransport("serie")).toBe("serie");
+  });
+});
+
+describe("une imprimante câblée garde sa machine", () => {
+  it("garde la clé USB et son nom, sans lien Bluetooth", () => {
+    const r = normaliserReglage({
+      transport: "usb",
+      adresse: "1fc9:2016",
+      nom: "Printer USB Printer Port",
+      lien: "gatt",
+      paperWidth: 80,
+    });
+    expect(r.adresse).toBe("1fc9:2016");
+    expect(r.nom).toBe("Printer USB Printer Port");
+    // Le lien est propre au Bluetooth : il ne survit pas sur un câble.
+    expect(r.lien).toBeUndefined();
+  });
+
+  it("garde l'adresse réseau", () => {
+    const r = normaliserReglage({ transport: "reseau", adresse: "192.168.1.50:9100" });
+    expect(r.adresse).toBe("192.168.1.50:9100");
+  });
+
+  it("oublie la machine quand le transport n'en désigne pas", () => {
+    const r = normaliserReglage({ transport: "embedded", adresse: "1fc9:2016", nom: "X" });
+    expect(r.adresse).toBeUndefined();
+    expect(r.nom).toBeUndefined();
   });
 });

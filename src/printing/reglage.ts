@@ -14,17 +14,28 @@
  * | Transport   | Matériel visé                                              |
  * | ----------- | ---------------------------------------------------------- |
  * | `embedded`  | imprimante intégrée d'un terminal de caisse (NYX, Sunmi…)  |
+ * | `usb`       | imprimante branchée par câble USB (interne ou externe)     |
  * | `bluetooth` | toute imprimante sans fil, profil série (SPP) OU basse      |
  * |             | consommation (GATT). Le PROTOCOLE n'est pas un choix du     |
  * |             | marchand : il est relevé quand il désigne sa machine.       |
+ * | `reseau`    | imprimante branchée au routeur (Ethernet, Wi-Fi), port 9100 |
  * | `pdf`       | repli universel : iOS, appareil sans imprimante, envoi      |
  */
 import { DENSITE_PAR_DEFAUT } from "./densite";
 
-export type TransportId = "embedded" | "bluetooth" | "pdf";
+export type TransportId = "embedded" | "usb" | "bluetooth" | "reseau" | "pdf";
 
-/** L'ordre de la cascade, et la seule liste des transports qui existe. */
-export const TRANSPORTS: readonly TransportId[] = ["embedded", "bluetooth", "pdf"];
+/**
+ * L'ordre de la cascade, et la seule liste des transports qui existe.
+ *
+ * L'USB vient juste après l'imprimante intégrée : une imprimante branchée par
+ * câble EST l'imprimante du terminal quand il n'en a pas d'intégrée
+ * (`drivers/cable/usb.ts`, détection automatique).
+ */
+export const TRANSPORTS: readonly TransportId[] = ["embedded", "usb", "bluetooth", "reseau", "pdf"];
+
+/** Les transports qui désignent UNE machine, par une adresse posée au choix. */
+const AVEC_ADRESSE: readonly TransportId[] = ["usb", "bluetooth", "reseau"];
 
 /**
  * Comment on parle à une imprimante sans fil.
@@ -45,7 +56,11 @@ export interface ReglageImprimante {
    * au moment d'imprimer : c'est tout l'objet de la fusion des deux options.
    */
   lien?: LienBluetooth;
-  /** Adresse MAC en profil série, identifiant système en basse consommation. */
+  /**
+   * La machine retenue. Bluetooth : adresse MAC en profil série, identifiant
+   * système en basse consommation. USB : « vid:pid » en hexadécimal. Réseau :
+   * « hôte:port ».
+   */
   adresse?: string;
   nom?: string;
   paperWidth: 58 | 80;
@@ -143,22 +158,21 @@ export function normaliserReglage(brut: unknown): ReglageImprimante {
   // existants strictement identiques en base.
   if (o.texteSimple === true) base.texteSimple = true;
 
-  // Hors Bluetooth, l'appareil retenu ne désigne plus rien. Le garder ferait
-  // ressortir une adresse oubliée au prochain passage en Bluetooth, sur une
-  // imprimante dont le marchand ne se souvient pas.
-  if (transport !== "bluetooth") return base;
+  // Hors d'un transport à machine, l'appareil retenu ne désigne plus rien. Le
+  // garder ferait ressortir une adresse oubliée au prochain passage sur ce
+  // transport, vers une imprimante dont le marchand ne se souvient pas.
+  if (!AVEC_ADRESSE.includes(transport)) return base;
 
-  // Sans machine, ni le lien ni le nom ne désignent quoi que ce soit : les
-  // trois se posent ensemble, quand le marchand choisit dans la liste.
+  // Sans machine, ni le lien ni le nom ne désignent quoi que ce soit : ils se
+  // posent ensemble, quand le marchand choisit.
   const adresse = lireTexte(o.adresse);
   if (!adresse) return base;
 
-  return {
-    ...base,
-    adresse,
-    nom: lireTexte(o.nom),
-    lien: lireLien(o.transport, o.lien),
-  };
+  const avecMachine: ReglageImprimante = { ...base, adresse, nom: lireTexte(o.nom) };
+  // Le lien n'a de sens qu'en Bluetooth.
+  return transport === "bluetooth"
+    ? { ...avecMachine, lien: lireLien(o.transport, o.lien) }
+    : avecMachine;
 }
 
 /**
@@ -172,6 +186,10 @@ export function libelleTransport(id: string): string {
   switch (id) {
     case "embedded":
       return "imprimante du terminal";
+    case "usb":
+      return "imprimante USB";
+    case "reseau":
+      return "imprimante réseau";
     case "bluetooth":
     case ANCIEN_BLE:
       return "Bluetooth";

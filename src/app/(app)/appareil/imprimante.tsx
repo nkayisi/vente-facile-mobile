@@ -17,15 +17,23 @@
  * │ Les mots « série », « SPP », « GATT » et « BLE » n'atteignent jamais cet │
  * │ écran : ce sont des noms de protocole, pas des choses qu'on achète.      │
  * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Les imprimantes CÂBLÉES (USB, réseau) ont leurs lignes depuis le terminal
+ * SDL, dont l'imprimante est branchée en USB : réglé sur « intégrée », il
+ * imprimait tout en PDF. Une seule imprimante USB branchée sert désormais
+ * d'elle-même, et l'écran le dit sur la ligne de l'intégrée.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Platform, View } from "react-native";
 import { router } from "expo-router";
 
+import { CarteAdresseReseau } from "@/features/impression/adresse-reseau";
+
 import {
   activerBluetooth,
   annulerRecherche,
   appairerImprimante,
+  autoriserImprimanteUsb,
   avecImprimanteChoisie,
   capacitesImprimante,
   chercherImprimantes,
@@ -39,17 +47,28 @@ import {
   largeurPour,
   lireReglage,
   piloteCourant,
+  rechercherImprimantesUsb,
   regleDeCalibration,
   type CapacitesImprimante,
   type ImprimanteTrouvee,
+  type ImprimanteUsb,
   type RechercheImprimantes,
+  type RechercheUsb,
   type ReglageImprimante,
   type TransportId,
 } from "@/printing";
 import {
-  Banner, Button, Card, Divider, Icon, ListeChoix, ListItem, Pressable, Screen, Section,
-  Sheet, Spinner, Text,
+  Flux,
+  Banner, Button, Card, Divider, Icon, ListeChoix, ListItem, Pressable,
+  Screen, Section, Sheet, Spinner, Text,
 } from "@/ui";
+
+/** Les transports qui parlent ESC/POS, donc qui ont le mode « Texte simple ». */
+const ESC_POS: readonly TransportId[] = ["usb", "bluetooth", "reseau"];
+
+/** Les câbles n'existent que sur Android (modules natifs Android seulement). */
+const SANS_CABLE =
+  Platform.OS === "ios" ? "Les imprimantes câblées se branchent sur un terminal Android." : undefined;
 
 /**
  * Ce que la tête chauffe réellement, en millimètres.
@@ -90,12 +109,24 @@ const TRANSPORTS: {
         : undefined,
   },
   {
+    id: "usb",
+    titre: "Imprimante USB (câble)",
+    detail: "Une imprimante branchée par câble USB, interne au terminal ou posée à côté.",
+    indisponible: SANS_CABLE,
+  },
+  {
     id: "bluetooth",
     titre: "Imprimante Bluetooth",
     detail:
       Platform.OS === "ios"
         ? "Les modèles récents. Sur iPhone, les imprimantes plus anciennes n'apparaissent pas : Apple ne les reconnaît pas."
         : "Les imprimantes 58 mm du marché, anciennes comme récentes.",
+  },
+  {
+    id: "reseau",
+    titre: "Imprimante réseau (Ethernet, Wi-Fi)",
+    detail: "Une imprimante branchée au routeur, que l'on joint par son adresse IP.",
+    indisponible: SANS_CABLE,
   },
   {
     id: "pdf",
@@ -114,15 +145,17 @@ function etatDeLigne(i: ImprimanteTrouvee, choisie: boolean): string {
 }
 
 /** Le motif d'un échec d'impression, en une phrase. */
-function motifDEchec(e: unknown): string {
+function motifDEchec(e: unknown, transport: TransportId): string {
   if (e instanceof ErreurImpression) {
     switch (e.raison) {
       case "permission":
-        return "Android n'autorise pas encore le Bluetooth. Accordez-le ci-dessus.";
+        return transport === "bluetooth"
+          ? "Android n'autorise pas encore le Bluetooth. Accordez-le ci-dessus."
+          : "Android n'a pas autorisé l'accès à l'imprimante USB. Touchez « Autoriser » ci-dessus.";
       case "eteint":
         return "Le Bluetooth est éteint.";
       case "aucune_imprimante":
-        return "Aucune imprimante n'est choisie.";
+        return transport === "reseau" ? e.message : "Aucune imprimante n'est choisie.";
       default:
         return e.message;
     }
@@ -138,7 +171,7 @@ export default function Imprimante() {
   const [avis, setAvis] = useState<{ ton: "info" | "warning"; texte: string } | null>(null);
 
   useEffect(() => {
-    lireReglage().then(setReglage);
+    void lireReglage().then(setReglage);
   }, []);
 
   // Une découverte laissée en cours mange la radio et la batterie.
@@ -208,6 +241,64 @@ export default function Imprimante() {
     void capacitesImprimante().then(setCapacites);
   }, []);
 
+  /** Les imprimantes USB branchées ; `null` tant qu'on n'a pas regardé. */
+  const [usb, setUsb] = useState<RechercheUsb | null>(null);
+  const [usbVersion, setUsbVersion] = useState(0);
+  const relireUsb = useCallback(() => setUsbVersion((n) => n + 1), []);
+  useEffect(() => {
+    let annule = false;
+    void rechercherImprimantesUsb().then((r) => {
+      if (!annule) setUsb(r);
+    });
+    return () => {
+      annule = true;
+    };
+  }, [usbVersion]);
+
+  /**
+   * Le transport qui servirait au PROCHAIN ticket, cascade comprise.
+   *
+   * C'est lui qui décide de ce que l'écran affirme : l'avertissement « 80 mm
+   * sur l'intégrée », la densité (que seule l'intégrée lit), ou la ligne qui
+   * dit qu'une imprimante USB sert à la place de l'intégrée. Sur le terminal
+   * SDL, l'avertissement s'affichait à tort : l'intégrée n'y existe pas, et
+   * c'est une imprimante USB de 80 mm qui imprime.
+   */
+  const [effectif, setEffectif] = useState<TransportId | null>(null);
+  useEffect(() => {
+    if (!reglage) return;
+    let annule = false;
+    void piloteCourant(reglage).then((p) => {
+      if (!annule) setEffectif(p.id);
+    });
+    return () => {
+      annule = true;
+    };
+  }, [reglage, usb]);
+
+  const [autorisationUsb, setAutorisationUsb] = useState<string | null>(null);
+
+  /** Demande l'accès à une imprimante USB, sur un geste du marchand. */
+  const autoriserUsb = useCallback(
+    async (imprimante: ImprimanteUsb) => {
+      setAvis(null);
+      setAutorisationUsb(imprimante.cle);
+      try {
+        const accordee = await autoriserImprimanteUsb(imprimante.cle);
+        if (!accordee) {
+          setAvis({
+            ton: "warning",
+            texte: `Android n'a pas autorisé l'accès à « ${imprimante.nom} ». Les tickets partiront en PDF tant qu'il ne l'est pas.`,
+          });
+        }
+      } finally {
+        setAutorisationUsb(null);
+        relireUsb();
+      }
+    },
+    [relireUsb]
+  );
+
   /**
    * Les appairées d'abord, le balayage ensuite.
    *
@@ -249,7 +340,23 @@ export default function Imprimante() {
   const choisirTransport = async (transport: TransportId) => {
     setAvis(null);
     setRecherche(null);
-    await enregistrer({ transport, adresse: undefined, nom: undefined, lien: undefined });
+    // UNE seule imprimante USB branchée : la choisir, c'est la désigner. Lui
+    // faire toucher une seconde ligne n'apprendrait rien au marchand.
+    const seule =
+      transport === "usb" && usb?.etat === "ok" && usb.imprimantes.length === 1
+        ? usb.imprimantes[0]
+        : null;
+    await enregistrer({
+      transport,
+      adresse: seule?.cle,
+      nom: seule?.nom,
+      lien: undefined,
+    });
+    if (transport === "usb") {
+      if (seule && !seule.autorisee) await autoriserUsb(seule);
+      else relireUsb();
+      return;
+    }
     if (transport !== "bluetooth") return;
     // La demande est liée au GESTE, seul endroit où une invite système a sa
     // place : jamais à l'impression, où un client attend au comptoir.
@@ -272,7 +379,7 @@ export default function Imprimante() {
           return;
         }
       } catch (e) {
-        setAvis({ ton: "warning", texte: motifDEchec(e) });
+        setAvis({ ton: "warning", texte: motifDEchec(e, reglage?.transport ?? "embedded") });
         return;
       } finally {
         setAppairageEnCours(null);
@@ -285,6 +392,16 @@ export default function Imprimante() {
       // marchand désigne sa machine, et plus rien n'est deviné à l'impression.
       lien: imprimante.lien,
     });
+  };
+
+  const choisirUsb = async (imprimante: ImprimanteUsb) => {
+    setAvis(null);
+    await enregistrer({ transport: "usb", adresse: imprimante.cle, nom: imprimante.nom });
+    if (!imprimante.autorisee) await autoriserUsb(imprimante);
+  };
+
+  const enregistrerReseau = async (adresse: string) => {
+    await enregistrer({ transport: "reseau", adresse, nom: undefined });
   };
 
   /**
@@ -320,7 +437,7 @@ export default function Imprimante() {
             : "Règle envoyée. Photographiez le ticket et comptez les colonnes.",
       });
     } catch (e) {
-      setAvis({ ton: "warning", texte: motifDEchec(e) });
+      setAvis({ ton: "warning", texte: motifDEchec(e, reglage?.transport ?? "embedded") });
     }
   };
 
@@ -335,6 +452,13 @@ export default function Imprimante() {
   }
 
   const listable = reglage.transport === "bluetooth";
+  const imprimantesBranchees = usb?.etat === "ok" ? usb.imprimantes : [];
+  // L'imprimante USB qui sert À LA PLACE de l'intégrée (détection automatique).
+  const usbAuto =
+    reglage.transport === "embedded" && effectif === "usb"
+      ? (imprimantesBranchees.find((i) => i.classeImprimante) ?? null)
+      : null;
+  const escPos = ESC_POS.includes(reglage.transport) || (effectif !== null && ESC_POS.includes(effectif));
   // ┌──────────────────────────────────────────────────────────────────────┐
   // │ LE 80 mm SUR UNE IMPRIMANTE INTÉGRÉE EST PRESQUE TOUJOURS UNE FAUSSE │
   // │ MANŒUVRE, ET C'EST TOUT CE QU'ON PEUT EN DIRE.                       │
@@ -349,7 +473,10 @@ export default function Imprimante() {
   // │ pour 80 mm - mêmes corps de police étalés sur 41 colonnes au lieu de  │
   // │ 29 - rastérisée sur 576 points, sur un papier de 58.                  │
   // └──────────────────────────────────────────────────────────────────────┘
-  const largeurSuspecte = reglage.transport === "embedded" && reglage.paperWidth === 80;
+  // ⚠ Seulement si l'intégrée IMPRIME réellement : sur un terminal dont
+  // l'imprimante est en USB, 80 mm est la bonne largeur.
+  const largeurSuspecte =
+    reglage.transport === "embedded" && effectif === "embedded" && reglage.paperWidth === 80;
   const densite = densiteValide(reglage.densite, reglage.paperWidth);
   // L'imprimante CHOISIE figure toujours dans la liste, même éteinte, même
   // avant toute recherche : la voir disparaître se lit comme un réglage perdu.
@@ -468,251 +595,354 @@ export default function Imprimante() {
         </View>
       ) : null}
 
-      <Section title="Comment imprimer">
-        <Card>
-          {TRANSPORTS.map((t, i) => (
-            <View key={t.id}>
-              {i > 0 ? <Divider /> : null}
-              <ListItem
-                title={t.titre}
-                // La RAISON prend la place du descriptif : un transport
-                // indisponible n'a pas besoin qu'on vante ce qu'il ferait.
-                subtitle={t.indisponible ?? t.detail}
-                onPress={t.indisponible ? undefined : () => void choisirTransport(t.id)}
-                trailing={
-                  reglage.transport === t.id && !t.indisponible ? (
-                    <Icon name="CheckCircle2" size={22} color="primary" />
-                  ) : undefined
-                }
+      <Flux className="gap-4" max={2}>
+        <Section title="Comment imprimer">
+          <Card>
+            {TRANSPORTS.map((t, i) => (
+              <View key={t.id}>
+                {i > 0 ? <Divider /> : null}
+                <ListItem
+                  title={t.titre}
+                  // La RAISON prend la place du descriptif : un transport
+                  // indisponible n'a pas besoin qu'on vante ce qu'il ferait.
+                  subtitle={
+                    t.indisponible ??
+                    (t.id === "embedded" && usbAuto
+                      ? `Absente sur ce terminal : l'imprimante USB « ${usbAuto.nom} » imprime à sa place.`
+                      : t.detail)
+                  }
+                  onPress={t.indisponible ? undefined : () => void choisirTransport(t.id)}
+                  trailing={
+                    reglage.transport === t.id && !t.indisponible ? (
+                      <Icon name="CheckCircle2" size={22} color="primary" />
+                    ) : undefined
+                  }
+                />
+              </View>
+            ))}
+          </Card>
+          {usbAuto && !usbAuto.autorisee ? (
+            <View className="mt-3">
+              <Banner
+                tone="info"
+                title="Imprimante USB détectée"
+                message="Android demandera l'accès au premier ticket. Autorisez-le maintenant, et cochez « Toujours » pour qu'il ne le redemande plus."
+                action={{
+                  label: autorisationUsb ? "Autorisation…" : "Autoriser",
+                  onPress: () => void autoriserUsb(usbAuto),
+                }}
               />
             </View>
-          ))}
-        </Card>
-      </Section>
-
-      {listable ? (
-        <Section title="Imprimantes">
-          {avisRecherche ? <View className="mb-3">{avisRecherche}</View> : null}
-          <Card>
-            {enRecherche ? (
-              <View className="items-center py-6">
-                <Spinner />
-                <Text variant="bodySmall" className="mt-2 text-muted-foreground">
-                  Recherche en cours…
-                </Text>
-              </View>
-            ) : imprimantes.length === 0 ? (
-              <View className="px-4 py-5">
-                <Text variant="bodySmall" className="text-muted-foreground">
-                  Aucune imprimante pour l&apos;instant.
-                </Text>
-              </View>
-            ) : (
-              imprimantes.map((a, i) => (
-                <View key={a.adresse}>
-                  {i > 0 ? <Divider /> : null}
-                  <ListItem
-                    title={a.nom}
-                    // L'adresse reste : deux imprimantes du même modèle portent
-                    // le même nom, et il faut bien les distinguer.
-                    subtitle={`${etatDeLigne(a, reglage.adresse === a.adresse)} · ${a.adresse}`}
-                    onPress={() => void choisirImprimante(a)}
-                    trailing={
-                      appairageEnCours === a.adresse ? (
-                        <Spinner />
-                      ) : reglage.adresse === a.adresse ? (
-                        <Icon name="CheckCircle2" size={22} color="primary" />
-                      ) : undefined
-                    }
-                  />
-                </View>
-              ))
-            )}
-          </Card>
-          <View className="mt-3">
-            <Button
-              variant="secondary"
-              onPress={() => void lister()}
-              loading={enRecherche}
-              fullWidth
-            >
-              Rechercher les imprimantes
-            </Button>
-          </View>
-        </Section>
-      ) : null}
-
-      <Section title="Papier">
-        {largeurSuspecte ? (
-          <Banner
-            tone="warning"
-            title="Le ticket est dessiné pour 80 mm"
-            message="L'imprimante d'un terminal de caisse est presque toujours une 58 mm. À 80 mm, le texte s'étale, se décale, et la colonne des montants peut sortir du papier."
-            action={{ label: "Revenir à 58 mm", onPress: () => void enregistrer({ paperWidth: 58 }) }}
-          />
-        ) : null}
-        <Card>
-          {/* ┌────────────────────────────────────────────────────────────┐
-              │ CE N'EST PLUS UNE BASCULE À UN APPUI.                      │
-              │                                                            │
-              │ Elle faisait passer de 58 à 80 sans un mot, et la règle de │
-              │ calibration conseille elle-même « essayez l'autre largeur » │
-              │ devant un ticket trop étroit. Un appui de trop, et la page  │
-              │ partait dessinée pour 80 mm sur une tête de 58 : contenu    │
-              │ centré décalé aux trois quarts de la bande, colonne des     │
-              │ montants hors du papier.                                    │
-              └────────────────────────────────────────────────────────────┘ */}
-          <ListItem
-            title="Largeur du papier"
-            subtitle={`Bande imprimée de ${bandeImprimee(reglage.paperWidth)} mm. Les 5 mm de chaque bord sont mécaniques.`}
-            onPress={() => setPanneauLargeur(true)}
-            trailing={<Text variant="body">{reglage.paperWidth} mm</Text>}
-            chevron
-          />
-          <Divider />
-          {/* ┌──────────────────────────────────────────────────────────────┐
-              │ LA DENSITÉ NE SE DEVINE PAS DEPUIS UN BUREAU.               │
-              │                                                             │
-              │ `setPrinterDensity` n'avait jamais eu d'appelant : chaque    │
-              │ terminal imprimait à la valeur d'usine. C'est le levier le   │
-              │ plus direct sur un texte fin, et le seul qui ne touche à     │
-              │ aucune mise en page - mais un papier bon marché bave à       │
-              │ densité trop haute et la tête s'use. Le marchand essaie,     │
-              │ photographie, et garde ce qui sort net.                      │
-              └──────────────────────────────────────────────────────────────┘ */}
-          <ListItem
-            title="Densité d'impression"
-            subtitle="Plus haut = plus noir, donc plus lisible. Trop haut, un papier bon marché bave."
-            onPress={() => setPanneauDensite(true)}
-            trailing={<Text variant="body">{densite}</Text>}
-            chevron
-          />
-          <Divider />
-          {listable ? (
-            <>
-              {/* ┌──────────────────────────────────────────────────────────┐
-                  │ LE TICKET PART EN IMAGE, ET C'EST CE QUI LE REND        │
-                  │ IDENTIQUE D'UNE IMPRIMANTE À L'AUTRE.                    │
-                  │                                                          │
-                  │ Une machine très ancienne peut ne pas savoir recevoir     │
-                  │ une image, et elle n'en dit rien : elle imprime du        │
-                  │ charabia. On ne peut pas le détecter, le marchand le voit │
-                  │ sur son papier. D'où cet interrupteur, plutôt qu'un       │
-                  │ défaut deviné pour un matériel qu'on n'a jamais vu.       │
-                  └──────────────────────────────────────────────────────────┘ */}
-              <ListItem
-                title="Texte simple"
-                subtitle="Mode de secours : si votre imprimante sans fil ne sort que du charabia. Le ticket perd son bandeau et ses tailles de texte."
-                onPress={() => void enregistrer({ texteSimple: !reglage.texteSimple })}
-                trailing={
-                  <Icon
-                    name={reglage.texteSimple ? "CheckCircle2" : "ion:ellipse-outline"}
-                    size={22}
-                    color={reglage.texteSimple ? "primary" : "mutedForeground"}
-                  />
-                }
-              />
-              <Divider />
-            </>
           ) : null}
-          <ListItem
-            title="Couper le papier"
-            subtitle="À désactiver sur une imprimante sans massicot."
-            onPress={() => void enregistrer({ cut: !reglage.cut })}
-            trailing={
-              <Icon
-                name={reglage.cut ? "CheckCircle2" : "ion:ellipse-outline"}
-                size={22}
-                color={reglage.cut ? "primary" : "mutedForeground"}
-              />
-            }
-          />
-        </Card>
-      </Section>
+        </Section>
 
-      <View className="mb-10 mt-4">
-        <Button variant="secondary" onPress={() => void essai()} fullWidth>
-          Imprimer la règle de calibration
-        </Button>
-        {capacites?.modele || capacites?.service ? (
-          /* Ce que la machine dit d'elle-même. Cela ne décide de rien : cela
-             répond à « quelle est cette imprimante », quand un ticket sort de
-             travers et qu'on cherche - c'est le seul endroit où ça se lit. */
-          <Text variant="caption" className="mt-2 text-center text-muted-foreground">
-            Imprimante intégrée : {capacites.modele || "modèle inconnu"}
-            {capacites.service ? ` · service ${capacites.service}` : ""}
-          </Text>
+        {reglage.transport === "usb" ? (
+          <Section title="Imprimantes USB">
+            {usb?.etat === "sans_module" ? (
+              <View className="mb-3">
+                <Banner
+                  tone="warning"
+                  title="Cette version ne sait pas parler à une imprimante USB."
+                  message="Installez la dernière version de l'application."
+                />
+              </View>
+            ) : usb?.etat === "erreur" ? (
+              <View className="mb-3">
+                <Banner
+                  tone="warning"
+                  title="Android n'a pas listé les appareils USB."
+                  message={usb.message}
+                  action={{ label: "Réessayer", onPress: relireUsb }}
+                />
+              </View>
+            ) : null}
+            <Card>
+              {usb === null ? (
+                <View className="items-center py-6">
+                  <Spinner />
+                </View>
+              ) : imprimantesBranchees.length === 0 ? (
+                <View className="px-4 py-5">
+                  <Text variant="bodySmall" className="text-muted-foreground">
+                    Aucune imprimante USB branchée. Vérifiez le câble, puis actualisez.
+                  </Text>
+                </View>
+              ) : (
+                imprimantesBranchees.map((i, n) => {
+                  const choisie = reglage.adresse === i.cle;
+                  const etat = choisie
+                    ? i.autorisee
+                      ? "Imprimante choisie"
+                      : "Choisie · accès à autoriser"
+                    : i.classeImprimante
+                      ? "Imprimante"
+                      : "Appareil USB, à essayer";
+                  return (
+                    <View key={i.cle}>
+                      {n > 0 ? <Divider /> : null}
+                      <ListItem
+                        title={i.nom}
+                        // La clé reste : deux imprimantes du même modèle portent
+                        // le même nom.
+                        subtitle={`${etat} · ${i.cle}`}
+                        onPress={() => void (choisie && !i.autorisee ? autoriserUsb(i) : choisirUsb(i))}
+                        trailing={
+                          autorisationUsb === i.cle ? (
+                            <Spinner />
+                          ) : choisie ? (
+                            <Icon name="CheckCircle2" size={22} color="primary" />
+                          ) : undefined
+                        }
+                      />
+                    </View>
+                  );
+                })
+              )}
+            </Card>
+            <View className="mt-3">
+              <Button variant="secondary" onPress={relireUsb} fullWidth>
+                Actualiser
+              </Button>
+            </View>
+          </Section>
         ) : null}
-        <Text variant="caption" className="mt-2 text-center text-muted-foreground">
-          Photographiez le ticket : la bande noire doit mesurer{" "}
-          {bandeImprimee(reglage.paperWidth)} mm, et les trois tailles de texte
-          doivent se lire.
-        </Text>
-      </View>
 
-      <Sheet
-        ouvert={panneauLargeur}
-        onFermer={() => setPanneauLargeur(false)}
-        titre="Largeur du papier"
-      >
-        <Text variant="bodySmall" className="mb-3 text-muted-foreground">
-          C&apos;est la largeur du ROULEAU, pas celle du texte. La tête
-          n&apos;imprime pas jusqu&apos;au bord : environ 5 mm de chaque côté
-          restent blancs quoi qu&apos;on fasse.
-        </Text>
-        <ListeChoix
-          options={[
-            { valeur: "58", label: "58 mm", detail: "Bande imprimée de 48 mm. Mesuré sur papier." },
-            {
-              valeur: "80",
-              label: "80 mm",
+        {reglage.transport === "reseau" ? (
+          <Section title="Imprimante réseau">
+            <CarteAdresseReseau adresse={reglage.adresse} onEnregistrer={enregistrerReseau} />
+          </Section>
+        ) : null}
+
+        {listable ? (
+          <Section title="Imprimantes">
+            {avisRecherche ? <View className="mb-3">{avisRecherche}</View> : null}
+            <Card>
+              {enRecherche ? (
+                <View className="items-center py-6">
+                  <Spinner />
+                  <Text variant="bodySmall" className="mt-2 text-muted-foreground">
+                    Recherche en cours…
+                  </Text>
+                </View>
+              ) : imprimantes.length === 0 ? (
+                <View className="px-4 py-5">
+                  <Text variant="bodySmall" className="text-muted-foreground">
+                    Aucune imprimante pour l&apos;instant.
+                  </Text>
+                </View>
+              ) : (
+                imprimantes.map((a, i) => (
+                  <View key={a.adresse}>
+                    {i > 0 ? <Divider /> : null}
+                    <ListItem
+                      title={a.nom}
+                      // L'adresse reste : deux imprimantes du même modèle portent
+                      // le même nom, et il faut bien les distinguer.
+                      subtitle={`${etatDeLigne(a, reglage.adresse === a.adresse)} · ${a.adresse}`}
+                      onPress={() => void choisirImprimante(a)}
+                      trailing={
+                        appairageEnCours === a.adresse ? (
+                          <Spinner />
+                        ) : reglage.adresse === a.adresse ? (
+                          <Icon name="CheckCircle2" size={22} color="primary" />
+                        ) : undefined
+                      }
+                    />
+                  </View>
+                ))
+              )}
+            </Card>
+            <View className="mt-3">
+              <Button
+                variant="secondary"
+                onPress={() => void lister()}
+                loading={enRecherche}
+                fullWidth
+              >
+                Rechercher les imprimantes
+              </Button>
+            </View>
+          </Section>
+        ) : null}
+
+        <Section title="Papier">
+          {largeurSuspecte ? (
+            <Banner
+              tone="warning"
+              title="Le ticket est dessiné pour 80 mm"
+              message="L'imprimante d'un terminal de caisse est presque toujours une 58 mm. À 80 mm, le texte s'étale, se décale, et la colonne des montants peut sortir du papier."
+              action={{ label: "Revenir à 58 mm", onPress: () => void enregistrer({ paperWidth: 58 }) }}
+            />
+          ) : null}
+          <Card>
+            {/* ┌────────────────────────────────────────────────────────────┐
+                │ CE N'EST PLUS UNE BASCULE À UN APPUI.                      │
+                │                                                            │
+                │ Elle faisait passer de 58 à 80 sans un mot, et la règle de │
+                │ calibration conseille elle-même « essayez l'autre largeur » │
+                │ devant un ticket trop étroit. Un appui de trop, et la page  │
+                │ partait dessinée pour 80 mm sur une tête de 58 : contenu    │
+                │ centré décalé aux trois quarts de la bande, colonne des     │
+                │ montants hors du papier.                                    │
+                └────────────────────────────────────────────────────────────┘ */}
+            <ListItem
+              title="Largeur du papier"
+              subtitle={`Bande imprimée de ${bandeImprimee(reglage.paperWidth)} mm. Les 5 mm de chaque bord sont mécaniques.`}
+              onPress={() => setPanneauLargeur(true)}
+              trailing={<Text variant="body">{reglage.paperWidth} mm</Text>}
+              chevron
+            />
+            <Divider />
+            {/* ┌──────────────────────────────────────────────────────────────┐
+                │ LA DENSITÉ NE SE DEVINE PAS DEPUIS UN BUREAU.               │
+                │                                                             │
+                │ `setPrinterDensity` n'avait jamais eu d'appelant : chaque    │
+                │ terminal imprimait à la valeur d'usine. C'est le levier le   │
+                │ plus direct sur un texte fin, et le seul qui ne touche à     │
+                │ aucune mise en page - mais un papier bon marché bave à       │
+                │ densité trop haute et la tête s'use. Le marchand essaie,     │
+                │ photographie, et garde ce qui sort net.                      │
+                └──────────────────────────────────────────────────────────────┘ */}
+            {/* Seule l'imprimante intégrée lit la densité : la proposer pour une
+                imprimante USB ou sans fil ferait régler un nombre sans effet. */}
+            {effectif === "embedded" ? (
+              <>
+                <ListItem
+                  title="Densité d'impression"
+                  subtitle="Plus haut = plus noir, donc plus lisible. Trop haut, un papier bon marché bave."
+                  onPress={() => setPanneauDensite(true)}
+                  trailing={<Text variant="body">{densite}</Text>}
+                  chevron
+                />
+                <Divider />
+              </>
+            ) : null}
+            {escPos ? (
+              <>
+                {/* ┌──────────────────────────────────────────────────────────┐
+                    │ LE TICKET PART EN IMAGE, ET C'EST CE QUI LE REND        │
+                    │ IDENTIQUE D'UNE IMPRIMANTE À L'AUTRE.                    │
+                    │                                                          │
+                    │ Une machine très ancienne peut ne pas savoir recevoir     │
+                    │ une image, et elle n'en dit rien : elle imprime du        │
+                    │ charabia. On ne peut pas le détecter, le marchand le voit │
+                    │ sur son papier. D'où cet interrupteur, plutôt qu'un       │
+                    │ défaut deviné pour un matériel qu'on n'a jamais vu.       │
+                    └──────────────────────────────────────────────────────────┘ */}
+                <ListItem
+                  title="Texte simple"
+                  subtitle="Mode de secours : si votre imprimante ne sort que du charabia. Le ticket perd son bandeau et ses tailles de texte."
+                  onPress={() => void enregistrer({ texteSimple: !reglage.texteSimple })}
+                  trailing={
+                    <Icon
+                      name={reglage.texteSimple ? "CheckCircle2" : "ion:ellipse-outline"}
+                      size={22}
+                      color={reglage.texteSimple ? "primary" : "mutedForeground"}
+                    />
+                  }
+                />
+                <Divider />
+              </>
+            ) : null}
+            <ListItem
+              title="Couper le papier"
+              subtitle="À désactiver sur une imprimante sans massicot."
+              onPress={() => void enregistrer({ cut: !reglage.cut })}
+              trailing={
+                <Icon
+                  name={reglage.cut ? "CheckCircle2" : "ion:ellipse-outline"}
+                  size={22}
+                  color={reglage.cut ? "primary" : "mutedForeground"}
+                />
+              }
+            />
+          </Card>
+        </Section>
+
+        <View className="mb-10 mt-4">
+          <Button variant="secondary" onPress={() => void essai()} fullWidth>
+            Imprimer la règle de calibration
+          </Button>
+          {capacites?.modele || capacites?.service ? (
+            /* Ce que la machine dit d'elle-même. Cela ne décide de rien : cela
+               répond à « quelle est cette imprimante », quand un ticket sort de
+               travers et qu'on cherche - c'est le seul endroit où ça se lit. */
+            <Text variant="caption" className="mt-2 text-center text-muted-foreground">
+              Imprimante intégrée : {capacites.modele || "modèle inconnu"}
+              {capacites.service ? ` · service ${capacites.service}` : ""}
+            </Text>
+          ) : null}
+          <Text variant="caption" className="mt-2 text-center text-muted-foreground">
+            Photographiez le ticket : la bande noire doit mesurer{" "}
+            {bandeImprimee(reglage.paperWidth)} mm, et les trois tailles de texte
+            doivent se lire.
+          </Text>
+        </View>
+
+        <Sheet
+          ouvert={panneauLargeur}
+          onFermer={() => setPanneauLargeur(false)}
+          titre="Largeur du papier"
+        >
+          <Text variant="bodySmall" className="mb-3 text-muted-foreground">
+            C&apos;est la largeur du ROULEAU, pas celle du texte. La tête
+            n&apos;imprime pas jusqu&apos;au bord : environ 5 mm de chaque côté
+            restent blancs quoi qu&apos;on fasse.
+          </Text>
+          <ListeChoix
+            options={[
+              { valeur: "58", label: "58 mm", detail: "Bande imprimée de 48 mm. Mesuré sur papier." },
+              {
+                valeur: "80",
+                label: "80 mm",
+                detail:
+                  effectif === "embedded"
+                    ? "Pour une imprimante externe. L'imprimante d'un terminal de caisse est presque toujours une 58 mm."
+                    : "Bande imprimée de 72 mm.",
+              },
+            ]}
+            valeur={String(reglage.paperWidth)}
+            onChoisir={(v) => {
+              if (v) void enregistrer({ paperWidth: v === "80" ? 80 : 58 });
+              setPanneauLargeur(false);
+            }}
+          />
+        </Sheet>
+
+        <Sheet
+          ouvert={panneauDensite}
+          onFermer={() => setPanneauDensite(false)}
+          titre="Densité d'impression"
+        >
+          <Text variant="bodySmall" className="mb-3 text-muted-foreground">
+            Imprimez la règle de calibration après chaque essai : elle porte la
+            densité employée, pour que vous sachiez de quel réglage vient quel
+            papier.
+          </Text>
+          {/* Les valeurs viennent de l'AIDL du constructeur, par largeur : 58 mm
+              descend à 80, 80 mm s'arrête à 100. Une valeur hors plage est
+              refusée par le service, sans que rien ne le signale. */}
+          <ListeChoix
+            options={DENSITES[reglage.paperWidth].map((d) => ({
+              valeur: String(d),
+              label: String(d),
               detail:
-                reglage.transport === "embedded"
-                  ? "Pour une imprimante externe. L'imprimante d'un terminal de caisse est presque toujours une 58 mm."
-                  : "Bande imprimée de 72 mm.",
-            },
-          ]}
-          valeur={String(reglage.paperWidth)}
-          onChoisir={(v) => {
-            if (v) void enregistrer({ paperWidth: v === "80" ? 80 : 58 });
-            setPanneauLargeur(false);
-          }}
-        />
-      </Sheet>
-
-      <Sheet
-        ouvert={panneauDensite}
-        onFermer={() => setPanneauDensite(false)}
-        titre="Densité d'impression"
-      >
-        <Text variant="bodySmall" className="mb-3 text-muted-foreground">
-          Imprimez la règle de calibration après chaque essai : elle porte la
-          densité employée, pour que vous sachiez de quel réglage vient quel
-          papier.
-        </Text>
-        {/* Les valeurs viennent de l'AIDL du constructeur, par largeur : 58 mm
-            descend à 80, 80 mm s'arrête à 100. Une valeur hors plage est
-            refusée par le service, sans que rien ne le signale. */}
-        <ListeChoix
-          options={DENSITES[reglage.paperWidth].map((d) => ({
-            valeur: String(d),
-            label: String(d),
-            detail:
-              d === 80
-                ? "La plus claire"
-                : d === 130
-                  ? "La plus noire : réservez-la au papier de qualité"
-                  : d === 110
-                    ? "Réglage par défaut"
-                    : undefined,
-          }))}
-          valeur={String(densite)}
-          onChoisir={(v) => {
-            if (v) void enregistrer({ densite: Number(v) });
-            setPanneauDensite(false);
-          }}
-        />
-      </Sheet>
+                d === 80
+                  ? "La plus claire"
+                  : d === 130
+                    ? "La plus noire : réservez-la au papier de qualité"
+                    : d === 110
+                      ? "Réglage par défaut"
+                      : undefined,
+            }))}
+            valeur={String(densite)}
+            onChoisir={(v) => {
+              if (v) void enregistrer({ densite: Number(v) });
+              setPanneauDensite(false);
+            }}
+          />
+        </Sheet>
+      </Flux>
     </Screen>
   );
 }

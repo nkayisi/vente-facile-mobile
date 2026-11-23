@@ -1,0 +1,33 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Facultatif : un téléphone sans hôte USB installe l'application quand même,
+    et le transport USB s'y dit simplement indisponible.
+  -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+  <application>
+    <!--
+      CE FILTRE EST CE QUI FAIT APPARAÎTRE « TOUJOURS » DANS LA DEMANDE D'ANDROID.
+
+      Android ne propose de retenir l'autorisation d'un appareil USB qu'à une
+      application qui déclare le gérer. Sans lui, l'autorisation se perd à
+      chaque redémarrage du terminal, et la caisse la redemanderait chaque
+      matin, au premier ticket. L'activité ne montre rien : elle se ferme
+      aussitôt ouverte.
+    -->
+    <activity
+      android:name=".UsbAttacheeActivity"
+      android:exported="true"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:taskAffinity=""
+      android:theme="@android:style/Theme.NoDisplay">
+      <intent-filter>
+        <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+      </intent-filter>
+      <meta-data
+        android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+        android:resource="@xml/filtre_imprimantes_usb" />
+    </activity>
+  </application>
+</manifest>

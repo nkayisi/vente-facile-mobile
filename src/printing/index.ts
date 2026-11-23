@@ -15,6 +15,8 @@
 import type { Block } from "@vente-facile/core/receipt";
 
 import { piloteBluetooth } from "./drivers/bluetooth";
+import { piloteReseau } from "./drivers/cable/reseau";
+import { piloteUsb } from "./drivers/cable/usb";
 import { piloteNyx } from "./drivers/nyx";
 import { pilotePdf } from "./drivers/pdf";
 import type { PiloteImpression, TransportId } from "./driver";
@@ -35,6 +37,19 @@ export {
   type RasterTicket,
 } from "./raster";
 export { capacitesImprimante, type CapacitesImprimante } from "./drivers/nyx";
+export {
+  autoriserImprimanteUsb,
+  imprimanteUsbRetenue,
+  rechercherImprimantesUsb,
+  type RechercheUsb,
+} from "./drivers/cable/usb";
+export {
+  adresseReseauRangee,
+  analyserAdresseReseau,
+  PORT_RESEAU_PAR_DEFAUT,
+  type ImprimanteUsb,
+  type UsbRetenue,
+} from "./drivers/cable/regles";
 export { rendreHtml, pageDuTicket, hauteurDuDocument, mmEnPoints } from "./render-html";
 export {
   lireReglage,
@@ -65,7 +80,9 @@ export { type EtatPermissions } from "./permissions";
 
 const PAR_ID: Record<TransportId, PiloteImpression> = {
   embedded: piloteNyx,
+  usb: piloteUsb,
   bluetooth: piloteBluetooth,
+  reseau: piloteReseau,
   pdf: pilotePdf,
 };
 

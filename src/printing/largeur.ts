@@ -55,5 +55,14 @@ export function largeurPour(
   reglage: ReglageImprimante
 ): 58 | 80 {
   if (pilote.id === "pdf" || pilote.id === reglage.transport) return reglage.paperWidth;
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ L'IMPRIMANTE USB DÉTECTÉE EST L'IMPRIMANTE DU TERMINAL.              │
+  // │                                                                      │
+  // │ Le réglage dit « intégrée, 80 mm » sur un terminal qui n'en a pas et │
+  // │ dont l'imprimante est branchée en USB (le terminal SDL) : la largeur │
+  // │ réglée vise CETTE machine, la seule qu'il ait. Retomber sur 58 la    │
+  // │ ferait imprimer étroit sur un rouleau de 80, pour toujours.          │
+  // └──────────────────────────────────────────────────────────────────────┘
+  if (pilote.id === "usb" && reglage.transport === "embedded") return reglage.paperWidth;
   return 58;
 }

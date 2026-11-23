@@ -35,7 +35,7 @@ function sansCommentaires(source: string): string {
 }
 
 describe("un seul fichier déclare les transports", () => {
-  const union = /"embedded"\s*\|\s*"bluetooth"\s*\|\s*"pdf"/;
+  const union = /"embedded"\s*\|\s*"usb"\s*\|\s*"bluetooth"\s*\|\s*"reseau"\s*\|\s*"pdf"/;
 
   it("le balayage MORD : il voit bien des fichiers", () => {
     // Un balayage qui ne balaie rien passe au vert et ne prouve rien. Le dépôt
@@ -70,15 +70,17 @@ describe("un seul fichier déclare les transports", () => {
 
 describe("une panne se nomme, elle ne se rend pas en liste vide", () => {
   const BLUETOOTH = resolve(PRINTING, "drivers/bluetooth");
+  const CABLE = resolve(PRINTING, "drivers/cable");
   const avale = /catch\s*(\([^)]*\))?\s*\{[^}]*(return\s*\[\]|resolve\(\s*\[\s*\]\s*\))/;
 
-  it("le balayage MORD : il voit bien les fichiers du Bluetooth", () => {
+  it("le balayage MORD : il voit bien les fichiers du Bluetooth et du câble", () => {
     expect(fichiers(BLUETOOTH).length).toBeGreaterThanOrEqual(6);
+    expect(fichiers(CABLE).length).toBeGreaterThanOrEqual(4);
   });
 
-  it("aucun `catch` ne rend une liste vide sous le pilote Bluetooth", () => {
+  it("aucun `catch` ne rend une liste vide sous les pilotes Bluetooth et câble", () => {
     const fautifs: string[] = [];
-    for (const f of fichiers(BLUETOOTH)) {
+    for (const f of [...fichiers(BLUETOOTH), ...fichiers(CABLE)]) {
       const code = sansCommentaires(readFileSync(f, "utf8"));
       if (avale.test(code)) fautifs.push(relative(SRC, f));
     }
@@ -116,10 +118,16 @@ describe("toute imprimante reçoit LE MÊME document", () => {
    * Rien ne le signalait : les deux tickets étaient corrects, chacun dans son
    * coin. Seul un garde-fou peut dire qu'ils doivent être LE MÊME.
    */
-  const PILOTES = ["drivers/nyx.ts", "drivers/bluetooth/index.ts"];
+  const PILOTES = ["drivers/nyx.ts", "octets-escpos.ts"];
+  /** Les pilotes ESC/POS passent tous par le même chemin d'octets. */
+  const PILOTES_ESCPOS = [
+    "drivers/bluetooth/index.ts",
+    "drivers/cable/usb.ts",
+    "drivers/cable/reseau.ts",
+  ];
 
-  it("le balayage MORD : il voit bien les deux pilotes", () => {
-    for (const chemin of PILOTES) {
+  it("le balayage MORD : il voit bien les pilotes", () => {
+    for (const chemin of [...PILOTES, ...PILOTES_ESCPOS]) {
       expect(readFileSync(resolve(PRINTING, chemin), "utf8").length).toBeGreaterThan(500);
     }
   });
@@ -127,6 +135,20 @@ describe("toute imprimante reçoit LE MÊME document", () => {
   it.each(PILOTES)("%s dessine la page plutôt que de la réécrire", (chemin) => {
     const code = sansCommentaires(readFileSync(resolve(PRINTING, chemin), "utf8"));
     expect(code).toContain("rasterDuTicket");
+  });
+
+  it.each(PILOTES_ESCPOS)("%s envoie les octets du chemin commun", (chemin) => {
+    // Un pilote qui fabriquerait ses propres octets ferait un second ticket.
+    const code = sansCommentaires(readFileSync(resolve(PRINTING, chemin), "utf8"));
+    expect(code).toContain("octetsDuTicket");
+    expect(code).not.toMatch(/rendreEscPos(Image)?\(/);
+  });
+
+  it("le module natif des imprimantes câblées n'est chargé que par UN module", () => {
+    const appelants = fichiers(PRINTING)
+      .filter((f) => sansCommentaires(readFileSync(f, "utf8")).includes('"ImprimanteCablee"'))
+      .map((f) => relative(PRINTING, f));
+    expect(appelants).toEqual(["drivers/cable/natif.ts"]);
   });
 
   it("le rastériseur natif n'est chargé que par UN module", () => {

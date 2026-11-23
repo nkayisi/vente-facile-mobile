@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- La classe « imprimante » de la norme USB : seule celle-là est sûre d'en être une. -->
+<resources>
+  <usb-device class="7" />
+</resources>

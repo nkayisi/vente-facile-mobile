@@ -37,6 +37,18 @@ describe("Largeur du transport", () => {
     ).toBe(58);
   });
 
+  it("garde la largeur réglée pour l'imprimante USB détectée à la place de l'intégrée", () => {
+    // Le terminal SDL : réglé « intégrée, 80 mm », sans imprimante intégrée,
+    // avec son imprimante 80 mm branchée en USB. C'est elle que la largeur vise.
+    expect(largeurPour(pilote("usb"), reglage({ transport: "embedded", paperWidth: 80 }))).toBe(80);
+  });
+
+  it("ne la garde pas quand l'USB remplace une AUTRE machine choisie", () => {
+    // Choisie en réseau à 80 mm, l'imprimante réseau ne répond pas : l'USB
+    // n'est pas celle que la largeur vise.
+    expect(largeurPour(pilote("usb"), reglage({ transport: "reseau", paperWidth: 80 }))).toBe(58);
+  });
+
   it("laisse le PDF à la largeur réglée : ce n'est pas une machine", () => {
     expect(
       largeurPour(pilote("pdf"), reglage({ transport: "bluetooth", paperWidth: 80 }))
