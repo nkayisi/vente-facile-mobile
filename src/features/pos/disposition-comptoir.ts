@@ -22,10 +22,14 @@ import {
 } from "@/ui/disposition-regles";
 
 /**
- * La plus petite carte d'article qui reste lisible : un nom sur deux lignes à
- * côté de sa vignette, et un prix CDF à sept chiffres écrit en entier.
+ * La plus petite carte qui tient la disposition du back-office : la vignette de
+ * 76 points à gauche, et à côté un nom sur deux lignes, un prix CDF à sept
+ * chiffres écrit en entier, la catégorie, la marque et l'emplacement.
+ *
+ * Un téléphone n'atteint pas cette largeur sur ses deux colonnes : sa carte
+ * empile alors la vignette au-dessus du texte (`formeDeLaCarte`).
  */
-export const LARGEUR_MIN_CARTE = 180;
+export const LARGEUR_MIN_CARTE = 240;
 
 /** L'écart entre deux cartes, le `gap-3` de la grille. */
 const ECART = 12;
@@ -54,6 +58,31 @@ export function colonnesDeLaGrille(largeurPage: number): number {
     max: 6,
     ecart: ECART,
   });
+}
+
+/**
+ * La vignette d'une carte en forme `cote` : une largeur FIXE, et toute la
+ * hauteur de la carte.
+ *
+ * Elle était un carré de 76 points posé en haut à gauche, sous lequel la carte
+ * continuait de trois lignes de texte : la photo ne tenait que le tiers de la
+ * hauteur, et l'œil lisait un timbre collé dans un coin. Elle suit désormais la
+ * carte du haut en bas ; 76 points restent son minimum, pour qu'une carte au
+ * texte court garde une image lisible.
+ */
+// 92 et non 84 : à 84, « 1 PLAQUETTE » se coupait en plein mot dans le
+// bandeau de stock (« 1 PLAQUET / TE », relevé sur le rk3568). Android mesure
+// en outre un texte d'un point trop court.
+export const LARGEUR_VIGNETTE_COTE = 92;
+export const HAUTEUR_MIN_VIGNETTE_COTE = 76;
+
+/** `cote` : vignette à gauche du texte. `pile` : vignette au-dessus. */
+export type FormeDeCarte = "cote" | "pile";
+
+export function formeDeLaCarte(largeurPage: number): FormeDeCarte {
+  const colonnes = colonnesDeLaGrille(largeurPage);
+  const carte = (largeurDeLaGrille(largeurPage) - (colonnes - 1) * ECART) / colonnes;
+  return carte >= LARGEUR_MIN_CARTE ? "cote" : "pile";
 }
 
 /**

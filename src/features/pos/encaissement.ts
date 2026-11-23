@@ -15,7 +15,7 @@
  * Aucun montant n'est calcule ici : les totaux viennent du panier, donc de
  * `@vente-facile/core/pos`.
  */
-import { MONEY_EPS } from "@vente-facile/core/pos";
+import { MONEY_EPS, type SaleCurrencyTotals } from "@vente-facile/core/pos";
 
 import { lireNombre } from "@/data/nombres";
 import { convertirSaisie } from "@/features/caisse/montant-devise";
@@ -407,4 +407,204 @@ export function montantApresBasculeDevise(e: BasculeDeviseInput): string {
   if (!solde(e.saisie, e.deviseAvant)) return converti;
   if (solde(converti, e.deviseReglement)) return converti;
   return String(montantExigible(e));
+}
+
+// --- La devise ACTIVE de la feuille ---------------------------------------
+//
+// ┌──────────────────────────────────────────────────────────────────────────┐
+// │ UNE SEULE DEVISE POUR TOUTE LA FEUILLE, ET CE N'EST PAS LA FACTURE.      │
+// │                                                                          │
+// │ Le caissier choisit la devise dans laquelle il ENCAISSE (celle du        │
+// │ règlement), et tous les montants de la feuille se lisent dans celle-là : │
+// │ le récapitulatif, le total, ce qu'il manque, la cagnotte, la dette. Sans │
+// │ cela il annonçait « 2 645 000 FC » à son client en lisant « 1 150 $ » à  │
+// │ l'écran, et faisait la conversion de tête.                               │
+// │                                                                          │
+// │ ⚠ LA FACTURE, ELLE, NE BOUGE PAS (décision du 2026-11-22) : elle et le   │
+// │ ticket restent libellés en devise principale, comme au back-office. Ce   │
+// │ qui suit est donc de l'AFFICHAGE, et rien de ce que la vente enregistre  │
+// │ ne passe par ici.                                                        │
+// └──────────────────────────────────────────────────────────────────────────┘
+
+/** De quoi ramener un montant de la feuille dans la devise active. */
+export interface AffichageEnDevise {
+  /** La devise de la facture : celle dans laquelle le panier totalise. */
+  deviseFacture: string;
+  /** La devise choisie dans la feuille, celle du montant reçu. */
+  deviseActive: string;
+  /** Conversion PUIS arrondi : `convertMoney`. */
+  convertirArrondi: (montant: number, de: string, vers: string) => number;
+  /** Conversion BRUTE : `convert`. Voir `montantExigible`. */
+  convertirBrut: (montant: number, de: string, vers: string) => number;
+  decimalesDe: (code: string) => number;
+}
+
+/**
+ * L'autre devise d'un établissement qui en tient EXACTEMENT deux.
+ *
+ * C'est elle qui porte l'équivalent entre parenthèses. Au-delà de deux, il n'y
+ * a plus « l'autre » devise, et en écrire plusieurs entre parenthèses ferait
+ * d'un total une ligne de chiffres : on n'en écrit aucune.
+ */
+export function deviseNonActive(
+  active: string,
+  devisesActives: readonly string[],
+): string | null {
+  const distinctes = [...new Set(devisesActives)];
+  if (distinctes.length !== 2 || !distinctes.includes(active)) return null;
+  return distinctes.find((c) => c !== active) ?? null;
+}
+
+/** Un montant de la feuille, ramené dans la devise active au plus proche. */
+export function versActive(
+  montant: number,
+  depuis: string,
+  a: AffichageEnDevise,
+): number {
+  return depuis === a.deviseActive
+    ? montant
+    : a.convertirArrondi(montant, depuis, a.deviseActive);
+}
+
+/**
+ * Un montant ramené dans la devise active SANS JAMAIS LE DÉPASSER.
+ *
+ * Pour un plafond qu'on préremplit dans un champ : arrondi au plus proche, la
+ * cagnotte de 434,78 $ redeviendrait 1 000 001 FC, au-dessus de ce que le
+ * client possède, et le champ se refuserait lui-même à l'ouverture.
+ */
+export function versActiveSansDepasser(
+  montant: number,
+  depuis: string,
+  a: AffichageEnDevise,
+): number {
+  if (depuis === a.deviseActive) return montant;
+  const facteur = Math.pow(10, a.decimalesDe(a.deviseActive));
+  const produit = a.convertirBrut(montant, depuis, a.deviseActive) * facteur;
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LE TAUX STOCKÉ N'EST PAS EXACT, ET LA TOLÉRANCE DOIT LE SAVOIR.      │
+  // │                                                                      │
+  // │ Le franc est rangé à 0,000434782609 le dollar, soit 1/2300 arrondi à │
+  // │ douze décimales : 360 $ y font 827 999,9994 FC. Avec la tolérance de │
+  // │ `montantExigible` (un millionième d'unité), l'arrondi vers le bas    │
+  // │ rendait 827 999 FC pour une cagnotte de 828 000 FC (relevé sur le    │
+  // │ rk3568). L'erreur RELATIVE d'un taux à douze décimales ne dépasse    │
+  // │ pas 2e-9 sur les devises du catalogue : on tolère 1e-8, et pas plus, │
+  // │ pour qu'une vraie fraction (999 999,98 FC) reste arrondie vers le    │
+  // │ bas.                                                                 │
+  // │                                                                      │
+  // │ Sans risque, parce qu'un plafond prérempli est REBORNÉ en principale │
+  // │ à la validation (`cagnotteVersPrincipale`) : on ne peut pas utiliser │
+  // │ un centime de plus que ce que le client possède.                     │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const tolerance = Math.max(MONEY_EPS, Math.abs(produit) * 1e-8);
+  const plancher = Math.floor(produit);
+  return (produit - plancher > 1 - tolerance ? plancher + 1 : plancher) / facteur;
+}
+
+/** Le total à payer, et son équivalent dans l'autre devise. */
+export interface RecapitulatifAffiche {
+  devise: string;
+  sousTotal: number;
+  remisesArticles: number;
+  remise: number;
+  cagnotte: number;
+  taxe: number;
+  /**
+   * Ce qu'il faut RECEVOIR dans la devise active : `montantExigible`, le même
+   * nombre que le bouton « Encaisser » et le champ prérempli. Le total au plus
+   * proche annoncerait 11,60 $ là où il faut 11,61 $ pour solder la facture.
+   */
+  total: number;
+  /** L'équivalent entre parenthèses, `null` sans seconde devise. */
+  equivalent: { montant: number; devise: string } | null;
+  /**
+   * La facture est-elle établie dans une AUTRE devise que celle affichée ?
+   * Alors les lignes sont des conversions arrondies, qui peuvent différer
+   * d'une unité du total, et l'écran le dit.
+   */
+  convertie: boolean;
+}
+
+export function recapitulatifAffiche(
+  e: AffichageEnDevise & {
+    facture: Pick<
+      SaleCurrencyTotals,
+      "subtotal" | "itemDiscount" | "globalDiscount" | "loyaltyDiscount" | "tax"
+    >;
+    /** Total de la facture dans SA devise, cagnotte déduite. */
+    totalFacture: number;
+    devisesActives: readonly string[];
+  },
+): RecapitulatifAffiche {
+  const ligne = (m: number) => versActive(m, e.deviseFacture, e);
+  const autre = deviseNonActive(e.deviseActive, e.devisesActives);
+  return {
+    devise: e.deviseActive,
+    sousTotal: ligne(e.facture.subtotal),
+    remisesArticles: ligne(e.facture.itemDiscount),
+    remise: ligne(e.facture.globalDiscount),
+    cagnotte: ligne(e.facture.loyaltyDiscount),
+    taxe: ligne(e.facture.tax),
+    total: montantExigible({
+      totalFacture: e.totalFacture,
+      deviseFacture: e.deviseFacture,
+      deviseReglement: e.deviseActive,
+      convertirBrut: e.convertirBrut,
+      decimalesDe: e.decimalesDe,
+    }),
+    equivalent: autre
+      ? {
+          // L'autre devise est la FACTURE : c'est son total exact qu'on écrit,
+          // pas une conversion aller-retour.
+          montant:
+            autre === e.deviseFacture
+              ? e.totalFacture
+              : e.convertirArrondi(e.totalFacture, e.deviseFacture, autre),
+          devise: autre,
+        }
+      : null,
+    convertie: e.deviseActive !== e.deviseFacture,
+  };
+}
+
+/**
+ * Ce qu'il manque, dans la devise active : ce qu'il faut ENCORE remettre.
+ *
+ * Par `montantExigible`, comme le total : « il manque 11,60 $ » alors que
+ * 11,60 $ ne suffisent pas ferait refaire un aller-retour au caissier.
+ */
+export function manqueAffiche(manque: number, a: AffichageEnDevise): number {
+  if (manque <= 0) return 0;
+  return montantExigible({
+    totalFacture: manque,
+    deviseFacture: a.deviseFacture,
+    deviseReglement: a.deviseActive,
+    convertirBrut: a.convertirBrut,
+    decimalesDe: a.decimalesDe,
+  });
+}
+
+/**
+ * Le montant de cagnotte saisi dans la devise active, ramené dans la devise
+ * PRINCIPALE où la cagnotte est tenue, et borné par le plafond de la vente.
+ *
+ * ⚠ ARRONDI AUX DÉCIMALES DE LA PRINCIPALE : 1 000 000 FC valent 434,7826 $,
+ * et le serveur refuse un montant à quatre décimales - la vente entière
+ * partirait en quarantaine, ticket imprimé.
+ */
+export function cagnotteVersPrincipale(e: {
+  saisie: number;
+  deviseActive: string;
+  principale: string;
+  /** Le plafond de la vente, en principale. */
+  plafond: number;
+  convertirBrut: (montant: number, de: string, vers: string) => number;
+  arrondir: (montant: number, code: string) => number;
+}): number {
+  const enPrincipale =
+    e.deviseActive === e.principale
+      ? e.saisie
+      : e.arrondir(e.convertirBrut(e.saisie, e.deviseActive, e.principale), e.principale);
+  return Math.max(0, Math.min(enPrincipale, e.plafond));
 }

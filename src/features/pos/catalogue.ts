@@ -17,7 +17,16 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { addDatabaseChangeListener } from "expo-sqlite";
 
 import { db } from "@/db/client";
-import { categories, products, stocks, units, warehouses } from "@/db/schema";
+import {
+  brands,
+  categories,
+  products,
+  productVariants,
+  stockLocations,
+  stocks,
+  units,
+  warehouses,
+} from "@/db/schema";
 import { reservesEnAttente, type ReserveLocale } from "./reserve-locale";
 import { produitsVerrouilles, type VerrouInventaire } from "./verrou-inventaire";
 
@@ -50,6 +59,17 @@ export interface ArticlePos {
   allow_auto_unpacking: boolean;
 
   track_inventory: boolean;
+
+  /**
+   * Ce que la carte du comptoir affiche, et rien d'autre ne les lit : aucune
+   * règle de vente n'en dépend. Le seuil reste une CHAÎNE, comme en base.
+   */
+  reorder_point?: string | null;
+  brand_name?: string | null;
+  unit_symbol?: string | null;
+  packaging_unit_symbol?: string | null;
+  /** Les emplacements de l'article dans cet entrepôt, séparés par des virgules. */
+  emplacement?: string | null;
 
   /**
    * DISPONIBLE de l'entrepôt courant, réservations déduites, ventilé.
@@ -112,6 +132,9 @@ const CHAMPS = {
   units_per_package: products.unitsPerPackage,
   allow_auto_unpacking: products.allowAutoUnpacking,
   track_inventory: products.trackInventory,
+  reorder_point: products.reorderPoint,
+  brand_name: brands.name,
+  emplacement: sql<string | null>`group_concat(distinct ${stockLocations.name})`,
   /**
    * ┌──────────────────────────────────────────────────────────────────────┐
    * │ LE STOCK D'UN ARTICLE EST LA SOMME DE SES LIGNES DANS L'ENTREPÔT.   │
@@ -391,10 +414,13 @@ function base(warehouseId?: string | null) {
     .select({
       ...CHAMPS,
       unit_name: uniteDetail.name,
+      unit_symbol: uniteDetail.symbol,
       packaging_unit_name: uniteContenant.name,
+      packaging_unit_symbol: uniteContenant.symbol,
     })
     .from(products)
     .leftJoin(categories, eq(categories.id, products.categoryId))
+    .leftJoin(brands, eq(brands.id, products.brandId))
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .leftJoin(
@@ -408,7 +434,10 @@ function base(warehouseId?: string | null) {
         : // Sans entrepôt on ne joint RIEN plutôt que le premier venu : afficher
           // le stock d'un autre dépôt serait pire qu'afficher « inconnu ».
           sql`1 = 0`
-    );
+    )
+    // Après `stocks`, dont il dépend. Une ligne de stock a au plus un
+    // emplacement : cette jointure ne multiplie donc pas les sommes ci-dessus.
+    .leftJoin(stockLocations, eq(stockLocations.id, stocks.locationId));
 }
 
 /**
@@ -524,7 +553,7 @@ export async function articleParCodeBarres(
   // trouverait moins que la recherche ferait chercher à la main ce que le
   // lecteur vient de refuser.
   //
-  // ⚠ LE CODE-BARRES D'ABORD, LE SKU ENSUITE, comme `search-barcode/` du
+  // ⚠ LE CODE-BARRES D'ABORD, PUIS CELUI D'UNE VARIANTE, PUIS LE SKU, comme `search-barcode/` du
   // serveur : un QR imprimé par le marchand porte souvent le SKU, et les deux
   // surfaces doivent trouver le MÊME article pour le même code.
   const lu = code.trim();
@@ -537,6 +566,27 @@ export async function articleParCodeBarres(
     contexteDe(warehouseId),
   ]);
   if (parCode[0]) return versArticle(parCode[0], ctx);
+  // Puis le code-barres d'une VARIANTE, comme le serveur (`search-barcode/`) :
+  // sans cette étape, une variante scannée au comptoir était introuvable ici
+  // et trouvée au back-office. L'article rendu est celui de la variante.
+  const variante = await db
+    .select({ produit: productVariants.productId })
+    .from(productVariants)
+    .where(
+      and(
+        eq(productVariants.barcode, lu),
+        eq(productVariants.isActive, true),
+        eq(productVariants.isDeleted, false)
+      )
+    )
+    .limit(1);
+  if (variante[0]) {
+    const parVariante = await base(warehouseId)
+      .where(and(vendable(), eq(products.id, variante[0].produit)))
+      .groupBy(products.id)
+      .limit(1);
+    if (parVariante[0]) return versArticle(parVariante[0], ctx);
+  }
   const parSku = await base(warehouseId)
     .where(and(vendable(), eq(products.sku, lu)))
     .groupBy(products.id)

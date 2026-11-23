@@ -45,6 +45,7 @@ export function ChampMontant({
   erreur,
   autoFocus,
   requis = true,
+  choixDevise = true,
 }: {
   label?: string;
   valeur: string;
@@ -64,9 +65,18 @@ export function ChampMontant({
    * sur un champ qu'on a le droit de laisser vide fait chercher ce qui manque.
    */
   requis?: boolean;
+  /**
+   * Les puces de devise SOUS le champ. À `false` quand l'écran choisit la
+   * devise ailleurs (la feuille d'encaissement la pose avant son
+   * récapitulatif, parce qu'elle décide de tous les montants).
+   *
+   * ⚠ ON NE PASSE PAS UNE SEULE DEVISE pour les masquer : le repère se décide
+   * sur le NOMBRE de devises, et il disparaîtrait avec elles.
+   */
+  choixDevise?: boolean;
 }) {
   const symbole = devises.find((d) => d.code === devise)?.symbole ?? devise;
-  const multi = devises.length > 1;
+  const multi = choixDevise && devises.length > 1;
   const afficheRepere = Boolean(repere) &&
     montrerConversion(valeur, devise, principale, devises.length);
 

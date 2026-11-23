@@ -18,7 +18,12 @@
  */
 import type { ClientPos } from "./etat-panier";
 import {
+  cagnotteVersPrincipale,
+  deviseNonActive,
+  manqueAffiche,
   montantApresBasculeDevise,
+  recapitulatifAffiche,
+  versActiveSansDepasser,
   blocageEncaissement,
   libelleConfirmation,
   libelleMontant,
@@ -541,5 +546,137 @@ describe("la bascule de la devise d'encaissement", () => {
         throw new Error(`${f} FC bascule en ${m} $, qui ne solde plus`);
       }
     }
+  });
+});
+
+describe("la devise active de la feuille", () => {
+  // Un établissement en USD qui encaisse aussi des francs, à 2 300 FC le dollar.
+  const decimalesDe = (code: string) => (code === "CDF" ? 0 : 2);
+  const arrondir = (m: number, code: string) => {
+    const f = Math.pow(10, decimalesDe(code));
+    return Math.round((m + Number.EPSILON) * f) / f;
+  };
+  const convertirBrut = (m: number, de: string, vers: string) =>
+    de === vers ? m : de === "USD" ? m * 2300 : m / 2300;
+  const convertirArrondi = (m: number, de: string, vers: string) =>
+    arrondir(convertirBrut(m, de, vers), vers);
+  const affichage = (deviseFacture: string, deviseActive: string) => ({
+    deviseFacture,
+    deviseActive,
+    convertirArrondi,
+    convertirBrut,
+    decimalesDe,
+  });
+  const FACTURE = {
+    subtotal: 1200,
+    itemDiscount: 30,
+    globalDiscount: 20,
+    loyaltyDiscount: 0,
+    tax: 0,
+  };
+
+  it("n'a d'équivalent que sur un établissement à DEUX devises", () => {
+    expect(deviseNonActive("USD", ["USD", "CDF"])).toBe("CDF");
+    expect(deviseNonActive("CDF", ["USD", "CDF"])).toBe("USD");
+    expect(deviseNonActive("USD", ["USD"])).toBeNull();
+    // Au-delà de deux, il n'y a plus « l'autre » devise.
+    expect(deviseNonActive("USD", ["USD", "CDF", "EUR"])).toBeNull();
+  });
+
+  it("à devises égales, ne convertit rien et donne l'équivalent en francs", () => {
+    const r = recapitulatifAffiche({
+      ...affichage("USD", "USD"),
+      facture: FACTURE,
+      totalFacture: 1150,
+      devisesActives: ["USD", "CDF"],
+    });
+    expect(r.sousTotal).toBe(1200);
+    expect(r.remisesArticles).toBe(30);
+    expect(r.total).toBe(1150);
+    expect(r.equivalent).toEqual({ montant: 2645000, devise: "CDF" });
+    expect(r.convertie).toBe(false);
+  });
+
+  it("en francs, tout se lit en francs, et la parenthèse est le total EXACT de la facture", () => {
+    const r = recapitulatifAffiche({
+      ...affichage("USD", "CDF"),
+      facture: FACTURE,
+      totalFacture: 1150,
+      devisesActives: ["USD", "CDF"],
+    });
+    expect(r.devise).toBe("CDF");
+    expect(r.sousTotal).toBe(2760000);
+    expect(r.remise).toBe(46000);
+    expect(r.total).toBe(2645000);
+    expect(r.equivalent).toEqual({ montant: 1150, devise: "USD" });
+    expect(r.convertie).toBe(true);
+  });
+
+  it("le total est ce qu'il faut RECEVOIR : 26 681 FC demandent 11,61 $, pas 11,60 $", () => {
+    // 26 681 / 2300 = 11,60043... Au plus proche, 11,60 $ ne soldent pas la
+    // facture (11,60 x 2300 = 26 680). Le total doit être celui du bouton.
+    const r = recapitulatifAffiche({
+      ...affichage("CDF", "USD"),
+      facture: { ...FACTURE, subtotal: 26681, itemDiscount: 0, globalDiscount: 0 },
+      totalFacture: 26681,
+      devisesActives: ["USD", "CDF"],
+    });
+    expect(r.total).toBe(11.61);
+    expect(r.total * 2300).toBeGreaterThanOrEqual(26681);
+  });
+
+  it("n'écrit aucun équivalent avec trois devises", () => {
+    const r = recapitulatifAffiche({
+      ...affichage("USD", "USD"),
+      facture: FACTURE,
+      totalFacture: 1150,
+      devisesActives: ["USD", "CDF", "EUR"],
+    });
+    expect(r.equivalent).toBeNull();
+  });
+
+  it("dit ce qu'il manque par ce qui suffit, pas par l'arrondi au plus proche", () => {
+    expect(manqueAffiche(26681, affichage("CDF", "USD"))).toBe(11.61);
+    expect(manqueAffiche(0, affichage("CDF", "USD"))).toBe(0);
+    expect(manqueAffiche(-5, affichage("CDF", "USD"))).toBe(0);
+  });
+
+  it("préremplit un plafond SANS JAMAIS le dépasser", () => {
+    // 434,7826 $ font 999 999,98 FC : au plus proche, 1 000 000 FC
+    // dépasseraient la cagnotte du client.
+    expect(versActiveSansDepasser(434.7826, "USD", affichage("USD", "CDF"))).toBe(999999);
+    // Un nombre rond ne perd rien à la conversion.
+    expect(versActiveSansDepasser(10, "USD", affichage("USD", "CDF"))).toBe(23000);
+    expect(versActiveSansDepasser(10, "USD", affichage("USD", "USD"))).toBe(10);
+  });
+
+  it("ne retire pas un franc pour l'imprécision du taux stocké", () => {
+    // Le serveur range le franc à 0,000434782609 le dollar (1/2300 à douze
+    // décimales) : 360 $ y font 827 999,9994 FC. C'est 828 000 FC, pas
+    // 827 999 FC (relevé sur le rk3568, sur une vraie cagnotte de 360 $).
+    const tauxStocke = 0.000434782609;
+    const brut = (m: number, de: string, vers: string) =>
+      de === vers ? m : de === "USD" ? m / tauxStocke : m * tauxStocke;
+    const a = { ...affichage("USD", "CDF"), convertirBrut: brut };
+    expect(versActiveSansDepasser(360, "USD", a)).toBe(828000);
+    // Et sur un grand montant, où l'erreur relative du taux pèse plus lourd.
+    expect(versActiveSansDepasser(43000, "USD", a)).toBe(98900000);
+  });
+
+  it("ramène la cagnotte saisie en francs dans la principale, arrondie et bornée", () => {
+    const base = {
+      deviseActive: "CDF",
+      principale: "USD",
+      convertirBrut,
+      arrondir,
+    };
+    // 1 000 000 FC = 434,78 $ : deux décimales, jamais quatre.
+    expect(cagnotteVersPrincipale({ ...base, saisie: 1000000, plafond: 500 })).toBe(434.78);
+    // Jamais au-dessus du plafond de la vente.
+    expect(cagnotteVersPrincipale({ ...base, saisie: 1000000, plafond: 300 })).toBe(300);
+    // En principale, la saisie passe telle quelle.
+    expect(
+      cagnotteVersPrincipale({ ...base, deviseActive: "USD", saisie: 12.5, plafond: 300 })
+    ).toBe(12.5);
   });
 });

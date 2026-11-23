@@ -28,7 +28,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import { router } from "expo-router";
 import * as Crypto from "expo-crypto";
 
 import { formatNumberFr } from "@vente-facile/core";
@@ -72,9 +71,18 @@ import {
   type MoyenPaiement,
 } from "./donnees";
 import {
+  PanneauImpression,
+  PanneauVenteTerminee,
+  PiedVenteTerminee,
+  useImpressionTicket,
+  type VenteEnregistree,
+} from "./apres-vente";
+import {
   blocageEncaissement,
+  cagnotteVersPrincipale,
   libelleConfirmation,
   libelleMontant,
+  manqueAffiche,
   montantApresBasculeDevise,
   montantExigible,
   motifCreditFerme,
@@ -82,7 +90,11 @@ import {
   phraseBlocage,
   phraseCreditFerme,
   recalerReglement,
+  recapitulatifAffiche,
   suffixeOptionCredit,
+  versActive,
+  versActiveSansDepasser,
+  type AffichageEnDevise,
   type ModeReglement,
 } from "./encaissement";
 import { gainFidelite, cagnotteApresVente } from "./fidelite";
@@ -90,7 +102,19 @@ import { prochaineReference } from "./numerotation";
 import { usePanier, type ClientPos } from "./panier";
 import { donneesTicketVente } from "./ticket";
 
-type Panneau = "formulaire" | "client" | "nouveauClient" | "moyen" | "cagnotte";
+type Panneau =
+  | "formulaire"
+  | "client"
+  | "nouveauClient"
+  | "moyen"
+  | "cagnotte"
+  // Après l'encaissement : l'attente du ticket, puis la vente terminée. Voir
+  // `apres-vente.tsx` - ils remplacent l'ancienne page `/pos/termine`.
+  | "impression"
+  | "terminee";
+
+/** Le voile et le retour d'Android pendant l'impression : rien ne s'interrompt. */
+const RIEN = () => {};
 
 /**
  * Glyphe d'un moyen de paiement, par son genre.
@@ -112,7 +136,29 @@ function glypheDuMoyen(genre: string): IconName {
   }
 }
 
-export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
+export function FeuilleEncaissement({
+  onFermer,
+  onVenteEnregistree,
+  onVenteTerminee,
+}: {
+  onFermer: () => void;
+  /**
+   * Dès que la vente est en file, avant même le ticket.
+   *
+   * ⚠ LA GRILLE DU COMPTOIR NE SE RELIT PAS D'ELLE-MÊME. Elle se relisait parce
+   * que l'ancienne page d'arrivée lui faisait perdre puis reprendre le focus ;
+   * la feuille, elle, reste posée sur le comptoir. Sans ce rappel, une carte
+   * annonçait encore « 1 PLAQUETTE » après la vente de la dernière (relevé sur
+   * le rk3568) - c'est-à-dire un stock que le comptoir vient de vendre.
+   */
+  onVenteEnregistree?: () => void;
+  /**
+   * Après « Nouvelle vente », une fois la feuille fermée. Le panier plein
+   * écran d'un téléphone (`/pos/panier`) y revient au comptoir : sans cela, le
+   * caissier resterait devant un panier vide.
+   */
+  onVenteTerminee?: () => void;
+}) {
   const panier = usePanier();
   const { snapshot, can } = useSession();
   const toast = useToast();
@@ -129,6 +175,8 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
   const [recherche, setRecherche] = useState("");
   const [clients, setClients] = useState<ClientPos[]>([]);
   const [saisieCagnotte, setSaisieCagnotte] = useState("");
+  const [vente, setVente] = useState<VenteEnregistree | null>(null);
+  const impression = useImpressionTicket();
   const verrou = useRef(false);
 
   const mode: ModeReglement = etat.aCredit ? "credit" : "comptant";
@@ -284,6 +332,34 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
 
   const manque = Math.max(0, totaux.restantFacture);
 
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ TOUS LES MONTANTS DE LA FEUILLE SE LISENT DANS LA DEVISE ACTIVE.     │
+  // │                                                                      │
+  // │ La devise active est celle du MONTANT REÇU, choisie avant le         │
+  // │ récapitulatif. La facture et le ticket restent libellés en devise    │
+  // │ principale (décision du 2026-11-22, parité avec le back-office) :    │
+  // │ ce qui suit est de l'affichage, et la conversion vit dans le module  │
+  // │ pur `encaissement.ts`, jamais ici.                                   │
+  // └──────────────────────────────────────────────────────────────────────┘
+  const deviseRecue = reglement?.currency ?? deviseFacture;
+  const affichage: AffichageEnDevise = {
+    deviseFacture,
+    deviseActive: deviseRecue,
+    convertirArrondi: devises.convertMoney,
+    convertirBrut: devises.convert,
+    decimalesDe: devises.decimalsOf,
+  };
+  /** Un montant de la feuille, formaté dans la devise active. */
+  const enActive = (montant: number, depuis: string = deviseFacture) =>
+    argent(versActive(montant, depuis, affichage), deviseRecue);
+  const f = totaux.facture;
+  const recap = recapitulatifAffiche({
+    ...affichage,
+    facture: f,
+    totalFacture: totaux.totalFacture,
+    devisesActives: devisesActives.map((c) => c.currency_code),
+  });
+
   // --- Les gestes ---------------------------------------------------------
 
   const choisirMoyen = (valeur: string | null) => {
@@ -314,6 +390,41 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
     setPanneau("formulaire");
   };
 
+  /**
+   * Changer la devise de la feuille : celle du montant reçu, donc celle de
+   * tous les montants affichés.
+   *
+   * On CONVERTIT, on n'efface jamais : 20 USD tapés puis basculés en francs
+   * restent la même somme. Mais une bascule ne doit pas rendre INSUFFISANT un
+   * règlement qui soldait - la conversion au plus proche perdait jusqu'à une
+   * unité mineure, et le bouton se fermait sur une vente que l'écran venait de
+   * préremplir. La règle entière vit dans `montantApresBasculeDevise`.
+   */
+  const choisirDevise = (code: string) => {
+    if (!reglement || code === deviseRecue) return;
+    patcher({
+      currency: code,
+      amount: montantApresBasculeDevise({
+        mode,
+        saisie: reglement.amount ?? "",
+        deviseAvant: deviseRecue,
+        totalFacture: totaux.totalFacture,
+        deviseFacture,
+        deviseReglement: code,
+        // ⚠ `convert`, PAS `convertMoney` : le plafond a besoin de la
+        // conversion BRUTE. Voir `montantExigible`.
+        convertirBrut: devises.convert,
+        convertirArrondi: devises.convertMoney,
+        decimalesDe: devises.decimalsOf,
+      }),
+    });
+    // La monnaie suit la devise choisie : un client qui paie en francs attend
+    // ses francs. Les puces de « Monnaie à rendre » permettent toujours d'en
+    // rendre dans une autre. Deux `envoyer` sans conflit : l'un touche le
+    // règlement, l'autre la devise de la monnaie.
+    envoyer({ type: "deviseMonnaie", code });
+  };
+
   const retirerCagnotte = () => {
     envoyer({ type: "cagnotte", montant: 0 });
     recaler(
@@ -325,8 +436,17 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
 
   const validerCagnotte = () => {
     const lecture = lireNombre(saisieCagnotte);
+    // La saisie est dans la devise ACTIVE ; la cagnotte est tenue en
+    // principale, arrondie à ses décimales et bornée au plafond de la vente.
     const montant = lecture.ok
-      ? Math.min(lecture.valeur ?? 0, totaux.cagnotteMax)
+      ? cagnotteVersPrincipale({
+          saisie: lecture.valeur ?? 0,
+          deviseActive: deviseRecue,
+          principale: devises.primary,
+          plafond: totaux.cagnotteMax,
+          convertirBrut: devises.convert,
+          arrondir: devises.round,
+        })
       : 0;
     envoyer({ type: "cagnotte", montant });
     // Le total NET d'apres cette saisie, pour que le champ montant suive. Le
@@ -417,9 +537,9 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
       });
 
       // Le document est range AVANT de vider le panier : apres, il n'y a plus
-      // rien a decrire. Il est range, pas imprime : l'ecran suivant s'en
-      // charge, pour que le caissier voie la monnaie a rendre meme si
-      // l'imprimante est en panne de papier.
+      // rien a decrire. Il est range, pas imprime : le panneau d'attente s'en
+      // charge juste apres, et il montre DEJA la monnaie a rendre, pour que le
+      // caissier la lise meme si l'imprimante est en panne de papier.
       const ticket = await enregistrerDocument({
         kind: "sale",
         documentNumber: reference,
@@ -453,22 +573,25 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
         }),
       });
 
-      envoyer({ type: "vider" });
-      onFermer();
-      // ⚠ `push` ET NON `replace` : la feuille s'ouvre aussi depuis l'ONGLET
-      // de vente, ou il n'y a rien a remplacer - `replace` y ecraserait la
-      // barre d'onglets elle-meme. L'ecran d'arrivee se remplace de toute
-      // facon lui-meme en sortant, donc la pile ne grossit pas.
-      router.push({
-        pathname: "/pos/termine",
-        params: {
-          reference,
-          monnaie: String(monnaie),
-          devise: deviseMonnaie,
-          credit: mode === "credit" ? "1" : "",
-          ticket,
-        },
+      // Ce que les panneaux d'apres-vente montrent est fige ICI : le panier va
+      // etre vide, et le total, la monnaie et leur devise ne se relisent plus.
+      setVente({
+        reference,
+        credit: mode === "credit",
+        total: argent(recap.total, recap.devise),
+        equivalent: recap.equivalent
+          ? argent(recap.equivalent.montant, recap.equivalent.devise)
+          : null,
+        monnaie: monnaie > 0 ? argent(monnaie, deviseMonnaie) : null,
+        ticket,
       });
+      envoyer({ type: "vider" });
+      onVenteEnregistree?.();
+      // ⚠ PLUS DE PAGE D'ARRIVÉE (l'ancienne `pos/termine`). Elle sortait du
+      // comptoir : sur une tablette large, la barre laterale large revenait a
+      // chaque vente. La MEME feuille passe a l'attente du ticket.
+      setPanneau("impression");
+      void imprimerPuisTerminer(ticket);
     } catch (e) {
       setErreur(
         e instanceof Error
@@ -479,6 +602,24 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
       verrou.current = false;
       setEnvoi(false);
     }
+  };
+
+  /**
+   * Le ticket sort, puis la feuille passe a la vente terminee.
+   *
+   * Mise a jour FONCTIONNELLE : si le caissier a deja choisi « Continuer sans
+   * attendre », il est sur la vente terminee, et l'y laisser est tout ce qu'il
+   * faut - le resultat de l'impression s'y affichera de lui-meme.
+   */
+  const imprimerPuisTerminer = async (ticket: string) => {
+    await impression.lancer(ticket);
+    setPanneau((p) => (p === "impression" ? "terminee" : p));
+  };
+
+  /** « Nouvelle vente » : la feuille se ferme sur un comptoir deja vide. */
+  const terminer = () => {
+    onFermer();
+    onVenteTerminee?.();
   };
 
   /**
@@ -496,6 +637,10 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
 
   const reculer = () => {
     if (panneau === "formulaire") return annuler();
+    // Apres la vente, il n'y a plus de formulaire ou revenir : le panier est
+    // vide. Pendant l'impression, rien ne s'interrompt.
+    if (panneau === "terminee") return terminer();
+    if (panneau === "impression") return;
     // La création d'un client se fait DEPUIS le choix du client : reculer y
     // ramène, avec la recherche intacte.
     setPanneau(panneau === "nouveauClient" ? "client" : "formulaire");
@@ -510,7 +655,11 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
         ? "Moyen de paiement"
         : panneau === "cagnotte"
           ? "Cagnotte à utiliser"
-          : "Encaissement";
+          : panneau === "impression" || panneau === "terminee"
+            ? // Le panneau porte son propre titre, en grand : le repeter dans
+              // l'en-tete ferait deux titres pour un seul message.
+              undefined
+            : "Encaissement";
 
   // --- Les panneaux -------------------------------------------------------
 
@@ -522,8 +671,9 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
             recherche={recherche}
             onRecherche={setRecherche}
             clients={clients}
-            argent={argent}
-            principale={devises.primary}
+            // Le solde d'un client est tenu en principale : il se lit, comme le
+            // reste de la feuille, dans la devise active.
+            montantClient={(m) => enActive(m, devises.primary)}
             onChoisir={(c) => {
               envoyer({ type: "client", client: c });
               setPanneau("formulaire");
@@ -571,13 +721,37 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
             onChoisir={choisirMoyen}
             messageVide="Aucun moyen de paiement. Synchronisez pour les recevoir."
           />
+        ) : panneau === "impression" ? (
+          vente ? (
+            <PanneauImpression
+              vente={vente}
+              onContinuer={() => setPanneau("terminee")}
+            />
+          ) : null
+        ) : panneau === "terminee" ? (
+          vente ? (
+            <PanneauVenteTerminee
+              vente={vente}
+              statut={impression.statut}
+              motif={impression.motif}
+              transport={impression.transport}
+            />
+          ) : null
         ) : (
           <PanneauCagnotte
             saisie={saisieCagnotte}
             onSaisie={setSaisieCagnotte}
-            solde={totaux.cagnotte}
-            maximum={totaux.cagnotteMax}
-            argent={argent}
+            // La cagnotte est tenue en principale ; elle se SAISIT dans la
+            // devise active. Le plafond est ramené sans jamais le dépasser,
+            // sinon le champ prérempli se refuserait lui-même.
+            solde={versActive(totaux.cagnotte, devises.primary, affichage)}
+            maximum={versActiveSansDepasser(totaux.cagnotteMax, devises.primary, affichage)}
+            devise={deviseRecue}
+            // Décidé sur les montants en PRINCIPALE, où la cagnotte est tenue :
+            // deux conversions arrondies différemment feraient dire que le
+            // marchand limite la cagnotte alors que rien ne la limite.
+            plafonne={totaux.cagnotteMax < totaux.cagnotte}
+            argent={(m) => argent(m, deviseRecue)}
             onValider={validerCagnotte}
           />
         )}
@@ -586,9 +760,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
 
   // --- Le formulaire ------------------------------------------------------
 
-  const f = totaux.facture;
   const nbArticles = etat.lignes.reduce((s, l) => s + l.quantity, 0);
-  const deviseRecue = reglement?.currency ?? deviseFacture;
   // ⚠ LE BOUTON AFFICHE CE QUE LE CHAMP PORTE, pas une seconde conversion.
   // `convertMoney` nu rendrait 11,6 $ pendant que le champ prerempli tient
   // 11,61 : le caissier lirait deux nombres pour un seul encaissement.
@@ -619,11 +791,23 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
       taille="large"
       // Le voile et le bouton retour d'Android RECULENT d'un panneau avant de
       // fermer : un geste destine a revenir en arriere ne perd pas la saisie.
-      onFermer={reculer}
+      onFermer={panneau === "impression" ? RIEN : reculer}
       titre={titre}
-      retour={panneau === "formulaire" ? undefined : reculer}
+      retour={
+        panneau === "formulaire" ||
+        panneau === "impression" ||
+        panneau === "terminee"
+          ? undefined
+          : reculer
+      }
       pied={
-        panneau !== "formulaire" ? undefined : (
+        panneau === "terminee" ? (
+          <PiedVenteTerminee
+            statut={impression.statut}
+            onImprimer={() => vente && void impression.lancer(vente.ticket)}
+            onNouvelleVente={terminer}
+          />
+        ) : panneau !== "formulaire" ? undefined : (
           <View className="flex-row gap-3">
             <View className="flex-1">
               <Button
@@ -681,7 +865,9 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
           argent : il n'y a plus de seuil sous lequel la cagnotte serait inerte,
           donc plus de case grisee a expliquer. */}
           {etat.client && programme?.is_active ? (
-            <Rubrique titre={`Cagnotte de fidélité (${argent(totaux.cagnotte)})`}>
+            <Rubrique
+              titre={`Cagnotte de fidélité (${enActive(totaux.cagnotte, devises.primary)})`}
+            >
               <View className="rounded-xl border border-warning/30 bg-warning/10 p-3">
                 <Checkbox
                   coche={etat.cagnotte > 0}
@@ -691,7 +877,11 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
                   onBasculer={() => {
                     // Decocher est une ANNULATION : immediate, sans rien demander.
                     if (etat.cagnotte > 0) return retirerCagnotte();
-                    setSaisieCagnotte(String(totaux.cagnotteMax));
+                    setSaisieCagnotte(
+                      String(
+                        versActiveSansDepasser(totaux.cagnotteMax, devises.primary, affichage),
+                      ),
+                    );
                     setPanneau("cagnotte");
                   }}
                 />
@@ -707,13 +897,17 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
                 {totaux.remiseFidelite > 0 ? (
                   <View className="mt-2 flex-row items-center justify-between border-t border-warning/30 pt-2">
                     <Text variant="caption" className="min-w-0 flex-1">
-                      {argent(f.loyaltyDiscount)} déduits de la facture
+                      {enActive(f.loyaltyDiscount)} déduits de la facture
                     </Text>
                     <Button
                       variant="ghost"
                       size="sm"
                       onPress={() => {
-                        setSaisieCagnotte(String(etat.cagnotte));
+                        setSaisieCagnotte(
+                          String(
+                            versActiveSansDepasser(etat.cagnotte, devises.primary, affichage),
+                          ),
+                        );
                         setPanneau("cagnotte");
                       }}
                     >
@@ -761,9 +955,9 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
               ) : etat.client ? (
                 <Text variant="caption">
                   Dette actuelle :{" "}
-                  {argent(credit?.currentBalance ?? 0, devises.primary)} · après
+                  {enActive(credit?.currentBalance ?? 0, devises.primary)} · après
                   cette vente :{" "}
-                  {argent(credit?.projectedBalance ?? 0, devises.primary)}
+                  {enActive(credit?.projectedBalance ?? 0, devises.primary)}
                 </Text>
               ) : null}
 
@@ -774,30 +968,54 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
                 // 90 $ » sur un compte que la liste annonce a 30 $, et conclurait a
                 // un bug plutot qu'a un retard de synchronisation.
                 <Text variant="caption">
-                  Dont {argent(totaux.detteEnAttente, devises.primary)} de
+                  Dont {enActive(totaux.detteEnAttente, devises.primary)} de
                   ventes à crédit qui attendent leur envoi.
                 </Text>
               ) : null}
             </View>
           ) : null}
 
+          {/* ┌──────────────────────────────────────────────────────────────┐
+              │ LA DEVISE AVANT LE RÉCAPITULATIF, PARCE QU'ELLE LE DÉCIDE.  │
+              │                                                              │
+              │ Elle vivait sous le champ montant, APRÈS les totaux : le     │
+              │ caissier lisait « 1 150 $ » puis basculait en francs pour     │
+              │ encaisser, et l'écran ne lui disait la somme qu'au bas de la │
+              │ feuille. Tous les montants qui suivent sont dans celle-ci.   │
+              │ Un choix unique n'est pas un choix : mono-devise, rien.      │
+              └──────────────────────────────────────────────────────────────┘ */}
+          {reglement && devisesActives.length > 1 ? (
+            <Rubrique titre="Devise d'encaissement">
+              <ChipRow>
+                {devisesActives.map((c) => (
+                  <Chip
+                    key={c.currency_code}
+                    label={c.currency_code}
+                    actif={deviseRecue === c.currency_code}
+                    onPress={() => choisirDevise(c.currency_code)}
+                  />
+                ))}
+              </ChipRow>
+            </Rubrique>
+          ) : null}
+
           <Rubrique titre="Récapitulatif">
             <View className="gap-1.5 rounded-xl bg-muted p-3">
               <Ligne
                 libelle={`Sous-total (${formatNumberFr(nbArticles, 0)} article${nbArticles > 1 ? "s" : ""})`}
-                valeur={argent(f.subtotal)}
+                valeur={argent(recap.sousTotal, recap.devise)}
               />
               {f.itemDiscount > 0 ? (
                 <Ligne
                   libelle="Remises articles"
-                  valeur={`-${argent(f.itemDiscount)}`}
+                  valeur={`-${argent(recap.remisesArticles, recap.devise)}`}
                   ton="primary"
                 />
               ) : null}
               {f.globalDiscount > 0 ? (
                 <Ligne
                   libelle="Remise"
-                  valeur={`-${argent(f.globalDiscount)}`}
+                  valeur={`-${argent(recap.remise, recap.devise)}`}
                   ton="primary"
                 />
               ) : null}
@@ -806,40 +1024,43 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
               {f.loyaltyDiscount > 0 ? (
                 <Ligne
                   libelle="Cagnotte de fidélité"
-                  valeur={`-${argent(f.loyaltyDiscount)}`}
+                  valeur={`-${argent(recap.cagnotte, recap.devise)}`}
                   ton="warning"
                 />
               ) : null}
               {f.tax > 0 ? (
                 <Ligne
                   libelle="Taxes (TVA)"
-                  valeur={`+${argent(f.tax)}`}
+                  valeur={`+${argent(recap.taxe, recap.devise)}`}
                   ton="muted"
                 />
               ) : null}
               <View className="my-1">
                 <Divider />
               </View>
-              <View className="flex-row items-baseline justify-between">
+              {/* Le total est ce qu'il faut RECEVOIR dans la devise active :
+                  le même nombre que le bouton. Entre parenthèses, l'autre
+                  devise d'un établissement qui en tient deux - et quand c'est
+                  la facture, son total exact. */}
+              <View className="flex-row items-baseline justify-between gap-3">
                 <Text variant="label">Total à payer</Text>
-                <Text variant="h4" className="text-primary" numeric>
-                  {argent(totaux.totalFacture)}
-                </Text>
-              </View>
-              {deviseRecue !== deviseFacture ? (
-                <View className="flex-row items-baseline justify-between">
-                  <Text variant="caption">≈ à encaisser en {deviseRecue}</Text>
-                  <Text variant="caption" numeric>
-                    {argent(
-                      devises.convertMoney(
-                        totaux.totalFacture,
-                        deviseFacture,
-                        deviseRecue,
-                      ),
-                      deviseRecue,
-                    )}
+                <View className="min-w-0 flex-1 flex-row flex-wrap items-baseline justify-end gap-x-1.5">
+                  <Text variant="h4" className="text-primary" numeric>
+                    {argent(recap.total, recap.devise)}
                   </Text>
+                  {recap.equivalent ? (
+                    <Text variant="caption" numeric>
+                      {`(${argent(recap.equivalent.montant, recap.equivalent.devise)})`}
+                    </Text>
+                  ) : null}
                 </View>
+              </View>
+              {recap.convertie ? (
+                // Ce que portera le ticket, et pourquoi une ligne convertie peut
+                // différer d'une unité du total.
+                <Text variant="caption">
+                  {`Facture établie en ${deviseFacture} · ${libelleDuTaux(deviseRecue, deviseFacture, devises, argent)}`}
+                </Text>
               ) : null}
             </View>
           </Rubrique>
@@ -869,30 +1090,10 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
             valeur={reglement?.amount ?? ""}
             onChangeValeur={(v) => patcher({ amount: v })}
             devise={deviseRecue}
-            onChangeDevise={(code) =>
-              // On CONVERTIT, on n'efface jamais : 20 USD tapes puis bascules en
-              // francs restent la meme somme. Mais une bascule ne doit pas
-              // rendre INSUFFISANT un reglement qui soldait - la conversion au
-              // plus proche perdait jusqu'a une unite mineure, et le bouton se
-              // fermait sur une vente que l'ecran venait de preremplir.
-              // La regle entiere vit dans `montantApresBasculeDevise`.
-              patcher({
-                currency: code,
-                amount: montantApresBasculeDevise({
-                  mode,
-                  saisie: reglement?.amount ?? "",
-                  deviseAvant: deviseRecue,
-                  totalFacture: totaux.totalFacture,
-                  deviseFacture,
-                  deviseReglement: code,
-                  // ⚠ `convert`, PAS `convertMoney` : le plafond a besoin de la
-                  // conversion BRUTE. Voir `montantExigible`.
-                  convertirBrut: devises.convert,
-                  convertirArrondi: devises.convertMoney,
-                  decimalesDe: devises.decimalsOf,
-                }),
-              })
-            }
+            // La devise se choisit AVANT le récapitulatif : le champ n'en
+            // porte plus les puces, mais garde son symbole et son repère.
+            onChangeDevise={(code) => choisirDevise(code)}
+            choixDevise={false}
             devises={devisesChoisissables}
             conversion={{
               convertir: devises.convertMoney,
@@ -935,7 +1136,7 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
                     Montant à crédit
                   </Text>
                   <Text variant="h4" className="text-primary" numeric>
-                    {argent(manque)}
+                    {enActive(manque)}
                   </Text>
                 </View>
                 {/* `due_date` existait dans le modele et dans l'API sans qu'AUCUNE
@@ -968,7 +1169,9 @@ export function FeuilleEncaissement({ onFermer }: { onFermer: () => void }) {
                   </Text>
                 </View>
                 <Text variant="label" className="text-destructive" numeric>
-                  {argent(manque)}
+                  {/* Ce qui SUFFIT, pas l'arrondi au plus proche : sinon on
+                      annonce 11,60 $ et 11,60 $ ne soldent pas. */}
+                  {argent(manqueAffiche(manque, affichage), deviseRecue)}
                 </Text>
               </View>
             ) : null}
@@ -1147,8 +1350,7 @@ function PanneauClient({
   recherche,
   onRecherche,
   clients,
-  argent,
-  principale,
+  montantClient,
   onChoisir,
   onRetirer,
   onNouveau,
@@ -1156,8 +1358,8 @@ function PanneauClient({
   recherche: string;
   onRecherche: (v: string) => void;
   clients: ClientPos[];
-  argent: (m: number, code?: string) => string;
-  principale: string;
+  /** Un solde tenu en principale, formaté dans la devise de la feuille. */
+  montantClient: (m: number) => string;
   onChoisir: (c: ClientPos) => void;
   onRetirer?: () => void;
   /** Absent sans le droit `customers.create` : le bouton n'est alors pas proposé. */
@@ -1197,7 +1399,7 @@ function PanneauClient({
             <DataRow
               key={c.id}
               principal={c.name}
-              secondaire={libelleSolde(c, argent, principale)}
+              secondaire={libelleSolde(c, montantClient)}
               onPress={() => onChoisir(c)}
               chevron={false}
               badge={
@@ -1218,13 +1420,20 @@ function PanneauCagnotte({
   onSaisie,
   solde,
   maximum,
+  devise,
+  plafonne,
   argent,
   onValider,
 }: {
   saisie: string;
   onSaisie: (v: string) => void;
+  /** Dans la devise de la saisie, comme `maximum`. */
   solde: number;
   maximum: number;
+  /** La devise dans laquelle le montant se saisit : celle de la feuille. */
+  devise: string;
+  /** Le plafond de la vente est-il plus bas que la cagnotte ? */
+  plafonne: boolean;
   argent: (montant: number) => string;
   onValider: () => void;
 }) {
@@ -1238,12 +1447,12 @@ function PanneauCagnotte({
         {argent(solde)} de cagnotte. Au plus {argent(maximum)} sur cette vente.
       </Text>
       <FormField
-        label="Montant à déduire"
+        label={`Montant à déduire (${devise})`}
         // ⚠ ON DIT POURQUOI LE PLAFOND MORD, parce que c'est le seul reglage de
         // fidelite qui se voit au comptoir : la cagnotte ne solde jamais toute
         // une facture, il reste toujours quelque chose a encaisser en monnaie.
         hint={
-          maximum < solde
+          plafonne
             ? "Le marchand limite la part d'une facture réglable par la cagnotte."
             : undefined
         }
@@ -1309,13 +1518,12 @@ function optionsDeMoyen(
  */
 function libelleSolde(
   client: ClientPos,
-  argent: (m: number, code?: string) => string,
-  principale: string,
+  montant: (m: number) => string,
 ): string {
   if (client.allow_credit === false) return "Crédit non autorisé";
   const solde = Number(client.current_balance) || 0;
-  if (solde > 0) return `Doit ${argent(solde, principale)}`;
-  if (solde < 0) return `Avance de ${argent(-solde, principale)}`;
+  if (solde > 0) return `Doit ${montant(solde)}`;
+  if (solde < 0) return `Avance de ${montant(-solde)}`;
   return "À jour";
 }
 

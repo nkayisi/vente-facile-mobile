@@ -21,13 +21,7 @@ import {
 import { messageGrilleVide, type DiagnosticCatalogue } from "@/features/pos/etat-catalogue";
 import { membreDeLaSession } from "@/features/perimetre/entrepots";
 import { accord, pluriel } from "@/data/accord";
-import {
-  CLE_DEVISE_AFFICHAGE,
-  deviseAffichageValide,
-  devisesAffichables,
-  prixAffiche,
-} from "@/features/pos/affichage-devise";
-import { ecrireReglage, lireReglage } from "@/data/reglages";
+import { prixAvecEquivalent } from "@/features/pos/affichage-devise";
 import { useMonnaie } from "@/data/devises";
 import { ChampsFonds } from "@/features/caisse/champs-fonds";
 import { devisesDuFonds, lireFonds } from "@/features/caisse/fond";
@@ -38,6 +32,9 @@ import { ouvrirSession, sessionOuverte, caissesDisponibles, type CaissePos, type
 import { CarteArticle } from "@/features/pos/carte-article";
 import { FeuilleEncaissement } from "@/features/pos/feuille-encaissement";
 import { SelecteurDuComptoir } from "@/features/pos/selecteur-du-comptoir";
+import { aLaFormeDUnCode, BandeauCodeIntrouvable } from "@/features/pos/bandeau-code-introuvable";
+import { CHAMP_RECHERCHE_COMPTOIR } from "@/features/pos/lecteur-codes";
+import { useScanComptoir } from "@/features/pos/use-scan-comptoir";
 import {
   phraseDejaEnFile,
   usePropositionCreation,
@@ -46,13 +43,15 @@ import { usePanier } from "@/features/pos/panier";
 import {
   colonnesDeLaGrille,
   completerRangee,
+  formeDeLaCarte,
   panneauDuComptoir,
 } from "@/features/pos/disposition-comptoir";
 import { PanneauPanier } from "@/features/pos/panneau-panier";
 import { useSynchronisation } from "@/features/sync/provider";
 import { useSession } from "@/session/provider";
 import {
-  Banner, Button, EmptyState, Icon, Input, Pressable, Screen, Spinner, Text, useDisposition,
+  Banner, Button, Chip, ChipRow, EmptyState, Icon, Input, Pressable, Screen, Spinner, Text,
+  afficheLibelles, useDisposition,
 } from "@/ui";
 import { LARGEUR_PANNEAU_PANIER } from "@/ui/disposition-regles";
 
@@ -64,6 +63,7 @@ export default function Comptoir() {
   const { largeur: largeurPage } = useDisposition();
   const avecPanneau = panneauDuComptoir(largeurPage);
   const colonnes = colonnesDeLaGrille(largeurPage);
+  const formeCarte = formeDeLaCarte(largeurPage);
 
   const [session, setSession] = useState<SessionCaisse | null | undefined>(undefined);
   const [articles, setArticles] = useState<ArticlePos[]>([]);
@@ -82,6 +82,14 @@ export default function Comptoir() {
   // qui distingue « attendez la fin du comptage » de « votre appareil est en
   // retard, synchronisez ».
   const [verrouArreteA, setVerrouArreteA] = useState<Date | null>(null);
+  // Une vente vient d'être mise en file : la grille doit relire le stock que
+  // la réserve locale en déduit. Voir `onVenteEnregistree`.
+  const [relecture, setRelecture] = useState(0);
+  // Le champ de recherche a-t-il le focus ? Ce qu'un lecteur de codes « tape »
+  // y est alors ajouté, comme le navigateur le fait sur le web.
+  const [rechercheFocalisee, setRechercheFocalisee] = useState(false);
+  // Le dernier code scanné qu'aucun article ne porte.
+  const [introuvable, setIntrouvable] = useState<string | null>(null);
 
   // Rechargement au retour sur l'écran : une synchronisation a pu passer, et
   // un stock périmé fait refuser des ventes possibles.
@@ -113,10 +121,59 @@ export default function Comptoir() {
     const code = terme.trim();
     if (!code) return;
     const article = await articleParCodeBarres(code, entrepot);
-    if (!article) return;
-    setTerme("");
-    setChoisi(article);
+    if (article) {
+      setTerme("");
+      setIntrouvable(null);
+      setChoisi(article);
+      return;
+    }
+    // Comme l'Entrée de la recherche du web : un terme qui a la forme d'un
+    // code-barres et que rien ne porte le DIT, et propose de créer l'article.
+    if (aLaFormeDUnCode(code)) {
+      setTerme("");
+      setIntrouvable(code);
+    }
   };
+
+  // ┌──────────────────────────────────────────────────────────────────────┐
+  // │ LE LECTEUR DE CODES INTÉGRÉ, COMME LA DOUCHETTE DU BACK-OFFICE.      │
+  // │                                                                      │
+  // │ Un scan, où que soit le doigt, ouvre la saisie de l'article. Un code │
+  // │ inconnu le dit. Rien pendant l'encaissement. Voir                    │
+  // │ `features/pos/use-scan-comptoir.ts`, et la règle dans le noyau.      │
+  // └──────────────────────────────────────────────────────────────────────┘
+  useScanComptoir({
+    actif: session != null,
+    entrepot,
+    recherche: () => ({ focalisee: rechercheFocalisee, terme }),
+    surTerme: setTerme,
+    surValider: () => void validerTerme(),
+    surTrouve: (article) => {
+      setIntrouvable(null);
+      setChoisi(article);
+    },
+    surIntrouvable: setIntrouvable,
+  });
+
+  // Au retour sur l'écran, le code introuvable est cherché de nouveau : on
+  // revient peut-être de le créer (le web : `visibilitychange`). Une création
+  // encore en file ne se trouve qu'après la synchronisation, et le bandeau le
+  // dit d'ici là.
+  const introuvableRelu = useRef(introuvable);
+  useEffect(() => {
+    introuvableRelu.current = introuvable;
+  });
+  useFocusEffect(
+    useCallback(() => {
+      const code = introuvableRelu.current;
+      if (!code) return;
+      void articleParCodeBarres(code, entrepot).then((article) => {
+        if (!article || introuvableRelu.current !== code) return;
+        setIntrouvable(null);
+        setChoisi(article);
+      });
+    }, [entrepot, setChoisi, setIntrouvable])
+  );
   // ┌──────────────────────────────────────────────────────────────────────┐
   // │ TOUT LE CATALOGUE VENDABLE ; LE STOCK EST CELUI DE LA CAISSE.       │
   // │                                                                      │
@@ -131,29 +188,20 @@ export default function Comptoir() {
   );
 
   // ┌──────────────────────────────────────────────────────────────────────┐
-  // │ LA DEVISE D'AFFICHAGE, ET CE N'EST PAS LA DEVISE DE FACTURATION.    │
+  // │ CHAQUE PRIX PORTE SON ÉQUIVALENT, ET IL N'Y A PLUS RIEN À CHOISIR.   │
   // │                                                                      │
   // │ T10 du retour de test : un marchand dont le catalogue est tenu en    │
   // │ dollars doit pouvoir annoncer un prix en francs sans calculer de     │
-  // │ tête. La FACTURE reste en devise principale, le ticket n'est pas     │
-  // │ touché, et la carte montre les deux chiffres - jamais le converti    │
-  // │ seul, qui se lirait comme le prix de vente.                          │
+  // │ tête. La rangée « Afficher en » faisait choisir la devise de cet     │
+  // │ affichage ; la carte écrit désormais « 1 150 $ (2 645 000 FC) »      │
+  // │ d'elle-même. La FACTURE reste en devise principale, le ticket n'est  │
+  // │ pas touché, et le converti ne paraît jamais seul.                    │
   // │                                                                      │
   // │ `useMonnaie()` et non `panier.devises` : la seconde est la table      │
   // │ d'ARITHMÉTIQUE du panier, celle-ci l'aide d'AFFICHAGE, et elle seule │
-  // │ porte la liste des devises et la parité lisible.                     │
+  // │ porte la liste des devises actives.                                  │
   // └──────────────────────────────────────────────────────────────────────┘
   const money = useMonnaie();
-  const [deviseAffichage, setDeviseAffichage] = useState<string | null>(null);
-  useEffect(() => {
-    void lireReglage<string | null>(CLE_DEVISE_AFFICHAGE, null).then(setDeviseAffichage);
-  }, []);
-  const devisesPossibles = useMemo(() => devisesAffichables(money), [money]);
-  const deviseRetenue = deviseAffichageValide(deviseAffichage, money);
-  const choisirDevise = (code: string) => {
-    setDeviseAffichage(code);
-    void ecrireReglage(CLE_DEVISE_AFFICHAGE, code);
-  };
 
   // Recherche différée : à chaque frappe, la requête part 250 ms plus tard, et
   // une frappe suivante annule la précédente. Sans cela, taper « coca » lance
@@ -215,7 +263,7 @@ export default function Comptoir() {
       annule = true;
       if (minuteur.current) clearTimeout(minuteur.current);
     };
-  }, [terme, rubrique, entrepot, session, avecAilleurs]);
+  }, [terme, rubrique, entrepot, session, avecAilleurs, relecture]);
 
   const quantitesAuPanier = useMemo(() => {
     const carte = new Map<string, number>();
@@ -281,17 +329,32 @@ export default function Comptoir() {
         ) : null}
         <Pressable
           onPress={() => router.push("/pos/scan")}
-          className="h-11 w-11 items-center justify-center rounded-full active:bg-muted"
+          className={`h-11 ${
+            afficheLibelles(largeurPage) ? "flex-row gap-2 px-3" : "w-11"
+          } items-center justify-center rounded-full active:bg-muted`}
           accessibilityLabel="Scanner un code-barres"
         >
-          <Icon name="ion:barcode-outline" size={24} />
+          {/* La police d'icônes arrive après le premier rendu : la boîte réserve
+              sa place, sinon le libellé sauterait à son chargement. */}
+          <View className="h-7 w-7 items-center justify-center">
+            <Icon name="ion:barcode-outline" size={24} />
+          </View>
+          {afficheLibelles(largeurPage) ? (
+            <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
+              Scanner
+            </Text>
+          ) : null}
         </Pressable>
       </View>
 
       <View className="mt-2">
         <Input
+          // Le seul champ dont le lecteur de codes prend les touches.
+          nativeID={CHAMP_RECHERCHE_COMPTOIR}
           value={terme}
           onChangeText={setTerme}
+          onFocus={() => setRechercheFocalisee(true)}
+          onBlur={() => setRechercheFocalisee(false)}
           placeholder="Nom, code ou référence"
           leading={<Icon name="Search" size={18} color="mutedForeground" />}
           autoCorrect={false}
@@ -300,75 +363,26 @@ export default function Comptoir() {
         />
       </View>
 
-      {/*
-        ┌────────────────────────────────────────────────────────────────────┐
-        │ UN CHOIX UNIQUE N'EST PAS UN CHOIX.                               │
-        │                                                                    │
-        │ La rangée ne paraît QUE sur un établissement réellement            │
-        │ multi-devise : sur un établissement mono-devise elle n'offrirait    │
-        │ qu'un bouton déjà actif, et occuperait onze points de hauteur sur   │
-        │ la grille du comptoir pour rien.                                    │
-        │                                                                    │
-        │ Elle dit « Afficher en », pas « Devise » : ce n'est PAS la devise  │
-        │ de facturation, et le confondre ferait croire qu'on change ce qui  │
-        │ sortira sur le ticket.                                             │
-        └────────────────────────────────────────────────────────────────────┘
-      */}
-      {devisesPossibles.length > 1 ? (
-        <View className="mt-2 flex-row items-center gap-2">
-          <Text variant="caption" className="text-muted-foreground">
-            Afficher en
-          </Text>
-          {devisesPossibles.map((code) => {
-            const actif = code === deviseRetenue;
-            return (
-              <Pressable
-                key={code}
-                onPress={() => choisirDevise(code)}
-                className={`h-9 justify-center rounded-full border px-3 ${
-                  actif ? "border-primary bg-primary" : "border-border"
-                }`}
-                accessibilityLabel={`Afficher les prix en ${code}`}
-              >
-                <Text
-                  variant="bodySmall"
-                  className={actif ? "text-primary-foreground" : "text-muted-foreground"}
-                >
-                  {code}
-                </Text>
-              </Pressable>
-            );
-          })}
+      {introuvable ? (
+        <View className="mt-2">
+          <BandeauCodeIntrouvable code={introuvable} onFermer={() => setIntrouvable(null)} />
         </View>
       ) : null}
 
       {rubriques.length > 0 ? (
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={[{ id: "", name: "Tout" }, ...rubriques]}
-          keyExtractor={(r) => r.id || "tout"}
-          className="mt-2 max-h-11 grow-0"
-          contentContainerClassName="gap-2 py-1"
-          renderItem={({ item }) => {
-            const actif = (item.id || null) === rubrique;
-            return (
-              <Pressable
-                onPress={() => setRubrique(item.id || null)}
-                className={`h-9 justify-center rounded-full border px-3 ${
-                  actif ? "border-primary bg-primary" : "border-border"
-                }`}
-              >
-                <Text
-                  variant="bodySmall"
-                  className={actif ? "text-primary-foreground" : "text-muted-foreground"}
-                >
-                  {item.name}
-                </Text>
-              </Pressable>
-            );
-          }}
-        />
+        <View className="mt-2">
+          <ChipRow>
+            <Chip label="Tout" actif={rubrique === null} onPress={() => setRubrique(null)} />
+            {rubriques.map((r) => (
+              <Chip
+                key={r.id}
+                label={r.name}
+                actif={r.id === rubrique}
+                onPress={() => setRubrique(r.id)}
+              />
+            ))}
+          </ChipRow>
+        </View>
       ) : null}
 
       <BandeauInventaire articles={articles} arrete={verrouArreteA} />
@@ -409,8 +423,17 @@ export default function Comptoir() {
               <CarteArticle
                 article={item}
                 prix={panier.argent(Number(item.selling_price), panier.devises.primary)}
-                prixConverti={
-                  prixAffiche(Number(item.selling_price), deviseRetenue, money).converti
+                prixEquivalent={
+                  // Vendu en gros seulement, c'est le prix du contenant qu'on
+                  // annonce : l'équivalent doit suivre celui-là.
+                  prixAvecEquivalent(
+                    Number(
+                      item.selling_mode === "wholesale_only"
+                        ? item.wholesale_price
+                        : item.selling_price
+                    ),
+                    money
+                  ).equivalent
                 }
                 prixGros={
                   item.wholesale_price
@@ -418,7 +441,8 @@ export default function Comptoir() {
                     : null
                 }
                 auPanier={quantitesAuPanier.get(item.id) ?? 0}
-                epuise={estEpuise(item)}
+                entrepot={session.warehouseName}
+                forme={formeCarte}
                 onPress={() => setChoisi(item)}
               />
             )
@@ -512,7 +536,10 @@ export default function Comptoir() {
           formulaire vierge, sans effet de remise a zero a tenir en phase avec
           les champs qu'on y ajoutera. */}
       {encaissement ? (
-        <FeuilleEncaissement onFermer={() => setEncaissement(false)} />
+        <FeuilleEncaissement
+          onFermer={() => setEncaissement(false)}
+          onVenteEnregistree={() => setRelecture((n) => n + 1)}
+        />
       ) : null}
 
       {/* Le même sélecteur que l'écran de scan, câblé une seule fois. */}
@@ -633,14 +660,6 @@ function BandeauInventaire({
       />
     </View>
   );
-}
-
-function estEpuise(article: ArticlePos): boolean {
-  if (!article.track_inventory) return false;
-  // `null` vaut « inconnu », jamais « épuisé » : barrer un article sur une
-  // donnée absente ferait refuser des ventes possibles.
-  if (article.stock_quantity === null) return false;
-  return article.stock_quantity <= 0;
 }
 
 /**

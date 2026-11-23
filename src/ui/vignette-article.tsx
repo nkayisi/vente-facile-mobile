@@ -26,6 +26,8 @@ const TAILLES = {
   /** La grille du comptoir : deux colonnes, la vignette cède la place au prix. */
   md: { boite: "h-12 w-12 rounded-lg", icone: 22 },
   lg: { boite: "h-24 w-24 rounded-xl", icone: 32 },
+  /** Remplit son parent, qui porte la taille et l'arrondi (carte du comptoir). */
+  plein: { boite: "h-full w-full", icone: 30 },
 } as const;
 
 export function VignetteArticle({

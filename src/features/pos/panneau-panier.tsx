@@ -381,7 +381,15 @@ export function PanneauPanier({
       {/* Rendue CONDITIONNELLEMENT : chaque ouverture est un montage, donc un
           formulaire vierge. */}
       {encaissement ? (
-        <FeuilleEncaissement onFermer={() => setEncaissement(false)} />
+        <FeuilleEncaissement
+          onFermer={() => setEncaissement(false)}
+          // Sur le panier plein écran d'un téléphone, « Nouvelle vente » ramène
+          // au comptoir : sans cela, le caissier resterait devant un panier
+          // vide. `allerALaSection` et non `router.replace` : voir `ranger`.
+          onVenteTerminee={
+            mode === "ecran" ? () => allerALaSection("/vendre", chemin) : undefined
+          }
+        />
       ) : null}
 
       <BoiteEtiquette

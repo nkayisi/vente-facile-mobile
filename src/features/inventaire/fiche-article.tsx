@@ -17,27 +17,24 @@
  * `null` ne se lit jamais comme zéro : un prix non défini s'écrit « Non
  * défini », et une marge inconnue « - » plutôt que « 0 % ».
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import {
   formatFixedFr,
   formatPrice,
   formatUnitQuantity,
+  formatQuantity,
 } from "@vente-facile/core";
 
 import { articleAEditer, detailArticle } from "@/data/articles";
 import { BandeauEnvoi } from "@/features/sync/bandeau-envoi";
 import { useSession } from "@/session/provider";
 import { useMonnaie } from "@/data/devises";
-import { lireReglage } from "@/data/reglages";
-import {
-  CLE_DEVISE_AFFICHAGE,
-  deviseAffichageValide,
-  prixAffiche,
-} from "@/features/pos/affichage-devise";
+import { prixAvecEquivalent } from "@/features/pos/affichage-devise";
 import { useLecture } from "@/data/live";
 import {
+  Flux,
   AppBar, Badge, Card, CardHeader, Divider, EmptyState, IconButton, Screen, Spinner,
   Text, VignetteArticle,
   useIdDeFiche,
@@ -63,15 +60,10 @@ export function FicheArticle() {
   const id = useIdDeFiche();
   const sortir = useSortieDeFiche();
 
-  // La devise d'AFFICHAGE, réglée au comptoir et propre à l'appareil : la
-  // facture reste libellée en devise principale. T10 du retour de test.
+  // L'équivalent dans l'AUTRE devise de l'établissement, la même règle que
+  // les cartes du comptoir : la facture reste libellée en devise principale.
   const money = useMonnaie();
-  const [deviseAffichage, setDeviseAffichage] = useState<string | null>(null);
-  useEffect(() => {
-    void lireReglage<string | null>(CLE_DEVISE_AFFICHAGE, null).then(setDeviseAffichage);
-  }, []);
-  const converti = (prix: number) =>
-    prixAffiche(prix, deviseAffichageValide(deviseAffichage, money), money).converti;
+  const converti = (prix: number) => prixAvecEquivalent(prix, money).equivalent;
   const charger = useCallback(() => detailArticle(id), [id]);
   const { donnees: a, chargement, erreur } = useLecture(charger, {
     tables: TABLES,
@@ -151,6 +143,7 @@ export function FicheArticle() {
               <IconButton
                 name="Pencil"
                 label="Modifier l'article"
+                texte="Modifier"
                 variant="ghost"
                 onPress={() => router.push(`/article/nouveau?id=${id}`)}
               />
@@ -169,120 +162,122 @@ export function FicheArticle() {
             que si l'article en porte une : une case vide de cent points en
             haut d'une fiche ne dit rien et repousse les prix hors de l'écran,
             alors que la majorité des articles n'ont pas de photo. */}
-        {a.image ? (
-          <Card>
-            <View className="items-center">
-              <VignetteArticle uri={a.image} taille="lg" />
-            </View>
-          </Card>
-        ) : null}
-
-        <Card>
-          <CardHeader title="Prix" />
-          <View>
-            {a.prix.map((c, i) => (
-              <View key={c.canal}>
-                {i > 0 ? (
-                  <View className="my-2">
-                    <Divider />
-                  </View>
-                ) : null}
-                <Text variant="label" className="mb-1">
-                  {c.label}
-                </Text>
-                <Paire
-                  label="Achat"
-                  valeur={c.achat != null ? formatPrice(c.achat) : "Non défini"}
-                />
-                <Paire
-                  label="Vente"
-                  valeur={c.vente != null ? formatPrice(c.vente) : "Non défini"}
-                />
-                {/*
-                  ⚠ LE PRIX CONVERTI SUIT LE PRIX DE VENTE, il ne le remplace
-                  pas, et il ne paraît que sur un établissement multi-devise.
-                  La facture reste libellée en devise principale : montrer le
-                  converti seul ferait croire que le ticket sortira ainsi.
-                  T10 du retour de test.
-                */}
-                {c.vente != null && converti(c.vente) ? (
-                  <Paire label="Soit" valeur={converti(c.vente)!} />
-                ) : null}
-                <Paire
-                  label="Marge (sur le prix de vente)"
-                  valeur={
-                    c.margePourcent != null
-                      ? `${formatFixedFr(c.margePourcent, 1)} %`
-                      : "-"
-                  }
-                />
+        <Flux className="gap-4">
+          {a.image ? (
+            <Card>
+              <View className="items-center">
+                <VignetteArticle uri={a.image} taille="lg" />
               </View>
-            ))}
-          </View>
-        </Card>
+            </Card>
+          ) : null}
 
-        <Card>
-          <CardHeader title="Conditionnement" />
-          <View>
-            <Paire label="Unité de détail" valeur={a.uniteDetail ?? "Non définie"} />
-            {a.unitesParContenant && a.unitesParContenant > 1 ? (
-              <Paire
-                label="Contenant"
-                valeur={`${formatUnitQuantity(a.unitesParContenant, a.uniteDetail ?? "unité")} par ${a.uniteContenant ?? "contenant"}`}
-              />
-            ) : (
-              <Paire label="Contenant" valeur="Vendu à l'unité seule" />
-            )}
-            <Paire
-              label="Suivi de stock"
-              valeur={a.suitLeStock ? "Activé" : "Non suivi"}
-            />
-            {a.suitLeStock ? (
-              <Paire
-                label="Seuil de réassort"
-                valeur={a.seuilReassort > 0 ? String(a.seuilReassort) : "Non défini"}
-              />
-            ) : null}
-            <Paire
-              label="Taxe"
-              valeur={a.taxable ? `${a.tauxTaxe} %` : "Non taxable"}
-            />
-          </View>
-        </Card>
-
-        {a.suitLeStock ? (
           <Card>
-            <CardHeader title="Stock par entrepôt" />
+            <CardHeader title="Prix" />
             <View>
-              {a.stocks.length === 0 ? (
-                // `null` ne se lit pas comme zéro : « aucune ligne » n'est pas
-                // « zéro en rayon ».
-                <Text variant="caption">Aucune ligne de stock pour cet article.</Text>
-              ) : (
-                a.stocks.map((s) => (
-                  <Paire key={s.entrepot} label={s.entrepot} valeur={s.affiche} />
-                ))
-              )}
+              {a.prix.map((c, i) => (
+                <View key={c.canal}>
+                  {i > 0 ? (
+                    <View className="my-2">
+                      <Divider />
+                    </View>
+                  ) : null}
+                  <Text variant="label" className="mb-1">
+                    {c.label}
+                  </Text>
+                  <Paire
+                    label="Achat"
+                    valeur={c.achat != null ? formatPrice(c.achat) : "Non défini"}
+                  />
+                  <Paire
+                    label="Vente"
+                    valeur={c.vente != null ? formatPrice(c.vente) : "Non défini"}
+                  />
+                  {/*
+                    ⚠ LE PRIX CONVERTI SUIT LE PRIX DE VENTE, il ne le remplace
+                    pas, et il ne paraît que sur un établissement multi-devise.
+                    La facture reste libellée en devise principale : montrer le
+                    converti seul ferait croire que le ticket sortira ainsi.
+                    T10 du retour de test.
+                  */}
+                  {c.vente != null && converti(c.vente) ? (
+                    <Paire label="Soit" valeur={converti(c.vente)!} />
+                  ) : null}
+                  <Paire
+                    label="Marge (sur le prix de vente)"
+                    valeur={
+                      c.margePourcent != null
+                        ? `${formatFixedFr(c.margePourcent, 1)} %`
+                        : "-"
+                    }
+                  />
+                </View>
+              ))}
             </View>
           </Card>
-        ) : null}
 
-        {a.description ? (
           <Card>
-            <CardHeader title="Description" />
-            <Text variant="bodySmall">{a.description}</Text>
+            <CardHeader title="Conditionnement" />
+            <View>
+              <Paire label="Unité de détail" valeur={a.uniteDetail ?? "Non définie"} />
+              {a.unitesParContenant && a.unitesParContenant > 1 ? (
+                <Paire
+                  label="Contenant"
+                  valeur={`${formatUnitQuantity(a.unitesParContenant, a.uniteDetail ?? "unité")} par ${a.uniteContenant ?? "contenant"}`}
+                />
+              ) : (
+                <Paire label="Contenant" valeur="Vendu à l'unité seule" />
+              )}
+              <Paire
+                label="Suivi de stock"
+                valeur={a.suitLeStock ? "Activé" : "Non suivi"}
+              />
+              {a.suitLeStock ? (
+                <Paire
+                  label="Seuil de réassort"
+                  valeur={a.seuilReassort > 0 ? formatQuantity(a.seuilReassort) : "Non défini"}
+                />
+              ) : null}
+              <Paire
+                label="Taxe"
+                valeur={a.taxable ? `${a.tauxTaxe} %` : "Non taxable"}
+              />
+            </View>
           </Card>
-        ) : null}
 
-        <Card>
-          <CardHeader title="Identification" />
-          <View>
-            {a.sku ? <Paire label="SKU" valeur={a.sku} /> : null}
-            {a.codeBarres ? <Paire label="Code-barres" valeur={a.codeBarres} /> : null}
-            {a.marque ? <Paire label="Marque" valeur={a.marque} /> : null}
-            {a.categorie ? <Paire label="Catégorie" valeur={a.categorie} /> : null}
-          </View>
-        </Card>
+          {a.suitLeStock ? (
+            <Card>
+              <CardHeader title="Stock par entrepôt" />
+              <View>
+                {a.stocks.length === 0 ? (
+                  // `null` ne se lit pas comme zéro : « aucune ligne » n'est pas
+                  // « zéro en rayon ».
+                  <Text variant="caption">Aucune ligne de stock pour cet article.</Text>
+                ) : (
+                  a.stocks.map((s) => (
+                    <Paire key={s.entrepot} label={s.entrepot} valeur={s.affiche} />
+                  ))
+                )}
+              </View>
+            </Card>
+          ) : null}
+
+          {a.description ? (
+            <Card>
+              <CardHeader title="Description" />
+              <Text variant="bodySmall">{a.description}</Text>
+            </Card>
+          ) : null}
+
+          <Card>
+            <CardHeader title="Identification" />
+            <View>
+              {a.sku ? <Paire label="SKU" valeur={a.sku} /> : null}
+              {a.codeBarres ? <Paire label="Code-barres" valeur={a.codeBarres} /> : null}
+              {a.marque ? <Paire label="Marque" valeur={a.marque} /> : null}
+              {a.categorie ? <Paire label="Catégorie" valeur={a.categorie} /> : null}
+            </View>
+          </Card>
+        </Flux>
       </View>
     </Screen>
   );

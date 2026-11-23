@@ -24,22 +24,18 @@
  */
 import type { MoneyHelpers } from "@vente-facile/core";
 
-/** La clé du réglage, propre à l'APPAREIL : c'est un confort de comptoir. */
-export const CLE_DEVISE_AFFICHAGE = "pos.devise_affichage";
-
-export interface PrixAffiche {
+export interface PrixAvecEquivalent {
   /** Le prix tel qu'il sera FACTURÉ, en devise principale. Toujours là. */
   facture: string;
   /**
-   * La conversion, quand une autre devise est choisie. `null` sinon.
+   * Le même prix dans l'AUTRE devise de l'établissement, au taux en vigueur.
+   * `null` sur un établissement mono-devise.
    *
-   * ⚠ ELLE NE REMPLACE JAMAIS `facture`. Un prix converti affiché seul se lit
-   * comme le prix de vente, et le ticket sortirait alors dans une autre
-   * monnaie que celle annoncée au client.
+   * ⚠ IL NE REMPLACE JAMAIS `facture`, il le suit entre parenthèses. Un prix
+   * converti affiché seul se lit comme le prix de vente, et le ticket
+   * sortirait alors dans une autre monnaie que celle annoncée au client.
    */
-  converti: string | null;
-  /** La parité employée : « 1 USD = 2 300 FC ». `null` sans conversion. */
-  parite: string | null;
+  equivalent: string | null;
 }
 
 /**
@@ -56,51 +52,43 @@ export function devisesAffichables(money: MoneyHelpers): string[] {
 }
 
 /**
- * Le prix à montrer, et sa conversion s'il y a lieu.
+ * La devise dans laquelle la carte donne l'équivalent d'un prix.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ L'ÉQUIVALENT EST TOUJOURS LÀ, ET IL N'Y A PLUS RIEN À CHOISIR.           │
+ * │                                                                          │
+ * │ La rangée « Afficher en » du comptoir faisait choisir une devise         │
+ * │ d'affichage, rangée par appareil : le caissier devait savoir qu'elle     │
+ * │ existait, et un terminal réglé hier sur la principale n'annonçait plus  │
+ * │ rien en francs. L'équivalent suit désormais le prix sur chaque carte.   │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * La première autre devise ACTIVE, dans l'ordre de `devisesAffichables`. Une
+ * devise désactivée n'est pas proposée : le marchand l'a retirée de sa caisse,
+ * et l'annoncer au client serait lui promettre un règlement qu'on refusera.
+ */
+export function deviseEquivalente(money: MoneyHelpers): string | null {
+  const actives = new Set(
+    money.currencies
+      .filter((c) => c.is_active !== false)
+      .map((c) => c.currency_code),
+  );
+  return devisesAffichables(money).find((c) => c !== money.primaryCode && actives.has(c)) ?? null;
+}
+
+/**
+ * Le prix facturé et son équivalent dans l'autre devise.
  *
  * ⚠ UNE DEVISE INCONNUE NE CONVERTIT RIEN. `rateOf` rend 1 pour une devise
  * qu'elle ne connaît pas : convertir quand même afficherait le même nombre
  * sous un autre symbole, c'est-à-dire un prix faux présenté comme exact.
  */
-export function prixAffiche(
-  prix: number,
-  deviseAffichage: string | null,
-  money: MoneyHelpers
-): PrixAffiche {
+export function prixAvecEquivalent(prix: number, money: MoneyHelpers): PrixAvecEquivalent {
   const facture = money.money(prix, money.primaryCode);
-  // ⚠ Pas de `?? ""` : la chaîne vide est le motif que le garde-fou « aucun
-  // montant sans devise » traque, et il a raison de le traquer même ici - un
-  // jour, quelqu'un passerait cette variable à `money()`. `undefined` dit la
-  // même chose sans porter le motif.
-  const cible = deviseAffichage?.trim();
-
-  if (!cible || cible === money.primaryCode) {
-    return { facture, converti: null, parite: null };
-  }
-  if (!money.currencies.some((c) => c.currency_code === cible)) {
-    return { facture, converti: null, parite: null };
-  }
-
+  const cible = deviseEquivalente(money);
+  if (!cible) return { facture, equivalent: null };
   return {
     facture,
-    converti: money.money(money.convMoney(prix, money.primaryCode, cible), cible),
-    // La parité est NOMMÉE : un marchand annonce un prix sur un taux, et il
-    // doit savoir lequel - les taux changent, et le sien peut être périmé.
-    parite: money.rateLabel(money.primaryCode, cible),
+    equivalent: money.money(money.convMoney(prix, money.primaryCode, cible), cible),
   };
-}
-
-/**
- * La devise d'affichage retenue, parmi celles qui existent.
- *
- * Un réglage rangé hier peut désigner une devise que le marchand a depuis
- * retirée : on retombe alors sur la principale plutôt que de ne rien convertir
- * en silence - ou, pire, de convertir à un taux de 1.
- */
-export function deviseAffichageValide(
-  choisie: string | null | undefined,
-  money: MoneyHelpers
-): string {
-  const c = choisie?.trim();
-  return c && devisesAffichables(money).includes(c) ? c : money.primaryCode;
 }

@@ -3,6 +3,7 @@ import {
   colonnesDeLaGrille,
   completerRangee,
   destinationDuPanier,
+  formeDeLaCarte,
   largeurDeLaGrille,
   panneauDuComptoir,
 } from "./disposition-comptoir";
@@ -42,10 +43,20 @@ describe("les colonnes de la grille", () => {
   });
 
   it("élargit la grille avec l'écran, sans jamais dépasser six", () => {
-    expect(colonnesDeLaGrille(PAGE.tablette10Portrait)).toBe(3);
-    expect(colonnesDeLaGrille(PAGE.tablette10Paysage)).toBe(4);
-    expect(colonnesDeLaGrille(PAGE.rk3568)).toBe(6);
+    expect(colonnesDeLaGrille(PAGE.tablette10Portrait)).toBe(2);
+    expect(colonnesDeLaGrille(PAGE.tablette10Paysage)).toBe(3);
+    expect(colonnesDeLaGrille(PAGE.rk3568)).toBe(5);
     expect(colonnesDeLaGrille(4000)).toBe(6);
+  });
+
+  it("met la vignette à côté du texte dès que la carte en a la place", () => {
+    // Deux colonnes de téléphone : le texte n'aurait qu'une cinquantaine de
+    // points à côté d'une vignette de 76.
+    expect(formeDeLaCarte(360)).toBe("pile");
+    expect(formeDeLaCarte(PAGE.telephone)).toBe("pile");
+    expect(formeDeLaCarte(PAGE.tablette10Portrait)).toBe("cote");
+    expect(formeDeLaCarte(PAGE.tablette10Paysage)).toBe("cote");
+    expect(formeDeLaCarte(PAGE.rk3568)).toBe("cote");
   });
 
   it("retire le panneau de la largeur de la grille", () => {
