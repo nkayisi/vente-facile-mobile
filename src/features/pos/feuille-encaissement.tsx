@@ -30,8 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import * as Crypto from "expo-crypto";
 
-import { formatNumberFr } from "@vente-facile/core";
-import { buildSalePayload, loyaltyDiscount, tendersIn } from "@vente-facile/core/pos";
+import { buildSalePayload, libelleDuTaux, loyaltyDiscount, tendersIn } from "@vente-facile/core/pos";
 
 import { lireNombre, type LectureNombre } from "@/data/nombres";
 import { jourISO } from "@/data/dates";
@@ -760,7 +759,9 @@ export function FeuilleEncaissement({
 
   // --- Le formulaire ------------------------------------------------------
 
-  const nbArticles = etat.lignes.reduce((s, l) => s + l.quantity, 0);
+  // On compte les LIGNES, comme le panier et le back-office : additionner les
+  // quantités mêlait des unités différentes et écrivait « 2,5 articles ».
+  const nbArticles = etat.lignes.length;
   // ⚠ LE BOUTON AFFICHE CE QUE LE CHAMP PORTE, pas une seconde conversion.
   // `convertMoney` nu rendrait 11,6 $ pendant que le champ prerempli tient
   // 11,61 : le caissier lirait deux nombres pour un seul encaissement.
@@ -1002,7 +1003,7 @@ export function FeuilleEncaissement({
           <Rubrique titre="Récapitulatif">
             <View className="gap-1.5 rounded-xl bg-muted p-3">
               <Ligne
-                libelle={`Sous-total (${formatNumberFr(nbArticles, 0)} article${nbArticles > 1 ? "s" : ""})`}
+                libelle={`Sous-total (${nbArticles} article${nbArticles > 1 ? "s" : ""})`}
                 valeur={argent(recap.sousTotal, recap.devise)}
               />
               {f.itemDiscount > 0 ? (
@@ -1059,7 +1060,7 @@ export function FeuilleEncaissement({
                 // Ce que portera le ticket, et pourquoi une ligne convertie peut
                 // différer d'une unité du total.
                 <Text variant="caption">
-                  {`Facture établie en ${deviseFacture} · ${libelleDuTaux(deviseRecue, deviseFacture, devises, argent)}`}
+                  {`Facture établie en ${deviseFacture} · ${libelleDuTaux(deviseRecue, deviseFacture, devises.convertMoney, argent)}`}
                 </Text>
               ) : null}
             </View>
@@ -1543,25 +1544,5 @@ function repereDeConversion(
     deviseRecue,
     deviseFacture,
   );
-  return `= ${argent(converti, deviseFacture)} · ${libelleDuTaux(deviseRecue, deviseFacture, devises, argent)}`;
-}
-
-/**
- * Le taux, dit dans le sens où une unité vaut au moins une unité de l'autre.
- *
- * ⚠ « 1 CDF = 0 $ » sortait d'un franc converti en dollars puis arrondi au
- * centime : un repère qui ne dit rien. On écrit « 1 $ = 2 300 FC », dans le
- * sens où le nombre se lit, quelle que soit la devise reçue.
- */
-function libelleDuTaux(
-  deviseRecue: string,
-  deviseFacture: string,
-  devises: { convertMoney: (m: number, de: string, vers: string) => number },
-  argent: (m: number, code?: string) => string,
-): string {
-  const [forte, faible] =
-    devises.convertMoney(1, deviseRecue, deviseFacture) >= 1
-      ? [deviseRecue, deviseFacture]
-      : [deviseFacture, deviseRecue];
-  return `1 ${forte} = ${argent(devises.convertMoney(1, forte, faible), faible)}`;
+  return `= ${argent(converti, deviseFacture)} · ${libelleDuTaux(deviseRecue, deviseFacture, devises.convertMoney, argent)}`;
 }
