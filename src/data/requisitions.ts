@@ -23,6 +23,7 @@
 import { and, desc, eq, like, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import { products, requisitionItems, requisitions, units, warehouses } from "@/db/schema";
 import { requisitionsDejaTirees } from "./deja-tirees";
 import { niveauxDeStock } from "./stock-niveaux";
@@ -47,6 +48,8 @@ export interface LigneRequisition {
   id: string;
   produitId: string;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   sku: string | null;
   unite: string | null;
   demande: number;
@@ -325,6 +328,7 @@ export async function detailRequisition(
       id: requisitionItems.id,
       produitId: requisitionItems.productId,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       unite: UNITE,
       demande: requisitionItems.quantityRequested,
@@ -334,6 +338,7 @@ export async function detailRequisition(
     })
     .from(requisitionItems)
     .leftJoin(products, eq(products.id, requisitionItems.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .where(eq(requisitionItems.requisitionId, id))
     .orderBy(products.name);
 
@@ -343,6 +348,7 @@ export async function detailRequisition(
       id: l.id,
       produitId: l.produitId ?? "",
       produit: l.produit ?? "Article",
+      image: l.image ?? null,
       sku: l.sku,
       unite: l.unite,
       demande: Number(l.demande ?? 0),

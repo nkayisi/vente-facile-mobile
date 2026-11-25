@@ -69,6 +69,7 @@ import {
   useIdDeFiche,
   useSortieDeFiche,
   useToast,
+  VignetteArticle,
 } from "@/ui";
 
 import { FeuilleReglement } from "@/features/ventes/feuille-reglement";
@@ -128,6 +129,7 @@ function LigneArticle({
   return (
     <View className="py-3">
       <View className="flex-row items-start justify-between gap-3">
+        <VignetteArticle uri={ligne.image} />
         <View className="min-w-0 flex-1">
           <Text variant="bodySmall" className="font-sans-medium">
             {ligne.produit}

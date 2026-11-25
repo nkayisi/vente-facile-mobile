@@ -70,10 +70,16 @@ function commentairesBlanchis(source: string): string {
 describe("aucune couleur en dur", () => {
   /**
    * Le viseur de la caméra est NOIR par nature : un scanner de code-barres qui
-   * suivrait le thème clair serait illisible. C'est la seule exception, et elle
-   * tient au matériel, pas à un oubli.
+   * suivrait le thème clair serait illisible. Le papier d'un ticket est BLANC.
+   * Les deux exceptions tiennent au matériel, pas à un oubli.
    */
-  const EXCEPTIONS = ["app/(app)/pos/scan.tsx"];
+  const EXCEPTIONS = [
+    "app/(app)/pos/scan.tsx",
+    // L'aperçu du logo des tickets montre ce qui sortira sur le PAPIER, qui est
+    // blanc par nature : un logo noir sur fond transparent disparaîtrait sur le
+    // fond sombre du thème, et le marchand croirait son logo vide.
+    "features/parametres/champ-logo.tsx",
+  ];
 
   const interdits =
     /\b(?:bg|text|border)-(?:white|black|gray-\d+|orange-\d+|red-\d+|green-\d+|blue-\d+)\b/;

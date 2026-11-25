@@ -45,6 +45,7 @@ import {
   EmptyState, ListItem, Screen, Spinner, Text, useToast,
   useIdDeFiche,
   useSortieDeFiche,
+  VignetteArticle,
 } from "@/ui";
 
 /** D'où part chaque transition, et quel droit elle demande. */
@@ -256,6 +257,7 @@ export function FicheRequisition() {
                 <View key={l.id}>
                   {i > 0 ? <Divider inset /> : null}
                   <ListItem
+                    leading={<VignetteArticle uri={l.image} />}
                     title={l.produit}
                     subtitle={`En rayon ${formatQuantity(l.stockAlors)} · seuil ${formatQuantity(l.seuilAlors)}${l.note ? ` · ${l.note}` : ""}`}
                     value={

@@ -45,8 +45,7 @@ import { useSession } from "@/session/provider";
 import {
   Banner, Button, Checkbox, DataRow, DeclencheurSelect, Divider, EmptyState, FormField,
   IconButton, Input, ListeChoix, SearchInput, Sheet, Spinner, Text, useToast,
-  type DemandeChoix,
-} from "@/ui";
+  type DemandeChoix, VignetteArticle } from "@/ui";
 
 /** La clé du brouillon : la feuille se rouvre telle quelle après une création. */
 export const BROUILLON_REQUISITION = "requisition";
@@ -256,6 +255,7 @@ export function FeuilleNouvelleRequisition({
                   <DataRow
                     key={a.id}
                     principal={a.nom}
+                    vignette={<VignetteArticle uri={a.image} />}
                     secondaire={deja ? "Déjà dans la demande" : a.sku}
                     chevron={false}
                     valeur={

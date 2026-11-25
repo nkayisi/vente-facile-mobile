@@ -98,6 +98,7 @@ import {
   Text,
   type IconName,
   type TrancheDonut,
+  VignetteArticle,
 } from "@/ui";
 
 const PERIODES: Periode[] = ["day", "week", "month", "year"];
@@ -247,6 +248,7 @@ function LigneProduit({
           {String(rang)}
         </Text>
       </View>
+      <VignetteArticle uri={produit.image} />
       <View className="min-w-0 flex-1">
         <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
           {produit.nom}

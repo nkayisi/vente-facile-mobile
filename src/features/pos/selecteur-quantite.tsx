@@ -60,6 +60,7 @@ import {
   Text,
   useDisposition,
   useMargesSysteme,
+  VignetteArticle,
 } from "@/ui";
 import { libelleAilleurs } from "./ailleurs";
 import type { ArticlePos } from "./catalogue";
@@ -379,15 +380,20 @@ export function SelecteurQuantite({
             </View>
           )}
 
-          <View className="px-5">
-            <Text variant="h3" numberOfLines={2}>
-              {article.name}
-            </Text>
-            <Text variant="muted" className="mt-1">
-              {conditionnement
-                ? `${motContenant} de ${formatUnitQuantity(conditionnement.factor, motDetail)}`
-                : motDetail}
-            </Text>
+          <View className="flex-row items-center gap-3 px-5">
+            {/* La photo confirme d'un coup d'oeil qu'on saisit le bon article,
+                surtout après un scan. */}
+            <VignetteArticle uri={article.image} taille="md" />
+            <View className="min-w-0 flex-1">
+              <Text variant="h3" numberOfLines={2}>
+                {article.name}
+              </Text>
+              <Text variant="muted" className="mt-1">
+                {conditionnement
+                  ? `${motContenant} de ${formatUnitQuantity(conditionnement.factor, motDetail)}`
+                  : motDetail}
+              </Text>
+            </View>
           </View>
 
           {conditionnement ? (

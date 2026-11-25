@@ -20,6 +20,7 @@ import {
 import { ordreArbre } from "@/data/categories-arbre";
 import { conditionCatalogue } from "@/data/perimetre-catalogue";
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
 import type { GenreReferentiel } from "@/features/inventaire/referentiel";
 import { pireEnvoi } from "@/data/envoi";
@@ -92,7 +93,7 @@ export async function listeArticles(
       id: products.id,
       name: products.name,
       sku: products.sku,
-      image: products.image,
+      image: imageArticle,
       isActive: products.isActive,
       trackInventory: products.trackInventory,
       sellingPrice: products.sellingPrice,
@@ -106,6 +107,7 @@ export async function listeArticles(
     .leftJoin(categories, eq(categories.id, products.categoryId))
     .leftJoin(brands, eq(brands.id, products.brandId))
     .leftJoin(units, eq(units.id, products.unitId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .where(and(eq(products.isDeleted, false), filtre, perimetre))
     .orderBy(products.name)
     .limit(f.limite ?? 50)
@@ -317,6 +319,7 @@ export async function detailArticle(id: string): Promise<DetailArticle | null> {
   const [l] = await db
     .select({
       produit: products,
+      image: imageArticle,
       categorie: categories.name,
       marque: brands.name,
       unite: uniteDetail.name,
@@ -327,6 +330,7 @@ export async function detailArticle(id: string): Promise<DetailArticle | null> {
     .leftJoin(brands, eq(brands.id, products.brandId))
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .where(eq(products.id, id))
     .limit(1);
   if (!l) return null;
@@ -360,7 +364,7 @@ export async function detailArticle(id: string): Promise<DetailArticle | null> {
     id: p.id,
     nom: p.name,
     sku: p.sku?.trim() || null,
-    image: p.image?.trim() || null,
+    image: l.image?.trim() || null,
     codeBarres: p.barcode?.trim() || null,
     description: p.shortDescription ?? "",
     categorie: l.categorie ?? null,
@@ -553,6 +557,8 @@ export interface ArticlePourMouvement {
   id: string;
   nom: string;
   sku: string | null;
+  /** La photo à afficher (`data/image-article.ts`), ou `null`. */
+  image: string | null;
   conditionnement: Packaging | null;
   aUneDatePeremption: boolean;
   /** Les quatre prix de la FICHE, en chaînes : ils ne servent qu'à préremplir. */
@@ -617,6 +623,7 @@ export async function chercherArticlesPourMouvement(
       id: products.id,
       nom: products.name,
       sku: products.sku,
+      image: imageArticle,
       sellingMode: products.sellingMode,
       unitsPerPackage: products.unitsPerPackage,
       uniteDetail: uniteDetail.name,
@@ -630,6 +637,7 @@ export async function chercherArticlesPourMouvement(
     .from(products)
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .where(and(...conditions))
     .orderBy(products.name)
     .limit(limite);
@@ -638,6 +646,7 @@ export async function chercherArticlesPourMouvement(
     id: l.id,
     nom: l.nom,
     sku: l.sku || null,
+    image: l.image ?? null,
     // `getPackaging` et JAMAIS un `unitsPerPackage > 1` maison : lui seul
     // impose le facteur >= 2 et rend `null` sur un article vendu au détail
     // seul. Le back-office écrit la condition à la main et perd cette garde.
@@ -660,6 +669,8 @@ export interface ArticlePourTransfert {
   id: string;
   nom: string;
   sku: string | null;
+  /** La photo à afficher (`data/image-article.ts`), ou `null`. */
+  image: string | null;
   conditionnement: Packaging | null;
   /**
    * Ce que porte l'entrepôt SOURCE, réservations imputées comme au comptoir.
@@ -728,6 +739,7 @@ export async function chercherArticlesPourTransfert(
       id: products.id,
       nom: products.name,
       sku: products.sku,
+      image: imageArticle,
       sellingMode: products.sellingMode,
       unitsPerPackage: products.unitsPerPackage,
       uniteDetail: uniteDetail.name,
@@ -740,6 +752,7 @@ export async function chercherArticlesPourTransfert(
     .from(products)
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(
       stocks,
       and(eq(stocks.productId, products.id), eq(stocks.warehouseId, entrepotSource))
@@ -761,7 +774,7 @@ export async function chercherArticlesPourTransfert(
 
     // Pas de ligne de stock dans ce dépôt : on ne fabrique pas un zéro.
     if (l.quantite == null) {
-      return { id: l.id, nom: l.nom, sku: l.sku || null, conditionnement, disponible: null, rayon: null };
+      return { id: l.id, nom: l.nom, sku: l.sku || null, image: l.image ?? null, conditionnement, disponible: null, rayon: null };
     }
 
     const total = Number(l.quantite ?? 0);
@@ -786,6 +799,7 @@ export async function chercherArticlesPourTransfert(
       id: l.id,
       nom: l.nom,
       sku: l.sku || null,
+      image: l.image ?? null,
       conditionnement,
       disponible: {
         contenants: dispo.packages,

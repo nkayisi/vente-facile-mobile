@@ -7,7 +7,7 @@
  * transformé un refus de permission en « Aucune imprimante trouvée », pendant
  * des mois, sur tous les terminaux à la fois.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const SRC = resolve(__dirname, "..");
@@ -242,23 +242,14 @@ describe("le logo atteint bien le document", () => {
     expect(corps.slice(0, fin)).not.toMatch(/await/);
   });
 
-  it("à défaut du logo de l'établissement, c'est celui de Vente Facile", () => {
+  it("à défaut du logo de l'établissement, AUCUN : plus de logo de repli", () => {
+    // Décision du 2026-11-25 : le logo de Vente Facile masquait toutes les
+    // pannes du chargement, et un marchand sans logo n'en veut aucun.
     const corps = ticket.slice(ticket.indexOf("export function chromeDeLaSession"));
     const fin = corps.indexOf("\n}");
-    expect(corps.slice(0, fin)).toMatch(/logoCourant\(\)\s*\?\?\s*LOGO_PLATEFORME/);
-  });
-
-  it("le logo de la plateforme est une constante PURE, engendrée", () => {
-    // Il est importé par `ticket.ts`, que `ticket.test.ts` charge : un import de
-    // la base ou de React y casserait deux suites, comme `logo-courant.ts` l'a
-    // déjà fait.
-    const constante = readFileSync(join(SRC, "printing/logo-plateforme.ts"), "utf8");
-    const imports = [...constante.matchAll(/^\s*import[^;]*from\s+"([^"]+)"/gm)].map(
-      (m) => m[1]
-    );
-    expect(imports).toEqual(["@vente-facile/core/receipt"]);
-    expect(constante).toContain("FICHIER ENGENDRÉ");
-    expect(constante).toMatch(/dataUrl:\s*\n?\s*"data:image\/png;base64,/);
+    expect(corps.slice(0, fin)).toMatch(/logoCourant\(\)\s*\?\?\s*undefined/);
+    expect(ticket).not.toMatch(/LOGO_PLATEFORME|logo-plateforme/);
+    expect(existsSync(join(SRC, "printing/logo-plateforme.ts"))).toBe(false);
   });
 
   it("l'état du logo reste PUR, et c'est une leçon payée", () => {

@@ -107,6 +107,7 @@ import {
   AppBar, Badge, BoutonFiltres, Chip, ChipRow, DataList, DataRow, Fab, Icon,
   IconButton, Screen, SearchInput, StatStrip, StatStripItem, Text, useToast,
   type OptionSelect,
+  VignetteArticle,
 } from "@/ui";
 
 // `categories` entre dans les tables surveillées : le sous-arbre en dépend, et
@@ -593,6 +594,7 @@ export default function Mouvements() {
         rendu={(m) => (
           <DataRow
             principal={m.produit}
+            vignette={<VignetteArticle uri={m.image} />}
             secondaire={[m.entrepot, m.date ? dateCourteFr(m.date) : null]
               .filter(Boolean)
               .join(" · ") || null}

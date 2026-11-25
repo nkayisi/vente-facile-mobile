@@ -75,8 +75,7 @@ import { useEntrepotsDuMembre } from "@/features/perimetre/use-entrepots";
 import {
   Banner, Button, ChampDate, DataRow, DeclencheurSelect, FormField, Input,
   ListeChoix, SearchInput, Sheet, Switch, Text, useToast,
-  type DemandeChoix, type OptionSelect,
-} from "@/ui";
+  type DemandeChoix, type OptionSelect, VignetteArticle } from "@/ui";
 
 const OPTIONS_TYPE: OptionSelect[] = typesSaisissables().map((t) => ({
   valeur: t,
@@ -393,6 +392,7 @@ export function FeuilleNouveauMouvement({
                 <DataRow
                   key={a.id}
                   principal={a.nom}
+                  vignette={<VignetteArticle uri={a.image} />}
                   secondaire={a.sku}
                   // Pas de chevron : l'appui REVIENT au formulaire, il n'avance
                   // pas. `ListItem` réserve le chevron à une destination.

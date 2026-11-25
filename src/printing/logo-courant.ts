@@ -24,7 +24,7 @@ import type { LoadedLogo } from "@vente-facile/core/receipt";
  * `proforma.test.ts` sont des tests PURS. Y faire entrer `@/session/provider`
  * tire `@/db/client`, qui OUVRE SQLite au chargement : les deux suites ont
  * cessé de se lancer à la première tentative. Le hook qui charge vit donc à
- * côté, dans `use-logo-etablissement.ts`.
+ * côté, dans `assurer-logo.ts` et `use-logo-etablissement.ts`.
  */
 
 let courant: LoadedLogo | null = null;
@@ -41,10 +41,22 @@ export function cheminCharge(): string | null {
   return charge;
 }
 
-/** Pose ce que le hook a chargé. `null` efface. */
+/** Pose ce qui a été chargé pour `chemin` (`null` : ce logo-là n'existe pas). */
 export function poserLogo(chemin: string | null, logo: LoadedLogo | null): void {
   charge = chemin;
   courant = logo;
+}
+
+/**
+ * Plus aucun logo, et rien de « chargé » : la prochaine demande recommencera.
+ *
+ * ⚠ Distinct de `poserLogo(chemin, null)`, qui affirme que CE logo n'existe
+ * pas. Confondre les deux faisait retenir un échec réseau comme une réponse,
+ * et le logo ne revenait plus jamais avant le prochain lancement.
+ */
+export function effacerLogo(): void {
+  charge = null;
+  courant = null;
 }
 
 /** Pour les tests : remet l'état du module à neuf. */

@@ -52,8 +52,7 @@ import { SaisieQuantiteConditionnee } from "@/features/stock/saisie-quantite";
 import {
   Banner, Button, CardHeader, DataRow, DeclencheurSelect, Divider, FormField,
   Icon, IconButton, Input, ListeChoix, SearchInput, Sheet, Text, useToast,
-  type DemandeChoix, type OptionSelect,
-} from "@/ui";
+  type DemandeChoix, type OptionSelect, VignetteArticle } from "@/ui";
 
 /** Une ligne du bordereau, telle qu'elle se relit sur le formulaire. */
 interface LigneTransfert extends LigneSaisie {
@@ -382,6 +381,7 @@ export function FeuilleNouveauTransfert({
                   <DataRow
                     key={a.id}
                     principal={a.nom}
+                    vignette={<VignetteArticle uri={a.image} />}
                     secondaire={a.sku}
                     // Pas de chevron : l'appui REVIENT à la saisie, il n'avance
                     // pas. `ListItem` réserve le chevron à une destination.

@@ -36,7 +36,6 @@ import { dateCourteFr, dateDepuisJourISO } from "@/data/dates";
 
 import type { EtatPanier, LignePanier } from "./etat-panier";
 import { logoCourant } from "@/printing/logo-courant";
-import { LOGO_PLATEFORME } from "@/printing/logo-plateforme";
 
 /**
  * « 2 casiers + 3 bouteilles », ce que le client emporte réellement.
@@ -82,14 +81,13 @@ export function chromeDeLaSession(snapshot: SessionSnapshot | null): ReceiptChro
   const org = snapshot?.organization;
   return {
     org: {
-      // Le logo est chargé au démarrage et lu sans attente : le rendre
-      // asynchrone ici ferait attendre le premier ticket devant un client.
+      // Le logo est chargé et gardé hors ligne (`printing/assurer-logo.ts`),
+      // puis lu sans attente : le rendre asynchrone ici ferait attendre le
+      // premier ticket devant un client.
       //
-      // UN REÇU PORTE TOUJOURS UN LOGO : celui de l'établissement s'il est
-      // chargé, sinon celui de Vente Facile - que le marchand n'en ait pas, ou
-      // que le sien n'ait pas pu descendre (terminal démarré sans réseau). Le
-      // back-office applique la même règle, avec le même dessin.
-      logo: logoCourant() ?? LOGO_PLATEFORME,
+      // ⚠ PLUS DE LOGO DE REPLI (2026-11-25) : celui de Vente Facile masquait
+      // les pannes du chargement. Un établissement sans logo imprime sans logo.
+      logo: logoCourant() ?? undefined,
       name: org?.name ?? "Vente Facile",
       address: org?.address,
       city: org?.city,

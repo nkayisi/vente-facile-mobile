@@ -40,6 +40,7 @@ import { usePanier, type LignePanier } from "@/features/pos/panier";
 import { allerALaSection } from "@/navigation/aller";
 import {
   Button, Dialog, Divider, EmptyState, FormField, Icon, Input, Pressable, Screen, Text, useToast,
+  VignetteArticle,
 } from "@/ui";
 
 export function PanneauPanier({
@@ -599,7 +600,10 @@ function LigneArticle({
   }
 
   return (
-    <Pressable onPress={onPress} className="flex-row items-center px-1 py-3 active:bg-muted">
+    <Pressable onPress={onPress} className="flex-row items-center gap-3 px-1 py-3 active:bg-muted">
+      {/* La photo d'abord : au comptoir, on reconnaît un article à son image
+          avant de lire son nom. */}
+      <VignetteArticle uri={ligne.product.image} />
       <View className="flex-1 pr-3">
         <Text variant="body" numberOfLines={2}>
           {ligne.product.name}

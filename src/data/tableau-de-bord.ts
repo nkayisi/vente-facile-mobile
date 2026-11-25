@@ -10,6 +10,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { getPackaging } from "@vente-facile/core";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import { deviseOuPrincipale } from "./devise-principale";
 import {
   customers,
@@ -571,6 +572,8 @@ export interface ProduitVendu {
   id: string;
   nom: string;
   sku: string;
+  /** La photo de l'article (`data/image-article.ts`), ou `null`. */
+  image: string | null;
   /** Quantité totale, en unité de détail. */
   quantite: number;
   /** « 3 casiers + 7 bouteilles », ou « 24 bouteilles » sans conditionnement. */
@@ -604,6 +607,7 @@ export async function topProduits(
     .select({
       produitId: products.id,
       nom: products.name,
+      image: imageArticle,
       sku: products.sku,
       sellingMode: products.sellingMode,
       unitsPerPackage: products.unitsPerPackage,
@@ -618,6 +622,7 @@ export async function topProduits(
     .from(saleItems)
     .innerJoin(sales, eq(sales.id, saleItems.saleId))
     .innerJoin(products, eq(products.id, saleItems.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .where(
@@ -634,9 +639,11 @@ export async function topProduits(
   // catalogue) ; le facteur qui découpe, lui, est celui figé sur chaque LIGNE.
   const conditionnements = new Map<string, ReturnType<typeof getPackaging>>();
   const unites = new Map<string, string | null>();
+  const images = new Map<string, string | null>();
   const brutes: LigneVendue[] = lignes.map((l) => {
     if (!conditionnements.has(l.produitId)) {
       unites.set(l.produitId, l.unite);
+      images.set(l.produitId, l.image ?? null);
       conditionnements.set(
         l.produitId,
         getPackaging({
@@ -740,6 +747,7 @@ export async function topProduits(
         id: c.id,
         nom: c.nom,
         sku: c.sku,
+        image: images.get(c.id) ?? null,
         quantite: c.quantite,
         rendu: libelleQuantite(cond, unites.get(c.id) ?? null, c),
         // Le facteur est rendu DÈS QU'IL EXISTE, que le partage vienne des

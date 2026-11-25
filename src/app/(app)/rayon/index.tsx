@@ -46,10 +46,15 @@ import {
   Text,
   useListeFiche,
   useToast,
+  VignetteArticle,
 } from "@/ui";
 import { FicheRayon } from "@/features/stock/fiche-rayon";
 
-const TABLES = ["stocks", "products", "warehouses", "categories", "units"];
+const TABLES = [
+  "stocks", "products", "warehouses", "categories", "units",
+  // La photo à afficher peut être celle prise ici (`data/image-article.ts`).
+  "pending_product_photos",
+];
 
 /** Filtre d'arrivée admis dans l'URL. Ce qui n'est pas connu ne filtre rien. */
 function etatDemande(v: string | string[] | undefined): FiltreEtatStock {
@@ -160,6 +165,7 @@ export default function Niveaux() {
     return (
       <DataRow
         principal={l.produit}
+        vignette={<VignetteArticle uri={l.image} />}
         secondaire={[l.sku, l.entrepot].filter(Boolean).join(" · ") || null}
         badge={l.etat !== "ok" ? <Badge tone={e.ton}>{e.label}</Badge> : undefined}
         valeur={<Mesure value={l.disponibleAffiche} />}

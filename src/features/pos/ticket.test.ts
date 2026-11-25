@@ -554,15 +554,12 @@ describe("Le logo du reçu", () => {
   const { poserLogo, oublierLeLogo } = jest.requireActual(
     "@/printing/logo-courant"
   ) as typeof import("@/printing/logo-courant");
-  const { LOGO_PLATEFORME } = jest.requireActual(
-    "@/printing/logo-plateforme"
-  ) as typeof import("@/printing/logo-plateforme");
 
   afterEach(() => oublierLeLogo());
 
-  it("sans logo d'établissement, le reçu porte celui de Vente Facile", () => {
+  it("sans logo d'établissement, le reçu n'en porte AUCUN : plus de repli", () => {
     oublierLeLogo();
-    expect(chromeDeLaSession(null).org.logo).toBe(LOGO_PLATEFORME);
+    expect(chromeDeLaSession(null).org.logo).toBeUndefined();
   });
 
   it("le logo de l'établissement, une fois chargé, prime", () => {
@@ -571,10 +568,4 @@ describe("Le logo du reçu", () => {
     expect(chromeDeLaSession(null).org.logo).toBe(logo);
   });
 
-  it("le logo de la plateforme est un PNG au rapport mesuré", () => {
-    expect(LOGO_PLATEFORME.format).toBe("PNG");
-    expect(LOGO_PLATEFORME.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
-    expect(LOGO_PLATEFORME.aspectRatio).toBeGreaterThan(0.5);
-    expect(LOGO_PLATEFORME.aspectRatio).toBeLessThan(1);
-  });
 });

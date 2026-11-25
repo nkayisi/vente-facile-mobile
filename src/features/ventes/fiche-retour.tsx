@@ -69,6 +69,7 @@ import {
   useIdDeFiche,
   useSortieDeFiche,
   useToast,
+  VignetteArticle,
 } from "@/ui";
 
 const TABLES = ["sale_returns", "sale_return_items", "sales", "sale_items", "products", "customers", "users"];
@@ -342,6 +343,7 @@ export function FicheRetour() {
               <View key={l.id}>
                 {i > 0 ? <Divider /> : null}
                 <View className="flex-row items-start justify-between gap-3 px-4 py-3">
+                  <VignetteArticle uri={l.image} />
                   <View className="min-w-0 flex-1">
                     <Text variant="bodySmall" className="font-sans-medium">
                       {l.produit}

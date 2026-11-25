@@ -55,9 +55,14 @@ import {
   useIdDeFiche,
   useSortieDeFiche,
   useToast,
+  VignetteArticle,
 } from "@/ui";
 
-const TABLES = ["stocks", "products", "warehouses", "categories", "brands", "units"];
+const TABLES = [
+  "stocks", "products", "warehouses", "categories", "brands", "units",
+  // La photo à afficher peut être celle prise ici (`data/image-article.ts`).
+  "pending_product_photos",
+];
 
 function Paire({ label, valeur }: { label: string; valeur: string }) {
   return (
@@ -179,18 +184,26 @@ export function FicheRayon() {
 
         <Flux className="gap-4">
           <Card>
-            <Text variant="caption" className="mb-1">
-              En rayon
-            </Text>
-            <StatValue value={r.quantiteAffichee} />
-            <View className="mt-3">
-              <Text variant="caption" className="mb-1">
-                Disponible à la vente
-              </Text>
-              <StatValue
-                value={r.disponibleAffiche}
-                tone={r.etat === "rupture" ? "destructive" : "success"}
-              />
+            {/* La photo à côté du rayon, quand l'article en porte une : c'est
+                elle qu'on compare à ce qu'on a sous les yeux. Sans photo, la
+                carte garde toute sa largeur pour les deux chiffres. */}
+            <View className="flex-row items-center gap-4">
+              {r.image ? <VignetteArticle uri={r.image} taille="lg" /> : null}
+              <View className="min-w-0 flex-1">
+                <Text variant="caption" className="mb-1">
+                  En rayon
+                </Text>
+                <StatValue value={r.quantiteAffichee} />
+                <View className="mt-3">
+                  <Text variant="caption" className="mb-1">
+                    Disponible à la vente
+                  </Text>
+                  <StatValue
+                    value={r.disponibleAffiche}
+                    tone={r.etat === "rupture" ? "destructive" : "success"}
+                  />
+                </View>
+              </View>
             </View>
           </Card>
 

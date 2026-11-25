@@ -13,6 +13,7 @@ import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import { deviseOuPrincipale } from "./devise-principale";
 import {
   customers,
@@ -142,6 +143,8 @@ export async function listeRetours(
 export interface LigneRetour {
   id: string;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   quantite: number;
   prixUnitaire: number;
   total: number;
@@ -207,11 +210,13 @@ export async function detailRetour(id: string): Promise<DetailRetour | null> {
       total: saleReturnItems.total,
       restock: saleReturnItems.restock,
       produit: products.name,
+      image: imageArticle,
       description: saleItems.description,
     })
     .from(saleReturnItems)
     .leftJoin(saleItems, eq(saleItems.id, saleReturnItems.originalItemId))
     .leftJoin(products, eq(products.id, saleItems.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .where(eq(saleReturnItems.saleReturnId, id))
     .orderBy(asc(saleReturnItems.createdAt));
 
@@ -237,6 +242,7 @@ export async function detailRetour(id: string): Promise<DetailRetour | null> {
       // Le nom du produit, sinon ce que le TICKET a imprimé le jour de la
       // vente, sinon un repli honnête : jamais un identifiant.
       produit: l.produit ?? (l.description || "Article de la vente"),
+      image: l.image ?? null,
       quantite: nb(l.quantity),
       prixUnitaire: nb(l.unitPrice),
       total: nb(l.total),
@@ -320,6 +326,8 @@ export async function listeDevis(
 export interface LigneDevis {
   id: string;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   description: string;
   quantite: number;
   prixUnitaire: number;
@@ -359,9 +367,11 @@ export async function detailDevis(id: string): Promise<DetailDevis | null> {
       unitPrice: quotationItems.unitPrice,
       total: quotationItems.total,
       produit: products.name,
+      image: imageArticle,
     })
     .from(quotationItems)
     .leftJoin(products, eq(products.id, quotationItems.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .where(eq(quotationItems.quotationId, id))
     .orderBy(asc(quotationItems.createdAt));
 
@@ -389,6 +399,7 @@ export async function detailDevis(id: string): Promise<DetailDevis | null> {
     lignes: lignes.map((l) => ({
       id: l.id,
       produit: l.produit ?? "Produit supprimé",
+      image: l.image ?? null,
       description: l.description ?? "",
       quantite: nb(l.quantity),
       prixUnitaire: nb(l.unitPrice),

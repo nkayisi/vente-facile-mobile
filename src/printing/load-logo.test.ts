@@ -1,143 +1,182 @@
 /**
- * Le logo ne doit être téléchargé QU'UNE FOIS.
+ * Le logo des tickets : lu par l'API, gardé hors ligne, jamais retenu sur un échec.
  *
- * ┌──────────────────────────────────────────────────────────────────────────────┐
- * │ `Image.getSize` FAIT SA PROPRE REQUÊTE RÉSEAU.                              │
- * │                                                                              │
- * │ `proportionDe` recevait l'URL DISTANTE, alors que `downloadFileAsync` venait │
- * │ d'écrire les mêmes octets sur le disque : chaque chargement coûtait DEUX     │
- * │ téléchargements. Un logo de deux mégaoctets - le plafond `TAILLE_MAX` - en   │
- * │ valait donc quatre par démarrage à froid, sur les liens 2G que ce produit    │
- * │ vise, avant que le premier ticket ne sorte.                                  │
- * └──────────────────────────────────────────────────────────────────────────────┘
- *
- * ⚠ SANS CES DOUBLURES, LE `require` PARESSEUX LÈVE ET TOUT PASSE AU VERT. C'est
- * le piège déjà payé sur les pilotes d'impression : un module qui se dégrade en
- * `null` fait passer le chemin sans rien démontrer.
+ * ⚠ CE QUI EST TENU, et pourquoi chaque cas compte :
+ * - une réponse incomplète vaut « pas de logo » (jamais un format ni une
+ *   proportion inventés, qui feraient sortir le logo écrasé) ;
+ * - un ÉCHEC RÉSEAU n'est pas retenu comme « chargé » : c'était le défaut qui
+ *   empêchait le logo de revenir avant le prochain lancement ;
+ * - ce qui est gardé ne vaut que pour SON logo : un logo changé (nom neuf
+ *   côté serveur) ne ressort jamais depuis l'ancien.
  */
-const mockGetSize = jest.fn();
-const mockDownload = jest.fn();
-const mockDelete = jest.fn();
+const mockGet = jest.fn();
+const mockLire = jest.fn();
+const mockEcrire = jest.fn();
 
-jest.mock("react-native", () => ({
-  Image: { getSize: (...a: unknown[]) => mockGetSize(...a) },
-}));
-
-jest.mock("expo-file-system", () => ({
-  Directory: class {
-    exists = true;
-    create() {}
-  },
-  File: { downloadFileAsync: (...a: unknown[]) => mockDownload(...a) },
-  Paths: { cache: "/cache" },
-}));
-
+jest.mock("@/api/client", () => ({ api: { get: (...a: unknown[]) => mockGet(...a) } }));
 jest.mock("@/api/config", () => ({ API_BASE_URL: "https://vf.test/api/v1" }));
+jest.mock("@/data/reglages", () => ({
+  lireReglage: (...a: unknown[]) => mockLire(...a),
+  ecrireReglage: (...a: unknown[]) => mockEcrire(...a),
+}));
 
-import { chargerLogo, urlDuLogo } from "./load-logo";
+// eslint-disable-next-line import/first
+import { assurerLogo, CLE_LOGO_RECU } from "./assurer-logo";
+// eslint-disable-next-line import/first
+import { logoDeLaReponse, urlDuLogo } from "./load-logo";
+// eslint-disable-next-line import/first
+import { logoCourant, oublierLeLogo } from "./logo-courant";
+// eslint-disable-next-line import/first
+import { cleDuLogo, logoGardePour } from "./logo-garde";
 
-const URL_DISTANTE = "https://vf.test/media/logos/boutique.png";
-
-function fichierSimule(uri = "file:///cache/logos/boutique.png") {
-  return {
-    uri,
-    exists: true,
-    size: 1024,
-    base64: () => Promise.resolve("AAAA"),
-    delete: mockDelete,
-  };
-}
+const REPONSE = {
+  path: "organizations/logos/logo-a.png",
+  data_url: "data:image/png;base64,AAAA",
+  format: "PNG",
+  width: 600,
+  height: 200,
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockDownload.mockResolvedValue(fichierSimule());
-  mockGetSize.mockImplementation(
-    (_uri: string, ok: (l: number, h: number) => void) => ok(200, 100)
-  );
+  oublierLeLogo();
+  mockLire.mockResolvedValue(null);
+  mockEcrire.mockResolvedValue(undefined);
 });
 
-describe("la mesure du logo", () => {
-  it("reçoit le fichier LOCAL, jamais l'URL distante", async () => {
-    await chargerLogo("/media/logos/boutique.png");
-
-    expect(mockGetSize).toHaveBeenCalledTimes(1);
-    const [vise] = mockGetSize.mock.calls[0];
-    expect(vise).toBe("file:///cache/logos/boutique.png");
-    expect(vise).not.toBe(URL_DISTANTE);
-  });
-
-  it("ne télécharge QU'UNE fois", async () => {
-    await chargerLogo("/media/logos/boutique.png");
-    expect(mockDownload).toHaveBeenCalledTimes(1);
-    //: Et rien de ce qui est mesuré ne porte un schéma réseau : c'est le
-    //: contrôle qui attrape un retour à `url`.
-    for (const [vise] of mockGetSize.mock.calls) {
-      expect(String(vise)).not.toMatch(/^https?:/);
-    }
-  });
-
-  it("rend bien le logo, avec sa proportion", async () => {
-    const logo = await chargerLogo("/media/logos/boutique.png");
-    expect(logo).toEqual({
+describe("la réponse du serveur", () => {
+  it("rend un PNG à la proportion mesurée", () => {
+    expect(logoDeLaReponse(REPONSE)).toEqual({
       dataUrl: "data:image/png;base64,AAAA",
       format: "PNG",
-      aspectRatio: 2,
+      aspectRatio: 3,
     });
   });
 
-  it("une mesure impossible rend `null` plutôt que d'écraser le logo", async () => {
-    //: Un rapport faux ferait sortir un logo écrasé ou débordant de la bande
-    //: imprimée : mieux vaut aucun logo.
-    mockGetSize.mockImplementation(
-      (_uri: string, _ok: unknown, ko: () => void) => ko()
-    );
-    expect(await chargerLogo("/media/logos/boutique.png")).toBeNull();
-  });
-
-  it("un logo trop gros est écarté SANS être mesuré", async () => {
-    mockDownload.mockResolvedValue({ ...fichierSimule(), size: 5 * 1024 * 1024 });
-    expect(await chargerLogo("/media/logos/boutique.png")).toBeNull();
-    expect(mockGetSize).not.toHaveBeenCalled();
-  });
-
-  it("un format inconnu n'atteint même pas le réseau", async () => {
-    //: On ne devine pas le type d'une image, et le modèle n'en déclare que deux.
-    expect(await chargerLogo("/media/logos/boutique.svg")).toBeNull();
-    expect(mockDownload).not.toHaveBeenCalled();
-  });
-
-  it("le fichier de cache est nettoyé", async () => {
-    await chargerLogo("/media/logos/boutique.png");
-    expect(mockDelete).toHaveBeenCalled();
+  it("sans logo, ou incomplète, elle ne rend RIEN", () => {
+    expect(logoDeLaReponse({ path: null })).toBeNull();
+    expect(logoDeLaReponse({ ...REPONSE, width: 0 })).toBeNull();
+    expect(logoDeLaReponse({ ...REPONSE, data_url: "https://vf.test/x.png" })).toBeNull();
+    expect(logoDeLaReponse(null)).toBeNull();
   });
 });
 
-describe("l'URL du logo", () => {
-  it("laisse une URL absolue telle quelle", () => {
-    expect(urlDuLogo("https://exemple.test/media/logo.png")).toBe(
-      "https://exemple.test/media/logo.png"
+describe("ce qui est gardé", () => {
+  it("ne vaut que pour SON logo", () => {
+    const cle = cleDuLogo("o1", "/media/organizations/logos/logo-a.png")!;
+    const garde = { cle, logo: logoDeLaReponse(REPONSE) };
+    expect(logoGardePour(garde, cle)).toEqual(garde.logo);
+    expect(logoGardePour(garde, cleDuLogo("o1", "/media/organizations/logos/logo-b.png")!)).toBeUndefined();
+    expect(logoGardePour({ cle, logo: null }, cle)).toBeNull();
+  });
+
+  it("un établissement sans logo n'a pas de clé", () => {
+    expect(cleDuLogo("o1", null)).toBeNull();
+    expect(cleDuLogo(null, "/media/x.png")).toBeNull();
+  });
+});
+
+describe("assurerLogo", () => {
+  it("charge depuis le serveur, pose, et garde pour le hors-ligne", async () => {
+    mockGet.mockResolvedValue(REPONSE);
+    await assurerLogo("o1", "/media/organizations/logos/logo-a.png");
+    expect(mockGet).toHaveBeenCalledWith("/organizations/o1/receipt-logo/");
+    expect(logoCourant()?.aspectRatio).toBe(3);
+    expect(mockEcrire).toHaveBeenCalledWith(CLE_LOGO_RECU, {
+      cle: "o1|/media/organizations/logos/logo-a.png",
+      logo: logoCourant(),
+    });
+  });
+
+  it("hors ligne, il imprime ce qui est gardé, sans réseau", async () => {
+    const cle = "o1|/media/organizations/logos/logo-a.png";
+    mockLire.mockResolvedValue({ cle, logo: logoDeLaReponse(REPONSE) });
+    await assurerLogo("o1", "/media/organizations/logos/logo-a.png");
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(logoCourant()?.dataUrl).toBe(REPONSE.data_url);
+  });
+
+  it("un échec réseau n'est PAS retenu : la demande suivante réessaie", async () => {
+    mockGet.mockRejectedValueOnce(new Error("réseau")).mockResolvedValueOnce(REPONSE);
+    await assurerLogo("o1", "/media/organizations/logos/logo-a.png");
+    expect(logoCourant()).toBeNull();
+    await assurerLogo("o1", "/media/organizations/logos/logo-a.png");
+    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(logoCourant()?.aspectRatio).toBe(3);
+  });
+
+  it("une fois chargé, il ne redemande rien", async () => {
+    mockGet.mockResolvedValue(REPONSE);
+    await assurerLogo("o1", "/media/organizations/logos/logo-a.png");
+    await assurerLogo("o1", "/media/organizations/logos/logo-a.png");
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("deux demandes simultanées n'en font qu'une", async () => {
+    mockGet.mockResolvedValue(REPONSE);
+    await Promise.all([
+      assurerLogo("o1", "/media/organizations/logos/logo-a.png"),
+      assurerLogo("o1", "/media/organizations/logos/logo-a.png"),
+    ]);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("un logo retiré efface ce qui était imprimé", async () => {
+    mockGet.mockResolvedValue(REPONSE);
+    await assurerLogo("o1", "/media/organizations/logos/logo-a.png");
+    await assurerLogo("o1", null);
+    expect(logoCourant()).toBeNull();
+    expect(mockEcrire).toHaveBeenLastCalledWith(CLE_LOGO_RECU, null);
+  });
+
+  it("un chargement lent de la boutique PRÉCÉDENTE ne repose pas son logo", async () => {
+    // La boutique A répond APRÈS la boutique B : sans garde, le ticket de B
+    // sortirait sous le logo de A, et `local_settings` garderait celui de A.
+    let repondreA: (r: unknown) => void = () => {};
+    mockGet
+      .mockImplementationOnce(() => new Promise((ok) => (repondreA = ok)))
+      .mockResolvedValueOnce({ ...REPONSE, path: "b.png", width: 200, height: 200 });
+
+    const a = assurerLogo("oA", "/media/a.png");
+    await new Promise((ok) => setImmediate(ok));
+    await assurerLogo("oB", "/media/b.png");
+    expect(logoCourant()?.aspectRatio).toBe(1);
+
+    repondreA(REPONSE);
+    await a;
+    expect(logoCourant()?.aspectRatio).toBe(1);
+    expect(mockEcrire).not.toHaveBeenCalledWith(
+      CLE_LOGO_RECU,
+      expect.objectContaining({ cle: "oA|/media/a.png" })
     );
-    expect(urlDuLogo("http://exemple.test/logo.png")).toBe("http://exemple.test/logo.png");
   });
 
-  it("préfixe un chemin RELATIF, et ce n'est pas défensif", () => {
-    // Le serializer rend un chemin relatif quand il n'a pas de requête en
-    // contexte, et c'est le cas de la charge utile de session.
-    const u = urlDuLogo("/media/organizations/logos/x.png");
-    expect(u).toMatch(/^https?:\/\//);
-    expect(u).toMatch(/\/media\/organizations\/logos\/x\.png$/);
-    // Le préfixe ne porte PAS `/api/v1` : un média n'est pas un endpoint.
-    expect(u).not.toMatch(/\/api\/v1/);
+  it("un logo retiré pendant son chargement ne revient pas", async () => {
+    let repondre: (r: unknown) => void = () => {};
+    mockGet.mockImplementationOnce(() => new Promise((ok) => (repondre = ok)));
+    const enCours = assurerLogo("o1", "/media/a.png");
+    await new Promise((ok) => setImmediate(ok));
+    await assurerLogo("o1", null);
+    repondre(REPONSE);
+    await enCours;
+    expect(logoCourant()).toBeNull();
   });
 
-  it("ajoute la barre manquante plutôt que de coller les deux morceaux", () => {
-    expect(urlDuLogo("media/x.png")).toMatch(/\/media\/x\.png$/);
-    expect(urlDuLogo("media/x.png")).not.toMatch(/[^/]media/);
+  it("sans logo et rien de chargé, chaque réveil n'écrit RIEN", async () => {
+    // Appelée à chaque synchronisation : une écriture sans objet réveillerait
+    // tous les écrans qui lisent `local_settings`.
+    await assurerLogo("o1", null);
+    await assurerLogo("o1", null);
+    expect(mockEcrire).not.toHaveBeenCalled();
   });
+});
 
-  it("rend `undefined` quand il n'y a pas de logo", () => {
+describe("urlDuLogo, pour l'aperçu", () => {
+  it("préfixe un chemin relatif de la racine de l'API, sans `/api/v1`", () => {
+    expect(urlDuLogo("/media/organizations/logos/x.png")).toBe(
+      "https://vf.test/media/organizations/logos/x.png"
+    );
+    expect(urlDuLogo("https://cdn.test/x.png")).toBe("https://cdn.test/x.png");
     expect(urlDuLogo(null)).toBeUndefined();
-    expect(urlDuLogo(undefined)).toBeUndefined();
-    expect(urlDuLogo("")).toBeUndefined();
   });
 });

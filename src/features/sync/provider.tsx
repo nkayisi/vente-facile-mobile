@@ -53,6 +53,7 @@ import { ApiError, type FailureKind } from "@/api/errors";
 import { ecrireReglage, lireReglage } from "@/data/reglages";
 import { surRetourReseau, useEnLigne } from "@/data/reseau";
 import { envoyerPhotosEnAttente } from "@/features/inventaire/photos";
+import { prechargerPhotos } from "@/features/sync/photos-prechargees";
 import { jugerAcces } from "@/features/abonnement/porte";
 import { etablissementSuspendu } from "@/features/suspension/porte";
 import { useSession } from "@/session/provider";
@@ -426,6 +427,9 @@ export function SynchronisationProvider({ children }: { children: ReactNode }) {
             derniereComplete.current = fin;
             setDerniereSync(fin);
             void ecrireReglage(CLE_DERNIERE_COMPLETE, fin.toISOString());
+            // Les photos d'articles, d'avance, pour qu'elles s'affichent hors
+            // ligne. Rend la main tout de suite : voir `photos-prechargees.ts`.
+            prechargerPhotos();
           }
         }
 

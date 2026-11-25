@@ -62,6 +62,7 @@ import {
   SearchInput, Sheet, Spinner, StatStrip, StatStripItem, Text, useToast,
   useIdDeFiche,
   useSortieDeFiche,
+  VignetteArticle,
 } from "@/ui";
 
 /**
@@ -654,6 +655,7 @@ export function FicheComptage() {
         rendu={(l) => (
           <DataRow
             principal={l.produit}
+            vignette={<VignetteArticle uri={l.image} />}
             secondaire={`Théorique ${l.attenduAffiche}`}
             badge={
               // « À envoyer » sur un comptage BLOQUÉ ferait chercher du

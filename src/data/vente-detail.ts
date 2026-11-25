@@ -26,6 +26,7 @@ import {
 } from "@vente-facile/core";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import {
   customers,
   paymentMethods,
@@ -48,6 +49,8 @@ export interface LigneVente {
   /** Null quand le produit a été supprimé du catalogue depuis la vente. */
   produitId: string | null;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   sku: string | null;
   /** « 2 casiers + 3 bouteilles », dans les termes de la FACTURATION. */
   quantiteAffichee: string;
@@ -141,12 +144,14 @@ export async function detailVente(id: string): Promise<DetailVente | null> {
       total: saleItems.total,
       description: saleItems.description,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       sellingMode: products.sellingMode,
       unite: uniteContenant.name,
     })
     .from(saleItems)
     .leftJoin(products, eq(products.id, saleItems.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.unitId))
     .where(eq(saleItems.saleId, id))
     .orderBy(asc(saleItems.createdAt));
@@ -224,6 +229,7 @@ export async function detailVente(id: string): Promise<DetailVente | null> {
         id: l.id,
         produitId: l.produitId ?? null,
         produit: l.produit ?? l.description ?? "Produit supprimé",
+        image: l.image ?? null,
         sku: l.sku ?? null,
         quantiteAffichee:
           conditionnement && (paquets > 0 || vrac > 0)

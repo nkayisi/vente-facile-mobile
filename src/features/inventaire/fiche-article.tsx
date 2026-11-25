@@ -41,7 +41,11 @@ import {
   useSortieDeFiche,
 } from "@/ui";
 
-const TABLES = ["products", "categories", "brands", "units", "stocks", "warehouses"];
+// `pending_product_photos` : au retour de la modification, la photo qu'on vient
+// de prendre doit paraître sur la fiche (`data/image-article.ts`).
+const TABLES = [
+  "products", "categories", "brands", "units", "stocks", "warehouses", "pending_product_photos",
+];
 
 function Paire({ label, valeur }: { label: string; valeur: string }) {
   return (

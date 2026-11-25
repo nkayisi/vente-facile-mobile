@@ -17,6 +17,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { addDatabaseChangeListener } from "expo-sqlite";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import {
   brands,
   categories,
@@ -121,7 +122,7 @@ const CHAMPS = {
   name: products.name,
   sku: products.sku,
   barcode: products.barcode,
-  image: products.image,
+  image: imageArticle,
   categoryId: products.categoryId,
   categoryName: categories.name,
   selling_price: products.sellingPrice,
@@ -423,6 +424,7 @@ function base(warehouseId?: string | null) {
     .leftJoin(brands, eq(brands.id, products.brandId))
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(
       stocks,
       warehouseId

@@ -18,6 +18,7 @@ import {
 } from "@vente-facile/core";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import { identifiantsSousArbre } from "@/data/categories";
 import { bornesLocales, type PeriodeFiltre } from "@/data/periode-filtre";
 import {
@@ -31,6 +32,8 @@ import { conditionEntrepot } from "@/data/perimetre-sql";
 export interface MouvementStock {
   id: string;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   sku: string | null;
   entrepot: string | null;
   type: string;
@@ -316,6 +319,7 @@ async function _liste(perimetre: PerimetreMouvements): Promise<MouvementStock[]>
       packagingFactor: stockMovements.packagingFactor,
       createdAt: stockMovements.createdAt,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       sellingMode: products.sellingMode,
       unitsPerPackage: products.unitsPerPackage,
@@ -325,6 +329,7 @@ async function _liste(perimetre: PerimetreMouvements): Promise<MouvementStock[]>
     })
     .from(stockMovements)
     .leftJoin(products, eq(products.id, stockMovements.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .leftJoin(warehouses, eq(warehouses.id, stockMovements.warehouseId))
@@ -342,6 +347,7 @@ async function _liste(perimetre: PerimetreMouvements): Promise<MouvementStock[]>
     return {
       id: m.id,
       produit: m.produit ?? "Produit supprimé",
+      image: m.image ?? null,
       sku: m.sku ?? null,
       entrepot: m.entrepot ?? null,
       type: m.movementType,

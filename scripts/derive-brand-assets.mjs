@@ -34,18 +34,6 @@ import { fileURLToPath } from "node:url";
 const ICI = dirname(fileURLToPath(import.meta.url));
 const IMAGES = resolve(ICI, "../assets/images");
 const SOURCE = join(IMAGES, "logo.png");
-/** Le back-office imprime le MÊME logo de repli : il le lit à la racine du site. */
-const PUBLIC_WEB = resolve(ICI, "../../../frontend/public");
-/** Le terminal le lit d'une constante : `logoCourant()` doit rester synchrone. */
-const CONSTANTE_TERMINAL = resolve(ICI, "../src/printing/logo-plateforme.ts");
-/**
- * Hauteur du logo de repli des reçus.
- *
- * Le bloc est plafonné à 12 mm sur un rouleau de 58 (16 sur 80), soit moins de
- * cent trente points de chauffe : deux cent quarante pixels laissent la marge d'un PDF
- * imprimé au navigateur sans faire grossir chaque ticket de cent kilo-octets.
- */
-const HAUTEUR_RECU = 240;
 
 /**
  * Le mot-symbole se retire par un MASQUE EN PALIERS, jamais par une coupe.
@@ -484,25 +472,6 @@ function aplat(cote, [r, v, b]) {
   return { largeur: cote, hauteur: cote, pixels };
 }
 
-/**
- * Le dessin posé sur du BLANC opaque, sans canal alpha.
- *
- * Un reçu s'imprime sur du papier blanc, et les deux chargeurs aplatissent de
- * toute façon sur blanc : un fond transparent aplati sur du noir sortirait en
- * pavé d'encre sur une thermique.
- */
-function surBlanc(img) {
-  const pixels = new Uint8Array(img.largeur * img.hauteur * 4);
-  for (let n = 0; n < img.largeur * img.hauteur; n++) {
-    const a = img.pixels[n * 4 + 3] / 255;
-    for (let c = 0; c < 3; c++) {
-      pixels[n * 4 + c] = Math.round(img.pixels[n * 4 + c] * a + 255 * (1 - a));
-    }
-    pixels[n * 4 + 3] = 255;
-  }
-  return { largeur: img.largeur, hauteur: img.hauteur, pixels };
-}
-
 /** Silhouette : l'alpha devient la forme, la couleur devient uniforme. */
 function silhouette(img, [r, v, b]) {
   const pixels = new Uint8Array(img.pixels.length);
@@ -561,7 +530,9 @@ function main() {
     console.log(`  ✓ ${nom.padEnd(30)} ${img.largeur}x${img.hauteur}  ${(taille / 1024).toFixed(1)} Ko`);
   }
 
-  ecrireLogoDuRecu(complet);
+  // ⚠ Plus de logo de REPLI des reçus (2026-11-25) : un établissement sans
+  // logo imprime sans logo. Ne pas réintroduire `logo-recu.png` ni la
+  // constante `LOGO_PLATEFORME`.
 
   // Le gabarit Expo n'a plus aucun consommateur : le garder, c'est laisser un
   // asset mort que le prochain lecteur croira vivant. C'est exactement ce qui
@@ -571,58 +542,6 @@ function main() {
     unlinkSync(mort);
     console.log("  ✓ splash-icon.png supprimé (asset du gabarit, sans appelant)");
   }
-}
-
-/**
- * Le logo de REPLI des reçus : celui de Vente Facile, quand l'établissement
- * n'a pas le sien, ou qu'il n'a pas pu être chargé.
- *
- * Une seule image pour les deux surfaces : le PNG du back-office et la
- * constante du terminal sont écrits ici, d'un même dessin, pour qu'un ticket
- * imprimé au comptoir et un ticket imprimé au navigateur portent le même logo.
- */
-function ecrireLogoDuRecu(complet) {
-  const l = Math.max(1, Math.round((complet.largeur * HAUTEUR_RECU) / complet.hauteur));
-  const recu = surBlanc(redimensionner(complet, l, HAUTEUR_RECU));
-
-  const cheminMobile = join(IMAGES, "logo-recu.png");
-  ecrirePng(cheminMobile, recu, { avecAlpha: false });
-  const octets = readFileSync(cheminMobile);
-  console.log(`  ✓ ${"logo-recu.png".padEnd(30)} ${recu.largeur}x${recu.hauteur}  ${(octets.length / 1024).toFixed(1)} Ko`);
-
-  if (existsSync(PUBLIC_WEB)) {
-    writeFileSync(join(PUBLIC_WEB, "logo-recu.png"), octets);
-    console.log("  ✓ frontend/public/logo-recu.png");
-  } else {
-    console.log("  ! frontend/public introuvable : le back-office garde son logo-recu.png");
-  }
-
-  const rapport = (recu.largeur / recu.hauteur).toFixed(6);
-  writeFileSync(
-    CONSTANTE_TERMINAL,
-    `/**
- * Le logo de Vente Facile, imprimé quand l'établissement n'a pas le sien.
- *
- * ⚠ FICHIER ENGENDRÉ par \`node scripts/derive-brand-assets.mjs\`, depuis
- * \`assets/images/logo.png\`. Ne pas le retoucher : la prochaine dérivation
- * l'effacerait, et le back-office imprime le même dessin
- * (\`frontend/public/logo-recu.png\`).
- *
- * Une CONSTANTE et non un fichier lu à l'exécution : \`logoCourant()\` est lu
- * sans attente au moment d'imprimer, et un chargement asynchrone ferait sortir
- * le premier ticket sans logo.
- */
-import type { LoadedLogo } from "@vente-facile/core/receipt";
-
-export const LOGO_PLATEFORME: LoadedLogo = {
-  format: "PNG",
-  aspectRatio: ${rapport},
-  dataUrl:
-    "data:image/png;base64,${octets.toString("base64")}",
-};
-`
-  );
-  console.log("  ✓ src/printing/logo-plateforme.ts");
 }
 
 main();

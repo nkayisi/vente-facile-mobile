@@ -33,6 +33,7 @@ import {
   EmptyState, Mesure, Screen, Spinner, StatValue, Text, useToast,
   useIdDeFiche,
   useSortieDeFiche,
+  VignetteArticle,
 } from "@/ui";
 
 const TABLES = ["stock_adjustments", "stock_adjustment_items", "warehouses", "products"];
@@ -197,9 +198,12 @@ export function FicheAjustement() {
                 <View key={l.id}>
                   {i > 0 ? <Divider /> : null}
                   <View className="py-3">
-                    <Text variant="bodySmall" className="font-sans-medium">
-                      {l.produit}
-                    </Text>
+                    <View className="flex-row items-center gap-3">
+                      <VignetteArticle uri={l.image} />
+                      <Text variant="bodySmall" className="min-w-0 flex-1 font-sans-medium">
+                        {l.produit}
+                      </Text>
+                    </View>
                     {l.sku ? <Text variant="caption">{l.sku}</Text> : null}
                     <View className="mt-1 flex-row items-baseline justify-between gap-3">
                       <Text variant="caption" numberOfLines={1} className="min-w-0 flex-1">

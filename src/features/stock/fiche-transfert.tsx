@@ -59,6 +59,7 @@ import {
   useIdDeFiche,
   useSortieDeFiche,
   useToast,
+  VignetteArticle,
 } from "@/ui";
 
 const TABLES = ["stock_transfers", "stock_transfer_items", "warehouses", "products"];
@@ -335,9 +336,12 @@ export function FicheTransfert() {
                 <View key={l.id}>
                   {i > 0 ? <Divider /> : null}
                   <View className="py-3">
-                    <Text variant="bodySmall" className="font-sans-medium">
-                      {l.produit}
-                    </Text>
+                    <View className="flex-row items-center gap-3">
+                      <VignetteArticle uri={l.image} />
+                      <Text variant="bodySmall" className="min-w-0 flex-1 font-sans-medium">
+                        {l.produit}
+                      </Text>
+                    </View>
                     {l.sku ? <Text variant="caption">{l.sku}</Text> : null}
                     <View className="mt-1 gap-0.5">
                       <Ligne label="Demandé" valeur={l.demandeAffiche} />

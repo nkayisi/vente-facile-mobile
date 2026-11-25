@@ -19,6 +19,7 @@ const mockUnblockAll = jest.fn<Promise<void>, unknown[]>();
 const mockEtatJournal = jest.fn<Promise<{ nbPret: number; prochaineTentativeAt: Date | null }>, []>();
 const mockRefresh = jest.fn<Promise<{ snapshot: unknown; frais: boolean }>, []>();
 const mockToast = { succes: jest.fn(), erreur: jest.fn(), info: jest.fn() };
+const mockPrecharger = jest.fn();
 
 let mockEnLigne = true;
 let mockStatus = "ready";
@@ -76,6 +77,9 @@ jest.mock("@/features/inventaire/photos", () => ({
 jest.mock("@/ui", () => ({ useToast: () => mockToast }));
 
 jest.mock("./barre-progression", () => ({ BarreProgressionSync: () => null }));
+
+// Le préchargement des photos lit la base : on ne compte que ses appels.
+jest.mock("./photos-prechargees", () => ({ prechargerPhotos: () => mockPrecharger() }));
 
 jest.mock("expo-sqlite", () => ({
   addDatabaseChangeListener: (quand: (ev: { tableName: string }) => void) => {
@@ -187,6 +191,9 @@ describe("le fournisseur de synchronisation", () => {
     await avancer(DELAI_ENTREE_MS);
     expect(mockPushAll).toHaveBeenCalledTimes(1);
     expect(mockPullAll).toHaveBeenCalledTimes(1);
+    // Les photos d'articles se téléchargent d'avance après un tirage complet :
+    // c'est ce qui les rend lisibles hors ligne au comptoir.
+    expect(mockPrecharger).toHaveBeenCalledTimes(1);
     act(() => arbre.unmount());
   });
 
@@ -200,6 +207,8 @@ describe("le fournisseur de synchronisation", () => {
     expect(mockPushAll).toHaveBeenCalledTimes(1);
     expect(mockPullAll).not.toHaveBeenCalled();
     expect(mockRefresh).toHaveBeenCalledTimes(1);
+    // Sans tirage, rien de neuf à télécharger.
+    expect(mockPrecharger).not.toHaveBeenCalled();
     act(() => arbre.unmount());
   });
 

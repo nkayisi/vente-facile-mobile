@@ -40,6 +40,7 @@ import {
   EmptyState, Screen, Spinner, StatValue, Text, useToast,
   useIdDeFiche,
   useSortieDeFiche,
+  VignetteArticle,
 } from "@/ui";
 
 const TABLES = ["quotations", "quotation_items", "customers", "sales", "products"];
@@ -248,6 +249,7 @@ export function FicheDevis() {
                 <View key={l.id}>
                   {i > 0 ? <Divider /> : null}
                   <View className="flex-row items-start justify-between gap-3 py-3">
+                    <VignetteArticle uri={l.image} />
                     <View className="min-w-0 flex-1">
                       <Text variant="bodySmall" className="font-sans-medium">
                         {l.produit}

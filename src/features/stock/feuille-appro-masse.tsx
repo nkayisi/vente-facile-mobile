@@ -72,6 +72,7 @@ import {
   Text,
   useToast,
   type OptionSelect,
+  VignetteArticle,
 } from "@/ui";
 
 /** Les quatre portées, dans l'ordre où l'on y pense au dépôt. */
@@ -623,6 +624,7 @@ export function FeuilleApproMasse({
                   <Divider />
                   <DataRow
                     principal={ligne.produit}
+                    vignette={<VignetteArticle uri={ligne.image} />}
                     secondaire={ligne.sku}
                     chevron={false}
                     // Le partage ACTUEL du rayon : c'est lui qui permet de

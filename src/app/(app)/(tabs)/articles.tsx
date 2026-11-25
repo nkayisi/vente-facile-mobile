@@ -42,7 +42,9 @@ import {
 } from "@/ui";
 import { FicheArticle } from "@/features/inventaire/fiche-article";
 
-const TABLES = ["products", "categories", "brands", "units", "stocks"];
+// `pending_product_photos` : une photo prise ici s'affiche dans la liste dès
+// qu'elle est rangée (`data/image-article.ts`), pas au prochain tirage.
+const TABLES = ["products", "categories", "brands", "units", "stocks", "pending_product_photos"];
 
 export default function Articles() {
   // Sur un grand écran, la fiche s'ouvre à droite et la liste reste là.

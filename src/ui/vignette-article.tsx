@@ -16,6 +16,7 @@
  * des articles, et il doit rester discret et identique partout, sinon les
  * listes paraissent incohérentes.
  */
+import { useState } from "react";
 import { View } from "react-native";
 import { Image } from "expo-image";
 
@@ -39,19 +40,33 @@ export function VignetteArticle({
   taille?: keyof typeof TAILLES;
 }) {
   const t = TAILLES[taille];
+  /**
+   * L'adresse dont l'image n'a PAS pu se charger.
+   *
+   * ⚠ Sans ce repli, une photo injoignable laissait un carré gris vide : il se
+   * lit comme un article sans image ET sans icône, c'est-à-dire comme un défaut
+   * d'affichage. On retient l'ADRESSE et non un booléen : une rangée recyclée
+   * qui reçoit une autre photo doit retenter sa chance.
+   */
+  const [echecPour, setEchecPour] = useState<string | null>(null);
+  const afficher = uri && echecPour !== uri ? uri : null;
 
   return (
     <View className={`items-center justify-center overflow-hidden bg-muted ${t.boite}`}>
-      {uri ? (
-        // `expo-image` met en cache : une liste qu'on parcourt ne retélécharge
-        // pas la même photo à chaque recyclage de rangée.
+      {afficher ? (
         <Image
-          source={{ uri }}
+          source={{ uri: afficher }}
           style={{ width: "100%", height: "100%" }}
           contentFit="cover"
-          // Un article dont la photo ne se charge pas ne doit pas laisser un
-          // carré vide : le repli reste le fond `muted`, déjà peint dessous.
+          // Le cache DISQUE : une photo vue (ou préchargée après une
+          // synchronisation, `features/sync/photos-prechargees.ts`) s'affiche
+          // encore hors ligne.
+          cachePolicy="disk"
+          // ⚠ INDISPENSABLE dans une liste recyclée (FlashList) : sans clé, une
+          // rangée réutilisée montre un instant la photo d'un AUTRE article.
+          recyclingKey={afficher}
           transition={120}
+          onError={() => setEchecPour(afficher)}
         />
       ) : (
         <Icon name="Package" size={t.icone} color="mutedForeground" />

@@ -23,6 +23,7 @@ import {
 } from "@vente-facile/core";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import {
   categories,
   inventoryCounts,
@@ -163,6 +164,8 @@ export interface LigneComptage {
   id: string;
   produitId: string;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   sku: string | null;
   /** Attendu, tel que figé à l'INSTANTANÉ du démarrage. */
   attenduAffiche: string;
@@ -216,6 +219,7 @@ export async function detailSession(id: string): Promise<DetailSession | null> {
     .select({
       ligne: inventoryCounts,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       sellingMode: products.sellingMode,
       unite: uniteDetail.name,
@@ -223,6 +227,7 @@ export async function detailSession(id: string): Promise<DetailSession | null> {
     })
     .from(inventoryCounts)
     .leftJoin(products, eq(products.id, inventoryCounts.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .where(eq(inventoryCounts.sessionId, id))
@@ -253,6 +258,7 @@ export async function detailSession(id: string): Promise<DetailSession | null> {
       id: c.id,
       produitId: c.productId,
       produit: l.produit ?? "Produit supprimé",
+      image: l.image ?? null,
       sku: l.sku ?? null,
       attenduAffiche: cond
         ? formatPackagedSplit(cond, attenduContenants, attenduVrac)

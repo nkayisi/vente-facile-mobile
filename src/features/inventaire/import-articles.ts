@@ -24,6 +24,7 @@
 import * as DocumentPicker from "expo-document-picker";
 
 import { API_BASE_URL } from "@/api/config";
+import { pieceFichier } from "@/api/piece-fichier";
 import { currentOrganizationId, ensureFreshTokens } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import { telechargerEtPartager } from "@/features/export/telecharger";
@@ -115,11 +116,9 @@ export async function importerClasseur(
   const jetons = await ensureFreshTokens();
 
   const corps = new FormData();
-  corps.append("file", {
-    uri: fichier.uri,
-    name: fichier.nom,
-    type: TYPES_EXCEL[0],
-  } as unknown as Blob);
+  // Jamais la forme `{ uri, name, type }` : le `fetch` d'Expo la refuse avant
+  // l'envoi (voir `api/piece-fichier.ts`).
+  corps.append("file", pieceFichier(fichier.uri, fichier.nom, TYPES_EXCEL[0]));
 
   let reponse: Response;
   try {

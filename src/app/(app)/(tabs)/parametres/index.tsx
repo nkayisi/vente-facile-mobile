@@ -47,11 +47,12 @@ import {
 } from "@/ui";
 import { LARGEUR_MAX_PIED } from "@/ui/disposition-regles";
 import { CarteRemiseAZero } from "@/features/parametres/remise-a-zero";
+import { ChampLogo } from "@/features/parametres/champ-logo";
 
 const TABLES = ["organizations", "organization_settings"];
 
 export default function InfosGenerales() {
-  const { snapshot } = useSession();
+  const { snapshot, refresh } = useSession();
   const enLigne = useEnLigne();
   const toast = useToast();
 
@@ -99,9 +100,13 @@ export default function InfosGenerales() {
           manageable_roles: [],
         }
       : null,
-    "manager"
+    // ⚠ Le PROPRIÉTAIRE seul, comme le serveur (`IsTenantAdmin` sur la fiche,
+    // `settings.manage` sur les réglages) : ouvert au gérant, le formulaire se
+    // remplissait puis répondait par un refus.
+    "owner"
   );
   const modifiable = enLigne && droits;
+  const raisonLogo = raisonLogoFige(enLigne, droits);
 
   async function enregistrer() {
     if (!etab || envoi) return;
@@ -159,7 +164,7 @@ export default function InfosGenerales() {
         <Banner
           tone="warning"
           title="Lecture seule"
-          message="Seuls les gérants et les administrateurs peuvent modifier ces informations."
+          message="Seul le propriétaire de l'établissement peut modifier ces informations."
         />
       ) : null}
 
@@ -168,6 +173,13 @@ export default function InfosGenerales() {
       <Flux className="gap-6">
         <Section title="Informations de l'établissement">
           <Card className="gap-4">
+            <ChampLogo
+              organisationId={snapshot?.organization.id}
+              chemin={snapshot?.organization.logo}
+              modifiable={modifiable}
+              raison={raisonLogo}
+              onChange={refresh}
+            />
             <Grille largeurMin={260} max={2} ecart={14}>
               <FormField label="Nom de l'établissement" required>
                 <Input value={form.nom} onChangeText={(v) => setForm((f) => ({ ...f, nom: v }))}
@@ -300,4 +312,11 @@ export default function InfosGenerales() {
       <CarteRemiseAZero />
     </View>
   );
+}
+
+/** Pourquoi le logo ne se change pas ici, quand il ne se change pas. */
+function raisonLogoFige(enLigne: boolean, droits: boolean): string | undefined {
+  if (!enLigne) return "Le logo se change en ligne.";
+  if (!droits) return "Seul le propriétaire peut changer le logo.";
+  return undefined;
 }

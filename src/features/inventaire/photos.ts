@@ -24,6 +24,7 @@ import { Directory, File, Paths } from "expo-file-system";
 import { eq } from "drizzle-orm";
 
 import { API_BASE_URL } from "@/api/config";
+import { pieceFichier } from "@/api/piece-fichier";
 import { currentOrganizationId, ensureFreshTokens } from "@/api/client";
 import { db } from "@/db/client";
 import { pendingProductPhotos } from "@/db/schema";
@@ -235,9 +236,9 @@ async function televerserPhoto(
 ): Promise<void> {
   const jetons = await ensureFreshTokens();
   const corps = new FormData();
-  // La forme `{ uri, name, type }` est celle que React Native attend d'un
-  // fichier local ; un `Blob` obligerait à charger la photo en mémoire.
-  corps.append("image", { uri, name: fileName, type: mimeType } as unknown as Blob);
+  // Jamais la forme `{ uri, name, type }` : le `fetch` d'Expo la refuse avant
+  // l'envoi (voir `api/piece-fichier.ts`), et la photo ne partait jamais.
+  corps.append("image", pieceFichier(uri, fileName, mimeType));
 
   const reponse = await fetch(`${API_BASE_URL}/products/${productId}/`, {
     method: "PATCH",

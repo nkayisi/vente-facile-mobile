@@ -54,6 +54,7 @@ import {
   Banner, Button, CardHeader, DataRow, DeclencheurSelect, Divider, FormField,
   Icon, IconButton, Input, ListeChoix, SearchInput, Sheet, Text, useToast,
   type DemandeChoix, type OptionSelect,
+  VignetteArticle,
 } from "@/ui";
 
 const OPTIONS_MOTIF: OptionSelect[] = Object.entries(TYPE_AJUSTEMENT).map(
@@ -389,6 +390,7 @@ export function FeuilleNouvelAjustement({
                   <DataRow
                     key={n.id}
                     principal={n.produit}
+                    vignette={<VignetteArticle uri={n.image} />}
                     secondaire={n.sku}
                     chevron={false}
                     valeur={

@@ -1,40 +1,39 @@
 /**
- * Charge le logo de l'établissement, une fois, au démarrage.
+ * Garde le logo de l'établissement prêt à imprimer.
  *
  * Séparé de `logo-courant.ts` parce que celui-ci est lu par
  * `features/pos/ticket.ts`, dont les tests sont PURS : y faire entrer la
  * session tirerait `@/db/client`, qui ouvre SQLite au chargement.
  *
- * ⚠ LE LOGO S'EFFACE QUAND L'ÉTABLISSEMENT CHANGE. Sans cela, un marchand qui
- * bascule d'une organisation à l'autre imprimerait le logo de la précédente,
- * sur un document qui porte le nom de la nouvelle - pire que pas de logo.
+ * Trois réveils, et il faut les trois : le logo CHANGE (le chemin bouge),
+ * chaque synchronisation (`fetched_at` bouge : un échec précédent se rattrape
+ * dès que le réseau revient), et le retour au premier plan. Le chargement lui-
+ * même vit dans `assurer-logo.ts`, hors de React : un démontage ne le perd plus.
+ *
+ * ⚠ LE LOGO S'EFFACE QUAND L'ÉTABLISSEMENT CHANGE : celui de la précédente, sur
+ * un document qui porte le nom de la nouvelle, serait pire que pas de logo.
  */
 import { useEffect } from "react";
+import { AppState } from "react-native";
 
 import { useSession } from "@/session/provider";
 
-import { chargerLogo } from "./load-logo";
-import { cheminCharge, poserLogo } from "./logo-courant";
+import { assurerLogo } from "./assurer-logo";
 
 export function useLogoDeLEtablissement(): void {
   const { snapshot } = useSession();
+  const organisationId = snapshot?.organization.id ?? null;
   const chemin = snapshot?.organization.logo ?? null;
+  const releve = snapshot?.fetched_at ?? null;
 
   useEffect(() => {
-    if (chemin === cheminCharge()) return;
-    // On efface AVANT de charger : entre les deux, un ticket sort sans logo,
-    // ce qui est juste - celui de l'établissement précédent serait faux.
-    poserLogo(chemin, null);
+    void assurerLogo(organisationId, chemin);
+  }, [organisationId, chemin, releve]);
 
-    if (!chemin) return;
-    let vivant = true;
-    void chargerLogo(chemin).then((logo) => {
-      // Un chargement lent qui aboutit APRÈS un changement d'établissement ne
-      // doit pas reposer l'ancien logo.
-      if (vivant && cheminCharge() === chemin) poserLogo(chemin, logo);
+  useEffect(() => {
+    const abonnement = AppState.addEventListener("change", (etat) => {
+      if (etat === "active") void assurerLogo(organisationId, chemin);
     });
-    return () => {
-      vivant = false;
-    };
-  }, [chemin]);
+    return () => abonnement.remove();
+  }, [organisationId, chemin]);
 }

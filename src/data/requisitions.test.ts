@@ -48,7 +48,8 @@ jest.mock("@/db/schema", () => ({
     quantityRequested: "quantity_requested", stockAtRequest: "stock_at_request",
     reorderPointAtRequest: "reorder_point_at_request", notes: "notes",
   },
-  products: { id: "id", name: "name", sku: "sku", unitId: "unit_id" },
+  products: { id: "id", name: "name", sku: "sku", unitId: "unit_id", image: "image" },
+  pendingProductPhotos: { productId: "product_id", uri: "uri" },
   units: { id: "id", name: "name" },
   warehouses: { id: "id", name: "name" },
   stocks: {

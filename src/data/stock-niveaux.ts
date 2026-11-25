@@ -37,6 +37,7 @@ import {
   type FiltreEtatStock,
 } from "@/data/etats-stock";
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import { brands, categories, products, stocks, units, warehouses } from "@/db/schema";
 import { conditionEntrepot } from "@/data/perimetre-sql";
 
@@ -64,6 +65,8 @@ export interface LigneNiveau {
   id: string;
   produitId: string;
   produit: string;
+  /** La photo à afficher (`data/image-article.ts`), ou `null`. */
+  image: string | null;
   sku: string | null;
   categorie: string | null;
   entrepot: string | null;
@@ -367,6 +370,7 @@ export async function niveauxDeStock(
       reorderPoint: products.reorderPoint,
       trackInventory: products.trackInventory,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       costPrice: products.costPrice,
       packageCostPrice: products.packageCostPrice,
@@ -393,6 +397,7 @@ export async function niveauxDeStock(
         .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
         .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
         .leftJoin(categories, eq(categories.id, products.categoryId))
+        .leftJoin(pendingProductPhotos, photoEnAttente)
         .leftJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
         .where(filtre)
         .orderBy(asc(products.name))
@@ -404,6 +409,7 @@ export async function niveauxDeStock(
         .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
         .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
         .leftJoin(categories, eq(categories.id, products.categoryId))
+        .leftJoin(pendingProductPhotos, photoEnAttente)
         .leftJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
         .where(filtre)
         .orderBy(asc(products.name))
@@ -455,6 +461,7 @@ export async function niveauxDeStock(
       id: l.id ?? `produit:${produitId}`,
       produitId,
       produit: l.produit ?? "Produit supprimé",
+      image: l.image ?? null,
       sku: l.sku ?? null,
       categorie: l.categorie ?? null,
       entrepot: l.entrepot ?? null,
@@ -512,6 +519,7 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
       reorderPoint: products.reorderPoint,
       trackInventory: products.trackInventory,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       barcode: products.barcode,
       costPrice: products.costPrice,
@@ -533,6 +541,7 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .leftJoin(brands, eq(brands.id, products.brandId))
     .leftJoin(categories, eq(categories.id, products.categoryId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(warehouses, eq(warehouses.id, stocks.warehouseId))
     .where(eq(stocks.id, id))
     .limit(1);
@@ -565,6 +574,7 @@ export async function detailNiveau(id: string): Promise<DetailNiveau | null> {
     id: s.id,
     produitId: s.productId,
     produit: l.produit ?? "Produit supprimé",
+    image: l.image ?? null,
     sku: l.sku ?? null,
     codeBarres: l.barcode?.trim() || null,
     marque: l.marque ?? null,

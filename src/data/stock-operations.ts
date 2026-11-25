@@ -23,6 +23,7 @@ import {
 } from "@vente-facile/core";
 
 import { db } from "@/db/client";
+import { imageArticle, pendingProductPhotos, photoEnAttente } from "@/data/image-article";
 import {
   products,
   stockAdjustmentItems,
@@ -191,6 +192,8 @@ export async function listeTransferts(
 export interface LigneTransfert {
   id: string;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   sku: string | null;
   /** Ce qui a été DEMANDÉ, dans les termes de la saisie. */
   demandeAffiche: string;
@@ -252,6 +255,7 @@ export async function detailTransfert(
       looseQuantity: stockTransferItems.looseQuantity,
       packagingFactor: stockTransferItems.packagingFactor,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       sellingMode: products.sellingMode,
       unite: uniteDetail.name,
@@ -259,6 +263,7 @@ export async function detailTransfert(
     })
     .from(stockTransferItems)
     .leftJoin(products, eq(products.id, stockTransferItems.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .where(eq(stockTransferItems.transferId, id))
@@ -293,6 +298,7 @@ export async function detailTransfert(
       return {
         id: l.id,
         produit: l.produit ?? "Produit supprimé",
+        image: l.image ?? null,
         sku: l.sku ?? null,
         demandeAffiche:
           cond && (paquets > 0 || vrac > 0)
@@ -386,6 +392,8 @@ export async function listeAjustements(
 export interface LigneAjustement {
   id: string;
   produit: string;
+  /** La photo de l'article (`data/image-article.ts`), quand on l'a. */
+  image?: string | null;
   sku: string | null;
   attenduAffiche: string;
   compteAffiche: string;
@@ -431,6 +439,7 @@ export async function detailAjustement(id: string): Promise<DetailAjustement | n
       packagingFactor: stockAdjustmentItems.packagingFactor,
       unitCost: stockAdjustmentItems.unitCost,
       produit: products.name,
+      image: imageArticle,
       sku: products.sku,
       sellingMode: products.sellingMode,
       unite: uniteDetail.name,
@@ -438,6 +447,7 @@ export async function detailAjustement(id: string): Promise<DetailAjustement | n
     })
     .from(stockAdjustmentItems)
     .leftJoin(products, eq(products.id, stockAdjustmentItems.productId))
+    .leftJoin(pendingProductPhotos, photoEnAttente)
     .leftJoin(uniteDetail, eq(uniteDetail.id, products.unitId))
     .leftJoin(uniteContenant, eq(uniteContenant.id, products.packagingUnitId))
     .where(eq(stockAdjustmentItems.adjustmentId, id))
@@ -477,6 +487,7 @@ export async function detailAjustement(id: string): Promise<DetailAjustement | n
     return {
       id: l.id,
       produit: l.produit ?? "Produit supprimé",
+      image: l.image ?? null,
       sku: l.sku ?? null,
       attenduAffiche:
         cond && paquetsAttendus != null && vracAttendu != null
