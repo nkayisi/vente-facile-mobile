@@ -67,6 +67,7 @@ import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre"
 import {
   afficheFiltresDePerimetre,
   nombreDeFiltresPerimetre,
+  parametresDePerimetre,
   PERIMETRE_VIDE,
   resumeDuPerimetre,
   sansLeFiltrePerimetre,
@@ -294,15 +295,16 @@ export default function Rapports() {
           period: periode,
           date_from: bornes.debut,
           date_to: bornes.fin,
-          group_by: groupBy,
-          // ⚠ L'onglet « Par utilisateur » impose son SUJET ; partout ailleurs,
-          // `user` est le filtre de périmètre. Les deux ne peuvent pas
-          // coexister : le serveur n'a qu'un paramètre.
-          user:
-            onglet === "user-activity"
-              ? utilisateur
-              : (applique.utilisateur ?? undefined),
-          warehouse: applique.entrepot ?? undefined,
+          // Le périmètre APPLIQUÉ entier, « Tous » compris : sans `all_*`, le
+          // serveur retombait sur son défaut et le document couvrait moins que
+          // l'écran.
+          ...parametresDePerimetre(applique),
+          // ⚠ L'onglet « Par utilisateur » impose son SUJET et son regroupement ;
+          // partout ailleurs, `user` est le filtre de périmètre. Les deux ne
+          // peuvent pas coexister : le serveur n'a qu'un paramètre.
+          ...(onglet === "user-activity"
+            ? { user: utilisateur, all_users: undefined, group_by: granularite }
+            : { group_by: groupBy }),
           date: onglet === "daily-cash" ? dateJournaliere : undefined,
         },
         format,

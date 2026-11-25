@@ -19,6 +19,11 @@
 import { api } from "@/api/client";
 import { formatFixedFr, formatNumberFr, formatQuantity } from "@vente-facile/core";
 
+import {
+  parametresDePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+
 import { deviseOuRepli } from "./devise-principale";
 import type { TonStatut } from "./statuts-vente";
 
@@ -187,9 +192,15 @@ export interface ContexteRapport {
    * ⚠ Distinct de `utilisateur` juste au-dessus, et les confondre serait un
    * défaut : celui-là est le SUJET de l'onglet « Par utilisateur », qui n'a pas
    * de « tous » ; celui-ci est un filtre facultatif que les huit onglets
-   * partagent. Le serveur les lit sous deux noms différents pour cette raison.
+   * partagent. ⚠ Le serveur les lit pourtant sous le MÊME nom, `user` : c'est
+   * `periode(ctx, { sujet })` qui retire le filtre quand l'onglet a un sujet.
+   *
+   * ⚠ Le périmètre APPLIQUÉ entier, « Tous » compris : sans `tousEntrepots` et
+   * `tousUtilisateurs`, rien ne partait, et le serveur retombait sur son
+   * défaut (« Moi uniquement » pour un caissier) sous une puce qui disait
+   * « Tous les utilisateurs ».
    */
-  perimetre?: { entrepot: string | null; utilisateur: string | null };
+  perimetre?: FiltrePerimetre;
   /** Granularité de l'activité par employé. */
   granularite?: "day" | "hour";
   /**
@@ -221,7 +232,18 @@ function entetes(ctx: ContexteRapport) {
  */
 function periode(
   ctx: ContexteRapport,
-  opts?: { page?: number; sansPeriode?: boolean }
+  opts?: {
+    page?: number;
+    sansPeriode?: boolean;
+    /**
+     * Le SUJET d'un onglet qui en a un (« Par utilisateur ») : il remplace le
+     * filtre `user` du périmètre, que le serveur lit sous le même nom. L'envoyer
+     * EN PLUS donnait deux `user` dans la même requête.
+     */
+    sujet?: string;
+    /** Le regroupement propre à l'onglet (« Par utilisateur » accepte `hour`). */
+    groupBy?: string;
+  }
 ): string {
   const p = new URLSearchParams();
   // Le stock est un ÉTAT : le borner dans le temps n'a pas de sens, et le
@@ -234,9 +256,16 @@ function periode(
   // constructeur de requête des huit onglets : l'ajouter onglet par onglet
   // garantirait qu'un onglet en manque, et un onglet qui ignore la puce
   // affichée à deux centimètres est le défaut que ce fichier a déjà payé.
-  if (ctx.perimetre?.entrepot) p.set("warehouse", ctx.perimetre.entrepot);
-  if (ctx.perimetre?.utilisateur) p.set("user", ctx.perimetre.utilisateur);
-  if (ctx.groupBy) p.set("group_by", ctx.groupBy);
+  const portee = ctx.perimetre ? parametresDePerimetre(ctx.perimetre) : {};
+  if (opts?.sujet !== undefined) {
+    portee.user = opts.sujet;
+    delete portee.all_users;
+  }
+  for (const [cle, valeur] of Object.entries(portee)) {
+    if (valeur) p.set(cle, valeur);
+  }
+  const groupBy = opts?.groupBy ?? ctx.groupBy;
+  if (groupBy) p.set("group_by", groupBy);
   if (opts?.page !== undefined) {
     p.set("page", String(opts.page));
     p.set("page_size", String(TAILLE_PAGE));
@@ -1099,13 +1128,12 @@ export async function chargerRapport(
         };
       }
 
-      const q = periode(ctx);
+      const q = periode(ctx, {
+        sujet: ctx.utilisateur,
+        groupBy: ctx.granularite ?? "day",
+      });
       const d = await api.get<Record<string, any>>(
-        `/reports/statistics/${CHEMINS_STATISTIQUES["user-activity"]}/${q}${
-          q ? "&" : "?"
-        }user=${encodeURIComponent(ctx.utilisateur)}&group_by=${
-          ctx.granularite ?? "day"
-        }`,
+        `/reports/statistics/${CHEMINS_STATISTIQUES["user-activity"]}/${q}`,
         entetes(ctx)
       );
       const ventes = bloc(d, "sales");

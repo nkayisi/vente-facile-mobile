@@ -443,3 +443,33 @@ describe("les décomptes des titres portent le PÉRIMÈTRE, pas la page", () => 
     expect(r.sections.find((s) => s.cle === "articles")!.tableau!.total).toBe(47);
   });
 });
+
+describe("le périmètre part entier, « Tous » compris", () => {
+  it("« Tous les utilisateurs » et « Tous les entrepôts » se demandent au serveur", async () => {
+    // Son défaut n'est pas « tous » : un caissier n'y voit que ses données.
+    // Ne rien envoyer donnait ses seules ventes sous la puce « Tous ».
+    repondre({ summary: {} });
+    await chargerReleves({
+      ...CTX,
+      perimetre: { entrepot: null, utilisateur: null, tousEntrepots: true, tousUtilisateurs: true },
+    });
+    const url = String(mockGet.mock.calls[0][0]);
+    expect(url).toContain("all_warehouses=1");
+    expect(url).toContain("all_users=1");
+  });
+
+  it("le sujet de « Par utilisateur » remplace le filtre, il ne s'y ajoute pas", async () => {
+    repondre({ user_activity: { sales: {}, expenses: {}, cash: {}, breakdown: [] } });
+    await chargerRapport("user-activity", {
+      ...CTX,
+      utilisateur: "u-sujet",
+      granularite: "hour",
+      perimetre: { entrepot: "w-1", utilisateur: "u-filtre", tousUtilisateurs: true },
+    });
+    const url = new URL(`http://x${String(mockGet.mock.calls[0][0])}`);
+    expect(url.searchParams.getAll("user")).toEqual(["u-sujet"]);
+    expect(url.searchParams.get("all_users")).toBeNull();
+    expect(url.searchParams.getAll("group_by")).toEqual(["hour"]);
+    expect(url.searchParams.get("warehouse")).toBe("w-1");
+  });
+});
