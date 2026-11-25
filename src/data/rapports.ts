@@ -90,28 +90,28 @@ export const CHEMIN_EXPORT = "export";
 export const URL_EXPORT = `/reports/statistics/${CHEMIN_EXPORT}/`;
 
 /**
- * Ma propre journée : ce que J'AI vendu, encaissé, dépensé.
+ * Le rapport de la journée (« Ma journée »), en PDF, Excel ou CSV.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ CE N'EST PAS `user_activity`, ET LA DIFFÉRENCE EST UN DROIT.            │
+ * │ CE N'EST PAS UN ONGLET DES RAPPORTS, ET LA DIFFÉRENCE EST UN DROIT.     │
  * │                                                                          │
  * │ Les huit onglets ci-dessus sont gardés par `reports.view`, accordé au    │
- * │ seul propriétaire et au gérant : un caissier qui ouvrait la rubrique     │
- * │ recevait 403 sur les huit. Il n'avait donc aucune lecture de sa propre   │
- * │ journée, ce qui est la contrepartie du cloisonnement.                    │
+ * │ seul propriétaire et au gérant. `my-day-export` est gardé par            │
+ * │ `dashboard.view`, que les quatre rôles portent : c'est la seule lecture  │
+ * │ de rapport ouverte à un caissier, et sa portée suit la règle de          │
+ * │ `@vente-facile/core` (`journee.ts`), que le serveur applique aussi - un  │
+ * │ caissier qui enverrait autre chose que lui-même reçoit 400.              │
  * │                                                                          │
- * │ `my-activity` est gardée par `dashboard.view`, que les quatre rôles      │
- * │ portent, et elle N'ACCEPTE AUCUNE CIBLE : le serveur neutralise même le  │
- * │ filtre volontaire, si bien qu'un `?user=` qui traînerait resterait sans  │
- * │ effet. Le périmètre n'est pas une règle à tenir, c'est la forme de       │
- * │ l'endpoint.                                                              │
+ * │ L'ÉCRAN, lui, ne lit plus le serveur : il calcule sa journée sur place,  │
+ * │ hors ligne (`data/ma-journee.ts`). `my-activity`, qu'il appelait         │
+ * │ jusqu'ici, ne sert plus que les terminaux en service.                    │
  * │                                                                          │
- * │ ⚠ Elle porte un TIRET parce qu'elle déclare un `url_path` explicite,     │
- * │ comme `sales-by-packaging`. C'est l'exception, pas la règle : sans       │
- * │ `url_path`, le chemin garde les soulignés du nom de méthode.             │
+ * │ ⚠ Il porte un TIRET parce qu'il déclare un `url_path` explicite, comme   │
+ * │ `sales-by-packaging`. C'est l'exception, pas la règle : sans `url_path`, │
+ * │ le chemin garde les soulignés du nom de méthode.                         │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
-export const CHEMIN_MA_JOURNEE = "my-activity";
+export const CHEMIN_RAPPORT_JOURNEE = "my-day-export";
 
 /**
  * Le rapport financier ventilé par entrepôt (T6).
@@ -120,7 +120,7 @@ export const CHEMIN_MA_JOURNEE = "my-activity";
  * en rend une ligne par dépôt. Même rangement que les créances, et le serveur
  * la sert par le même registre d'exports, donc elle porte la même marque.
  *
- * ⚠ Tiret VOULU : l'action déclare un `url_path`, comme `my-activity` et
+ * ⚠ Tiret VOULU : l'action déclare un `url_path`, comme `my-day-export` et
  * `sales-by-packaging`. Sans `url_path`, le chemin garderait les soulignés.
  */
 export const CHEMIN_RAPPORT_ENTREPOTS = "by-warehouse";

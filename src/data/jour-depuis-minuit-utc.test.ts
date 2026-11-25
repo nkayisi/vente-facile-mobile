@@ -5,7 +5,7 @@
  * « 20 nov., 01:00 » à Kinshasa sur la fiche d'une dépense.
  */
 import { coerce } from "@/sync/coerce";
-import { dateDepuisJourISO, jourDepuisMinuitUTC } from "./dates";
+import { dateDepuisJourISO, jourDepuisMinuitUTC, minuitUTCDuJour } from "./dates";
 
 describe("jourDepuisMinuitUTC", () => {
   it("rend le minuit LOCAL du jour rangé par le tirage", () => {
@@ -26,5 +26,21 @@ describe("jourDepuisMinuitUTC", () => {
     expect(jourDepuisMinuitUTC(null)).toBeNull();
     expect(jourDepuisMinuitUTC(undefined)).toBeNull();
     expect(jourDepuisMinuitUTC(new Date(Number.NaN))).toBeNull();
+  });
+});
+
+describe("minuitUTCDuJour", () => {
+  it("rend la valeur EXACTE que le tirage a rangée pour ce jour", () => {
+    // 23 h 30 locales : le jour reste le 24, même si l'heure UTC passe ailleurs.
+    const soir = new Date(2026, 10, 24, 23, 30);
+    expect(minuitUTCDuJour(soir).getTime()).toBe(coerce("2026-11-24", "date"));
+    expect(minuitUTCDuJour(new Date(2026, 10, 24, 0, 5)).getTime()).toBe(
+      coerce("2026-11-24", "date")
+    );
+  });
+
+  it("fait l'aller-retour avec jourDepuisMinuitUTC", () => {
+    const jour = new Date(2026, 0, 1);
+    expect(jourDepuisMinuitUTC(minuitUTCDuJour(jour))).toEqual(jour);
   });
 });

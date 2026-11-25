@@ -17,12 +17,14 @@ import { and, desc, eq } from "drizzle-orm";
 
 import {
   buildCashSessionReceipt,
+  buildDayReport,
   buildExpenseReceipt,
   buildExpenseRequest,
   buildPaymentReceipt,
   buildSaleReceipt,
   type Block,
   type CashSessionReceiptData,
+  type DayReportData,
   type ExpenseReceiptData,
   type ExpenseRequestData,
   type PaymentReceiptData,
@@ -308,4 +310,23 @@ export async function imprimerDemandeDeDepense(donnees: ExpenseRequestData): Pro
   // le reçu arrivaient indiscernables chez le destinataire, et le second
   // écrasait le premier dans le cache. Le back-office les distingue aussi.
   await imprimer(buildExpenseRequest(donnees), { nom: `Demande ${donnees.number}` });
+}
+
+/**
+ * Imprime le rapport de la journée, sans le ranger.
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ CE N'EST PAS UN Z, ET IL NE PREND PAS DE NUMÉRO.                        │
+ * │                                                                          │
+ * │ Le Z clôt une caisse et vaut pièce comptable ; ce ticket dit ce que la   │
+ * │ journée a produit à l'instant où on l'imprime, et il sera faux une vente │
+ * │ plus tard. Le ranger dans `print_jobs` le ferait entrer parmi les        │
+ * │ documents à valeur probante, et sa réimpression ressortirait des         │
+ * │ chiffres périmés sous la pastille DUPLICATA. Il se régénère, comme la    │
+ * │ proforma - et il s'imprime HORS LIGNE, ses chiffres étant calculés sur   │
+ * │ le terminal.                                                             │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+export async function imprimerRapportDeLaJournee(donnees: DayReportData): Promise<void> {
+  await imprimer(buildDayReport(donnees), { nom: `Rapport de la journée ${donnees.day}` });
 }

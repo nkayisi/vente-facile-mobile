@@ -114,7 +114,9 @@ export function BoutonFiltres({ actifs, onPress }: { actifs: number; onPress: ()
       onPress={onPress}
       haptic="selection"
       accessibilityRole="button"
-      accessibilityLabel={actifs > 0 ? `Filtres, ${actifs} actifs` : "Filtres"}
+      accessibilityLabel={
+        actifs > 0 ? `Filtres, ${actifs} ${actifs >= 2 ? "actifs" : "actif"}` : "Filtres"
+      }
       className={`flex-row items-center justify-center gap-1.5 rounded-lg border px-3 ${
         actifs > 0 ? "border-primary bg-accent" : "border-border bg-card"
       }`}

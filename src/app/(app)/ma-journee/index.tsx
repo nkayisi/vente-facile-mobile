@@ -1,306 +1,608 @@
 /**
- * Ma journée : ce que J'AI vendu, encaissé et dépensé.
+ * Ma journée : ce qui s'est passé AUJOURD'HUI, et rien d'autre.
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │ LE CLOISONNEMENT AVAIT TOUT RETIRÉ AU CAISSIER, SA PROPRE LECTURE       │
  * │ COMPRISE.                                                                │
  * │                                                                          │
  * │ Les huit onglets de « Rapports & statistiques » sont gardés par          │
- * │ `reports.view`, accordé au seul propriétaire et au gérant : un caissier   │
- * │ qui ouvrait la rubrique recevait 403 sur les huit, et son entrée de      │
- * │ tiroir ne s'affichait même pas. Il n'avait donc AUCUN moyen de savoir ce │
- * │ qu'il avait vendu dans la journée - alors que c'est le chiffre qu'il     │
- * │ compare à son tiroir avant de rentrer.                                   │
+ * │ `reports.view`, accordé au seul propriétaire et au gérant. Cet écran est │
+ * │ la lecture de journée de TOUS les rôles : ce qu'on compare à son tiroir  │
+ * │ avant de rentrer.                                                        │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
- * ⚠ UN ÉCRAN DE PILE, PAS UN ONGLET. Un onglet sans bouton dans la barre est
- * un cul-de-sac : on n'y ARRIVE pas, on y BASCULE, donc la pile ne bouge pas
- * et aucune flèche de retour ne paraît. C'est la leçon qui a fait sortir la
- * liste des mouvements du groupe `(tabs)`.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ PAR DÉFAUT, MES OPÉRATIONS - PROPRIÉTAIRE COMPRIS. LES FILTRES ÉLARGISSENT.│
+ * │                                                                          │
+ * │ Un entrepôt choisi montre TOUTE sa journée, une personne la sienne. Le   │
+ * │ caissier n'a aucun filtre, quelles que soient ses cases. La règle vit    │
+ * │ dans `@vente-facile/core` (`journee.ts`) ; le back-office et le serveur  │
+ * │ l'appliquent aussi.                                                      │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
- * ⚠ CET ÉCRAN EXIGE LE RÉSEAU, comme les rapports, et pour la même raison :
- * ses agrégats viennent du serveur, dont les définitions sont subtiles
- * (portée par créateur, bornes de dates locales, conversions inter-devises).
- * Les recalculer ici donnerait deux chiffres pour la même journée, et le
- * caissier ne saurait pas lequel croire. L'écran le DIT plutôt que d'afficher
- * des zéros, qui se liraient comme une journée sans vente.
+ * ⚠ LA JOURNÉE SE CALCULE SUR LE TERMINAL, HORS LIGNE, ventes en file
+ * comprises (`data/ma-journee.ts`). Elle lisait le serveur : sans réseau elle
+ * ne montrait rien, et après une matinée hors ligne elle ignorait le journal.
+ * Seul le DOCUMENT A4 demande le réseau ; le ticket s'imprime sans.
+ *
+ * ⚠ UN ÉCRAN DE PILE, PAS UN ONGLET : on y ARRIVE depuis le tiroir, donc la
+ * flèche de retour paraît. Un onglet sans bouton serait un cul-de-sac.
+ *
+ * ⚠ AUCUNE FENÊTRE : le jour seul. Les 7 et 30 jours d'avant vivent dans les
+ * rapports, qui sont l'outil d'analyse.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
+import { router } from "expo-router";
+import { formatNumberFr, formatTimeFr } from "@vente-facile/core";
 
-import { formatNumberFr } from "@vente-facile/core";
-import { bornesRapport, type PeriodeRapport } from "@/data/periodes-rapports";
-import { chargerMaJournee, type MaJournee } from "@/data/ma-journee";
-import { etiquetteJour } from "@/data/rapports";
-import { useMonnaie } from "@/data/devises";
-import { useEnLigne } from "@/data/reseau";
 import { ApiError } from "@/api/errors";
+import { accord, pluriel } from "@/data/accord";
+import { jourEnLettresFr, jourISO } from "@/data/dates";
+import { useMonnaie } from "@/data/devises";
+import { libelleEnvoi } from "@/data/envoi";
+import { useLecture } from "@/data/live";
+import { lireMaJournee, TABLES_MA_JOURNEE, type MaJourneeLue } from "@/data/ma-journee";
+import { CHEMIN_RAPPORT_JOURNEE } from "@/data/rapports";
+import { useEnLigne } from "@/data/reseau";
+import { STATUT_VENTE } from "@/data/statuts-vente";
+import { avertissementDeFile } from "@/features/export/en-file";
+import { telechargerDocument, type FormatExport } from "@/features/export/telecharger";
+import type { JourneeLocale } from "@/features/ma-journee/agregats";
+import { ticketDeLaJournee } from "@/features/ma-journee/agregats";
+import { FeuilleRapportJournee } from "@/features/ma-journee/feuille-rapport";
+import { useOffreDeLaJournee } from "@/features/ma-journee/use-offre";
+import { FeuilleFiltresPerimetre } from "@/features/perimetre/feuille-perimetre";
+import {
+  afficheFiltresDePerimetre,
+  nombreDeFiltresPerimetre,
+  PERIMETRE_VIDE,
+  resumeDuPerimetre,
+  sansLeFiltrePerimetre,
+  type FiltrePerimetre,
+} from "@/features/perimetre/filtre-perimetre";
+import { chromeDeLaSession } from "@/features/pos/ticket";
+import { imprimerRapportDeLaJournee } from "@/printing/jobs";
 import { useSession } from "@/session/provider";
 import {
+  AppBar,
+  BarChart,
+  BoutonFiltres,
+  Card,
+  CardHeader,
+  Chip,
+  ChipRow,
+  Colonnes,
+  Divider,
+  EmptyState,
   Flux,
-  AppBar, Banner, BarChart, Card, CardHeader, Divider, EmptyState, ListItem,
-  Mesure, Screen, Segmented, Spinner, StatStrip, StatStripItem, Text,
+  Icon,
+  IconButton,
+  ListItem,
+  Pressable,
+  ProgressBar,
+  Screen,
+  Spinner,
+  StatStrip,
+  StatStripItem,
+  Text,
+  useToast,
 } from "@/ui";
 
-/**
- * Trois fenêtres, et pas les neuf de « Rapports ».
- *
- * C'est un écran de comptoir : on y vient pour la journée qu'on vient de
- * faire, pas pour analyser un trimestre. Les neuf options de la rubrique
- * d'analyse y seraient un ruban à faire défiler pour trouver « Aujourd'hui ».
- */
-const FENETRES: { valeur: PeriodeRapport; label: string }[] = [
-  { valeur: "today", label: "Aujourd'hui" },
-  { valeur: "last_7_days", label: "7 jours" },
-  { valeur: "last_30_days", label: "30 jours" },
-];
+/** Au-delà, la liste renvoie à l'historique plutôt que de s'allonger. */
+const VISIBLES = 50;
 
 export default function MaJourneeEcran() {
-  const { snapshot } = useSession();
+  const { snapshot, can } = useSession();
   const money = useMonnaie();
   const enLigne = useEnLigne();
+  const toast = useToast();
 
-  const [fenetre, setFenetre] = useState<PeriodeRapport>("today");
-  const [donnees, setDonnees] = useState<MaJournee | null>(null);
-  const [chargement, setChargement] = useState(true);
-  const [rafraichissement, setRafraichissement] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [choix, setChoix] = useState<FiltrePerimetre>(PERIMETRE_VIDE);
+  const offre = useOffreDeLaJournee(choix);
+  const [feuilleFiltres, setFeuilleFiltres] = useState(false);
+  const [feuilleRapport, setFeuilleRapport] = useState(false);
+  const [envoi, setEnvoi] = useState(false);
 
-  const vivant = useRef(true);
-  useEffect(() => {
-    vivant.current = true;
-    return () => {
-      vivant.current = false;
-    };
-  }, []);
-
-  const organisation = snapshot?.organization.id ?? "";
-
-  const charger = useCallback(
-    async (mode: "initial" | "rafraichir" = "initial") => {
-      if (!organisation) return;
-      if (mode === "rafraichir") setRafraichissement(true);
-
-      const { debut, fin } = bornesRapport(fenetre);
-      try {
-        // La journée en cours se découpe à l'HEURE : c'est la seule maille qui
-        // dise à un caissier quand il a vendu. Au-delà, le jour.
-        const d = await chargerMaJournee({
-          organisation,
-          debut,
-          fin,
-          groupBy: fenetre === "today" ? "hour" : "day",
-        });
-        if (!vivant.current) return;
-        setDonnees(d);
-        setErreur(null);
-      } catch (e) {
-        if (!vivant.current) return;
-        setErreur(
-          e instanceof ApiError
-            ? e.message
-            : "Le rapport n'a pas pu être chargé."
-        );
-      } finally {
-        if (vivant.current) {
-          setChargement(false);
-          setRafraichissement(false);
-        }
-      }
-    },
-    [organisation, fenetre]
+  const droits = useMemo(
+    () => ({ ventes: can("sales.view"), stock: can("stock_movements.view") }),
+    [can]
+  );
+  const monNom = snapshot?.user.full_name || snapshot?.user.email || null;
+  const versPrincipale = useCallback(
+    (montant: number, devise: string) => montant * money.rateOf(devise),
+    [money]
   );
 
-  /**
-   * ┌──────────────────────────────────────────────────────────────────────┐
-   * │ LE DRAPEAU DE CHARGEMENT APPARTIENT AU GESTE, PAS À L'EFFET.         │
-   * │                                                                      │
-   * │ `setChargement(true)` dans le corps d'un effet est un `setState`     │
-   * │ synchrone, que le lint refuse à raison : il déclenche un rendu en     │
-   * │ cascade. Il est donc posé à l'état initial (premier chargement) et    │
-   * │ par la puce de période, qui est une PRESSION - un endroit où écrire   │
-   * │ dans l'état est parfaitement légitime.                               │
-   * │                                                                      │
-   * │ L'effet ne fait plus que déclencher la lecture ; `charger` ne LÈVE le │
-   * │ drapeau que dans son `finally`.                                       │
-   * └──────────────────────────────────────────────────────────────────────┘
-   *
-   * ⚠ LE SIGNALEMENT RESTANT EST UN FAUX POSITIF, ET IL EST MESURÉ.
-   *
-   * Sur le chemin « initial », `charger` n'écrit RIEN avant son premier
-   * `await` : le seul `setState` qui le précède est gardé par
-   * `mode === "rafraichir"`, et tous les autres vivent dans le `try`/`finally`
-   * qui suit l'appel réseau. L'analyseur perd la trace des `await` en
-   * traversant un bloc gardé - c'est la limite déjà relevée sur
-   * `session/provider.tsx`, où quatre écritures différentes du même repli
-   * étaient toutes signalées.
-   *
-   * Trois écrans voisins (`(tabs)/rapports.tsx`, `caisse/rapports.tsx`,
-   * `creances/index.tsx`) portent ce signalement sans l'expliquer. Ici il est
-   * écarté NOMMÉMENT, parce qu'on a vérifié qu'il ne désigne rien : ne pas
-   * retirer ce commentaire sans avoir relu le corps de `charger` ci-dessus.
-   */
-  useEffect(() => {
-    // On ne tente pas l'appel hors ligne : le bandeau est DÉRIVÉ de `enLigne`,
-    // et attendre l'expiration d'un délai ne ferait que paraître plus grave.
-    // `enLigne` est dans les dépendances de CET effet, donc le retour du réseau
-    // relance la lecture de lui-même.
-    if (!enLigne) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- faux positif, mesuré ci-dessus
-    void charger("initial");
-  }, [charger, enLigne]);
+  // Le jour fait partie de la clé : un écran resté ouvert passé minuit doit
+  // relire SA journée, pas garder celle d'hier sous le titre d'aujourd'hui.
+  const jour = jourISO(new Date());
+  const charger = useCallback(
+    () =>
+      lireMaJournee({
+        perimetre: offre.applique,
+        file: offre.file,
+        droits,
+        monNom,
+        versPrincipale,
+      }),
+    [offre.applique, offre.file, droits, monNom, versPrincipale]
+  );
+  const { donnees, chargement, recharger } = useLecture<MaJourneeLue>(charger, {
+    tables: [...TABLES_MA_JOURNEE],
+    deps: [offre.applique, offre.file, droits, monNom, versPrincipale, jour],
+  });
+
+  const principal = useCallback((v: number) => money.money(v, money.primaryCode), [money]);
+  const puces = useMemo(() => resumeDuPerimetre(offre), [offre]);
+  const maintenant = new Date();
+
+  const imprimer = useCallback(async () => {
+    if (!donnees) return;
+    setEnvoi(true);
+    try {
+      await imprimerRapportDeLaJournee(
+        ticketDeLaJournee(donnees.journee, {
+          chrome: chromeDeLaSession(snapshot),
+          jour: jourEnLettresFr(new Date()),
+          arreteA: formatTimeFr(new Date()),
+          portee: offre.libelle,
+          devise: money.primaryCode,
+          imprimePar: monNom ?? undefined,
+          listeVentes: droits.ventes,
+        })
+      );
+      setFeuilleRapport(false);
+      toast.succes("Ticket de la journée envoyé à l'imprimante.");
+    } catch {
+      toast.erreur("Le ticket n'a pas pu être imprimé.");
+    } finally {
+      setEnvoi(false);
+    }
+  }, [donnees, snapshot, offre.libelle, money.primaryCode, monNom, droits.ventes, toast]);
+
+  const exporter = useCallback(
+    async (format: FormatExport) => {
+      setEnvoi(true);
+      try {
+        await telechargerDocument(
+          `/reports/statistics/${CHEMIN_RAPPORT_JOURNEE}/`,
+          offre.parametres,
+          format,
+          `Rapport de la journée ${jour}`
+        );
+        setFeuilleRapport(false);
+      } catch (e) {
+        toast.erreur(
+          e instanceof ApiError ? e.message : "Le document n'a pas pu être téléchargé."
+        );
+      } finally {
+        setEnvoi(false);
+      }
+    },
+    [offre.parametres, jour, toast]
+  );
 
   return (
-    <Screen scroll padded={false} onRefresh={() => void charger("rafraichir")} refreshing={rafraichissement}>
+    <Screen scroll padded={false} onRefresh={recharger} refreshing={false}>
       <AppBar
         title="Ma journée"
-        // Le NOM, parce que l'écran ne peut rendre que le sien : l'endpoint
-        // n'accepte aucune cible, et le dire lève le doute sur ce qu'on lit.
-        subtitle={donnees?.nom ? `${donnees.nom} · mes seules opérations` : "Mes seules opérations"}
+        // La date ET la portée : on vérifie d'un coup d'œil que l'écran parle
+        // d'aujourd'hui, et de qui.
+        subtitle={`${jourEnLettresFr(maintenant)} · ${offre.libelle}`}
+        right={
+          <View className="flex-row items-center gap-2">
+            {/* Le caissier n'a aucun filtre : pas de bouton, pas de feuille. Un
+                bouton qui ouvre une feuille vide se lirait comme une panne. Le
+                bouton vit dans la barre : seul dans une rangée, il laissait une
+                bande vide au-dessus du cadran. */}
+            {afficheFiltresDePerimetre(offre) ? (
+              <BoutonFiltres
+                actifs={nombreDeFiltresPerimetre(offre)}
+                onPress={() => setFeuilleFiltres(true)}
+              />
+            ) : null}
+            <IconButton
+              name="FileText"
+              label="Rapport de la journée"
+              texte="Rapport"
+              variant="ghost"
+              onPress={() => setFeuilleRapport(true)}
+              disabled={!donnees}
+            />
+          </View>
+        }
       />
 
-      <View className="gap-4 px-4 pb-6">
-        <Segmented
-          options={FENETRES}
-          valeur={fenetre}
-          onChange={(v) => {
-            setFenetre(v as PeriodeRapport);
-            setChargement(true);
-          }}
-        />
-
-        {!enLigne ? (
-          <Banner
-            tone="warning"
-            title="Ce rapport demande une connexion"
-            message="Ses chiffres viennent du serveur, pour qu'ils ne diffèrent jamais de ceux du back-office. Vendre et encaisser, eux, marchent hors ligne."
-          />
-        ) : erreur ? (
-          <Banner
-            tone="destructive"
-            title="Le rapport n'a pas pu être chargé"
-            message={erreur}
-            action={{ label: "Réessayer", onPress: () => void charger("rafraichir") }}
-          />
+      <View className="gap-4 px-4 pb-6 pt-4">
+        {puces.length > 0 ? (
+          <ChipRow>
+            {puces.map((p) => {
+              const retirer = () => setChoix(sansLeFiltrePerimetre(choix, p.cle));
+              return (
+                <Chip key={p.cle} label={p.label} actif onPress={retirer} onRetirer={retirer} />
+              );
+            })}
+          </ChipRow>
         ) : null}
 
-        {chargement && !donnees && enLigne ? (
+        {chargement && !donnees ? (
           <View className="items-center py-12">
             <Spinner />
           </View>
         ) : donnees ? (
-          <Contenu d={donnees} money={money} />
+          <Contenu
+            j={donnees.journee}
+            principal={principal}
+            money={money}
+            droits={droits}
+            montreVendeur={offre.portee.kind !== "moi" && offre.applique.utilisateur === null}
+          />
         ) : null}
       </View>
+
+      <FeuilleFiltresPerimetre
+        ouvert={feuilleFiltres}
+        onFermer={() => setFeuilleFiltres(false)}
+        valeur={choix}
+        onChanger={setChoix}
+        offre={offre}
+        libelleResultats="Voir la journée"
+      />
+      <FeuilleRapportJournee
+        ouvert={feuilleRapport}
+        onFermer={() => setFeuilleRapport(false)}
+        onImprimer={() => void imprimer()}
+        onExporter={(f) => void exporter(f)}
+        enLigne={enLigne}
+        avertissement={donnees ? avertissementDeFile(donnees.ventesEnFile) : null}
+        envoi={envoi}
+      />
     </Screen>
   );
 }
 
-function Contenu({ d, money }: { d: MaJournee; money: ReturnType<typeof useMonnaie> }) {
-  const m = (v: number) => money.money(v, money.primaryCode);
-
+function Contenu({
+  j,
+  principal,
+  money,
+  droits,
+  montreVendeur,
+}: {
+  j: JourneeLocale;
+  principal: (v: number) => string;
+  money: ReturnType<typeof useMonnaie>;
+  droits: { ventes: boolean; stock: boolean };
+  montreVendeur: boolean;
+}) {
   return (
     <View className="gap-4">
-      {/*
-        QUATRE RELEVÉS, dans l'ordre des trois choses que le retour de test
-        nomme : vendu, encaissé, dépensé. Un cadran, pas quatre cartes : une
-        carte se lit comme une destination, et aucune de ces quatre n'en est.
-      */}
+      {/* Quatre relevés, ceux du back-office : vendu, encaissé, dépensé, et ce
+          qui reste au tiroir. Un cadran, pas quatre cartes. */}
       <StatStrip>
-        <StatStripItem label="Mes ventes" value={m(d.ventes.total)} icon="ShoppingCart" />
         <StatStripItem
-          label="Transactions"
-          value={formatNumberFr(d.ventes.nombre, 0)}
+          label={`Ventes (${formatNumberFr(j.ventes.nombre, 0)})`}
+          value={principal(j.ventes.total)}
+          icon="ShoppingCart"
+        />
+        <StatStripItem
+          label="Encaissé net"
+          value={principal(j.encaisse.net)}
+          icon="Banknote"
+          tone="accent"
+        />
+        <StatStripItem
+          label={`Dépenses (${formatNumberFr(j.depenses.nombre, 0)})`}
+          value={principal(j.depenses.total)}
           icon="Receipt"
         />
-        <StatStripItem
-          label="Entrées caisse"
-          value={m(d.caisse.entrees)}
-          icon="ArrowDownRight"
-        />
-        <StatStripItem
-          label="Sorties caisse"
-          value={m(d.caisse.sorties)}
-          icon="ArrowUpRight"
-          // Le ton ne colore que si la valeur est non nulle : un « 0 sortie »
-          // en rouge crie pour rien, et à force on ne voit plus le vrai rouge.
-          tone={d.caisse.sorties > 0 ? "warn" : "neutral"}
-        />
+        <StatStripItem label="Caisse nette" value={principal(j.caisse.net)} icon="Wallet" />
       </StatStrip>
 
-      <Flux className="gap-4">
-        <Card>
-          <CardHeader title="Mes dépenses" />
-          <View className="px-4 pb-4">
-            <Mesure value={m(d.depenses.total)} />
-            <Text variant="caption" className="text-muted-foreground">
-              {d.depenses.nombre === 1
-                ? "1 dépense enregistrée"
-                : `${formatNumberFr(d.depenses.nombre, 0)} dépenses enregistrées`}
+      {j.ventes.aCredit > 0.005 || j.ventes.sansMontant > 0 ? (
+        <View className="-mt-2 gap-0.5">
+          {j.ventes.aCredit > 0.005 ? (
+            <Text variant="caption" className="text-warning">
+              Dont {principal(j.ventes.aCredit)} à crédit sur{" "}
+              {pluriel(j.ventes.nombreACredit, "vente", "ventes")}.
             </Text>
-          </View>
-        </Card>
+          ) : null}
+          {j.ventes.sansMontant > 0 ? (
+            // `null` ne se lit jamais comme zéro : le total ne les compte pas,
+            // et il le dit.
+            <Text variant="caption">
+              {pluriel(j.ventes.sansMontant, "vente", "ventes")} sans montant connu (ticket
+              introuvable) : {j.ventes.sansMontant > 1 ? "elles ne sont" : "elle n'est"} pas
+              dans le total.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
-        <Card className="overflow-hidden p-0">
-          {/* La carte est en `p-0` pour ses RANGÉES, pleine largeur : son titre,
-              lui, garde le retrait de ses voisines, sinon il colle au bord. */}
-          <View className="p-4 pb-0">
-            <CardHeader title="Encaissé par moyen de paiement" />
-          </View>
-          {d.parMoyen.length === 0 ? (
-            <View className="pb-4">
-              <EmptyState
-                variante="carte"
-                title="Aucun encaissement"
-                message="Rien n'est entré sur cette période."
-              />
-            </View>
-          ) : (
-            d.parMoyen.map((p, i) => (
-              <View key={p.moyen}>
-                {i > 0 ? <Divider inset /> : null}
-                <ListItem title={p.moyen} value={m(p.total)} />
-              </View>
-            ))
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader
-            title={d.parHeure ? "Mes ventes, heure par heure" : "Mes ventes, jour par jour"}
-          />
-          <View className="px-4 pb-4">
-            {d.detail.length < 2 ? (
-              // ⚠ Un graphique de comparaison exige DEUX choses à comparer : une
-              // barre unique remplit toute la largeur et toute la hauteur, ce qui
-              // se lit comme un défaut d'affichage.
-              <EmptyState
-                variante="carte"
-                title={d.detail.length === 0 ? "Aucune vente" : "Une seule période vendue"}
-                message={
-                  d.detail.length === 0
-                    ? "Rien n'a été vendu sur cette période."
-                    : `${m(d.detail[0].total)} au total.`
-                }
-              />
-            ) : (
-              <BarChart
-                points={d.detail.map((b) => ({
-                  label: d.parHeure ? etiquetteHeure(b.bucket) : etiquetteJour(b.bucket),
-                  valeur: b.total,
-                }))}
-                formater={m}
-              />
-            )}
-          </View>
-        </Card>
-      </Flux>
+      <Colonnes>
+        <Flux className="gap-4">
+          <CarteMoyens j={j} principal={principal} />
+          <CarteHeures j={j} principal={principal} />
+          <CarteCaisse j={j} principal={principal} />
+          {droits.stock && j.stock ? <CarteStock stock={j.stock} /> : null}
+        </Flux>
+        {droits.ventes ? (
+          <CarteVentes j={j} money={money} montreVendeur={montreVendeur} />
+        ) : null}
+      </Colonnes>
     </View>
   );
 }
 
-/** « 2026-10-09 14:00 » rendu « 14h ». L'axe n'a pas la place de la date. */
-function etiquetteHeure(bucket: string): string {
-  const heure = bucket.slice(11, 13);
-  return heure ? `${Number(heure)}h` : bucket;
+function CarteMoyens({ j, principal }: { j: JourneeLocale; principal: (v: number) => string }) {
+  const max = Math.max(0, ...j.encaisse.parMoyen.map((m) => m.total));
+  return (
+    <Card>
+      <CardHeader title="Encaissé par moyen" />
+      {j.encaisse.parMoyen.length === 0 ? (
+        <Text variant="bodySmall" className="text-muted-foreground">
+          Aucun encaissement aujourd&apos;hui.
+        </Text>
+      ) : (
+        <View className="gap-3">
+          {j.encaisse.parMoyen.map((m) => (
+            <View key={m.moyen} className="gap-1">
+              <View className="flex-row items-baseline justify-between gap-3">
+                <Text variant="bodySmall" numberOfLines={1} className="min-w-0 flex-1">
+                  {m.moyen}{" "}
+                  <Text variant="caption">({pluriel(m.nombre, "règlement", "règlements")})</Text>
+                </Text>
+                <Text variant="bodySmall" numeric className="font-sans-medium">
+                  {principal(m.total)}
+                </Text>
+              </View>
+              <ProgressBar valeur={m.total} max={max} tone="success" />
+            </View>
+          ))}
+        </View>
+      )}
+      {j.encaisse.monnaie > 0.005 ? (
+        // La monnaie rendue à part, pour que le remis et le net se rapprochent
+        // à l'œil : sans elle, « Encaissé » dépasse la vente et se lit comme
+        // une erreur.
+        <View className="mt-4 gap-1 border-t border-border pt-3">
+          <View className="flex-row justify-between gap-3">
+            <Text variant="bodySmall" className="text-muted-foreground">
+              Monnaie rendue
+            </Text>
+            <Text variant="bodySmall" numeric className="text-destructive">
+              -{principal(j.encaisse.monnaie)}
+            </Text>
+          </View>
+          <View className="flex-row justify-between gap-3">
+            <Text variant="bodySmall" className="font-sans-medium">
+              Encaissé net
+            </Text>
+            <Text variant="bodySmall" numeric className="font-sans-semibold">
+              {principal(j.encaisse.net)}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+function CarteHeures({ j, principal }: { j: JourneeLocale; principal: (v: number) => string }) {
+  const vendues = j.heures.filter((h) => h.nombre > 0);
+  return (
+    <Card>
+      <CardHeader title="Ventes heure par heure" />
+      {vendues.length === 0 ? (
+        <Text variant="bodySmall" className="text-muted-foreground">
+          Aucune vente aujourd&apos;hui.
+        </Text>
+      ) : vendues.length === 1 ? (
+        // ⚠ Un graphique de comparaison exige DEUX heures VENDUES : une seule
+        // barre pleine à côté de seaux vides remplit la carte d'un bloc, et se
+        // lit comme un défaut d'affichage (vu sur l'émulateur, une vente à
+        // 1 h consultée à 2 h). Le back-office suit la même règle.
+        <Text variant="bodySmall" className="text-muted-foreground">
+          Toutes les ventes de la journée à {vendues[0].heure} h :{" "}
+          {pluriel(vendues[0].nombre, "vente", "ventes")},{" "}
+          <Text variant="bodySmall" className="font-sans-medium text-foreground">
+            {principal(vendues[0].total)}
+          </Text>
+          .
+        </Text>
+      ) : (
+        <BarChart
+          points={j.heures.map((h) => ({ label: `${h.heure}h`, valeur: h.total }))}
+          formater={principal}
+        />
+      )}
+    </Card>
+  );
+}
+
+function CarteCaisse({ j, principal }: { j: JourneeLocale; principal: (v: number) => string }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      {/* La carte est en `p-0` pour ses RANGÉES, pleine largeur : son titre,
+          lui, garde le retrait de ses voisines, sinon il colle au bord. */}
+      <View className="p-4 pb-0">
+        <CardHeader title="Caisse et dépenses" />
+      </View>
+      <ListItem icon="ArrowDownRight" title="Entrées de caisse" value={principal(j.caisse.entrees)} />
+      <Divider inset />
+      <ListItem icon="ArrowUpRight" title="Sorties de caisse" value={principal(j.caisse.sorties)} />
+      <Divider inset />
+      <ListItem icon="Wallet" title="Solde net" value={principal(j.caisse.net)} />
+      <Divider />
+      <ListItem
+        icon="Receipt"
+        title={`Dépenses (${formatNumberFr(j.depenses.nombre, 0)})`}
+        subtitle={`dont payées : ${principal(j.depenses.payees)}`}
+        value={principal(j.depenses.total)}
+      />
+    </Card>
+  );
+}
+
+function CarteStock({ stock }: { stock: NonNullable<JourneeLocale["stock"]> }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <View className="p-4 pb-0">
+        <CardHeader
+          title="Mouvements de stock"
+          subtitle="Hors ventes et retours clients"
+          right={
+            <Text variant="caption">{pluriel(stock.nombre, "mouvement", "mouvements")}</Text>
+          }
+        />
+      </View>
+      {stock.nombre === 0 ? (
+        <Text variant="bodySmall" className="px-4 pb-4 text-muted-foreground">
+          Aucun mouvement aujourd&apos;hui.
+        </Text>
+      ) : (
+        <>
+          <View className="flex-row flex-wrap gap-2 px-4 pb-3">
+            {stock.parType.map((t) => (
+              <View key={t.type} className="rounded-full bg-muted px-3 py-1">
+                <Text variant="caption" className="text-foreground">
+                  {t.libelle} · {formatNumberFr(t.nombre, 0)}
+                </Text>
+              </View>
+            ))}
+          </View>
+          {stock.lignes.slice(0, 20).map((m, i) => (
+            <View key={m.id}>
+              {i > 0 ? <Divider inset /> : null}
+              <ListItem
+                icon={m.entree ? "ArrowDownRight" : "ArrowUpRight"}
+                title={m.produit}
+                subtitle={[
+                  m.libelle,
+                  m.date ? formatTimeFr(m.date) : null,
+                  m.entrepot,
+                  libelleEnvoi(m.envoi)?.court,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                value={`${m.entree ? "+" : "-"}${m.quantite}`}
+                valueTone={m.entree ? "success" : "destructive"}
+              />
+            </View>
+          ))}
+          {stock.lignes.length > 20 ? (
+            <Text variant="caption" className="px-4 pb-4 pt-2">
+              Et {pluriel(stock.lignes.length - 20, "autre mouvement", "autres mouvements")}{" "}
+              : le rapport de la journée les liste tous.
+            </Text>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function CarteVentes({
+  j,
+  money,
+  montreVendeur,
+}: {
+  j: JourneeLocale;
+  money: ReturnType<typeof useMonnaie>;
+  montreVendeur: boolean;
+}) {
+  const lignes = j.ventes.lignes;
+  return (
+    <Card className="overflow-hidden p-0">
+      <View className="p-4 pb-0">
+        <CardHeader
+          title="Ventes de la journée"
+          right={<Text variant="caption">{pluriel(lignes.length, "vente", "ventes")}</Text>}
+        />
+      </View>
+      {lignes.length === 0 ? (
+        <View className="pb-4">
+          <EmptyState
+            variante="carte"
+            title="Aucune vente aujourd'hui"
+            message="Les ventes encaissées s'afficheront ici, même sans réseau."
+          />
+        </View>
+      ) : (
+        <>
+          {lignes.slice(0, VISIBLES).map((v, i) => {
+            const st = STATUT_VENTE[v.statut] ?? { label: v.statut, ton: "neutral" as const };
+            const envoi = libelleEnvoi(v.envoi);
+            return (
+              <View key={v.id}>
+                {i > 0 ? <Divider /> : null}
+                <Pressable
+                  onPress={() => router.push(`/vente/${v.id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Vente ${v.reference}`}
+                  className="flex-row items-center gap-3 px-4 py-3"
+                >
+                  <View className="min-w-0 flex-1">
+                    <Text variant="bodySmall" numberOfLines={1} className="font-sans-medium">
+                      {v.reference}
+                    </Text>
+                    <Text variant="caption" numberOfLines={1}>
+                      {[
+                        v.date ? formatTimeFr(v.date) : null,
+                        v.client ?? "Client anonyme",
+                        montreVendeur ? v.vendeur : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                    {envoi ? (
+                      <View className="mt-0.5 flex-row items-center gap-1">
+                        <Icon
+                          name={v.envoi === "bloque" ? "AlertTriangle" : "CloudDownload"}
+                          size={12}
+                          color={v.envoi === "bloque" ? "warning" : "mutedForeground"}
+                        />
+                        <Text
+                          variant="caption"
+                          className={v.envoi === "bloque" ? "text-warning" : undefined}
+                        >
+                          {envoi.court}
+                        </Text>
+                      </View>
+                    ) : st.ton !== "success" ? (
+                      <Text variant="caption" className="mt-0.5">
+                        {st.label}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View className="items-end">
+                    <Text variant="bodySmall" numeric className="font-sans-medium">
+                      {v.total === null ? "-" : money.money(v.total, v.devise)}
+                    </Text>
+                    {v.resteDu > 0.005 ? (
+                      <Text variant="caption" numeric className="text-warning">
+                        Reste {money.money(v.resteDu, v.devise)}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              </View>
+            );
+          })}
+          {lignes.length > VISIBLES ? (
+            <Pressable
+              onPress={() => router.push({ pathname: "/vente/historique", params: { periode: "jour" } })}
+              accessibilityRole="link"
+              className="border-t border-border px-4 py-3"
+            >
+              <Text variant="bodySmall" className="text-primary">
+                Voir les {formatNumberFr(lignes.length - VISIBLES, 0)}{" "}
+                {accord(lignes.length - VISIBLES, "autre", "autres")} dans l&apos;historique
+              </Text>
+            </Pressable>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
 }

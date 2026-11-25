@@ -110,6 +110,15 @@ const SECTIONS_WEB_SEULES: Record<string, string> = {
     "quarantaine est pire que pas de bouton.",
 };
 
+/**
+ * Les entrées que le back-office range DANS son menu et que le terminal range
+ * en ANNEXE du tiroir, hors des onze sections : même libellé, même glyphe, même
+ * droit, à une autre place.
+ */
+const ANNEXES_DU_TERMINAL: Record<string, { label: string; icon: string }> = {
+  "Ma journée": ENTREE_MA_JOURNEE,
+};
+
 describe("parité du menu avec le back-office", () => {
   if (!existsSync(SIDEBAR)) {
     // Échec franc, et non un test sauté : une parité qu'on ne vérifie plus est
@@ -128,7 +137,22 @@ describe("parité du menu avec le back-office", () => {
     readFileSync(SIDEBAR, "utf8"),
     lireRegles(readFileSync(REGLES, "utf8"))
   );
-  const web = webBrut.filter((e) => !(e.label in SECTIONS_WEB_SEULES));
+  const web = webBrut.filter(
+    (e) => !(e.label in SECTIONS_WEB_SEULES) && !(e.label in ANNEXES_DU_TERMINAL)
+  );
+
+  it("range en annexe, avec le même libellé et le même glyphe, ce que le web met au menu", () => {
+    const annexes = Object.entries(ANNEXES_DU_TERMINAL);
+    expect(annexes.length).toBeGreaterThan(0);
+    for (const [etiquette, entree] of annexes) {
+      const w = webBrut.find((e) => e.label === etiquette);
+      expect(w).toBeDefined();
+      expect(entree.label).toBe(etiquette);
+      expect(entree.icon).toBe(w?.icon);
+      // Une annexe n'est pas AUSSI une section : elle serait comptée deux fois.
+      expect(MENU.map((e) => e.label)).not.toContain(etiquette);
+    }
+  });
 
   it("porte les mêmes entrées, dans le même ordre", () => {
     expect(MENU.map((e) => e.label)).toEqual(web.map((e) => e.label));

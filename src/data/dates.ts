@@ -111,6 +111,18 @@ export function jourDepuisMinuitUTC(d: Date | null | undefined): Date | null {
 }
 
 /**
+ * Le JOUR local d'une date, tel que le tirage range une colonne DATE.
+ *
+ * L'inverse de `jourDepuisMinuitUTC` : « mardi 24 novembre » à Kinshasa devient
+ * minuit UTC du 24, la valeur exacte que `sync/coerce.ts` a écrite pour
+ * `expense_date = 2026-11-24`. Comparer une telle colonne à des bornes LOCALES
+ * la décale d'une heure à Kinshasa, et d'un jour entier à l'ouest de Greenwich.
+ */
+export function minuitUTCDuJour(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+
+/**
  * Fraîcheur d'un horodatage, en clair.
  *
  * Écrite en double : l'écran Synchronisation en avait une copie privée, et le

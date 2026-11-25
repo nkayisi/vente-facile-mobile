@@ -252,6 +252,51 @@ export async function listeMouvements(
   return _liste(await resoudre(filtres));
 }
 
+/**
+ * La quantité d'un mouvement, dans les termes de sa SAISIE d'origine.
+ *
+ * Exportée parce que « Ma journée » liste les mêmes mouvements : deux
+ * écritures de cette lecture finiraient par dire « 2 contenants » d'un côté et
+ * « 2 BOITES » de l'autre, défaut déjà payé ici une fois.
+ */
+export function quantiteDuMouvement(m: {
+  quantity: string | null;
+  inputPackageQuantity: string | null;
+  inputLooseQuantity: string | null;
+  packagingFactor: string | number | null;
+  sellingMode: string | null;
+  unite: string | null;
+  uniteContenant: string | null;
+}): string {
+  const total = Math.abs(Number(m.quantity ?? 0));
+  const paquets = Number(m.inputPackageQuantity ?? 0);
+  const vrac = Number(m.inputLooseQuantity ?? 0);
+
+  // Le facteur FIGÉ sur la ligne, jamais celui du produit aujourd'hui.
+  const facteur = m.packagingFactor != null ? Number(m.packagingFactor) : null;
+  const conditionnement =
+    facteur && facteur >= 2
+      ? getPackaging({
+          selling_mode: m.sellingMode,
+          units_per_package: facteur,
+          unit_name: m.unite,
+          // ⚠ LE NOM DU CONTENANT DEMANDE UNE SECONDE JOINTURE.
+          //
+          // `packaging_unit_id` était SÉLECTIONNÉ et jamais joint : le nom
+          // n'arrivait pas, `getPackaging` retombait sur son repli, et le
+          // journal écrivait « 2 contenants + 3 AMPOULES » là où le rayon
+          // porte des BOITES. Un mot que personne n'emploie au comptoir, et
+          // le défaut exact que le lot 7 avait corrigé sur les niveaux de
+          // stock sans jamais le reporter ici.
+          packaging_unit_name: m.uniteContenant,
+        })
+      : null;
+
+  return conditionnement && (paquets > 0 || vrac > 0)
+    ? formatPackagedSplit(conditionnement, paquets, vrac)
+    : `${formatUnitQuantity(total, m.unite ?? "unité")}`;
+}
+
 async function _liste(perimetre: PerimetreMouvements): Promise<MouvementStock[]> {
   const filtres = perimetre.filtres;
   const limite = filtres.limite ?? 100;
@@ -292,34 +337,7 @@ async function _liste(perimetre: PerimetreMouvements): Promise<MouvementStock[]>
       label: m.movementType,
       entree: true,
     };
-    const total = Math.abs(Number(m.quantity ?? 0));
-    const paquets = Number(m.inputPackageQuantity ?? 0);
-    const vrac = Number(m.inputLooseQuantity ?? 0);
-
-    // Le facteur FIGÉ sur la ligne, jamais celui du produit aujourd'hui.
-    const facteur = m.packagingFactor != null ? Number(m.packagingFactor) : null;
-    const conditionnement =
-      facteur && facteur >= 2
-        ? getPackaging({
-            selling_mode: m.sellingMode,
-            units_per_package: facteur,
-            unit_name: m.unite,
-            // ⚠ LE NOM DU CONTENANT DEMANDE UNE SECONDE JOINTURE.
-            //
-            // `packaging_unit_id` était SÉLECTIONNÉ et jamais joint : le nom
-            // n'arrivait pas, `getPackaging` retombait sur son repli, et le
-            // journal écrivait « 2 contenants + 3 AMPOULES » là où le rayon
-            // porte des BOITES. Un mot que personne n'emploie au comptoir, et
-            // le défaut exact que le lot 7 avait corrigé sur les niveaux de
-            // stock sans jamais le reporter ici.
-            packaging_unit_name: m.uniteContenant,
-          })
-        : null;
-
-    const quantiteAffichee =
-      conditionnement && (paquets > 0 || vrac > 0)
-        ? formatPackagedSplit(conditionnement, paquets, vrac)
-        : `${formatUnitQuantity(total, m.unite ?? "unité")}`;
+    const quantiteAffichee = quantiteDuMouvement(m);
 
     return {
       id: m.id,

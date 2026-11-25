@@ -45,6 +45,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { formatTimeFr } from "@vente-facile/core";
 
 import { useMonnaie } from "@/data/devises";
@@ -147,7 +148,13 @@ export default function Historique() {
   const [envoiExport, setEnvoiExport] = useState(false);
   const [feuilleFormat, setFeuilleFormat] = useState(false);
   const [recherche, setRecherche] = useState("");
-  const [periode, setPeriode] = useState<Periode>("semaine");
+  // « Ma journée » y renvoie au-delà de ses cinquante lignes : la liste
+  // s'ouvre alors sur le JOUR, sans quoi le marchand chercherait ses ventes
+  // du jour dans sept jours d'historique.
+  const { periode: periodeDemandee } = useLocalSearchParams<{ periode?: string }>();
+  const [periode, setPeriode] = useState<Periode>(
+    periodeDemandee === "jour" ? "jour" : "semaine"
+  );
   const [statut, setStatut] = useState<string | null>(null);
   const [pages, setPages] = useState(1);
 

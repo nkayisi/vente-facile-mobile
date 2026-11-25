@@ -31,12 +31,12 @@ import { join } from "node:path";
 import {
   CHEMIN_CREANCES,
   CHEMIN_EXPORT,
-  CHEMIN_MA_JOURNEE,
+  CHEMIN_RAPPORT_JOURNEE,
   CHEMIN_RAPPORT_ENTREPOTS,
   CHEMINS_STATISTIQUES,
 } from "./rapports";
 
-/** Relevé le 2026-10-09 sur `StatisticsViewSet.get_extra_actions()`. */
+/** Relevé le 2026-11-23 sur `StatisticsViewSet.get_extra_actions()`. */
 const CHEMINS_DU_SERVEUR = [
   "cash_flow",
   "cashbook",
@@ -45,6 +45,8 @@ const CHEMINS_DU_SERVEUR = [
   "by-warehouse",
   "export",
   "my-activity",
+  "my-day",
+  "my-day-export",
   "product_profits",
   "product_supplies",
   "profit_margins",
@@ -69,7 +71,7 @@ describe("les chemins des rapports existent sur le serveur", () => {
       ...CHEMINS_STATISTIQUES,
       creances: CHEMIN_CREANCES,
       export: CHEMIN_EXPORT,
-      "ma-journee": CHEMIN_MA_JOURNEE,
+      "ma-journee": CHEMIN_RAPPORT_JOURNEE,
       "rapport-entrepots": CHEMIN_RAPPORT_ENTREPOTS,
     })
       .filter(([, chemin]) => !CHEMINS_DU_SERVEUR.includes(chemin))
